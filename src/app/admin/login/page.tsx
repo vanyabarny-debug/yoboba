@@ -1,38 +1,99 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
+import { agent_log } from '@/lib/agent-log';
 import { create_demo_user } from '@/lib/demo-auth';
 
 export default function admin_login_page() {
-  const router = useRouter();
   const [login, set_login] = useState('');
   const [password, set_password] = useState('');
   const [loading, set_loading] = useState(false);
   const [error, set_error] = useState('');
+  const mount_id = useRef(`login-${Date.now()}`);
+  const render_count = useRef(0);
+  render_count.current += 1;
+
+  useEffect(() => {
+    // #region agent log
+    agent_log({ location: 'admin/login/page.tsx:mount', message: 'login page mounted', data: { mountId: mount_id.current }, hypothesisId: 'H1' });
+    // #endregion
+    return () => {
+      // #region agent log
+      agent_log({ location: 'admin/login/page.tsx:unmount', message: 'login page unmounted', data: { mountId: mount_id.current, renderCount: render_count.current }, hypothesisId: 'H1' });
+      // #endregion
+    };
+  }, []);
+
+  const prev_password_len = useRef(0);
+
+  function handle_password_change(value: string) {
+    const prev_len = prev_password_len.current;
+    prev_password_len.current = value.length;
+    set_password(value);
+    // #region agent log
+    agent_log({
+      location: 'admin/login/page.tsx:password-change',
+      message: 'password input changed',
+      data: {
+        mountId: mount_id.current,
+        passwordLen: value.length,
+        prevLen: prev_len,
+        lenDecreased: value.length < prev_len && prev_len > 0,
+        renderCount: render_count.current,
+        loading,
+      },
+      hypothesisId: 'H1',
+    });
+    // #endregion
+  }
 
   async function handle_submit(e: React.FormEvent) {
     e.preventDefault();
+    // #region agent log
+    agent_log({
+      location: 'admin/login/page.tsx:submit',
+      message: 'login form submitted',
+      data: { mountId: mount_id.current, loginLen: login.trim().length, passwordLen: password.length },
+      hypothesisId: 'H3',
+    });
+    // #endregion
     set_loading(true);
     set_error('');
 
-    const res = await fetch('/api/auth/session', {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ login, password }),
-    });
+    try {
+      const res = await fetch('/api/auth/session', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        credentials: 'same-origin',
+        body: JSON.stringify({ login: login.trim(), password }),
+      });
 
-    set_loading(false);
+      const data = await res.json().catch(() => ({}));
 
-    if (!res.ok) {
-      set_error('неверный логин или пароль');
-      return;
+      if (!res.ok) {
+        set_error(data.error || 'неверный логин или пароль');
+        set_loading(false);
+        return;
+      }
+
+      if (data.role === 'seller') {
+        create_demo_user({
+          id: data.seller_id || `seller-${Date.now()}`,
+          name: data.name || 'продавец',
+          role: 'seller',
+          force: true,
+        });
+        window.location.assign('/seller');
+        return;
+      }
+
+      create_demo_user({ name: data.name || 'админ', role: 'admin', force: true });
+      window.location.assign('/admin/menu');
+    } catch {
+      set_error('ошибка сети — попробуйте ещё раз');
+      set_loading(false);
     }
-
-    create_demo_user({ name: 'админ', role: 'admin' });
-    router.push('/admin/menu');
-    router.refresh();
   }
 
   return (
@@ -47,7 +108,9 @@ export default function admin_login_page() {
         <div className="w-full max-w-sm">
           <div className="text-center mb-8">
             <h1 className="text-xl font-bold">вход для персонала</h1>
-            <p className="text-sm text-neutral-500 mt-2">управление меню и заказами</p>
+            <p className="text-sm text-neutral-500 mt-2">
+              админ и продавцы — один вход
+            </p>
           </div>
 
           <form
@@ -70,7 +133,7 @@ export default function admin_login_page() {
               <input
                 type="password"
                 value={password}
-                onChange={(e) => set_password(e.target.value)}
+                onChange={(e) => handle_password_change(e.target.value)}
                 autoComplete="current-password"
                 className="mt-1 w-full rounded-xl border border-surface px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-highlight"
                 required
@@ -85,6 +148,10 @@ export default function admin_login_page() {
             </button>
             {error && <p className="text-sm text-accent text-center">{error}</p>}
           </form>
+
+          <p className="text-xs text-neutral-400 text-center mt-4">
+            админ: admin / admin
+          </p>
         </div>
       </div>
     </main>

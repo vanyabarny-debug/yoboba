@@ -6,6 +6,14 @@ export default function pwa_register() {
   useEffect(() => {
     if (typeof window === 'undefined' || !('serviceWorker' in navigator)) return;
 
+    // в dev skipWaiting() в SW вызывает бесконечный reload — ломает формы входа
+    if (process.env.NODE_ENV === 'development') {
+      navigator.serviceWorker.getRegistrations().then((regs) => {
+        regs.forEach((reg) => reg.unregister());
+      });
+      return;
+    }
+
     navigator.serviceWorker
       .register('/service-worker.js')
       .catch((err) => console.error('sw register error:', err));

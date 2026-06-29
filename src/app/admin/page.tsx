@@ -20,6 +20,9 @@ export default function admin_dashboard() {
             <Link href="/admin/menu" className="text-neutral-600 hover:text-accent">
               меню
             </Link>
+            <Link href="/admin/sellers" className="text-neutral-600 hover:text-accent">
+              продавцы
+            </Link>
             <Link href="/" className="text-neutral-400">
               на сайт
             </Link>

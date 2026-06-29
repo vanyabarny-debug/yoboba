@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { memo, useEffect, useState } from 'react';
 import type { menu_item } from '@/lib/types';
 import { is_custom_menu_photo } from '@/lib/menu-photo';
 
@@ -10,7 +10,7 @@ type props = {
   variant?: 'card' | 'thumb';
 };
 
-export default function menu_image({ item, className = '', variant = 'card' }: props) {
+function menu_image_inner({ item, className = '', variant = 'card' }: props) {
   const [failed, set_failed] = useState(false);
   const src = item.image_url;
 
@@ -30,9 +30,8 @@ export default function menu_image({ item, className = '', variant = 'card' }: p
   }
 
   return (
-    <div className={`relative aspect-square overflow-hidden ${className}`}>
+    <div className={`relative aspect-square overflow-hidden bg-[#f3f4f6] ${className}`}>
       <img
-        key={src}
         src={src}
         alt={item.name}
         width={800}
@@ -40,6 +39,7 @@ export default function menu_image({ item, className = '', variant = 'card' }: p
         className="absolute inset-0 h-full w-full object-cover object-center"
         loading="lazy"
         decoding="async"
+        draggable={false}
         onError={() => set_failed(true)}
       />
       {is_custom_menu_photo(src) && variant === 'card' && (
@@ -48,3 +48,12 @@ export default function menu_image({ item, className = '', variant = 'card' }: p
     </div>
   );
 }
+
+export default memo(menu_image_inner, (prev, next) => {
+  return (
+    prev.item.id === next.item.id &&
+    prev.item.image_url === next.item.image_url &&
+    prev.className === next.className &&
+    prev.variant === next.variant
+  );
+});

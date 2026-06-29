@@ -1,0 +1,54 @@
+[
+  {
+    "user_id": "guest-demo",
+    "items": [
+      {
+        "menu_id": "bt-2",
+        "name": "таро с молоком",
+        "price": 310,
+        "quantity": 1
+      },
+      {
+        "menu_id": "bt-1",
+        "name": "классик молочный",
+        "price": 290,
+        "quantity": 1
+      },
+      {
+        "menu_id": "topping-классические бабл ти-тапиока",
+        "name": "доп. тапиока",
+        "price": 60,
+        "quantity": 6
+      },
+      {
+        "menu_id": "sn-4",
+        "name": "онigiri",
+        "price": 170,
+        "quantity": 1
+      }
+    ],
+    "total_price": 1130,
+    "status": "completed",
+    "payment_type": "cash",
+    "pickup_time": "2026-06-29T05:07:17.019Z",
+    "id": "demo-order-1782708917019-g083",
+    "created_at": "2026-06-29T04:55:17.019Z"
+  },
+  {
+    "user_id": "guest-demo",
+    "items": [
+      {
+        "menu_id": "bt-4",
+        "name": "oolong молочный",
+        "price": 300,
+        "quantity": 1
+      }
+    ],
+    "total_price": 300,
+    "status": "completed",
+    "payment_type": "cash",
+    "pickup_time": "2026-06-29T04:55:13.350Z",
+    "id": "demo-order-1782708193351-z8yh",
+    "created_at": "2026-06-29T04:43:13.351Z"
+  }
+]

@@ -13,7 +13,9 @@ self.addEventListener('install', (event) => {
   event.waitUntil(
     caches.open(cache_name).then((cache) => cache.addAll(static_assets))
   );
-  self.skipWaiting();
+  const host = self.location.hostname;
+  const is_local = host === 'localhost' || host === '127.0.0.1';
+  if (!is_local) self.skipWaiting();
 });
 
 self.addEventListener('activate', (event) => {

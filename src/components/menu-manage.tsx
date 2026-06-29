@@ -148,6 +148,9 @@ export default function menu_manage() {
             <p className="text-xs text-neutral-500">как у гостя — жми карандаши</p>
           </div>
           <div className="flex gap-3 text-sm items-center">
+            <Link href="/admin/sellers" className="text-neutral-600 hover:text-accent">
+              продавцы
+            </Link>
             <button
               type="button"
               onClick={async () => {

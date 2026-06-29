@@ -57,6 +57,39 @@ export type order = {
   created_at: string;
 };
 
+export type seller = {
+  id: string;
+  login: string;
+  password: string;
+  name: string;
+  is_active: boolean;
+  created_at: string;
+};
+
+export type cash_transaction = {
+  id: string;
+  order_id: string | null;
+  seller_id: string;
+  seller_name: string;
+  order_total: number;
+  payment_method: 'cash' | 'card';
+  amount_received: number | null;
+  change_given: number | null;
+  items_summary: string;
+  shift_date: string;
+  created_at: string;
+};
+
+export type day_summary = {
+  shift_date: string;
+  cash_total: number;
+  card_total: number;
+  grand_total: number;
+  transaction_count: number;
+  cash_received: number;
+  cash_change: number;
+};
+
 export type live_cart_row = {
   id: string;
   user_id: string;

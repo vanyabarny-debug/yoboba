@@ -112,22 +112,17 @@ export default function menu_grid({
               <h2 className="font-display text-xl sm:text-2xl font-bold mb-4 sm:mb-5">{category}</h2>
             )}
 
-            <div className="grid grid-cols-2 gap-2 gap-y-5 min-[1024px]:hidden">
+            <div className="grid grid-cols-2 min-[1024px]:grid-cols-4 gap-2 gap-y-5">
               {cat_items.map((item) => (
-                <div key={item.id}>{createElement(dish_card, { item, on_item_click })}</div>
+                <div key={item.id} className="min-w-0">
+                  {createElement(dish_card, { item, on_item_click })}
+                </div>
               ))}
-            </div>
-
-            <div className="hidden min-[1024px]:grid min-[1024px]:grid-cols-4 min-[1024px]:gap-2 min-[1024px]:gap-y-5">
-              {desktop_cells.map((item, idx) =>
-                item ? (
-                  <div key={item.id} className="min-w-0">
-                    {createElement(dish_card, { item, on_item_click })}
-                  </div>
-                ) : (
-                  empty_cell(`empty-${category}-${idx}`)
-                )
-              )}
+              {desktop_cells.slice(cat_items.length).map((_, idx) => (
+                <div key={`empty-${category}-${idx}`} className="hidden min-[1024px]:block">
+                  {empty_cell(`empty-${category}-${idx}`)}
+                </div>
+              ))}
             </div>
           </section>
         );

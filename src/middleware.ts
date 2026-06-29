@@ -9,29 +9,52 @@ function is_supabase_live() {
   return Boolean(url && key && !url.includes('your-project'));
 }
 
+function staff_cookie_allows(path: string, role: string | undefined) {
+  if (!role) return false;
+  if (path.startsWith('/admin') && path !== '/admin/login') return role === 'admin';
+  if (path.startsWith('/seller')) return ['seller', 'admin'].includes(role);
+  if (path.startsWith('/barista')) return ['barista', 'admin'].includes(role);
+  return false;
+}
+
 export async function middleware(request: NextRequest) {
   const path = request.nextUrl.pathname;
   const is_admin_route = path.startsWith('/admin');
   const is_barista_route = path.startsWith('/barista');
-  const is_admin_login = path === '/admin/login';
+  const is_seller_route = path.startsWith('/seller');
+  const is_staff_login = path === '/admin/login';
 
-  if (!is_admin_route && !is_barista_route) {
+  if (!is_admin_route && !is_barista_route && !is_seller_route) {
     return NextResponse.next();
   }
 
-  if (is_admin_login) {
+  if (is_staff_login) {
+    // #region agent log
+    fetch(`${request.nextUrl.origin}/api/debug-log`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        sessionId: '470d82',
+        location: 'middleware.ts:staff-login',
+        message: 'admin login page request',
+        data: { path, cookieRole: request.cookies.get(session_cookie)?.value || null },
+        hypothesisId: 'H2',
+        timestamp: Date.now(),
+      }),
+    }).catch(() => {});
+    // #endregion
+    return NextResponse.next();
+  }
+
+  const cookie_role = request.cookies.get(session_cookie)?.value;
+
+  // cookie-вход персонала работает всегда (и без supabase)
+  if (staff_cookie_allows(path, cookie_role)) {
     return NextResponse.next();
   }
 
   if (!is_supabase_live()) {
-    const role = request.cookies.get(session_cookie)?.value;
-    if (is_admin_route && role !== 'admin') {
-      return NextResponse.redirect(new URL('/admin/login', request.url));
-    }
-    if (is_barista_route && !['barista', 'admin'].includes(role || '')) {
-      return NextResponse.redirect(new URL('/admin/login', request.url));
-    }
-    return NextResponse.next();
+    return NextResponse.redirect(new URL('/admin/login', request.url));
   }
 
   const response = await update_session(request);
@@ -68,9 +91,13 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(new URL('/', request.url));
   }
 
+  if (is_seller_route && !['seller', 'admin'].includes(profile?.role || '')) {
+    return NextResponse.redirect(new URL('/', request.url));
+  }
+
   return response;
 }
 
 export const config = {
-  matcher: ['/admin/:path*', '/barista/:path*'],
+  matcher: ['/admin/:path*', '/barista/:path*', '/seller/:path*'],
 };

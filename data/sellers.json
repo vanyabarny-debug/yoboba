@@ -1,0 +1,18 @@
+[
+  {
+    "id": "seller-test-1",
+    "login": "kassa",
+    "password": "1234",
+    "name": "Аня",
+    "is_active": true,
+    "created_at": "2026-06-28T13:32:41.772Z"
+  },
+  {
+    "id": "seller-1782654274274-uw3o4",
+    "login": "ваня",
+    "password": "ваня",
+    "name": "ваня",
+    "is_active": true,
+    "created_at": "2026-06-28T13:44:41.456Z"
+  }
+]

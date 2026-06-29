@@ -51,6 +51,13 @@ export default function root_layout({
       className={`${inter.variable} ${jetbrains_mono.variable} ${montserrat_alternates.variable} h-full antialiased`}
     >
       <body className="min-h-full bg-page text-foreground font-sans">
+        {process.env.NODE_ENV === 'development' ? (
+          <script
+            dangerouslySetInnerHTML={{
+              __html: `if('serviceWorker' in navigator){navigator.serviceWorker.getRegistrations().then(function(r){r.forEach(function(x){x.unregister()})})}`,
+            }}
+          />
+        ) : null}
         {createElement(pwa_register)}
         {children}
       </body>

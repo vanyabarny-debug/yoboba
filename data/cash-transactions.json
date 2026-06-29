@@ -1,0 +1,28 @@
+[
+  {
+    "id": "cash-1782708805555",
+    "order_id": "demo-order-1782708193351-z8yh",
+    "seller_id": "seller-test-1",
+    "seller_name": "Аня",
+    "order_total": 300,
+    "payment_method": "cash",
+    "amount_received": 450,
+    "change_given": 150,
+    "items_summary": "oolong молочный ×1",
+    "shift_date": "2026-06-29",
+    "created_at": "2026-06-29T04:53:25.555Z"
+  },
+  {
+    "id": "cash-1782708956631",
+    "order_id": "demo-order-1782708917019-g083",
+    "seller_id": "seller-test-1",
+    "seller_name": "Аня",
+    "order_total": 1130,
+    "payment_method": "cash",
+    "amount_received": 5000,
+    "change_given": 3870,
+    "items_summary": "таро с молоком ×1; классик молочный ×1; доп. тапиока ×6; онigiri ×1",
+    "shift_date": "2026-06-29",
+    "created_at": "2026-06-29T04:55:56.631Z"
+  }
+]

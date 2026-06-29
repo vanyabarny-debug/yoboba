@@ -1,6 +1,6 @@
 import type { sidebar_ad_slide } from '@/lib/types';
 
-export const sidebar_ad_store_version = 1;
+export const sidebar_ad_store_version = 2;
 
 const storage_key = 'yoboba_sidebar_ad_store';
 const update_event = 'yoboba-sidebar-ad-update';
@@ -53,6 +53,37 @@ export function get_default_sidebar_ad_store(): sidebar_ad_store {
   };
 }
 
+function repair_sidebar_store(store: sidebar_ad_store): sidebar_ad_store {
+  const by_id = new Map(store.slides.map((s) => [s.id, s]));
+  for (const def of default_sidebar_slides) {
+    const existing = by_id.get(def.id);
+    by_id.set(def.id, {
+      ...def,
+      ...existing,
+      image_url: existing?.image_url || def.image_url,
+      is_active: existing?.is_active ?? def.is_active,
+    });
+  }
+  let slides = [...by_id.values()];
+  if (!slides.some((s) => s.is_active)) {
+    slides = slides.map((s) =>
+      default_sidebar_slides.some((d) => d.id === s.id) ? { ...s, is_active: true } : s
+    );
+  }
+  if (!slides.length) {
+    slides = default_sidebar_slides.map((s) => ({ ...s }));
+  }
+  const repaired = {
+    version: sidebar_ad_store_version,
+    interval_ms: store.interval_ms || default_sidebar_interval_ms,
+    slides,
+  };
+  if (JSON.stringify(repaired) !== JSON.stringify(store)) {
+    localStorage.setItem(storage_key, JSON.stringify(repaired));
+  }
+  return repaired;
+}
+
 export function get_sidebar_ad_store(): sidebar_ad_store {
   if (typeof window === 'undefined') return get_default_sidebar_ad_store();
   const raw = localStorage.getItem(storage_key);
@@ -64,11 +95,13 @@ export function get_sidebar_ad_store(): sidebar_ad_store {
   try {
     const parsed = JSON.parse(raw) as sidebar_ad_store;
     if (!parsed.version || parsed.version < sidebar_ad_store_version) {
-      const seed = get_default_sidebar_ad_store();
-      localStorage.setItem(storage_key, JSON.stringify(seed));
-      return seed;
+      return repair_sidebar_store({
+        ...get_default_sidebar_ad_store(),
+        ...parsed,
+        version: sidebar_ad_store_version,
+      });
     }
-    return parsed;
+    return repair_sidebar_store(parsed);
   } catch {
     const seed = get_default_sidebar_ad_store();
     localStorage.setItem(storage_key, JSON.stringify(seed));

@@ -10,6 +10,7 @@ export type demo_user = {
 };
 
 const storage_key = 'yoboba_demo_user';
+const staff_roles: user_role[] = ['admin', 'barista', 'seller'];
 
 export function get_demo_user(): demo_user | null {
   if (typeof window === 'undefined') return null;
@@ -33,14 +34,27 @@ export function clear_demo_user() {
 }
 
 export function create_demo_user(input: {
+  id?: string;
   phone?: string;
   name: string;
   is_guest?: boolean;
   role?: user_role;
+  force?: boolean;
 }): demo_user {
+  const existing = get_demo_user();
+  const next_role = input.role || (input.is_guest ? 'guest' : 'user');
+  if (
+    !input.force &&
+    existing &&
+    staff_roles.includes(existing.role) &&
+    !staff_roles.includes(next_role)
+  ) {
+    return existing;
+  }
+
   const is_guest = Boolean(input.is_guest);
   const user: demo_user = {
-    id: `demo-${Date.now()}`,
+    id: input.id || `demo-${Date.now()}`,
     phone: input.phone || '',
     name: input.name,
     bonus_balance: is_guest ? 0 : input.role === 'admin' ? 0 : 150,
@@ -52,14 +66,23 @@ export function create_demo_user(input: {
 }
 
 export async function sync_session(role: user_role) {
+  const current = await fetch('/api/auth/session', { credentials: 'same-origin' });
+  if (current.ok) {
+    const data = (await current.json()) as { role: user_role | null };
+    if (data.role && staff_roles.includes(data.role) && !staff_roles.includes(role)) {
+      return;
+    }
+  }
+
   await fetch('/api/auth/session', {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
+    credentials: 'same-origin',
     body: JSON.stringify({ role }),
   });
 }
 
 export async function clear_session() {
-  await fetch('/api/auth/session', { method: 'DELETE' });
+  await fetch('/api/auth/session', { method: 'DELETE', credentials: 'same-origin' });
   clear_demo_user();
 }
