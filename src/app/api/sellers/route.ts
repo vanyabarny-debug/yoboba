@@ -13,7 +13,7 @@ export async function GET() {
   if (!(await is_admin())) {
     return NextResponse.json({ error: 'доступ запрещён' }, { status: 403 });
   }
-  return NextResponse.json({ sellers: get_sellers() });
+  return NextResponse.json({ sellers: await get_sellers() });
 }
 
 export async function POST(request: Request) {
@@ -26,7 +26,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'заполните все поля' }, { status: 400 });
   }
 
-  const sellers = get_sellers();
+  const sellers = await get_sellers();
   const duplicate = sellers.find(
     (s) => s.login.toLowerCase() === body.login.trim().toLowerCase() && s.id !== body.id
   );
@@ -34,7 +34,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'такой логин уже есть' }, { status: 409 });
   }
 
-  const record = upsert_seller({
+  const record = await upsert_seller({
     id: body.id || `seller-${Date.now()}`,
     login: body.login.trim().toLowerCase(),
     password: body.password,
@@ -55,7 +55,7 @@ export async function DELETE(request: Request) {
     return NextResponse.json({ error: 'не указан id' }, { status: 400 });
   }
 
-  if (!delete_seller(id)) {
+  if (!(await delete_seller(id))) {
     return NextResponse.json({ error: 'не найден' }, { status: 404 });
   }
 

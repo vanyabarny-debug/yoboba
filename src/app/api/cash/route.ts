@@ -16,8 +16,8 @@ export async function GET(request: Request) {
   }
 
   const shift_date = new URL(request.url).searchParams.get('shift_date') || undefined;
-  const transactions = get_transactions(shift_date);
-  const summary = shift_date ? calc_day_summary(shift_date, transactions) : null;
+  const transactions = await get_transactions(shift_date);
+  const summary = shift_date ? await calc_day_summary(shift_date, transactions) : null;
 
   return NextResponse.json({ transactions, summary });
 }
@@ -32,7 +32,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'неполные данные' }, { status: 400 });
   }
 
-  const tx = add_transaction({
+  const tx = await add_transaction({
     ...body,
     id: body.id || `cash-${Date.now()}`,
     created_at: body.created_at || new Date().toISOString(),

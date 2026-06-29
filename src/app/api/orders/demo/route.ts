@@ -15,7 +15,7 @@ async function is_staff() {
 }
 
 export async function GET() {
-  return NextResponse.json({ orders: get_demo_orders(true) });
+  return NextResponse.json({ orders: await get_demo_orders(true) });
 }
 
 export async function POST(request: Request) {
@@ -29,7 +29,7 @@ export async function POST(request: Request) {
       { menu_id: 'bt-1', name: 'классический бабл ти', price: 290, quantity: 1 },
       { menu_id: 'mt-1', name: 'матча латте', price: 320, quantity: 1 },
     ];
-    const order = create_fake_order_from_items(samples, body.pickup_minutes ?? 8);
+    const order = await create_fake_order_from_items(samples, body.pickup_minutes ?? 8);
     return NextResponse.json({ order });
   }
 
@@ -38,7 +38,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'корзина пуста' }, { status: 400 });
   }
 
-  const order = create_fake_order_from_items(items, body.pickup_minutes ?? 12);
+  const order = await create_fake_order_from_items(items, body.pickup_minutes ?? 12);
   return NextResponse.json({ order });
 }
 
@@ -48,7 +48,7 @@ export async function PATCH(request: Request) {
   }
 
   const body = await request.json();
-  const updated = update_demo_order(body.id, body.patch);
+  const updated = await update_demo_order(body.id, body.patch);
   if (!updated) {
     return NextResponse.json({ error: 'заказ не найден' }, { status: 404 });
   }

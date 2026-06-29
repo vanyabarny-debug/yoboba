@@ -1,43 +1,37 @@
-import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'fs';
-import { join } from 'path';
+import { read_json_store, write_json_store } from '@/lib/data-store';
 import type { seller } from '@/lib/types';
 
-const data_dir = join(process.cwd(), 'data');
-const file_path = join(data_dir, 'sellers.json');
+const store_key = 'sellers';
 
-function ensure_file(): seller[] {
-  if (!existsSync(data_dir)) mkdirSync(data_dir, { recursive: true });
-  if (!existsSync(file_path)) {
-    writeFileSync(file_path, '[]', 'utf-8');
-    return [];
-  }
-  try {
-    return JSON.parse(readFileSync(file_path, 'utf-8')) as seller[];
-  } catch {
-    return [];
-  }
+async function load_sellers(): Promise<seller[]> {
+  return read_json_store<seller[]>(store_key, []);
 }
 
-function save(sellers: seller[]) {
-  if (!existsSync(data_dir)) mkdirSync(data_dir, { recursive: true });
-  writeFileSync(file_path, JSON.stringify(sellers, null, 2), 'utf-8');
+async function save_sellers(sellers: seller[]) {
+  await write_json_store(store_key, sellers);
 }
 
-export function get_sellers(): seller[] {
-  return ensure_file();
+export async function get_sellers(): Promise<seller[]> {
+  return load_sellers();
 }
 
-export function find_seller_by_credentials(login: string, password: string): seller | null {
+export async function find_seller_by_credentials(
+  login: string,
+  password: string
+): Promise<seller | null> {
   const normalized = login.trim().toLowerCase();
+  const sellers = await load_sellers();
   return (
-    ensure_file().find(
+    sellers.find(
       (s) => s.is_active && s.login.toLowerCase() === normalized && s.password === password
     ) || null
   );
 }
 
-export function upsert_seller(input: Omit<seller, 'created_at'> & { created_at?: string }): seller {
-  const sellers = ensure_file();
+export async function upsert_seller(
+  input: Omit<seller, 'created_at'> & { created_at?: string }
+): Promise<seller> {
+  const sellers = await load_sellers();
   const idx = sellers.findIndex((s) => s.id === input.id);
   const record: seller = {
     ...input,
@@ -46,14 +40,14 @@ export function upsert_seller(input: Omit<seller, 'created_at'> & { created_at?:
   };
   if (idx >= 0) sellers[idx] = record;
   else sellers.push(record);
-  save(sellers);
+  await save_sellers(sellers);
   return record;
 }
 
-export function delete_seller(id: string): boolean {
-  const sellers = ensure_file();
+export async function delete_seller(id: string): Promise<boolean> {
+  const sellers = await load_sellers();
   const next = sellers.filter((s) => s.id !== id);
   if (next.length === sellers.length) return false;
-  save(next);
+  await save_sellers(next);
   return true;
 }

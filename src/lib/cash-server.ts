@@ -1,43 +1,36 @@
-import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'fs';
-import { join } from 'path';
+import { read_json_store, write_json_store } from '@/lib/data-store';
 import type { cash_transaction, day_summary } from '@/lib/types';
 
-const data_dir = join(process.cwd(), 'data');
-const file_path = join(data_dir, 'cash-transactions.json');
+const store_key = 'cash-transactions';
 
-function ensure_file(): cash_transaction[] {
-  if (!existsSync(data_dir)) mkdirSync(data_dir, { recursive: true });
-  if (!existsSync(file_path)) {
-    writeFileSync(file_path, '[]', 'utf-8');
-    return [];
-  }
-  try {
-    return JSON.parse(readFileSync(file_path, 'utf-8')) as cash_transaction[];
-  } catch {
-    return [];
-  }
+async function load_transactions(): Promise<cash_transaction[]> {
+  return read_json_store<cash_transaction[]>(store_key, []);
 }
 
-function save(transactions: cash_transaction[]) {
-  if (!existsSync(data_dir)) mkdirSync(data_dir, { recursive: true });
-  writeFileSync(file_path, JSON.stringify(transactions, null, 2), 'utf-8');
+async function save_transactions(transactions: cash_transaction[]) {
+  await write_json_store(store_key, transactions);
 }
 
-export function get_transactions(shift_date?: string): cash_transaction[] {
-  const all = ensure_file();
+export async function get_transactions(shift_date?: string): Promise<cash_transaction[]> {
+  const all = await load_transactions();
   if (!shift_date) return all;
   return all.filter((t) => t.shift_date === shift_date);
 }
 
-export function add_transaction(tx: cash_transaction): cash_transaction {
-  const all = ensure_file();
+export async function add_transaction(tx: cash_transaction): Promise<cash_transaction> {
+  const all = await load_transactions();
   all.push(tx);
-  save(all);
+  await save_transactions(all);
   return tx;
 }
 
-export function calc_day_summary(shift_date: string, transactions?: cash_transaction[]): day_summary {
-  const txs = (transactions || get_transactions(shift_date)).filter((t) => t.shift_date === shift_date);
+export async function calc_day_summary(
+  shift_date: string,
+  transactions?: cash_transaction[]
+): Promise<day_summary> {
+  const txs = (transactions || (await get_transactions(shift_date))).filter(
+    (t) => t.shift_date === shift_date
+  );
   let cash_total = 0;
   let card_total = 0;
   let cash_received = 0;

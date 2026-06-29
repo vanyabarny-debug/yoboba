@@ -83,7 +83,7 @@ export async function POST(request: Request) {
       return res;
     }
 
-    const seller = find_seller_by_credentials(login, password);
+    const seller = await find_seller_by_credentials(login, password);
     if (seller) {
       const res = NextResponse.json({
         ok: true,
