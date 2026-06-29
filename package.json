@@ -7,10 +7,10 @@
     "dev": "next dev",
     "start": "next start",
     "lint": "eslint",
-    "preview": "opennextjs-cloudflare build && opennextjs-cloudflare preview",
-    "deploy": "opennextjs-cloudflare build && opennextjs-cloudflare deploy",
-    "upload": "opennextjs-cloudflare build && opennextjs-cloudflare upload",
-    "cf-typegen": "wrangler types --env-interface CloudflareEnv cloudflare-env.d.ts"
+    "preview": "opennextjs-cloudflare build -- --config wrangler.worker.jsonc && opennextjs-cloudflare preview -- --config wrangler.worker.jsonc",
+    "deploy": "opennextjs-cloudflare build -- --config wrangler.worker.jsonc && opennextjs-cloudflare deploy -- --config wrangler.worker.jsonc",
+    "upload": "opennextjs-cloudflare build -- --config wrangler.worker.jsonc && opennextjs-cloudflare upload -- --config wrangler.worker.jsonc",
+    "cf-typegen": "wrangler types --config wrangler.worker.jsonc --env-interface CloudflareEnv cloudflare-env.d.ts"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.0",

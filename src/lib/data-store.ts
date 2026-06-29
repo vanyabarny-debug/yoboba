@@ -3,6 +3,7 @@ import { join } from 'path';
 import sellers_seed from '../../data/sellers.json';
 
 const data_dir = join(process.cwd(), 'data');
+const memory_store = new Map<string, string>();
 
 const seeds: Record<string, unknown> = {
   sellers: sellers_seed,
@@ -10,14 +11,23 @@ const seeds: Record<string, unknown> = {
   'demo-orders': [],
 };
 
-async function get_kv() {
+async function get_cloudflare_env(): Promise<CloudflareEnv | null> {
   try {
     const { getCloudflareContext } = await import('@opennextjs/cloudflare');
     const { env } = await getCloudflareContext({ async: true });
-    return (env as CloudflareEnv).YOBOBA_DATA ?? null;
+    return env as CloudflareEnv;
   } catch {
     return null;
   }
+}
+
+async function get_kv() {
+  const env = await get_cloudflare_env();
+  return env?.YOBOBA_DATA ?? null;
+}
+
+async function is_cloudflare_runtime() {
+  return (await get_cloudflare_env()) !== null;
 }
 
 function read_from_fs<T>(key: string, fallback: T): T {
@@ -55,6 +65,21 @@ export async function read_json_store<T>(key: string, fallback: T): Promise<T> {
     await kv.put(key, JSON.stringify(seed));
     return seed;
   }
+
+  if (await is_cloudflare_runtime()) {
+    const raw = memory_store.get(key);
+    if (raw) {
+      try {
+        return JSON.parse(raw) as T;
+      } catch {
+        return fallback;
+      }
+    }
+    const seed = (seeds[key] as T | undefined) ?? fallback;
+    memory_store.set(key, JSON.stringify(seed));
+    return seed;
+  }
+
   return read_from_fs(key, fallback);
 }
 
@@ -64,5 +89,11 @@ export async function write_json_store<T>(key: string, value: T): Promise<void> 
     await kv.put(key, JSON.stringify(value));
     return;
   }
+
+  if (await is_cloudflare_runtime()) {
+    memory_store.set(key, JSON.stringify(value));
+    return;
+  }
+
   write_to_fs(key, value);
 }

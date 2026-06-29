@@ -23,11 +23,5 @@
 		// Enable image optimization
 		// see https://opennext.js.org/cloudflare/howtos/image
 		"binding": "IMAGES"
-	},
-	"kv_namespaces": [
-		{
-			"binding": "YOBOBA_DATA",
-			"id": "local-yoboba-data"
-		}
-	]
+	}
 }
