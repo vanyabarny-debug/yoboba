@@ -133,11 +133,19 @@ export async function get_auth_state(): Promise<auth_state> {
   };
 }
 
+function auth_site_origin() {
+  const configured = process.env.NEXT_PUBLIC_SITE_URL?.replace(/\/$/, '');
+  if (configured) return configured;
+  if (typeof window !== 'undefined') return window.location.origin;
+  return '';
+}
+
 export async function sign_in_with_email(email: string, return_path = '/') {
   const supabase = get_client();
   const normalized = email.trim().toLowerCase();
   const safe_return = return_path.startsWith('/') ? return_path : '/';
-  const redirect_to = `${window.location.origin}/auth/callback?next=${encodeURIComponent(safe_return)}`;
+  const origin = auth_site_origin();
+  const redirect_to = `${origin}/auth/callback?next=${encodeURIComponent(safe_return)}`;
 
   const { error } = await supabase.auth.signInWithOtp({
     email: normalized,
