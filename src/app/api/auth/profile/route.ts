@@ -1,12 +1,38 @@
-import { NextResponse } from 'next/server';
-import { create_server_client } from '@/lib/supabase/server';
+import { createServerClient } from '@supabase/ssr';
+import { NextResponse, type NextRequest } from 'next/server';
 
-export async function GET() {
-  const supabase = await create_server_client();
+function merge_cookies(from: NextResponse, to: NextResponse) {
+  from.cookies.getAll().forEach((cookie) => {
+    to.cookies.set(cookie.name, cookie.value);
+  });
+}
+
+export async function GET(request: NextRequest) {
+  let cookie_response = NextResponse.next();
+
+  const supabase = createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      cookies: {
+        getAll() {
+          return request.cookies.getAll();
+        },
+        setAll(cookies_to_set) {
+          cookies_to_set.forEach(({ name, value, options }) => {
+            cookie_response.cookies.set(name, value, options);
+          });
+        },
+      },
+    }
+  );
+
   const { data: { user } } = await supabase.auth.getUser();
 
   if (!user) {
-    return NextResponse.json({ user: null, profile: null });
+    const res = NextResponse.json({ user: null, profile: null });
+    merge_cookies(cookie_response, res);
+    return res;
   }
 
   const { data: profile } = await supabase
@@ -15,11 +41,13 @@ export async function GET() {
     .eq('id', user.id)
     .maybeSingle();
 
-  return NextResponse.json({
+  const res = NextResponse.json({
     user: {
       id: user.id,
       is_anonymous: user.is_anonymous === true,
     },
     profile: profile || null,
   });
+  merge_cookies(cookie_response, res);
+  return res;
 }

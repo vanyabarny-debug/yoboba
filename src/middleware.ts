@@ -25,6 +25,15 @@ function copy_cookies(from: NextResponse, to: NextResponse) {
 
 export async function middleware(request: NextRequest) {
   const path = request.nextUrl.pathname;
+  const code = request.nextUrl.searchParams.get('code');
+  const token_hash = request.nextUrl.searchParams.get('token_hash');
+
+  if ((code || token_hash) && path !== '/auth/callback') {
+    const url = request.nextUrl.clone();
+    url.pathname = '/auth/callback';
+    return NextResponse.redirect(url);
+  }
+
   const is_admin_route = path.startsWith('/admin');
   const is_barista_route = path.startsWith('/barista');
   const is_seller_route = path.startsWith('/seller');
