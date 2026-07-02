@@ -21,7 +21,7 @@ function menu_image_inner({ item, className = '', variant = 'card' }: props) {
   if (!src || failed) {
     return (
       <div
-        className={`aspect-square bg-gradient-to-br from-[#ffe0e8] to-[#ff3d6e] flex items-center justify-center ${className}`}
+        className={`aspect-square bg-gradient-to-br from-[#85b8f7] to-[#D81B7B] flex items-center justify-center ${className}`}
         aria-hidden
       >
         <span className={`text-white/40 ${variant === 'thumb' ? 'text-xl' : 'text-3xl'}`}>🥤</span>

@@ -1,7 +1,7 @@
 'use client';
 
 import { createElement } from 'react';
-import location_picker from '@/components/location-picker';
+import spot_picker from '@/components/spot-picker';
 import type { user_location } from '@/lib/location';
 
 type props = {
@@ -22,9 +22,9 @@ export default function location_modal({ open, on_close, on_confirm }: props) {
         onClick={on_close}
       />
       <div className="relative w-full sm:max-w-md bg-white rounded-t-2xl sm:rounded-2xl p-6 shadow-soft max-h-[90vh] overflow-y-auto">
-        <h2 className="text-lg font-bold mb-1">ваш город</h2>
-        <p className="text-sm text-neutral-500 mb-4">покажем актуальное меню и время выдачи</p>
-        {createElement(location_picker, {
+        <h2 className="text-lg font-bold mb-1">точка выдачи</h2>
+        <p className="text-sm text-neutral-500 mb-4">выберите адрес, где заберёте заказ</p>
+        {createElement(spot_picker, {
           on_confirm: (loc) => {
             on_confirm(loc);
             on_close();

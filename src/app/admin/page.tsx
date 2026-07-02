@@ -1,5 +1,7 @@
 'use client';
 
+import { BRAND_NAME } from '@/lib/brand';
+
 import { createElement } from 'react';
 import Link from 'next/link';
 import online_counter from '@/components/admin/online-counter';
@@ -13,7 +15,7 @@ export default function admin_dashboard() {
       <header className="bg-page border-b border-surface">
         <div className="max-w-6xl mx-auto px-4 py-4 flex items-center justify-between">
           <div>
-            <h1 className="text-xl font-semibold text-accent">админка yoboba</h1>
+            <h1 className="text-xl font-semibold text-accent">админка {BRAND_NAME}</h1>
             <p className="text-xs text-neutral-500">live-аналитика и управление</p>
           </div>
           <nav className="flex gap-3 text-sm">
@@ -22,6 +24,9 @@ export default function admin_dashboard() {
             </Link>
             <Link href="/admin/sellers" className="text-neutral-600 hover:text-accent">
               продавцы
+            </Link>
+            <Link href="/admin/spots" className="text-neutral-600 hover:text-accent">
+              точки
             </Link>
             <Link href="/" className="text-neutral-400">
               на сайт

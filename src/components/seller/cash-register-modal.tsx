@@ -129,7 +129,7 @@ export default function cash_register_modal({
               type="button"
               disabled={method === 'cash' ? !can_confirm_cash : false}
               onClick={() => on_complete(method!, method === 'cash' ? received_num : undefined)}
-              className="flex-[1.4] rounded-xl bg-accent py-3.5 text-sm font-semibold text-white disabled:opacity-40 shadow-[0_4px_14px_rgba(255,61,110,0.3)]"
+              className="flex-[1.4] rounded-xl bg-accent py-3.5 text-sm font-semibold text-accent-foreground disabled:opacity-40 shadow-[0_4px_14px_rgba(4,104,240,0.28)]"
             >
               провести
             </button>

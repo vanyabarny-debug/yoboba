@@ -195,7 +195,7 @@ export default function menu_photo_crop_modal({
             type="button"
             disabled={!img || saving}
             onClick={() => void handle_save()}
-            className="flex-1 rounded-pill bg-accent text-white py-2.5 text-sm font-medium disabled:opacity-50"
+            className="flex-1 rounded-pill bg-accent text-accent-foreground py-2.5 text-sm font-medium disabled:opacity-50"
           >
             {saving ? 'сохраняем…' : 'сохранить фото'}
           </button>

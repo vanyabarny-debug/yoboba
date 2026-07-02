@@ -78,7 +78,7 @@ export default function promo_manage() {
           <button
             type="button"
             onClick={() => set_editing({ ...empty_promo })}
-            className="rounded-pill bg-accent text-white px-4 py-2 text-sm font-medium"
+            className="rounded-pill bg-accent text-accent-foreground px-4 py-2 text-sm font-medium"
           >
             + плашка
           </button>
@@ -254,7 +254,7 @@ export default function promo_manage() {
               </button>
               <button
                 type="submit"
-                className="flex-1 rounded-pill bg-accent text-white py-2.5 text-sm font-medium"
+                className="flex-1 rounded-pill bg-accent text-accent-foreground py-2.5 text-sm font-medium"
               >
                 сохранить
               </button>

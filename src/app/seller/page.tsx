@@ -1,5 +1,7 @@
 'use client';
 
+import { BRAND_NAME } from '@/lib/brand';
+
 import { useCallback, useEffect, useState, createElement } from 'react';
 import { create_client } from '@/lib/supabase/client';
 import { is_supabase_configured } from '@/lib/supabase/config';
@@ -57,7 +59,7 @@ function order_card({ order: o, on_pay }: { order: order; on_pay: (o: order) => 
               cy="18"
               r="15.5"
               fill="none"
-              stroke={meta.urgent ? '#ff3d6e' : '#2378ff'}
+              stroke={meta.urgent ? '#D81B7B' : '#0468F0'}
               strokeWidth="3"
               strokeLinecap="round"
               strokeDasharray={`${meta.progress} 100`}
@@ -101,7 +103,7 @@ function order_card({ order: o, on_pay }: { order: order; on_pay: (o: order) => 
             <button
               type="button"
               onClick={() => on_pay(o)}
-              className="rounded-xl bg-accent px-4 py-2.5 text-sm font-semibold text-white shadow-[0_4px_14px_rgba(255,61,110,0.35)] hover:brightness-105 transition"
+              className="rounded-xl bg-accent px-4 py-2.5 text-sm font-semibold text-accent-foreground shadow-[0_4px_14px_rgba(4,104,240,0.3)] hover:brightness-105 transition"
             >
               касса
             </button>
@@ -246,11 +248,11 @@ export default function seller_board() {
 
   return (
     <div className="min-h-screen bg-[#f0f1f4]">
-      <header className="sticky top-0 z-20 border-b border-white/60 bg-white/80 backdrop-blur-xl">
+      <header className="sticky mobile-sticky-top z-20 border-b border-white/60 bg-white/80 backdrop-blur-xl">
         <div className="max-w-lg mx-auto px-4 py-4">
           <div className="flex items-center justify-between gap-3">
             <div>
-              <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-accent">yoboba</p>
+              <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-accent">{BRAND_NAME}</p>
               <h1 className="text-xl font-bold text-neutral-900">касса</h1>
               <p className="text-xs text-neutral-500">{seller_name}</p>
             </div>

@@ -5,7 +5,7 @@ import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import location_modal from '@/components/location-modal';
 import site_header from '@/components/site-header';
 import top_bar from '@/components/top-bar';
-import { get_profile, sign_out } from '@/lib/auth';
+import { get_auth_state, sign_out } from '@/lib/auth';
 import { clear_session, get_demo_user, type demo_user } from '@/lib/demo-auth';
 import { get_location, set_location, type user_location } from '@/lib/location';
 import { default_categories } from '@/lib/menu-store';
@@ -75,10 +75,19 @@ export default function site_chrome({ children }: props) {
         return;
       }
 
-      get_profile().then((profile) => {
-        if (profile) {
-          set_bonus(profile.bonus_balance);
+      get_auth_state().then((auth) => {
+        if (auth.is_permanent && auth.profile) {
+          set_user({
+            id: auth.profile.id,
+            phone: auth.profile.phone || '',
+            name: auth.profile.name || 'гость',
+            bonus_balance: auth.profile.bonus_balance,
+            is_guest: false,
+            role: 'user',
+          });
+          set_bonus(auth.profile.bonus_balance);
         } else {
+          set_user(null);
           set_bonus(0);
         }
       });
@@ -131,7 +140,7 @@ export default function site_chrome({ children }: props) {
 
       <div
         ref={header_ref}
-        className="sticky top-0 z-40 bg-page"
+        className="sticky mobile-sticky-top z-40 bg-page"
       >
         {createElement(site_header, {
           city,
@@ -182,7 +191,7 @@ export default function site_chrome({ children }: props) {
           <button
             type="button"
             onClick={go_to_cart}
-            className="flex-shrink-0 flex items-center gap-1.5 sm:gap-2 rounded-pill bg-accent text-white pl-3 pr-3.5 sm:px-5 py-2.5 text-base sm:text-[17px] font-bold hover:opacity-95 transition-opacity"
+            className="flex-shrink-0 flex items-center gap-1.5 sm:gap-2 rounded-pill bg-accent text-accent-foreground pl-3 pr-3.5 sm:px-5 py-2.5 text-base sm:text-[17px] font-bold hover:opacity-95 transition-opacity"
           >
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
               <path

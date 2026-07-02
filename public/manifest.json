@@ -1,11 +1,11 @@
 {
-  "name": "yoboba",
-  "short_name": "yoboba",
+  "name": "koppu x",
+  "short_name": "koppu x",
   "description": "кофейный киоск — заказ к времени, баллы, сторис",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#ffffff",
-  "theme_color": "#ff0055",
+  "theme_color": "#0468F0",
   "orientation": "portrait-primary",
   "lang": "ru",
   "icons": [

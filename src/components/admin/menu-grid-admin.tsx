@@ -249,7 +249,7 @@ export default function menu_grid_admin({
                 <button
                   type="button"
                   onClick={() => on_add_item(category)}
-                  className="text-xs rounded-pill bg-accent text-white px-3 py-1.5"
+                  className="text-xs rounded-pill bg-accent text-accent-foreground px-3 py-1.5"
                 >
                   + блюдо
                 </button>
@@ -261,7 +261,7 @@ export default function menu_grid_admin({
                 <button
                   type="button"
                   onClick={() => on_add_item(category)}
-                  className="text-xs rounded-pill bg-accent text-white px-3 py-1.5"
+                  className="text-xs rounded-pill bg-accent text-accent-foreground px-3 py-1.5"
                 >
                   + блюдо
                 </button>

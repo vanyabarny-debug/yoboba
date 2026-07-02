@@ -1,5 +1,7 @@
 'use client';
 
+import { BRAND_NAME } from '@/lib/brand';
+
 import { createElement, useEffect, useState } from 'react';
 import location_picker from '@/components/location-picker';
 import { is_city_served, store_cities, type user_location } from '@/lib/location';
@@ -48,7 +50,7 @@ export default function order_gate_modal({
 
   function confirm_location(loc: user_location) {
     if (!is_city_served(loc.city)) {
-      set_error(`в городе «${loc.city}» пока нет yoboba — выберите другой или войдите в аккаунт`);
+      set_error(`в городе «${loc.city}» пока нет ${BRAND_NAME} — выберите другой или войдите в аккаунт`);
       return;
     }
     reset();
@@ -84,7 +86,7 @@ export default function order_gate_modal({
               проверьте адрес
             </h2>
             <p className="mt-3 text-sm sm:text-[15px] leading-relaxed text-neutral-500">
-              заберёте заказ в точке yoboba в городе{' '}
+              заберёте заказ в точке {BRAND_NAME} в городе{' '}
               <span className="font-medium text-neutral-700 capitalize">{saved_location.city}</span>?
             </p>
 
@@ -92,7 +94,7 @@ export default function order_gate_modal({
               <button
                 type="button"
                 onClick={() => confirm_location(saved_location)}
-                className="w-full rounded-pill bg-accent text-white py-3.5 text-sm sm:text-base font-semibold hover:opacity-95 transition-opacity"
+                className="w-full rounded-pill bg-accent text-accent-foreground py-3.5 text-sm sm:text-base font-semibold hover:opacity-95 transition-opacity"
               >
                 да, всё верно
               </button>
@@ -141,7 +143,7 @@ export default function order_gate_modal({
                   set_error('');
                   set_step('location');
                 }}
-                className="w-full rounded-pill bg-accent text-white py-3.5 text-sm sm:text-base font-semibold hover:opacity-95 transition-opacity"
+                className="w-full rounded-pill bg-accent text-accent-foreground py-3.5 text-sm sm:text-base font-semibold hover:opacity-95 transition-opacity"
               >
                 указать свой город
               </button>
@@ -153,7 +155,7 @@ export default function order_gate_modal({
                 }}
                 className="w-full rounded-pill bg-surface text-neutral-800 py-3.5 text-sm sm:text-base font-medium hover:bg-neutral-200/70 transition-colors"
               >
-                заберу в точке yoboba
+                заберу в точке {BRAND_NAME}
               </button>
             </div>
 
@@ -211,7 +213,7 @@ export default function order_gate_modal({
             </button>
             <h2 className="text-xl font-bold text-neutral-900">где заберёте заказ?</h2>
             <p className="mt-2 text-sm text-neutral-500">
-              выберите город, в котором сможете забрать напиток в точке yoboba
+              выберите город, в котором сможете забрать напиток в точке {BRAND_NAME}
             </p>
             <div className="mt-5 flex flex-wrap gap-2">
               {store_cities.map((city) => (
@@ -221,7 +223,7 @@ export default function order_gate_modal({
                   onClick={() => handle_pickup_city(city)}
                   className={`rounded-pill px-4 py-2 text-sm capitalize transition-colors ${
                     normalize_pickup_active(city, store_city)
-                      ? 'bg-accent text-white'
+                      ? 'bg-accent text-accent-foreground'
                       : 'bg-surface text-neutral-700 hover:bg-cream'
                   }`}
                 >

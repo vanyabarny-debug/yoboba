@@ -1,7 +1,10 @@
 import type { Metadata, Viewport } from 'next';
 import { createElement } from 'react';
 import { Inter, JetBrains_Mono, Montserrat_Alternates } from 'next/font/google';
+import { BRAND_COLOR_BLUE, BRAND_NAME } from '@/lib/brand';
 import './globals.css';
+import auth_bootstrap from '@/components/auth-bootstrap';
+import brand_theme from '@/components/brand-theme';
 import pwa_register from '@/components/pwa-register';
 
 const inter = Inter({
@@ -23,21 +26,22 @@ const montserrat_alternates = Montserrat_Alternates({
 });
 
 export const metadata: Metadata = {
-  title: 'yoboba — кофейный киоск',
+  title: `${BRAND_NAME} — кофейный киоск`,
   description: 'заказ к времени, баллы, сторис',
   manifest: '/manifest.json',
   appleWebApp: {
     capable: true,
     statusBarStyle: 'default',
-    title: 'yoboba',
+    title: BRAND_NAME,
   },
 };
 
 export const viewport: Viewport = {
-  themeColor: '#ff3d6e',
+  themeColor: BRAND_COLOR_BLUE,
   width: 'device-width',
   initialScale: 1,
   maximumScale: 1,
+  viewportFit: 'cover',
 };
 
 export default function root_layout({
@@ -59,6 +63,8 @@ export default function root_layout({
           />
         ) : null}
         {createElement(pwa_register)}
+        {createElement(brand_theme)}
+        {createElement(auth_bootstrap)}
         {children}
       </body>
     </html>

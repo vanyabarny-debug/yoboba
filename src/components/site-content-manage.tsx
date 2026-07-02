@@ -114,7 +114,7 @@ export default function site_content_manage() {
           <button
             type="button"
             onClick={() => set_editing_link({ ...empty_link })}
-            className="text-xs rounded-pill bg-accent text-white px-3 py-1.5"
+            className="text-xs rounded-pill bg-accent text-accent-foreground px-3 py-1.5"
           >
             + ссылка
           </button>
@@ -241,7 +241,7 @@ export default function site_content_manage() {
               className="w-full rounded-xl border border-surface px-3 py-2 text-sm resize-y"
             />
             <p className="text-xs text-neutral-500">slug: {editing_page.slug}</p>
-            <button type="submit" className="rounded-pill bg-accent text-white px-4 py-2 text-sm">
+            <button type="submit" className="rounded-pill bg-accent text-accent-foreground px-4 py-2 text-sm">
               сохранить страницу
             </button>
           </form>
@@ -278,7 +278,7 @@ export default function site_content_manage() {
         <button
           type="button"
           onClick={save_product_meta}
-          className="mt-3 rounded-pill bg-accent text-white px-4 py-2 text-sm"
+          className="mt-3 rounded-pill bg-accent text-accent-foreground px-4 py-2 text-sm"
         >
           сохранить состав и описания
         </button>
@@ -313,7 +313,7 @@ export default function site_content_manage() {
               className="w-full rounded-xl border border-surface px-3 py-2 text-sm"
               required
             />
-            <button type="submit" className="w-full rounded-pill bg-accent text-white py-2.5 text-sm">
+            <button type="submit" className="w-full rounded-pill bg-accent text-accent-foreground py-2.5 text-sm">
               сохранить
             </button>
           </form>

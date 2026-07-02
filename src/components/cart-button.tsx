@@ -45,7 +45,7 @@ export default function cart_button({ user_id }: props) {
   return (
     <button
       type="button"
-      className="fixed bottom-4 right-4 md:bottom-6 md:right-6 z-40 rounded-pill bg-accent text-white px-5 py-3 shadow-soft font-medium flex items-center gap-2"
+      className="fixed bottom-4 right-4 mobile-fab-offset md:bottom-6 md:right-6 z-40 rounded-pill bg-accent text-accent-foreground px-5 py-3 shadow-soft font-medium flex items-center gap-2"
     >
       корзина
       {count > 0 && (

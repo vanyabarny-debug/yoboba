@@ -2,6 +2,7 @@
 
 import { createElement, Suspense, useEffect, useState, type ReactNode } from 'react';
 import site_chrome from '@/components/site-chrome';
+import BrandMark from '@/components/brand-mark';
 import {
   get_page_by_slug,
   subscribe_site_content_store,
@@ -14,7 +15,7 @@ type props = {
 };
 
 const card_tints = [
-  'bg-[#fff1f6] text-accent',
+  'bg-[#ecfdf5] text-accent',
   'bg-[#eef8ff] text-[#2274a5]',
   'bg-[#f4f8e8] text-[#5b7f1f]',
   'bg-[#fff4e8] text-[#d85c1f]',
@@ -234,7 +235,7 @@ export default function site_content_page({ slug, children }: props) {
   }
 
   function section_variant(title: string): 'cards' | 'list' | 'lang' {
-    if (title === 'что такое yoboba?') return 'lang';
+    if (title === 'что такое koppu x?') return 'lang';
     if (title === 'что мы готовим и как') return 'list';
     return 'cards';
   }
@@ -253,12 +254,8 @@ export default function site_content_page({ slug, children }: props) {
           </div>
         </div>
         {is_about && (
-          <div className="flex items-center justify-center">
-            <img
-              src="/images/about/hero.png"
-              alt=""
-              className="h-full max-h-[340px] w-full object-contain"
-            />
+          <div className="flex items-center justify-center py-4 sm:py-6">
+            <BrandMark size="hero" />
           </div>
         )}
       </section>

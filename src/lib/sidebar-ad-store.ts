@@ -17,7 +17,7 @@ export const default_sidebar_slides: sidebar_ad_slide[] = [
   },
   {
     id: 'side-2',
-    title: 'приложение yoboba',
+    title: 'приложение koppu x',
     subtitle: 'ещё выгоднее в pwa',
     image_url: '/images/sidebar/slide2.svg',
     link_url: '/',

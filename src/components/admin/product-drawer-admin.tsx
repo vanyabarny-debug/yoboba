@@ -363,7 +363,7 @@ export default function product_drawer_admin({ item, open, on_close, on_save, on
                 <button
                   type="button"
                   onClick={handle_save}
-                  className="flex-1 rounded-pill bg-accent py-3 text-sm font-semibold text-white shadow-[0_8px_24px_rgba(255,61,110,0.28)]"
+                  className="flex-1 rounded-pill bg-accent py-3 text-sm font-semibold text-accent-foreground shadow-[0_8px_24px_rgba(4,104,240,0.28)]"
                 >
                   сохранить
                 </button>

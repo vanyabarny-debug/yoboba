@@ -116,7 +116,7 @@ export default function sellers_manage() {
         <button
           type="button"
           onClick={open_create}
-          className="w-full rounded-xl bg-accent text-white py-3 font-semibold text-sm"
+          className="w-full rounded-xl bg-accent text-accent-foreground py-3 font-semibold text-sm"
         >
           + добавить продавца
         </button>
@@ -220,7 +220,7 @@ export default function sellers_manage() {
                 <button
                   type="submit"
                   disabled={saving}
-                  className="flex-1 rounded-xl bg-accent text-white py-2.5 text-sm font-semibold disabled:opacity-50"
+                  className="flex-1 rounded-xl bg-accent text-accent-foreground py-2.5 text-sm font-semibold disabled:opacity-50"
                 >
                   {saving ? 'сохраняем...' : 'сохранить'}
                 </button>

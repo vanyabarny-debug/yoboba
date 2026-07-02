@@ -97,7 +97,7 @@ export default function location_picker({ on_confirm }: props) {
             }}
             className={`rounded-pill px-3 py-1.5 text-sm capitalize transition-colors ${
               city === c
-                ? 'bg-accent text-white'
+                ? 'bg-accent text-accent-foreground'
                 : 'bg-surface text-neutral-600 hover:bg-cream'
             }`}
           >
@@ -123,7 +123,7 @@ export default function location_picker({ on_confirm }: props) {
         <button
           type="submit"
           disabled={!city.trim()}
-          className="w-full rounded-pill bg-accent text-white py-3 font-medium disabled:opacity-50"
+          className="w-full rounded-pill bg-accent text-accent-foreground py-3 font-medium disabled:opacity-50"
         >
           продолжить
         </button>

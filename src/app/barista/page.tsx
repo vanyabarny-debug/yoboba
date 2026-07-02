@@ -114,7 +114,7 @@ export default function barista_board() {
 
   return (
     <div className="min-h-screen bg-surface">
-      <header className="bg-page border-b border-surface sticky top-0 z-10">
+      <header className="bg-page border-b border-surface sticky mobile-sticky-top z-10">
         <div className="max-w-6xl mx-auto px-4 py-4">
           <h1 className="text-xl font-semibold text-accent">бариста</h1>
           <p className="text-xs text-neutral-500">заказы к выдаче</p>

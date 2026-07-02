@@ -232,10 +232,4 @@ create policy "push_subscriptions_admin_read"
 alter publication supabase_realtime add table public.cart_items;
 alter publication supabase_realtime add table public.orders;
 
--- демо-данные меню (опционально)
-insert into public.menu (name, price, image_url, category, recommendations) values
-  ('эспрессо', 120, '/images/espresso.jpg', 'кофе', '{}'),
-  ('капучино', 220, '/images/cappuccino.jpg', 'кофе', '{}'),
-  ('латте', 240, '/images/latte.jpg', 'кофе', '{}'),
-  ('круассан', 180, '/images/croissant.jpg', 'выпечка', '{}'),
-  ('раф ваниль', 290, '/images/raf.jpg', 'кофе', '{}');
+-- меню: выполни supabase/seed-menu.sql после этой схемы

@@ -1,5 +1,13 @@
 NEXTJS_ENV=development
 
-# Опционально — для полного режима с Supabase:
-# NEXT_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
-# NEXT_PUBLIC_SUPABASE_ANON_KEY=your-anon-key
+# Supabase (обязательно для prod)
+NEXT_PUBLIC_SUPABASE_URL=https://xxxxx.supabase.co
+NEXT_PUBLIC_SUPABASE_ANON_KEY=eyJhbGciOi...
+SUPABASE_SERVICE_ROLE_KEY=eyJhbGciOi...
+
+# Публичный URL сайта (для VK redirect)
+NEXT_PUBLIC_SITE_URL=http://localhost:3000
+
+# VK ID (https://id.vk.com)
+NEXT_PUBLIC_VK_CLIENT_ID=12345678
+VK_CLIENT_SECRET=your-secret-key

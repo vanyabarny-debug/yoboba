@@ -91,7 +91,7 @@ export default function revenue_charts() {
               formatter={(value) => [`${value} ₽`, 'выручка']}
               contentStyle={{ borderRadius: 12, border: '1px solid #f3f4f6' }}
             />
-            <Bar dataKey="revenue" fill="#ff3d6e" radius={[6, 6, 0, 0]} />
+            <Bar dataKey="revenue" fill="#0468F0" radius={[6, 6, 0, 0]} />
           </BarChart>
         </ResponsiveContainer>
       </div>

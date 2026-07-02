@@ -387,7 +387,7 @@ export default function menu_manage() {
               </button>
               <button
                 type="submit"
-                className="flex-1 rounded-pill bg-accent text-white py-2.5 text-sm font-medium"
+                className="flex-1 rounded-pill bg-accent text-accent-foreground py-2.5 text-sm font-medium"
               >
                 сохранить
               </button>

@@ -112,7 +112,7 @@ export default function promo_edit_sheet({ promo, categories, on_close, on_save,
           </button>
           <button
             type="submit"
-            className="flex-1 rounded-pill bg-accent text-white py-2.5 text-sm font-medium"
+            className="flex-1 rounded-pill bg-accent text-accent-foreground py-2.5 text-sm font-medium"
           >
             сохранить
           </button>

@@ -111,7 +111,7 @@ export default function sidebar_edit_sheet({ slide, categories, on_close, on_sav
           </button>
           <button
             type="submit"
-            className="flex-1 rounded-pill bg-accent text-white py-2.5 text-sm font-medium"
+            className="flex-1 rounded-pill bg-accent text-accent-foreground py-2.5 text-sm font-medium"
           >
             сохранить
           </button>

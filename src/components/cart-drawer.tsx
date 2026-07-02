@@ -1,8 +1,15 @@
 'use client';
 
-import { createElement } from 'react';
+import { createElement, useEffect, useRef, useState } from 'react';
 import type { menu_item } from '@/lib/types';
 import menu_image from '@/components/menu-image';
+import {
+  DRAWER_CLOSE_BTN_CLASS,
+  DRAWER_INLINE_CLOSE_BTN_CLASS,
+  SHEET_ANIM_MS,
+  SHEET_OPEN_DELAY_MS,
+} from '@/lib/drawer-ui';
+import { use_sheet_swipe } from '@/lib/use-sheet-swipe';
 import {
   calc_order_bonus,
   format_cart_summary,
@@ -29,6 +36,7 @@ type props = {
   on_open_item?: (item: menu_item) => void;
   on_edit?: (item: menu_item) => void;
   on_checkout?: () => void;
+  on_clear?: () => void;
 };
 
 function tapioca_info() {
@@ -57,8 +65,47 @@ export default function cart_drawer({
   on_open_item,
   on_edit,
   on_checkout,
+  on_clear,
 }: props) {
-  if (!open) return null;
+  const [sheet_visible, set_sheet_visible] = useState(false);
+  const [sheet_open, set_sheet_open] = useState(false);
+  const body_ref = useRef<HTMLDivElement>(null);
+
+  const { sheet_props, backdrop_style } = use_sheet_swipe({
+    active: sheet_open,
+    on_dismiss: on_close,
+    get_scroll_top: () => body_ref.current?.scrollTop ?? 0,
+  });
+
+  useEffect(() => {
+    if (!open) return;
+    set_sheet_visible(true);
+    set_sheet_open(false);
+    const timer = window.setTimeout(() => set_sheet_open(true), SHEET_OPEN_DELAY_MS);
+    return () => window.clearTimeout(timer);
+  }, [open]);
+
+  useEffect(() => {
+    if (open) return;
+    set_sheet_open(false);
+  }, [open]);
+
+  useEffect(() => {
+    if (open || !sheet_visible) return;
+    const timer = window.setTimeout(() => set_sheet_visible(false), SHEET_ANIM_MS);
+    return () => window.clearTimeout(timer);
+  }, [open, sheet_visible]);
+
+  useEffect(() => {
+    if (!sheet_visible && !open) return;
+    const prev_overflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = prev_overflow;
+    };
+  }, [sheet_visible, open]);
+
+  if (!sheet_visible && !open) return null;
 
   const total = lines.reduce((s, l) => s + l.item.price * l.quantity, 0);
   const count = lines.reduce((s, l) => s + l.quantity, 0);
@@ -67,37 +114,83 @@ export default function cart_drawer({
   const { items: upsell_items, suggest_snacks } = get_upsell_items(all_items, cart_ids, lines);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end md:items-center justify-center">
+    <div className="fixed inset-0 z-50 flex items-stretch justify-center p-0 sm:items-center sm:p-6">
       <button
         type="button"
         aria-label="закрыть"
-        className="absolute inset-0 bg-black/45 backdrop-blur-[3px]"
+        className={`product-panel-backdrop absolute inset-0 bg-black/45 backdrop-blur-[3px] ${sheet_open ? 'is-visible' : ''}`}
+        style={backdrop_style}
         onClick={on_close}
       />
-      <div className="relative w-full md:max-w-md">
+      <div className="relative flex h-full w-full sm:mx-4 sm:block sm:h-auto sm:max-w-md">
         <button
           type="button"
           onClick={on_close}
           aria-label="закрыть"
-          className="absolute top-0 right-2 sm:-right-12 z-20 flex h-11 w-11 items-center justify-center rounded-full bg-white text-neutral-900 shadow-[0_4px_20px_rgba(0,0,0,0.15)] hover:bg-neutral-50 transition-colors"
+          className={DRAWER_CLOSE_BTN_CLASS}
         >
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
             <path d="M6 6l12 12M18 6L6 18" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" />
           </svg>
         </button>
-
-        <div className="bg-[#f3f4f6] shadow-soft max-h-[88vh] flex flex-col overflow-hidden rounded-t-2xl md:rounded-card">
-        <div className="bg-[#f3f4f6] px-5 pt-5 pb-4">
-          <h3 className="text-2xl font-bold text-neutral-900">
-            {count > 0 ? format_cart_summary(count, total) : 'корзина'}
-          </h3>
+        <div
+          className={`product-panel-sheet relative flex h-full max-h-none flex-col overflow-hidden bg-[#f3f4f6] shadow-soft sm:max-h-[88vh] sm:rounded-card ${sheet_open ? 'is-visible' : ''}`}
+          {...sheet_props}
+        >
+        <div
+          className={`bg-[#f3f4f6] px-5 pt-[max(1.25rem,var(--safe-top))] pb-4 sm:pt-5 ${lines.length > 0 ? 'hidden sm:block' : ''}`}
+        >
+          <div className="flex items-start justify-between gap-3">
+            <h3 className="text-2xl font-bold text-neutral-900">
+              {count > 0 ? format_cart_summary(count, total) : 'корзина'}
+            </h3>
+            {lines.length === 0 && (
+              <button
+                type="button"
+                onClick={on_close}
+                aria-label="закрыть"
+                className={`${DRAWER_INLINE_CLOSE_BTN_CLASS} sm:hidden`}
+              >
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                  <path d="M6 6l12 12M18 6L6 18" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" />
+                </svg>
+              </button>
+            )}
+          </div>
         </div>
 
-        <div className="flex-1 overflow-y-auto space-y-2">
+        {lines.length > 0 && (
+          <div className="flex items-center justify-between gap-3 bg-[#f3f4f6] px-5 pt-[max(1.25rem,var(--safe-top))] pb-3 sm:hidden">
+            {on_clear ? (
+              <button
+                type="button"
+                onClick={on_clear}
+                className="text-sm font-semibold text-accent-pink hover:opacity-80 transition-opacity"
+              >
+                очистить корзину
+              </button>
+            ) : (
+              <span />
+            )}
+            <button
+              type="button"
+              onClick={on_close}
+              aria-label="закрыть"
+              className={DRAWER_INLINE_CLOSE_BTN_CLASS}
+            >
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                <path d="M6 6l12 12M18 6L6 18" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" />
+              </svg>
+            </button>
+          </div>
+        )}
+
+        <div ref={body_ref} className="product-panel-body flex-1 overflow-y-auto pb-[calc(5rem+var(--safe-bottom))] sm:pb-0">
           {lines.length === 0 ? (
             <p className="bg-white px-5 py-10 text-sm text-neutral-400 text-center">корзина пуста</p>
           ) : (
             <>
+              <div className="space-y-2">
               {lines.map((line) => {
                 const volume = line_volume_label(line.item.category);
                 return (
@@ -204,7 +297,8 @@ export default function cart_drawer({
               )}
 
               <div className="bg-white">
-                <div className="px-5 py-4 border-b border-[#f0f0f2]">
+                <p className="px-5 pt-4 pb-2 text-[17px] font-bold text-neutral-900">Детали</p>
+                <div className="px-5 py-4 border-t border-b border-[#f0f0f2]">
                   <input
                     type="text"
                     placeholder="Промокод"
@@ -230,29 +324,33 @@ export default function cart_drawer({
                   </div>
                 </div>
               </div>
+              </div>
             </>
           )}
         </div>
 
         {lines.length > 0 && (
-          <div className="p-4 bg-white">
-            <button
-              type="button"
-              onClick={on_checkout}
-              className="relative w-full rounded-pill bg-accent text-white py-4 text-base font-semibold hover:opacity-95 transition-opacity"
-            >
-              К оформлению заказа
-              <svg
-                className="absolute right-5 top-1/2 -translate-y-1/2"
-                width="18"
-                height="18"
-                viewBox="0 0 24 24"
-                fill="none"
-                aria-hidden="true"
+          <div className="absolute inset-x-0 bottom-0 z-20 border-t border-[#f0f0f2] bg-white sm:static sm:shrink-0">
+            <div className="flex justify-center px-4 pt-3 pb-[max(0.75rem,var(--safe-bottom))] sm:px-4 sm:pt-4 sm:pb-4">
+              <button
+                type="button"
+                onClick={on_checkout}
+                className="inline-flex w-auto max-w-full items-center justify-center rounded-pill bg-accent px-6 py-4 text-base font-semibold text-accent-foreground hover:opacity-95 transition-opacity sm:relative sm:w-full"
               >
-                <path d="M9 6l6 6-6 6" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" />
-              </svg>
-            </button>
+                <span className="sm:hidden">к оформлению на {format_price(total)} ₽</span>
+                <span className="hidden sm:inline">К оформлению заказа</span>
+                <svg
+                  className="absolute right-5 top-1/2 -translate-y-1/2 hidden sm:block"
+                  width="18"
+                  height="18"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  aria-hidden="true"
+                >
+                  <path d="M9 6l6 6-6 6" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+              </button>
+            </div>
           </div>
         )}
         </div>

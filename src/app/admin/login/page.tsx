@@ -142,7 +142,7 @@ export default function admin_login_page() {
             <button
               type="submit"
               disabled={loading}
-              className="w-full rounded-xl bg-accent text-white py-3.5 font-semibold disabled:opacity-50"
+              className="w-full rounded-xl bg-accent text-accent-foreground py-3.5 font-semibold disabled:opacity-50"
             >
               {loading ? 'входим...' : 'войти'}
             </button>

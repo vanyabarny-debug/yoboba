@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { createElement, useEffect, useState } from 'react';
 import edit_pencil from '@/components/admin/edit-pencil';
 import {
+  get_default_site_content,
   get_site_content_store,
   subscribe_site_content_store,
   type top_bar_link,
@@ -23,12 +24,12 @@ export default function top_bar({
   on_edit_lang,
 }: props) {
   const [links, set_links] = useState<top_bar_link[]>(
-    () => get_site_content_store().top_bar_links.filter((l) => l.is_active)
+    () => get_default_site_content().top_bar_links.filter((l) => l.is_active)
   );
   const [all_links, set_all_links] = useState<top_bar_link[]>(
-    () => get_site_content_store().top_bar_links
+    () => get_default_site_content().top_bar_links
   );
-  const [lang, set_lang] = useState(() => get_site_content_store().lang_link);
+  const [lang, set_lang] = useState(() => get_default_site_content().lang_link);
 
   useEffect(() => {
     function reload() {

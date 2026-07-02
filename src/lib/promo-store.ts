@@ -29,7 +29,7 @@ export const default_promos: promo_banner[] = [
   },
   {
     id: 'promo-4',
-    title: 'приложение yoboba',
+    title: 'приложение koppu x',
     image_url: '/images/promos/promo4.svg',
     link_url: '/',
     is_active: true,

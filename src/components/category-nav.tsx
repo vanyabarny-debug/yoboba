@@ -2,14 +2,22 @@
 
 import { useCallback, useLayoutEffect, useRef, useState, createElement } from 'react';
 import edit_pencil from '@/components/admin/edit-pencil';
+import {
+  menu_search_field,
+  menu_search_results,
+  menu_search_root,
+} from '@/components/menu-search';
+import type { menu_item } from '@/lib/types';
 
 type props = {
   categories: string[];
   active: string | null;
   cart_count: number;
   cart_total: number;
+  items?: menu_item[];
   on_change: (category: string | null) => void;
   on_cart_click: () => void;
+  on_item_click?: (item: menu_item) => void;
   edit_mode?: boolean;
   on_edit_category?: (category: string) => void;
   on_add_category?: () => void;
@@ -22,8 +30,10 @@ export default function category_nav({
   active,
   cart_count,
   cart_total,
+  items = [],
   on_change,
   on_cart_click,
+  on_item_click,
   edit_mode = false,
   on_edit_category,
   on_add_category,
@@ -33,6 +43,7 @@ export default function category_nav({
   const wrap_ref = useRef<HTMLDivElement>(null);
   const [can_left, set_can_left] = useState(false);
   const [can_right, set_can_right] = useState(() => categories.length + 1 > 6);
+  const [search_open, set_search_open] = useState(false);
 
   const update_arrows = useCallback(() => {
     const el = scroll_ref.current;
@@ -199,10 +210,17 @@ export default function category_nav({
     }
   }, [active, categories]);
 
-  return (
-    <nav>
+  const show_search = !edit_mode && Boolean(on_item_click) && items.length > 0;
+
+  const nav_body = (
+    <>
       <div className="page-shell flex items-center gap-1.5 sm:gap-2 pt-5 pb-3 sm:pt-6 sm:pb-4">
-        <div ref={wrap_ref} className="relative flex-1 min-w-0">
+        <div
+          ref={wrap_ref}
+          className={`relative flex-1 min-w-0 transition-opacity duration-200 ${
+            search_open ? 'opacity-35 pointer-events-none' : ''
+          }`}
+        >
           {can_left && (
             <div className="absolute left-0 inset-y-0 z-10 flex items-stretch pointer-events-none">
               <button
@@ -236,8 +254,8 @@ export default function category_nav({
               onClick={() => pick(null)}
               className={`flex-shrink-0 pl-0 pr-2.5 sm:pr-3 py-2 text-sm whitespace-nowrap transition-colors ${
                 active === null
-                  ? 'font-bold text-accent'
-                  : 'text-neutral-900 hover:text-accent'
+                  ? 'font-bold text-accent-pink min-[1024px]:text-accent'
+                  : 'text-neutral-900 hover:text-accent-pink min-[1024px]:hover:text-accent'
               }`}
             >
               все
@@ -249,8 +267,8 @@ export default function category_nav({
                   onClick={() => pick(cat)}
                   className={`px-2.5 sm:px-3 py-2 text-sm whitespace-nowrap transition-colors ${
                     active === cat
-                      ? 'font-bold text-accent'
-                      : 'text-neutral-900 hover:text-accent'
+                      ? 'font-bold text-accent-pink min-[1024px]:text-accent'
+                      : 'text-neutral-900 hover:text-accent-pink min-[1024px]:hover:text-accent'
                   }`}
                 >
                   {cat}
@@ -296,11 +314,13 @@ export default function category_nav({
           )}
         </div>
 
+        {!edit_mode && on_item_click && items.length > 0 && createElement(menu_search_field)}
+
         {!edit_mode && (
         <button
           type="button"
           onClick={on_cart_click}
-          className="flex-shrink-0 flex items-center justify-center gap-1.5 sm:gap-2 rounded-pill bg-accent text-white pl-3 pr-3.5 sm:px-5 py-2.5 text-sm font-semibold hover:opacity-95 transition-opacity"
+          className="hidden min-[1024px]:flex flex-shrink-0 items-center justify-center gap-1.5 sm:gap-2 rounded-pill bg-accent text-accent-foreground pl-3 pr-3.5 sm:px-5 py-2.5 text-sm font-semibold hover:opacity-95 transition-opacity"
         >
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
             <path
@@ -323,6 +343,20 @@ export default function category_nav({
           </span>
         )}
       </div>
+      {show_search && createElement(menu_search_results)}
+    </>
+  );
+
+  return (
+    <nav>
+      {show_search
+        ? createElement(menu_search_root, {
+            items,
+            on_item_click: on_item_click!,
+            on_open_change: set_search_open,
+            children: nav_body,
+          })
+        : nav_body}
     </nav>
   );
 }

@@ -86,7 +86,7 @@ export function image_upload_button({
       <button
         type="button"
         onClick={() => ref.current?.click()}
-        className={`rounded-pill bg-accent text-white px-4 py-2 text-sm font-medium ${className}`}
+        className={`rounded-pill bg-accent text-accent-foreground px-4 py-2 text-sm font-medium ${className}`}
       >
         {label}
       </button>

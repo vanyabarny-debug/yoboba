@@ -1,5 +1,9 @@
+import { get_active_spots } from '@/lib/spot-store';
+import type { store_spot } from '@/lib/types';
+
 export type user_location = {
   city: string;
+  spot_id?: string;
   lat?: number;
   lng?: number;
 };
@@ -47,6 +51,28 @@ export function set_location(location: user_location) {
 
 export function clear_location() {
   localStorage.removeItem(storage_key);
+}
+
+export function resolve_spot(loc: user_location | null): store_spot | null {
+  const spots = get_active_spots();
+  if (!spots.length) return null;
+
+  if (loc?.spot_id) {
+    const by_id = spots.find((s) => s.id === loc.spot_id);
+    if (by_id) return by_id;
+  }
+
+  if (loc?.city) {
+    const normalized = normalize_city(loc.city);
+    const in_city = spots.find((s) => normalize_city(s.city) === normalized);
+    if (in_city) return in_city;
+  }
+
+  return spots[0] ?? null;
+}
+
+export function get_selected_spot(): store_spot | null {
+  return resolve_spot(get_location());
 }
 
 async function reverse_geocode(lat: number, lng: number): Promise<string | null> {

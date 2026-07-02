@@ -9,6 +9,7 @@ import menu_grid_admin from '@/components/admin/menu-grid-admin';
 import product_drawer from '@/components/product-drawer';
 import product_drawer_admin from '@/components/admin/product-drawer-admin';
 import cart_drawer, { type cart_line } from '@/components/cart-drawer';
+import cart_fab from '@/components/cart-fab';
 import top_bar from '@/components/top-bar';
 import promo_banners from '@/components/promo-banners';
 import promo_edit_sheet from '@/components/admin/promo-edit-sheet';
@@ -16,11 +17,13 @@ import category_nav from '@/components/category-nav';
 import category_edit_sheet from '@/components/admin/category-edit-sheet';
 import sidebar_edit_sheet from '@/components/admin/sidebar-edit-sheet';
 import top_bar_edit_sheet from '@/components/admin/top-bar-edit-sheet';
+import brand_edit_sheet from '@/components/admin/brand-edit-sheet';
 import { admin_sheet } from '@/components/admin/admin-sheet';
 import location_modal from '@/components/location-modal';
 import order_gate_modal from '@/components/order-gate-modal';
 import { add_to_cart, get_cart_items, upsert_cart_item } from '@/lib/cart';
 import site_header from '@/components/site-header';
+import { resolve_menu_categories } from '@/lib/menu-from-db';
 import {
   delete_promo,
   get_promo_store,
@@ -40,13 +43,16 @@ import {
   upsert_sidebar_slide,
 } from '@/lib/sidebar-ad-store';
 import type { menu_item, promo_banner, sidebar_ad_slide, story } from '@/lib/types';
-import { get_profile, sign_out } from '@/lib/auth';
+import { get_auth_state, sign_out } from '@/lib/auth';
+import { create_order } from '@/lib/orders';
 import {
   get_demo_user,
   clear_session,
   type demo_user,
 } from '@/lib/demo-auth';
-import { get_location, is_city_served, set_location, type user_location } from '@/lib/location';
+import { get_location, is_city_served, resolve_spot, set_location, get_selected_spot, type user_location } from '@/lib/location';
+import { subscribe_spot_store } from '@/lib/spot-store';
+import type { store_spot } from '@/lib/types';
 import {
   add_category,
   delete_category,
@@ -69,6 +75,7 @@ import {
   upsert_top_bar_link,
   type top_bar_link,
 } from '@/lib/site-content-store';
+import { save_brand_settings } from '@/lib/brand-store';
 import { desktop_category_heading_offset } from '@/components/menu-grid';
 
 const guest_cart_key = 'yoboba_guest_cart';
@@ -131,8 +138,10 @@ export default function home_client({
   const [cart_lines, set_cart_lines] = useState<cart_line[]>([]);
   const [user, set_user] = useState<demo_user | null>(null);
   const [user_id, set_user_id] = useState<string | null>(null);
+  const [is_anonymous, set_is_anonymous] = useState(false);
   const [bonus, set_bonus] = useState(0);
   const [city, set_city] = useState('москва');
+  const [selected_spot, set_selected_spot] = useState<store_spot | null>(null);
   const [location_open, set_location_open] = useState(false);
   const [order_gate_open, set_order_gate_open] = useState(false);
   const [pending_action, set_pending_action] = useState<pending_order_action | null>(null);
@@ -149,15 +158,18 @@ export default function home_client({
   const [editing_link, set_editing_link] = useState<top_bar_link | null>(null);
   const [editing_category, set_editing_category] = useState<string | null>(null);
   const [editing_lang, set_editing_lang] = useState(false);
+  const [editing_brand, set_editing_brand] = useState<false | 'logo' | 'tagline'>(false);
   const [lang_draft, set_lang_draft] = useState({ label: 'язык', href: '/yazyk' });
   const [order_toast, set_order_toast] = useState(false);
+  const [order_error, set_order_error] = useState('');
   const header_ref = useRef<HTMLDivElement>(null);
   const nav_ref = useRef<HTMLDivElement>(null);
 
   const is_admin_edit = admin_edit_mode;
   const is_staff_admin = !admin_edit_mode && user?.role === 'admin';
-  const is_logged_in = Boolean(user && user.role === 'user' && !user.is_guest);
-  const has_account = demo_mode ? is_logged_in : Boolean(user_id);
+  const is_logged_in = demo_mode
+    ? Boolean(user && user.role === 'user' && !user.is_guest)
+    : Boolean(user_id && !is_anonymous);
   const cart_count = cart_lines.reduce((s, l) => s + l.quantity, 0);
   const cart_total = cart_lines.reduce((s, l) => s + l.item.price * l.quantity, 0);
 
@@ -177,11 +189,15 @@ export default function home_client({
     }
   }, [search_params]);
 
-  function can_order_without_gate() {
-    if (demo_mode) return true;
-    if (has_account) return true;
+  function needs_checkout_gate() {
+    if (demo_mode) return false;
     const loc = get_location();
-    return Boolean(loc && is_city_served(loc.city));
+    return !(loc && is_city_served(loc.city));
+  }
+
+  function redirect_to_login() {
+    const return_url = cart_lines.length > 0 ? '/?cart=1' : '/';
+    router.push(`/login?returnUrl=${encodeURIComponent(return_url)}`);
   }
 
   function open_order_gate(action: pending_order_action) {
@@ -235,6 +251,7 @@ export default function home_client({
       set_city(loc.city);
       set_saved_location(loc);
     }
+    set_selected_spot(get_selected_spot());
 
     function refresh_user() {
       if (!demo_mode) return;
@@ -257,6 +274,14 @@ export default function home_client({
     window.addEventListener('focus', refresh_user);
     return () => window.removeEventListener('focus', refresh_user);
   }, [demo_mode]);
+
+  useEffect(() => {
+    function reload_spot() {
+      set_selected_spot(get_selected_spot());
+    }
+    reload_spot();
+    return subscribe_spot_store(reload_spot);
+  }, []);
 
   useEffect(() => {
     if (!demo_mode) return;
@@ -309,40 +334,93 @@ export default function home_client({
 
   useEffect(() => {
     if (demo_mode) return;
-    set_categories([...new Set(initial_menu.map((i) => i.category))]);
-    set_menu(initial_menu.filter((i) => i.is_available));
-  }, [demo_mode, initial_menu]);
+    set_categories(resolve_menu_categories(initial_menu));
+    set_menu(admin_edit_mode ? initial_menu : initial_menu.filter((i) => i.is_available));
+  }, [demo_mode, initial_menu, admin_edit_mode]);
 
   useEffect(() => {
-    if (demo_mode && !user_id) {
-      save_guest_cart(cart_lines);
-    }
-  }, [cart_lines, demo_mode, user_id]);
+    if (user_id) return;
+    save_guest_cart(cart_lines);
+  }, [cart_lines, user_id]);
+
+  function add_to_local_cart(item: menu_item, qty: number) {
+    set_cart_lines((prev) => merge_cart_line(prev, item, qty));
+  }
 
   const load_prod_cart = useCallback(async (uid: string) => {
-    const { data } = await get_cart_items(uid);
+    const { data, error } = await get_cart_items(uid);
+    if (error) {
+      console.warn('cart load:', error.message);
+      return;
+    }
     const lines: cart_line[] = (data || [])
       .filter((row) => row.menu)
       .map((row) => ({
         item: row.menu as unknown as menu_item,
         quantity: row.quantity,
       }));
-    set_cart_lines(lines);
+    if (lines.length > 0) {
+      set_cart_lines(lines);
+    }
+  }, []);
+
+  const sync_guest_cart_to_server = useCallback(async (uid: string) => {
+    const local = load_guest_cart();
+    if (!local.length) return;
+
+    for (const line of local) {
+      await add_to_cart(uid, line.item, line.quantity);
+    }
+    save_guest_cart([]);
   }, []);
 
   useEffect(() => {
     if (demo_mode) return;
 
     async function load_user() {
-      const profile = await get_profile();
-      if (profile) {
-        set_user_id(profile.id);
-        set_bonus(profile.bonus_balance);
-        await load_prod_cart(profile.id);
+      const auth = await get_auth_state();
+
+      if (auth.is_permanent && auth.user_id) {
+        set_user_id(auth.user_id);
+        set_is_anonymous(false);
+
+        if (auth.profile) {
+          set_bonus(auth.profile.bonus_balance);
+          set_user({
+            id: auth.profile.id,
+            phone: auth.profile.phone || '',
+            name: auth.profile.name || 'гость',
+            bonus_balance: auth.profile.bonus_balance,
+            is_guest: false,
+            role: 'user',
+          });
+        }
+
+        await sync_guest_cart_to_server(auth.user_id);
+        await load_prod_cart(auth.user_id);
+        return;
       }
+
+      set_user_id(null);
+      set_is_anonymous(false);
+      set_user(null);
+      set_bonus(0);
+      set_cart_lines(load_guest_cart());
     }
+
     load_user();
-  }, [demo_mode, load_prod_cart]);
+
+    const supabase = create_client();
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(() => {
+      load_user();
+    });
+
+    window.addEventListener('focus', load_user);
+    return () => {
+      subscription.unsubscribe();
+      window.removeEventListener('focus', load_user);
+    };
+  }, [demo_mode, load_prod_cart, sync_guest_cart_to_server]);
 
   useEffect(() => {
     if (demo_mode || !user_id) return;
@@ -361,21 +439,20 @@ export default function home_client({
   }, [demo_mode, user_id, load_prod_cart]);
 
   async function execute_add(item: menu_item, qty: number) {
-    if (demo_mode && !user_id) {
-      set_cart_lines((prev) => merge_cart_line(prev, item, qty));
+    add_to_local_cart(item, qty);
+
+    if (demo_mode && !user_id) return;
+    if (!user_id) return;
+
+    const { error } = await add_to_cart(user_id, item, qty);
+    if (error) {
+      console.warn('cart:', error.message);
       return;
     }
-    if (user_id) {
-      await add_to_cart(user_id, item, qty);
-      await load_prod_cart(user_id);
-    }
+    await load_prod_cart(user_id);
   }
 
   async function handle_add(item: menu_item, qty: number) {
-    if (!can_order_without_gate()) {
-      open_order_gate({ type: 'add', item, qty });
-      return;
-    }
     await execute_add(item, qty);
   }
 
@@ -386,10 +463,20 @@ export default function home_client({
       );
       return;
     }
-    if (user_id) {
-      await upsert_cart_item(user_id, menu_id, quantity);
-      await load_prod_cart(user_id);
+    if (!user_id) {
+      set_cart_lines((prev) =>
+        prev.map((l) => (l.item.id === menu_id ? { ...l, quantity } : l))
+      );
+      return;
     }
+    const { error } = await upsert_cart_item(user_id, menu_id, quantity);
+    if (error) {
+      set_cart_lines((prev) =>
+        prev.map((l) => (l.item.id === menu_id ? { ...l, quantity } : l))
+      );
+      return;
+    }
+    await load_prod_cart(user_id);
   }
 
   async function handle_remove(menu_id: string) {
@@ -397,16 +484,35 @@ export default function home_client({
       set_cart_lines((prev) => prev.filter((l) => l.item.id !== menu_id));
       return;
     }
-    if (user_id) {
-      await upsert_cart_item(user_id, menu_id, 0);
-      await load_prod_cart(user_id);
+    if (!user_id) {
+      set_cart_lines((prev) => prev.filter((l) => l.item.id !== menu_id));
+      return;
     }
+    const { error } = await upsert_cart_item(user_id, menu_id, 0);
+    if (!error) await load_prod_cart(user_id);
+    else set_cart_lines((prev) => prev.filter((l) => l.item.id !== menu_id));
+  }
+
+  async function handle_clear_cart() {
+    if (demo_mode && !user_id) {
+      set_cart_lines([]);
+      save_guest_cart([]);
+      return;
+    }
+    if (!user_id) {
+      set_cart_lines([]);
+      save_guest_cart([]);
+      return;
+    }
+    await Promise.all(cart_lines.map((line) => upsert_cart_item(user_id, line.item.id, 0)));
+    await load_prod_cart(user_id);
   }
 
   function handle_location_confirm(loc: user_location) {
     set_location(loc);
     set_city(loc.city);
     set_saved_location(loc);
+    set_selected_spot(resolve_spot(loc));
   }
 
   async function handle_gate_location_confirmed(loc: user_location) {
@@ -476,17 +582,62 @@ export default function home_client({
       }
       return;
     }
-    if (!has_account && !address_confirmed) {
+
+    if (cart_lines.length === 0) return;
+
+    if (!is_logged_in) {
+      set_cart_open(false);
+      redirect_to_login();
+      return;
+    }
+
+    if (needs_checkout_gate()) {
       set_cart_open(false);
       open_order_gate({ type: 'checkout' });
       return;
     }
+
+    const uid = user_id;
+    if (!uid) {
+      set_order_error('войдите, чтобы оформить заказ');
+      redirect_to_login();
+      return;
+    }
+
+    const items = cart_lines.map((l) => ({
+      menu_id: l.item.id,
+      name: l.item.name,
+      price: l.item.price,
+      quantity: l.quantity,
+    }));
+    const total_price = cart_lines.reduce((s, l) => s + l.item.price * l.quantity, 0);
+    const pickup_time = new Date(Date.now() + 12 * 60_000).toISOString();
+
+    const { error } = await create_order({
+      user_id: uid,
+      items,
+      total_price,
+      payment_type: 'cash',
+      pickup_time,
+    });
+
+    if (error) {
+      set_order_error(error.message);
+      return;
+    }
+
+    set_order_error('');
+
+    set_cart_lines([]);
+    set_cart_open(false);
+    set_order_toast(true);
+    window.setTimeout(() => set_order_toast(false), 4500);
   }
 
   function handle_order_gate_login() {
     set_order_gate_open(false);
-    set_pending_action(null);
-    router.push('/login?returnUrl=/');
+    set_pending_action({ type: 'checkout' });
+    redirect_to_login();
   }
 
   function handle_go_home() {
@@ -571,9 +722,11 @@ export default function home_client({
     }
     sign_out();
     set_user_id(null);
+    set_is_anonymous(false);
+    set_user(null);
     set_bonus(0);
     set_address_confirmed(false);
-    set_cart_lines([]);
+    set_cart_lines(load_guest_cart());
   }
 
   function handle_admin_add_item(category: string) {
@@ -611,7 +764,7 @@ export default function home_client({
       style={{ '--site-header-h': `${header_h}px` } as React.CSSProperties}
     >
       {is_admin_edit && (
-        <div className="bg-accent/10 border-b border-accent/20 sticky top-0 z-50">
+        <div className="bg-accent/10 border-b border-accent/20 sticky mobile-sticky-top z-50">
           <div className="page-shell py-2 flex items-center justify-between gap-3 text-sm">
             <span className="font-medium text-accent">режим редактирования</span>
             <div className="flex items-center gap-3">
@@ -635,7 +788,7 @@ export default function home_client({
         </div>
       )}
 
-      <div className="bg-page border-b border-surface/70">
+      <div className="hidden min-[1024px]:block bg-page border-b border-surface/70">
         {createElement(top_bar, is_admin_edit ? {
           edit_mode: true,
           on_edit_link: set_editing_link,
@@ -650,14 +803,18 @@ export default function home_client({
 
       <div
         ref={header_ref}
-        className="sticky top-0 z-40 bg-page"
+        className="sticky mobile-sticky-top z-40 bg-page"
       >
         {createElement(site_header, {
           city,
+          spot_address: selected_spot?.address,
           user_name: is_admin_edit ? 'админ' : user?.role === 'admin' ? null : user?.name,
           bonus,
           is_logged_in: is_admin_edit ? false : is_logged_in,
           show_admin: is_staff_admin,
+          edit_mode: is_admin_edit,
+          on_edit_logo: is_admin_edit ? () => set_editing_brand('logo') : undefined,
+          on_edit_tagline: is_admin_edit ? () => set_editing_brand('tagline') : undefined,
           on_home: handle_go_home,
           on_city_click: () => set_location_open(true),
           on_login: handle_login,
@@ -666,18 +823,21 @@ export default function home_client({
         })}
       </div>
 
-      {active_category === null &&
-        createElement(promo_banners, is_admin_edit ? {
-          promos,
-          on_promo_click: () => {},
-          edit_mode: true,
-          on_edit_promo: set_editing_promo,
-          on_add_promo: () =>
-            set_editing_promo({ id: '', title: 'новая акция', image_url: '', is_active: true }),
-        } : {
-          promos,
-          on_promo_click: handle_promo_click,
-        })}
+      {active_category === null && (
+        <div className="hidden min-[1024px]:block">
+          {createElement(promo_banners, is_admin_edit ? {
+            promos,
+            on_promo_click: () => {},
+            edit_mode: true,
+            on_edit_promo: set_editing_promo,
+            on_add_promo: () =>
+              set_editing_promo({ id: '', title: 'новая акция', image_url: '', is_active: true }),
+          } : {
+            promos,
+            on_promo_click: handle_promo_click,
+          })}
+        </div>
+      )}
 
       <section className="menu-sheet">
         <div ref={nav_ref} className="menu-sheet-head">
@@ -697,34 +857,19 @@ export default function home_client({
               active: active_category,
               cart_count,
               cart_total,
+              items: menu,
               on_change: set_active_category,
               on_cart_click: () => set_cart_open(true),
+              on_item_click: (item: menu_item) => {
+                set_selected(item);
+                set_product_from_cart(false);
+                set_drawer_open(true);
+              },
             })}
           </div>
         </div>
 
-        <main className="menu-sheet-main py-5 sm:py-6 pb-24 sm:pb-28">
-            {!is_admin_edit && (
-              <div className="page-shell min-[1024px]:hidden mb-6">
-                {createElement(sidebar_ad, {
-                  slides: sidebar_slides,
-                  interval_ms: sidebar_interval_ms,
-                  on_slide_click: handle_sidebar_click,
-                })}
-              </div>
-            )}
-            {is_admin_edit && (
-              <div className="page-shell min-[1024px]:hidden mb-6">
-                {createElement(sidebar_ad, {
-                  slides: sidebar_slides,
-                  on_slide_click: () => {},
-                  edit_mode: true,
-                  on_edit_slide: set_editing_slide,
-                  on_add_slide: () =>
-                    set_editing_slide({ id: '', title: 'новый баннер', image_url: '', is_active: true }),
-                })}
-              </div>
-            )}
+        <main className={`menu-sheet-main py-5 sm:py-6 ${cart_count > 0 ? 'pb-[calc(7rem+var(--safe-bottom))]' : 'pb-[calc(6rem+var(--safe-bottom))]'} sm:pb-28`}>
             <div className="page-shell min-[1024px]:flex min-[1024px]:gap-2">
               <div className="min-w-0 min-[1024px]:flex-[4]">
               {is_admin_edit
@@ -745,10 +890,16 @@ export default function home_client({
                     items: menu,
                     categories,
                     active_category: active_category ?? undefined,
+                    promos,
+                    inline_promos: true,
+                    on_promo_click: handle_promo_click,
                     on_item_click: (item: menu_item) => {
                       set_selected(item);
                       set_product_from_cart(false);
                       set_drawer_open(true);
+                    },
+                    on_quick_add: (item: menu_item) => {
+                      void handle_add(item, 1);
                     },
                   })}
             </div>
@@ -805,7 +956,15 @@ export default function home_client({
         on_open_item: handle_open_from_cart,
         on_edit: handle_edit_line,
         on_checkout: handle_checkout,
+        on_clear: handle_clear_cart,
       })}
+
+      {!is_admin_edit &&
+        createElement(cart_fab, {
+          count: cart_count,
+          total: cart_total,
+          on_click: () => set_cart_open(true),
+        })}
 
       {is_admin_edit && createElement(promo_edit_sheet, {
         promo: editing_promo,
@@ -853,6 +1012,13 @@ export default function home_client({
         },
       })}
 
+      {is_admin_edit && createElement(brand_edit_sheet, {
+        open: editing_brand !== false,
+        focus: editing_brand === false ? 'all' : editing_brand,
+        on_close: () => set_editing_brand(false),
+        on_save: save_brand_settings,
+      })}
+
       {is_admin_edit && createElement(admin_sheet, {
         open: editing_lang,
         title: 'кнопка «язык»',
@@ -883,7 +1049,7 @@ export default function home_client({
               </button>
               <button
                 type="submit"
-                className="flex-1 rounded-pill bg-accent text-white py-2.5 text-sm font-medium"
+                className="flex-1 rounded-pill bg-accent text-accent-foreground py-2.5 text-sm font-medium"
               >
                 сохранить
               </button>
@@ -911,8 +1077,14 @@ export default function home_client({
       })}
 
       {order_toast && (
-        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[70] px-5 py-3 rounded-2xl bg-neutral-900 text-white text-sm shadow-lg">
+        <div className="fixed bottom-[calc(1.5rem+var(--safe-bottom))] left-1/2 -translate-x-1/2 z-[70] px-5 py-3 rounded-2xl bg-neutral-900 text-white text-sm shadow-lg min-[1024px]:bottom-6">
           заказ отправлен — заберите через ~12 мин
+        </div>
+      )}
+
+      {order_error && (
+        <div className="fixed bottom-[calc(1.5rem+var(--safe-bottom))] left-1/2 -translate-x-1/2 z-[70] px-5 py-3 rounded-2xl bg-red-600 text-white text-sm shadow-lg min-[1024px]:bottom-6 max-w-[90vw] text-center">
+          {order_error}
         </div>
       )}
     </div>

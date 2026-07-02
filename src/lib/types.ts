@@ -1,3 +1,11 @@
+export type store_spot = {
+  id: string;
+  city: string;
+  address: string;
+  label?: string;
+  is_active: boolean;
+};
+
 export type sidebar_ad_slide = {
   id: string;
   title: string;

@@ -54,7 +54,7 @@ export default function push_form() {
         <button
           type="submit"
           disabled={loading}
-          className="w-full rounded-pill bg-accent text-white py-2.5 text-sm font-medium disabled:opacity-50"
+          className="w-full rounded-pill bg-accent text-accent-foreground py-2.5 text-sm font-medium disabled:opacity-50"
         >
           {loading ? 'отправляем...' : 'отправить подписчикам'}
         </button>
