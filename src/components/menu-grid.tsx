@@ -3,6 +3,8 @@
 import { createElement } from 'react';
 import type { menu_item, promo_banner } from '@/lib/types';
 import menu_image from '@/components/menu-image';
+import { menu_badge_on_card } from '@/components/menu-badge';
+import { menu_item_has_badge } from '@/lib/menu-badge';
 import promo_inline from '@/components/promo-inline';
 
 type props = {
@@ -46,12 +48,18 @@ function dish_card({
         onClick={() => on_item_click(item)}
         className="flex w-full flex-col items-center text-center min-[1024px]:min-h-0 min-[1024px]:flex-1"
       >
-        <div className="aspect-square w-full mb-2 rounded-card overflow-hidden">
-          {createElement(menu_image, {
-            item,
-            className: 'w-full h-full',
-            variant: 'card',
-          })}
+        <div className="relative w-full mb-2">
+          <div className="relative aspect-square w-full overflow-hidden rounded-card">
+            {createElement(menu_image, {
+              item,
+              className: 'w-full h-full',
+              variant: 'card',
+            })}
+            {menu_item_has_badge(item) &&
+              createElement(menu_badge_on_card, {
+                text: item.badge_text!,
+              })}
+          </div>
         </div>
         <p className="font-bold text-[15px] leading-snug text-neutral-900 w-full px-1 mb-1 line-clamp-2 min-[1024px]:mb-0 min-[1024px]:min-h-[2.75rem] group-hover:text-accent transition-colors">
           {item.name}

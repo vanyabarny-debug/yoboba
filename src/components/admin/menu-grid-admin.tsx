@@ -3,6 +3,8 @@
 import { createElement, useState } from 'react';
 import type { menu_item } from '@/lib/types';
 import menu_image from '@/components/menu-image';
+import { menu_badge_on_card } from '@/components/menu-badge';
+import { menu_item_has_badge } from '@/lib/menu-badge';
 import edit_pencil from '@/components/admin/edit-pencil';
 import product_photo_picker from '@/components/admin/product-photo-picker';
 import { desktop_category_heading_offset } from '@/components/menu-grid';
@@ -70,21 +72,28 @@ function admin_dish_card({
       }`}
     >
       <div className="flex h-full w-full flex-col items-center text-center">
-        <div className="relative aspect-square w-full mb-2 rounded-card overflow-hidden">
+        <div className="relative w-full mb-2">
           <button
             type="button"
             aria-label={`открыть «${item.name}»`}
             onClick={() => on_item_click(item)}
-            className="absolute inset-0 z-0"
+            className="absolute inset-0 z-0 rounded-card"
           />
-          <div className="pointer-events-none">
-            {createElement(menu_image, {
-              item,
-              className: 'w-full h-full',
-              variant: 'card',
-            })}
+          <div className="relative aspect-square w-full overflow-hidden rounded-card">
+            <div className="pointer-events-none h-full w-full">
+              {createElement(menu_image, {
+                item,
+                className: 'w-full h-full',
+                variant: 'card',
+              })}
+            </div>
+            {menu_item_has_badge(item) &&
+              createElement(menu_badge_on_card, {
+                text: item.badge_text!,
+                size: 'sm',
+              })}
           </div>
-          <div className="absolute top-2 left-2 z-10">
+          <div className="absolute bottom-2 right-2 z-10">
             <button
               type="button"
               aria-label={`удалить «${item.name}»`}

@@ -56,3 +56,16 @@ insert into public.menu (id, name, price, image_url, category, is_available, rec
 insert into public.menu (id, name, price, image_url, category, is_available, recommendations) values ('1f27b8ce-142f-402e-8826-b7ef4de0039e', 'двойной бабл', 520, '/images/menu/bt4.svg', 'комбо', true, '{}'::uuid[]);
 insert into public.menu (id, name, price, image_url, category, is_available, recommendations) values ('48a3f9f8-5f10-4120-80f1-57765064fece', 'triple bubble', 650, '/images/menu/combo1.svg', 'комбо', true, '{}'::uuid[]);
 insert into public.menu (id, name, price, image_url, category, is_available, recommendations) values ('5edf8dfe-df7f-4372-8e07-00161360a112', 'семейный сет', 890, '/images/menu/combo1.svg', 'комбо', true, '{}'::uuid[]);
+
+-- плашки на карточках
+update public.menu set badge_text = 'хит', badge_color = 'pink' where name = 'чёрный сахар';
+update public.menu set badge_text = 'новинка', badge_color = 'pink' where name = 'малина молочная';
+update public.menu set badge_text = 'новинка', badge_color = 'purple' where name = 'passion fruit';
+update public.menu set badge_text = 'хит', badge_color = 'green' where name = 'матча латте';
+update public.menu set badge_text = 'новинка', badge_color = 'pink' where name = 'матча oreo';
+update public.menu set badge_text = 'пп', badge_color = 'green' where name = 'протеин бабл';
+update public.menu set badge_text = 'топ', badge_color = 'orange' where name = 'cookies фраппе';
+update public.menu set badge_text = 'новинка', badge_color = 'accent' where name = 'yuzu spark';
+update public.menu set badge_text = 'хит', badge_color = 'pink' where name = 'чизкейк';
+update public.menu set badge_text = 'выгодно', badge_color = 'orange' where name = 'triple bubble';
+update public.menu set badge_text = '-15%', badge_color = 'dark' where name = 'семейный сет';

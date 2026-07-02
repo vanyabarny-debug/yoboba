@@ -12,6 +12,8 @@ import {
   get_topping_name,
   get_topping_portion_price_value,
 } from '@/lib/product-details';
+import { normalize_menu_badge } from '@/lib/menu-badge';
+import menu_badge, { menu_badge_on_card } from '@/components/menu-badge';
 import {
   get_category_nutrition,
   get_site_content_store,
@@ -50,6 +52,7 @@ export default function product_drawer_admin({ item, open, on_close, on_save, on
   const [volume, set_volume] = useState<(typeof volumes)[number]['id']>('450');
   const [topping, set_topping] = useState(0);
   const [details_open, set_details_open] = useState(false);
+  const [badge_enabled, set_badge_enabled] = useState(false);
   const [meta_tick, set_meta_tick] = useState(0);
 
   useEffect(() => {
@@ -74,6 +77,7 @@ export default function product_drawer_admin({ item, open, on_close, on_save, on
     set_volume('450');
     set_topping(0);
     set_details_open(false);
+    set_badge_enabled(Boolean(item.badge_text?.trim()));
   }, [item?.id, open]);
 
   const volume_ml = volumes.find((v) => v.id === volume)?.ml ?? 450;
@@ -109,11 +113,14 @@ export default function product_drawer_admin({ item, open, on_close, on_save, on
     set_category_composition(draft.category, composition.trim());
     set_category_nutrition(draft.category, nutrition_base);
     set_topping_portion_price(topping_price);
-    on_save({
+    const saved = normalize_menu_badge({
       ...draft,
       name: draft.name.trim(),
       price: Math.max(0, Math.round(Number(draft.price) || 0)),
+      badge_text: badge_enabled ? draft.badge_text : '',
+      badge_color: badge_enabled ? 'orange' : undefined,
     });
+    on_save(saved);
     on_close();
   }
 
@@ -147,6 +154,11 @@ export default function product_drawer_admin({ item, open, on_close, on_save, on
               className: 'h-full w-full',
               variant: 'card',
             })}
+            {badge_enabled &&
+              draft.badge_text?.trim() &&
+              createElement(menu_badge_on_card, {
+                text: draft.badge_text,
+              })}
             <div className="absolute top-4 right-4 z-10">
               {createElement(product_photo_picker, {
                 label: 'загрузить фото',
@@ -201,6 +213,60 @@ export default function product_drawer_admin({ item, open, on_close, on_save, on
                   placeholder="описание для карточки"
                   className="w-full rounded-xl border border-surface bg-surface/40 px-3 py-2 text-[15px] leading-relaxed text-neutral-700 resize-y"
                 />
+              </div>
+
+              <div className="mt-5 rounded-2xl border border-surface bg-surface/30 p-4">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <p className="text-[15px] font-semibold text-neutral-900">плашка на карточке</p>
+                    <p className="mt-1 text-xs text-neutral-500">как «новинка» на фото товара</p>
+                  </div>
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-checked={badge_enabled}
+                    onClick={() => {
+                      const next = !badge_enabled;
+                      set_badge_enabled(next);
+                      if (next && !draft.badge_text?.trim()) {
+                        set_draft({ ...draft, badge_text: 'новинка', badge_color: 'orange' });
+                      }
+                    }}
+                    className={`relative h-7 w-12 shrink-0 rounded-pill transition-colors ${
+                      badge_enabled ? 'bg-accent' : 'bg-neutral-300'
+                    }`}
+                  >
+                    <span
+                      className={`absolute top-0.5 h-6 w-6 rounded-full bg-white shadow transition-transform ${
+                        badge_enabled ? 'left-[22px]' : 'left-0.5'
+                      }`}
+                    />
+                  </button>
+                </div>
+
+                {badge_enabled && (
+                  <div className="mt-4 space-y-3">
+                    <label className="block text-xs font-medium text-neutral-500">
+                      текст
+                      <input
+                        type="text"
+                        value={draft.badge_text ?? ''}
+                        onChange={(e) => set_draft({ ...draft, badge_text: e.target.value })}
+                        placeholder="новинка, хит, -20%..."
+                        maxLength={24}
+                        className="mt-1 w-full rounded-xl border border-surface bg-white px-3 py-2 text-sm font-semibold lowercase"
+                      />
+                    </label>
+
+                    {draft.badge_text?.trim() && (
+                      <div className="pt-1">
+                        {createElement(menu_badge, {
+                          text: draft.badge_text,
+                        })}
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
 
               <div className="mt-5">

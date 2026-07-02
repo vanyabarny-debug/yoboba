@@ -4,6 +4,8 @@ import { createElement, useEffect, useMemo, useRef, useState, type ReactNode } f
 import type { menu_item } from '@/lib/types';
 import { create_client } from '@/lib/supabase/client';
 import menu_image from '@/components/menu-image';
+import { menu_badge_on_card } from '@/components/menu-badge';
+import { menu_item_has_badge } from '@/lib/menu-badge';
 import {
   get_composition,
   get_description,
@@ -321,6 +323,10 @@ export default function product_drawer({
               className: 'h-full w-full sm:!aspect-auto',
               variant: 'card',
             })}
+            {menu_item_has_badge(active_item) &&
+              createElement(menu_badge_on_card, {
+                text: active_item.badge_text!,
+              })}
             <button
               type="button"
               aria-label={show_back_arrow ? 'назад' : 'закрыть'}

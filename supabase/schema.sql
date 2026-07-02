@@ -29,6 +29,8 @@ create table public.menu (
   category text not null,
   is_available boolean not null default true,
   recommendations uuid[] default '{}',
+  badge_text text,
+  badge_color text check (badge_color is null or badge_color in ('pink', 'accent', 'orange', 'green', 'purple', 'dark')),
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
@@ -233,3 +235,7 @@ alter publication supabase_realtime add table public.cart_items;
 alter publication supabase_realtime add table public.orders;
 
 -- меню: выполни supabase/seed-menu.sql после этой схемы
+
+-- миграция для существующей базы (если menu уже создана без плашек):
+-- alter table public.menu add column if not exists badge_text text;
+-- alter table public.menu add column if not exists badge_color text check (badge_color is null or badge_color in ('pink', 'accent', 'orange', 'green', 'purple', 'dark'));

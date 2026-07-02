@@ -29,6 +29,8 @@ export type promo_banner = {
   is_active: boolean;
 };
 
+export type menu_badge_color = 'pink' | 'accent' | 'orange' | 'green' | 'purple' | 'dark';
+
 export type menu_item = {
   id: string;
   name: string;
@@ -37,6 +39,8 @@ export type menu_item = {
   category: string;
   is_available: boolean;
   recommendations: string[];
+  badge_text?: string;
+  badge_color?: menu_badge_color;
 };
 
 export type story = {

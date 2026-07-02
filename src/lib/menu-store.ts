@@ -1,6 +1,6 @@
-import type { menu_item } from '@/lib/types';
+import type { menu_badge_color, menu_item } from '@/lib/types';
 
-export const store_version = 7;
+export const store_version = 12;
 
 export const default_categories = [
   'классические бабл ти',
@@ -68,32 +68,42 @@ function item(
   price: number,
   category: string,
   image_url: string,
-  recommendations: string[] = []
+  recommendations: string[] = [],
+  badge?: { text: string; color?: menu_badge_color }
 ): menu_item {
-  return { id, name, price, category, image_url, is_available: true, recommendations };
+  return {
+    id,
+    name,
+    price,
+    category,
+    image_url,
+    is_available: true,
+    recommendations,
+    ...(badge ? { badge_text: badge.text, badge_color: 'orange' as const } : {}),
+  };
 }
 
 export const default_menu_items: menu_item[] = [
   item('bt-1', 'классик молочный', 290, 'классические бабл ти', img.bt1, ['bt-2']),
   item('bt-2', 'таро с молоком', 310, 'классические бабл ти', img.bt2),
-  item('bt-3', 'чёрный сахар', 330, 'классические бабл ти', img.bt3),
+  item('bt-3', 'чёрный сахар', 330, 'классические бабл ти', img.bt3, [], { text: 'хит', color: 'accent' }),
   item('bt-4', 'oolong молочный', 300, 'классические бабл ти', img.bt2),
   item('bt-5', 'jasmine green', 295, 'классические бабл ти', img.bt1),
   item('bt-6', 'кокос классик', 320, 'классические бабл ти', img.bt3),
-  item('bt-7', 'малина молочная', 340, 'классические бабл ти', img.bt4),
+  item('bt-7', 'малина молочная', 340, 'классические бабл ти', img.bt4, [], { text: 'новинка', color: 'pink' }),
   item('jb-1', 'манго джусбол', 350, 'с джусболами', img.bt4, ['jb-2']),
   item('jb-2', 'личи джусбол', 350, 'с джусболами', img.bt5),
   item('jb-3', 'клубника джусбол', 360, 'с джусболами', img.bt6),
-  item('jb-4', 'passion fruit', 370, 'с джусболами', img.bt4),
+  item('jb-4', 'passion fruit', 370, 'с джусболами', img.bt4, [], { text: 'новинка', color: 'pink' }),
   item('jb-5', 'blueberry pop', 360, 'с джусболами', img.bt5),
   item('jb-6', 'персик джусбол', 355, 'с джусболами', img.bt6),
-  item('mt-1', 'матча латте', 320, 'матча', img.matcha1, ['mt-2']),
+  item('mt-1', 'матча латте', 320, 'матча', img.matcha1, ['mt-2'], { text: 'хит', color: 'accent' }),
   item('mt-2', 'матча бабл ти', 340, 'матча', img.matcha2),
   item('mt-3', 'матча frappe lite', 330, 'матча', img.matcha1),
   item('mt-4', 'матча кокос', 345, 'матча', img.matcha2),
   item('mt-5', 'ice matcha', 335, 'матча', img.matcha1),
-  item('mt-6', 'матча oreo', 360, 'матча', img.matcha2),
-  item('pp-1', 'протеин бабл', 280, 'пп', img.healthy1),
+  item('mt-6', 'матча oreo', 360, 'матча', img.matcha2, [], { text: 'новинка', color: 'pink' }),
+  item('pp-1', 'протеин бабл', 280, 'пп', img.healthy1, [], { text: 'пп', color: 'green' }),
   item('pp-2', 'смузи зелёный', 270, 'пп', img.healthy2),
   item('pp-3', 'лайт манго', 260, 'пп', img.healthy1),
   item('pp-4', 'огуречный fresh', 255, 'пп', img.healthy2),
@@ -102,10 +112,10 @@ export const default_menu_items: menu_item[] = [
   item('fr-2', 'шоколад фраппе', 370, 'фраппе', img.frappe1),
   item('fr-3', 'ваниль фраппе', 350, 'фраппе', img.frappe1),
   item('fr-4', 'матча фраппе', 365, 'фраппе', img.frappe1),
-  item('fr-5', 'cookies фраппе', 375, 'фраппе', img.frappe1),
+  item('fr-5', 'cookies фраппе', 375, 'фраппе', img.frappe1, [], { text: 'топ', color: 'orange' }),
   item('gb-1', 'лимон газированный', 300, 'газированные бабл ти', img.spark1),
   item('gb-2', 'грейпфрут spark', 310, 'газированные бабл ти', img.spark2),
-  item('gb-3', 'yuzu spark', 320, 'газированные бабл ти', img.spark1),
+  item('gb-3', 'yuzu spark', 320, 'газированные бабл ти', img.spark1, [], { text: 'новинка', color: 'pink' }),
   item('gb-4', 'cola bubble', 305, 'газированные бабл ти', img.spark2),
   item('gb-5', 'виноград spark', 315, 'газированные бабл ти', img.spark1),
   item('tn-1', 'бабл тоник бузина', 290, 'бабл тоники', img.spark2),
@@ -119,7 +129,7 @@ export const default_menu_items: menu_item[] = [
   item('sn-5', 'matcha chips', 140, 'закуски', img.snack2),
   item('sn-6', 'mochi sticks', 155, 'закуски', img.snack1),
   item('ds-1', 'тирамису', 320, 'десерты', img.dessert1),
-  item('ds-2', 'чизкейк', 340, 'десерты', img.dessert2),
+  item('ds-2', 'чизкейк', 340, 'десерты', img.dessert2, [], { text: 'хит', color: 'accent' }),
   item('ds-3', 'mochi trio', 290, 'десерты', img.dessert1),
   item('ds-4', 'brownie', 310, 'десерты', img.dessert2),
   item('ds-5', 'macaron box', 350, 'десерты', img.dessert1),
@@ -127,8 +137,8 @@ export const default_menu_items: menu_item[] = [
   item('cb-1', 'бабл + круассан', 420, 'комбо', img.combo1, ['cb-2']),
   item('cb-2', 'матча + десерт', 580, 'комбо', img.matcha2),
   item('cb-3', 'двойной бабл', 520, 'комбо', img.bt4),
-  item('cb-4', 'triple bubble', 650, 'комбо', img.combo1),
-  item('cb-5', 'семейный сет', 890, 'комбо', img.combo1),
+  item('cb-4', 'triple bubble', 650, 'комбо', img.combo1, [], { text: 'выгодно', color: 'orange' }),
+  item('cb-5', 'семейный сет', 890, 'комбо', img.combo1, [], { text: '-15%', color: 'dark' }),
 ];
 
 export type menu_store = {
@@ -147,6 +157,38 @@ function emit_update() {
   }
 }
 
+function merge_default_badges(items: menu_item[]) {
+  const default_by_id = new Map(default_menu_items.map((i) => [i.id, i]));
+  const default_by_name = new Map(default_menu_items.map((i) => [i.name.trim().toLowerCase(), i]));
+
+  return items.map((item) => {
+    const fallback =
+      default_by_id.get(item.id) ?? default_by_name.get(item.name.trim().toLowerCase());
+
+    if (item.badge_text?.trim()) {
+      return { ...item, badge_color: 'orange' as menu_badge_color };
+    }
+
+    // undefined/null → подтянуть дефолт; '' → пользователь выключил плашку
+    if (item.badge_text !== undefined && item.badge_text !== null) {
+      return item;
+    }
+
+    if (fallback?.badge_text?.trim()) {
+      return {
+        ...item,
+        badge_text: fallback.badge_text,
+        badge_color: 'orange' as menu_badge_color,
+      };
+    }
+    return item;
+  });
+}
+
+export function apply_menu_item_badges(items: menu_item[]) {
+  return merge_default_badges(items);
+}
+
 function repair_menu_store(store: menu_store): menu_store {
   const defaults = get_default_store();
   const removed = new Set(store.removed_item_ids ?? []);
@@ -154,14 +196,16 @@ function repair_menu_store(store: menu_store): menu_store {
     store.categories?.length > 0 ? store.categories : defaults.categories;
   const default_by_id = new Map(defaults.items.map((i) => [i.id, i]));
   const existing_ids = new Set((store.items ?? []).map((i) => i.id));
-  const items = (store.items ?? []).map((item) => {
-    const fallback = default_by_id.get(item.id);
-    const category = categories.includes(item.category)
-      ? item.category
-      : fallback?.category ?? categories[0];
-    const image_url = resolve_image_url(item, fallback);
-    return { ...item, category, image_url };
-  });
+  const items = merge_default_badges(
+    (store.items ?? []).map((item) => {
+      const fallback = default_by_id.get(item.id);
+      const category = categories.includes(item.category)
+        ? item.category
+        : fallback?.category ?? categories[0];
+      const image_url = resolve_image_url(item, fallback);
+      return { ...item, category, image_url };
+    })
+  );
   for (const def of defaults.items) {
     if (!existing_ids.has(def.id) && !removed.has(def.id)) {
       items.push({ ...def, image_url: resolve_image_url(def, def) });
@@ -199,10 +243,13 @@ export function get_menu_store(): menu_store {
   try {
     const parsed = JSON.parse(raw) as menu_store;
     if (!parsed.version || parsed.version < store_version) {
+      const defaults = get_default_store();
       const merged: menu_store = {
-        ...get_default_store(),
+        ...defaults,
         ...parsed,
         version: store_version,
+        categories: parsed.categories?.length ? parsed.categories : defaults.categories,
+        items: merge_default_badges(parsed.items?.length ? parsed.items : defaults.items),
         removed_item_ids: parsed.removed_item_ids ?? [],
       };
       localStorage.setItem(storage_key, JSON.stringify(merged));

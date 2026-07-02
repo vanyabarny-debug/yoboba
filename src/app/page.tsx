@@ -2,7 +2,7 @@ import { createElement, Suspense } from 'react';
 import { create_server_client } from '@/lib/supabase/server';
 import { is_supabase_configured } from '@/lib/supabase/config';
 import { demo_stories } from '@/lib/demo-data';
-import { default_categories, default_menu_items } from '@/lib/menu-store';
+import { default_categories, apply_menu_item_badges, default_menu_items } from '@/lib/menu-store';
 import { resolve_initial_menu, resolve_menu_categories } from '@/lib/menu-from-db';
 import { default_promos } from '@/lib/promo-store';
 import {
@@ -18,7 +18,7 @@ export default async function home_page() {
       Suspense,
       { fallback: <div className="min-h-screen bg-page" /> },
       createElement(home_client, {
-        initial_menu: default_menu_items,
+        initial_menu: apply_menu_item_badges(default_menu_items),
         initial_categories: default_categories,
         initial_promos: default_promos,
         initial_sidebar_slides: default_sidebar_slides,
@@ -40,7 +40,9 @@ export default async function home_page() {
   ]);
 
   const db_menu = (menu as menu_item[]) || [];
-  const initial_menu = resolve_initial_menu(db_menu) ?? default_menu_items;
+  const initial_menu = apply_menu_item_badges(
+    resolve_initial_menu(db_menu) ?? default_menu_items
+  );
   const initial_categories = resolve_menu_categories(initial_menu);
 
   return createElement(
