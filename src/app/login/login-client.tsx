@@ -146,7 +146,7 @@ export default function login_client() {
                 <button
                   type="submit"
                   disabled={loading}
-                  className="w-full rounded-xl bg-accent text-accent-foreground py-3.5 font-semibold disabled:opacity-50"
+                  className="w-full rounded-pill bg-accent text-accent-foreground py-3.5 font-semibold disabled:opacity-50"
                 >
                   {loading ? 'входим...' : 'войти'}
                 </button>
@@ -157,7 +157,7 @@ export default function login_client() {
                   type="button"
                   onClick={handle_vk_login}
                   disabled={loading || !vk_ready}
-                  className="w-full rounded-xl bg-[#0077FF] text-white py-3.5 font-semibold disabled:opacity-50 flex items-center justify-center gap-2"
+                  className="w-full rounded-pill bg-[#0077FF] text-white py-3.5 font-semibold disabled:opacity-50 flex items-center justify-center gap-2"
                 >
                   <span aria-hidden="true">VK</span>
                   {loading ? 'переходим...' : 'войти через vk'}
@@ -193,7 +193,7 @@ export default function login_client() {
                     <button
                       type="submit"
                       disabled={loading}
-                      className="w-full rounded-xl bg-accent text-accent-foreground py-3.5 font-semibold disabled:opacity-50"
+                      className="w-full rounded-pill bg-accent text-accent-foreground py-3.5 font-semibold disabled:opacity-50"
                     >
                       {loading ? 'отправляем...' : 'получить ссылку для входа'}
                     </button>
@@ -253,7 +253,7 @@ export default function login_client() {
                         <button
                           type="submit"
                           disabled={loading || code.length < 6}
-                          className="w-full rounded-xl border border-neutral-200 py-2.5 text-sm disabled:opacity-50"
+                          className="w-full rounded-pill border border-neutral-200 py-2.5 text-sm disabled:opacity-50"
                         >
                           войти по коду
                         </button>
