@@ -17,47 +17,37 @@ function staff_cookie_allows(path: string, role: string | undefined) {
   return false;
 }
 
+function copy_cookies(from: NextResponse, to: NextResponse) {
+  from.cookies.getAll().forEach((cookie) => {
+    to.cookies.set(cookie.name, cookie.value);
+  });
+}
+
 export async function middleware(request: NextRequest) {
   const path = request.nextUrl.pathname;
   const is_admin_route = path.startsWith('/admin');
   const is_barista_route = path.startsWith('/barista');
   const is_seller_route = path.startsWith('/seller');
+  const is_staff_area = is_admin_route || is_barista_route || is_seller_route;
   const is_staff_login = path === '/admin/login';
 
-  if (!is_admin_route && !is_barista_route && !is_seller_route) {
-    return NextResponse.next();
-  }
+  const session_response = await update_session(request);
 
-  if (is_staff_login) {
-    // #region agent log
-    fetch(`${request.nextUrl.origin}/api/debug-log`, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({
-        sessionId: '470d82',
-        location: 'middleware.ts:staff-login',
-        message: 'admin login page request',
-        data: { path, cookieRole: request.cookies.get(session_cookie)?.value || null },
-        hypothesisId: 'H2',
-        timestamp: Date.now(),
-      }),
-    }).catch(() => {});
-    // #endregion
-    return NextResponse.next();
+  if (!is_staff_area || is_staff_login) {
+    return session_response;
   }
 
   const cookie_role = request.cookies.get(session_cookie)?.value;
 
-  // cookie-вход персонала работает всегда (и без supabase)
   if (staff_cookie_allows(path, cookie_role)) {
-    return NextResponse.next();
+    return session_response;
   }
 
   if (!is_supabase_live()) {
-    return NextResponse.redirect(new URL('/admin/login', request.url));
+    const redirect = NextResponse.redirect(new URL('/admin/login', request.url));
+    copy_cookies(session_response, redirect);
+    return redirect;
   }
-
-  const response = await update_session(request);
 
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -74,7 +64,9 @@ export async function middleware(request: NextRequest) {
 
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) {
-    return NextResponse.redirect(new URL('/admin/login', request.url));
+    const redirect = NextResponse.redirect(new URL('/admin/login', request.url));
+    copy_cookies(session_response, redirect);
+    return redirect;
   }
 
   const { data: profile } = await supabase
@@ -84,20 +76,28 @@ export async function middleware(request: NextRequest) {
     .single();
 
   if (is_admin_route && profile?.role !== 'admin') {
-    return NextResponse.redirect(new URL('/', request.url));
+    const redirect = NextResponse.redirect(new URL('/', request.url));
+    copy_cookies(session_response, redirect);
+    return redirect;
   }
 
   if (is_barista_route && !['barista', 'admin'].includes(profile?.role || '')) {
-    return NextResponse.redirect(new URL('/', request.url));
+    const redirect = NextResponse.redirect(new URL('/', request.url));
+    copy_cookies(session_response, redirect);
+    return redirect;
   }
 
   if (is_seller_route && !['seller', 'admin'].includes(profile?.role || '')) {
-    return NextResponse.redirect(new URL('/', request.url));
+    const redirect = NextResponse.redirect(new URL('/', request.url));
+    copy_cookies(session_response, redirect);
+    return redirect;
   }
 
-  return response;
+  return session_response;
 }
 
 export const config = {
-  matcher: ['/admin/:path*', '/barista/:path*', '/seller/:path*'],
+  matcher: [
+    '/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico)$).*)',
+  ],
 };

@@ -95,6 +95,27 @@ export async function get_auth_state(): Promise<auth_state> {
     return { user_id: null, is_anonymous: false, is_permanent: false, profile: null };
   }
 
+  try {
+    const res = await fetch('/api/auth/profile', { credentials: 'same-origin' });
+    if (res.ok) {
+      const body = (await res.json()) as {
+        user: { id: string; is_anonymous: boolean } | null;
+        profile: profile | null;
+      };
+
+      if (body.user) {
+        return {
+          user_id: body.user.id,
+          is_anonymous: body.user.is_anonymous,
+          is_permanent: !body.user.is_anonymous,
+          profile: body.profile,
+        };
+      }
+    }
+  } catch {
+    /* fallback to browser client */
+  }
+
   const supabase = get_client();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) {
