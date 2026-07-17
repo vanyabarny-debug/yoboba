@@ -4,19 +4,22 @@
 :root {
   --background: #f4f5f6;
   --foreground: #20181b;
-  --color-accent: #0468F0;
-  --color-accent-soft: #1A7AF5;
-  --color-accent-pink: #D81B7B;
-  --color-accent-pink-soft: #F0358F;
+  --color-accent: #0039A6;
+  --color-accent-soft: #002D7A;
+  --color-accent-pink: #0039A6;
+  --color-accent-pink-soft: #002D7A;
   --color-page: #f4f5f6;
   --brand-font-sans: var(--font-inter), system-ui, sans-serif;
-  --brand-font-display: var(--font-montserrat-alt), var(--font-inter), system-ui, sans-serif;
+  --brand-font-display: "Geologica", var(--font-inter), system-ui, sans-serif;
+  --brand-font-display-weight: 700;
+  --brand-font-display-tracking: -0.02em;
+  --brand-font-display-scale: 1;
   --menu-sheet-radius: 32px;
   --site-header-h: 72px;
   --page-gutter: 1.25rem;
-  --brand-gradient: linear-gradient(135deg, #85b8f7 0%, #fce0ef 100%);
-  --highlight-start: #85b8f7;
-  --highlight-end: #fce0ef;
+  --brand-gradient: linear-gradient(135deg, #f5f5f5 0%, #ffe5e5 100%);
+  --highlight-start: #ffffff;
+  --highlight-end: #ffcccc;
   --safe-top: env(safe-area-inset-top, 0px);
   --safe-right: env(safe-area-inset-right, 0px);
   --safe-bottom: env(safe-area-inset-bottom, 0px);
@@ -59,6 +62,16 @@ body::-webkit-scrollbar {
 
 .font-display {
   font-family: var(--brand-font-display);
+  font-weight: var(--brand-font-display-weight, 700);
+  letter-spacing: var(--brand-font-display-tracking, -0.02em);
+  font-synthesis: none;
+  zoom: var(--brand-font-display-scale, 1);
+}
+
+@supports not (zoom: 1) {
+  .font-display {
+    font-size: calc(1em * var(--brand-font-display-scale, 1));
+  }
 }
 
 .stories-scroll {

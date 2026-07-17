@@ -1,6 +1,6 @@
 import type { sidebar_ad_slide } from '@/lib/types';
 
-export const sidebar_ad_store_version = 2;
+export const sidebar_ad_store_version = 4;
 
 const storage_key = 'yoboba_sidebar_ad_store';
 const update_event = 'yoboba-sidebar-ad-update';
@@ -17,7 +17,7 @@ export const default_sidebar_slides: sidebar_ad_slide[] = [
   },
   {
     id: 'side-2',
-    title: 'приложение koppu x',
+    title: 'приложение yomoyo',
     subtitle: 'ещё выгоднее в pwa',
     image_url: '/images/sidebar/slide2.svg',
     link_url: '/',
@@ -60,6 +60,8 @@ function repair_sidebar_store(store: sidebar_ad_store): sidebar_ad_store {
     by_id.set(def.id, {
       ...def,
       ...existing,
+      title:
+        existing?.title && /баблтишн/i.test(existing.title) ? def.title : existing?.title ?? def.title,
       image_url: existing?.image_url || def.image_url,
       is_active: existing?.is_active ?? def.is_active,
     });

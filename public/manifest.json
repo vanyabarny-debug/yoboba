@@ -1,11 +1,11 @@
 {
-  "name": "koppu x",
-  "short_name": "koppu x",
-  "description": "кофейный киоск — заказ к времени, баллы, сторис",
+  "name": "yomoyo",
+  "short_name": "yomoyo",
+  "description": "первая баблтишная в городе",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#ffffff",
-  "theme_color": "#0468F0",
+  "theme_color": "#0039A6",
   "orientation": "portrait-primary",
   "lang": "ru",
   "icons": [

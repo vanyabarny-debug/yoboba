@@ -6,7 +6,7 @@ export type product_addon = {
   tint: string;
 };
 
-export const site_content_version = 6;
+export const site_content_version = 9;
 
 export type category_nutrition = {
   kcal: number;
@@ -99,7 +99,7 @@ const default_descriptions: Record<string, string> = {
 
 export const default_top_bar_links: top_bar_link[] = [
   { id: 'about', label: 'о нас', href: '/o-nas', is_active: true },
-  { id: 'jobs', label: 'работа в koppu x', href: '/rabota', is_active: true },
+  { id: 'jobs', label: 'работа в yomoyo', href: '/rabota', is_active: true },
   { id: 'contacts', label: 'контакты', href: '/kontakty', is_active: true },
   { id: 'promos', label: 'акции', href: '/akcii', is_active: true },
   { id: 'tapioca', label: 'шарики тапиоки', href: '/shariki-tapioki', is_active: true },
@@ -109,11 +109,11 @@ export const default_pages: site_page[] = [
   {
     slug: 'o-nas',
     title: 'о нас',
-    body: `koppu x — это больше, чем бабл-ти. это место с огромным выбором креативных напитков, хрустящими корндогами и тем самым торнадо-потэйто. наше меню меняется быстрее, чем тренды.
+    body: `yomoyo — это больше, чем бабл-ти. это место с огромным выбором креативных напитков, хрустящими корндогами и тем самым торнадо-потэйто. наше меню меняется быстрее, чем тренды.
 
 мы постоянно дропаем лимитированные вкусы и коллаборации, которые нужно успеть поймать здесь и сейчас. повторов не будет.
 
-в koppu x полная свобода: заходи с собакой, заряжай телефон, мы не прячем пароль от wi-fi. а для школьников и студентов у нас всегда есть скидки.
+в yomoyo полная свобода: заходи с собакой, заряжай телефон, мы не прячем пароль от wi-fi. а для школьников и студентов у нас всегда есть скидки.
 
 мы топим за взаимное уважение. всегда стоим горой за своих сотрудников и защищаем команду от любого негатива и хамства. если ты вежливый, открытый и активный гость, то ты автоматически также становишься частью нашей большой команды. здесь все делают общий крутой продукт: наши бариста вкладывают душу в каждый стакан, искренне заботятся и создают сервис, а ты — помогаешь нам становиться лучше, делишься советами, ставишь честные оценки и доверяешь нашему вкусу.
 
@@ -139,20 +139,24 @@ ps — а еще мы любим жестко пошутить и приколо
 4. осознанная упаковка
 мы используем только то, что реально нужно человеку, и осознанно избегаем лишнего пластика и слоев бумаги. это наш способ заботиться о природе и не надувать цену за счет ненужного картона. ты платишь за крутой вкус, а не за лишнюю обертку.
 
-## что такое koppu x?
+## почему yomoyo?
 
-знаете, почему мы так называемся? это не просто случайный набор букв, а международный гибрид, где уличный вайб соединился с реальной азиатской культурой.
+yomoyo — это философия движения и эстетика вкуса в каждом глотке. мы превратили процесс приготовления бабл-ти в настоящий ритуал, где каждый ингредиент имеет свое место и значение.
 
-слово boba на тайване и в китае — родине бабл-ти — означает те самые крупные шарики тапиоки на дне. а приставка yo работает сразу во всех культурах:
+разберём имя так, как разбирают слово в лингвистике: по морфемам, звуку и смыслу.
 
-1. на тайване
-в китайском языке частица yo (哟) — это живой уличный возглас удивления и восторга, когда видишь что-то очень крутое.
+1. yo
+meta: морфема · звук
+reading: yo · ё
+sense: энергия · ритм · движение
+это энергия и ритм. это тот самый звук шейкера и динамика, с которой мы создаем ваш идеальный микс.
 
-2. в японии
-разговорное よ (yo) — это культовое дружеское приветствие, емкое «эй!» или «привет!» среди своих.
-
-3. в мире
-это понятный в любой точке планеты уличный «йоу!», с которого начинается любой правильный движ.
+2. moyo
+meta: морфема · смысл
+reading: moyō · моё
+sense: узор · рисунок · слои
+kanji: 模様
+это искусство узора. в японском moyo (模様) означает «узор» или «рисунок». для нас это эстетика слоев: как тапиока, молоко и чай переплетаются в стакане, создавая уникальный визуальный рисунок.
 
 ## ценности компании
 
@@ -187,18 +191,18 @@ ps — а еще мы любим жестко пошутить и приколо
   },
   {
     slug: 'rabota',
-    title: 'работа в koppu x',
+    title: 'работа в yomoyo',
     body: 'ищем бариста и сменных сотрудников в наши точки.\n\nесли любишь bubble tea, умеешь работать в ритме и хочешь расти вместе с брендом — напиши нам в контактах или приходи в ближайшую точку.',
   },
   {
     slug: 'kontakty',
     title: 'контакты',
-    body: 'телефон: +7 (900) 000-00-00\n\nпочта: hello@koppu.ru\n\nвремя работы: ежедневно с 10:00 до 22:00\n\nадрес: уточняйте в приложении при выборе города.',
+    body: 'телефон: +7 (900) 000-00-00\n\nпочта: hello@yomoyo.ru\n\nвремя работы: ежедневно с 10:00 до 22:00\n\nадрес: уточняйте в приложении при выборе города.',
   },
   {
     slug: 'akcii',
     title: 'акции',
-    body: 'здесь собраны текущие акции koppu x — комбо, скидки на категории и сезонные предложения.',
+    body: 'здесь собраны текущие акции yomoyo — комбо, скидки на категории и сезонные предложения.',
   },
   {
     slug: 'shariki-tapioki',
@@ -244,15 +248,32 @@ export function get_site_content_store(): site_content_store {
     const parsed = JSON.parse(raw) as site_content_store;
     if (!parsed.version || parsed.version < site_content_version) {
       const seed = get_default_site_content();
-      const seed_about = seed.pages.find((p) => p.slug === 'o-nas');
-      const seed_pages = (parsed.pages ?? seed.pages).map((page) =>
-        page.slug === 'o-nas' && seed_about ? seed_about : page
-      );
+      const seed_pages = seed.pages.map((seed_page) => {
+        const existing = (parsed.pages ?? []).find((p) => p.slug === seed_page.slug);
+        if (!existing || seed_page.slug === 'o-nas') return seed_page;
+        const mentions_old =
+          /баблтишн/i.test(existing.title) || /баблтишн/i.test(existing.body);
+        if (!mentions_old) return existing;
+        return {
+          ...existing,
+          title: /баблтишн/i.test(existing.title) ? seed_page.title : existing.title,
+          body: /баблтишн/i.test(existing.body) ? seed_page.body : existing.body,
+        };
+      });
+      const top_bar_links = seed.top_bar_links.map((seed_link) => {
+        const existing = (parsed.top_bar_links ?? []).find((l) => l.id === seed_link.id);
+        if (!existing) return seed_link;
+        if (/баблтишн/i.test(existing.label)) {
+          return { ...existing, label: seed_link.label };
+        }
+        return existing;
+      });
       const merged = {
         ...seed,
         ...parsed,
         version: site_content_version,
         pages: seed_pages,
+        top_bar_links,
         topping_portion_price: parsed.topping_portion_price ?? 60,
         category_nutrition: {
           ...default_category_nutrition,

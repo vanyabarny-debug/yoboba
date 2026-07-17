@@ -1,6 +1,6 @@
 import type { menu_badge_color, menu_item } from '@/lib/types';
 
-export const store_version = 12;
+export const store_version = 13;
 
 export const default_categories = [
   'классические бабл ти',
@@ -15,47 +15,91 @@ export const default_categories = [
   'комбо',
 ];
 
-const local = (name: string) => `/images/menu/${name}.svg`;
+const local = (name: string) => `/images/menu/${name}.png`;
 
 const img = {
-  bt1: local('bt1'),
-  bt2: local('bt2'),
-  bt3: local('bt3'),
-  bt4: local('bt4'),
-  bt5: local('bt2'),
-  bt6: local('bt3'),
-  matcha1: local('matcha1'),
-  matcha2: local('matcha2'),
-  frappe1: local('frappe1'),
-  healthy1: local('healthy1'),
-  healthy2: local('healthy1'),
-  spark1: local('spark1'),
-  spark2: local('spark2'),
-  snack1: local('snack1'),
-  snack2: local('snack2'),
-  dessert1: local('dessert1'),
-  dessert2: local('dessert2'),
-  combo1: local('combo1'),
+  'bt-1': local('bt-1'),
+  'bt-2': local('bt-2'),
+  'bt-3': local('bt-3'),
+  'bt-4': local('bt-4'),
+  'bt-5': local('bt-5'),
+  'bt-6': local('bt-6'),
+  'bt-7': local('bt-7'),
+  'jb-1': local('jb-1'),
+  'jb-2': local('jb-2'),
+  'jb-3': local('jb-3'),
+  'jb-4': local('jb-4'),
+  'jb-5': local('jb-5'),
+  'jb-6': local('jb-6'),
+  'mt-1': local('mt-1'),
+  'mt-2': local('mt-2'),
+  'mt-3': local('mt-3'),
+  'mt-4': local('mt-4'),
+  'mt-5': local('mt-5'),
+  'mt-6': local('mt-6'),
+  'pp-1': local('pp-1'),
+  'pp-2': local('pp-2'),
+  'pp-3': local('pp-3'),
+  'pp-4': local('pp-4'),
+  'pp-5': local('pp-5'),
+  'fr-1': local('fr-1'),
+  'fr-2': local('fr-2'),
+  'fr-3': local('fr-3'),
+  'fr-4': local('fr-4'),
+  'fr-5': local('fr-5'),
+  'gb-1': local('gb-1'),
+  'gb-2': local('gb-2'),
+  'gb-3': local('gb-3'),
+  'gb-4': local('gb-4'),
+  'gb-5': local('gb-5'),
+  'tn-1': local('tn-1'),
+  'tn-2': local('tn-2'),
+  'tn-3': local('tn-3'),
+  'tn-4': local('tn-4'),
+  'sn-1': local('sn-1'),
+  'sn-2': local('sn-2'),
+  'sn-3': local('sn-3'),
+  'sn-4': local('sn-4'),
+  'sn-5': local('sn-5'),
+  'sn-6': local('sn-6'),
+  'ds-1': local('ds-1'),
+  'ds-2': local('ds-2'),
+  'ds-3': local('ds-3'),
+  'ds-4': local('ds-4'),
+  'ds-5': local('ds-5'),
+  'ds-6': local('ds-6'),
+  'cb-1': local('cb-1'),
+  'cb-2': local('cb-2'),
+  'cb-3': local('cb-3'),
+  'cb-4': local('cb-4'),
+  'cb-5': local('cb-5'),
 };
 
 const placeholder_pool = Object.values(img);
 
 function placeholder_for_id(id: string) {
+  const keyed = img[id as keyof typeof img];
+  if (keyed) return keyed;
   let hash = 0;
   for (let i = 0; i < id.length; i++) hash = (hash + id.charCodeAt(i)) % placeholder_pool.length;
-  return placeholder_pool[hash] ?? img.bt1;
+  return placeholder_pool[hash] ?? img['bt-1'];
+}
+
+function is_stale_menu_placeholder(url: string) {
+  // старые SVG-плейсхолдеры и чужие имена — заменить на актуальные PNG
+  if (!url.startsWith('/images/menu/')) return false;
+  if (url.endsWith('.svg')) return true;
+  const base = url.slice('/images/menu/'.length).replace(/\.[^.]+$/, '');
+  return !(base in img);
 }
 
 function resolve_image_url(item: menu_item, fallback?: menu_item): string | null {
   const url = item.image_url;
   if (url) {
-    if (
-      url.startsWith('data:') ||
-      url.startsWith('blob:') ||
-      url.startsWith('http://') ||
-      url.startsWith('https://') ||
-      url.startsWith('/images/menu/')
-    ) {
+    if (url.startsWith('data:') || url.startsWith('blob:') || url.startsWith('http://') || url.startsWith('https://')) {
+      return url;
+    }
+    if (url.startsWith('/images/menu/') && !is_stale_menu_placeholder(url)) {
       return url;
     }
   }
@@ -84,61 +128,61 @@ function item(
 }
 
 export const default_menu_items: menu_item[] = [
-  item('bt-1', 'классик молочный', 290, 'классические бабл ти', img.bt1, ['bt-2']),
-  item('bt-2', 'таро с молоком', 310, 'классические бабл ти', img.bt2),
-  item('bt-3', 'чёрный сахар', 330, 'классические бабл ти', img.bt3, [], { text: 'хит', color: 'accent' }),
-  item('bt-4', 'oolong молочный', 300, 'классические бабл ти', img.bt2),
-  item('bt-5', 'jasmine green', 295, 'классические бабл ти', img.bt1),
-  item('bt-6', 'кокос классик', 320, 'классические бабл ти', img.bt3),
-  item('bt-7', 'малина молочная', 340, 'классические бабл ти', img.bt4, [], { text: 'новинка', color: 'pink' }),
-  item('jb-1', 'манго джусбол', 350, 'с джусболами', img.bt4, ['jb-2']),
-  item('jb-2', 'личи джусбол', 350, 'с джусболами', img.bt5),
-  item('jb-3', 'клубника джусбол', 360, 'с джусболами', img.bt6),
-  item('jb-4', 'passion fruit', 370, 'с джусболами', img.bt4, [], { text: 'новинка', color: 'pink' }),
-  item('jb-5', 'blueberry pop', 360, 'с джусболами', img.bt5),
-  item('jb-6', 'персик джусбол', 355, 'с джусболами', img.bt6),
-  item('mt-1', 'матча латте', 320, 'матча', img.matcha1, ['mt-2'], { text: 'хит', color: 'accent' }),
-  item('mt-2', 'матча бабл ти', 340, 'матча', img.matcha2),
-  item('mt-3', 'матча frappe lite', 330, 'матча', img.matcha1),
-  item('mt-4', 'матча кокос', 345, 'матча', img.matcha2),
-  item('mt-5', 'ice matcha', 335, 'матча', img.matcha1),
-  item('mt-6', 'матча oreo', 360, 'матча', img.matcha2, [], { text: 'новинка', color: 'pink' }),
-  item('pp-1', 'протеин бабл', 280, 'пп', img.healthy1, [], { text: 'пп', color: 'green' }),
-  item('pp-2', 'смузи зелёный', 270, 'пп', img.healthy2),
-  item('pp-3', 'лайт манго', 260, 'пп', img.healthy1),
-  item('pp-4', 'огуречный fresh', 255, 'пп', img.healthy2),
-  item('pp-5', 'berry protein', 285, 'пп', img.healthy1),
-  item('fr-1', 'карамель фраппе', 360, 'фраппе', img.frappe1, ['fr-2']),
-  item('fr-2', 'шоколад фраппе', 370, 'фраппе', img.frappe1),
-  item('fr-3', 'ваниль фраппе', 350, 'фраппе', img.frappe1),
-  item('fr-4', 'матча фраппе', 365, 'фраппе', img.frappe1),
-  item('fr-5', 'cookies фраппе', 375, 'фраппе', img.frappe1, [], { text: 'топ', color: 'orange' }),
-  item('gb-1', 'лимон газированный', 300, 'газированные бабл ти', img.spark1),
-  item('gb-2', 'грейпфрут spark', 310, 'газированные бабл ти', img.spark2),
-  item('gb-3', 'yuzu spark', 320, 'газированные бабл ти', img.spark1, [], { text: 'новинка', color: 'pink' }),
-  item('gb-4', 'cola bubble', 305, 'газированные бабл ти', img.spark2),
-  item('gb-5', 'виноград spark', 315, 'газированные бабл ти', img.spark1),
-  item('tn-1', 'бабл тоник бузина', 290, 'бабл тоники', img.spark2),
-  item('tn-2', 'бабл тоник лайм', 280, 'бабл тоники', img.spark1),
-  item('tn-3', 'имбирный тоник', 295, 'бабл тоники', img.spark2),
-  item('tn-4', 'тоник маракуйя', 300, 'бабл тоники', img.spark1),
-  item('sn-1', 'круассан', 180, 'закуски', img.snack1),
-  item('sn-2', 'сырная палочка', 160, 'закуски', img.snack2),
-  item('sn-3', 'эдамame', 150, 'закуски', img.snack2),
-  item('sn-4', 'онигири', 170, 'закуски', img.snack1),
-  item('sn-5', 'matcha chips', 140, 'закуски', img.snack2),
-  item('sn-6', 'mochi sticks', 155, 'закуски', img.snack1),
-  item('ds-1', 'тирамису', 320, 'десерты', img.dessert1),
-  item('ds-2', 'чизкейк', 340, 'десерты', img.dessert2, [], { text: 'хит', color: 'accent' }),
-  item('ds-3', 'mochi trio', 290, 'десерты', img.dessert1),
-  item('ds-4', 'brownie', 310, 'десерты', img.dessert2),
-  item('ds-5', 'macaron box', 350, 'десерты', img.dessert1),
-  item('ds-6', 'panna cotta', 300, 'десерты', img.dessert2),
-  item('cb-1', 'бабл + круассан', 420, 'комбо', img.combo1, ['cb-2']),
-  item('cb-2', 'матча + десерт', 580, 'комбо', img.matcha2),
-  item('cb-3', 'двойной бабл', 520, 'комбо', img.bt4),
-  item('cb-4', 'triple bubble', 650, 'комбо', img.combo1, [], { text: 'выгодно', color: 'orange' }),
-  item('cb-5', 'семейный сет', 890, 'комбо', img.combo1, [], { text: '-15%', color: 'dark' }),
+  item('bt-1', 'классик молочный', 290, 'классические бабл ти', img['bt-1'], ['bt-2']),
+  item('bt-2', 'таро с молоком', 310, 'классические бабл ти', img['bt-2']),
+  item('bt-3', 'чёрный сахар', 330, 'классические бабл ти', img['bt-3'], [], { text: 'хит', color: 'accent' }),
+  item('bt-4', 'oolong молочный', 300, 'классические бабл ти', img['bt-4']),
+  item('bt-5', 'jasmine green', 295, 'классические бабл ти', img['bt-5']),
+  item('bt-6', 'кокос классик', 320, 'классические бабл ти', img['bt-6']),
+  item('bt-7', 'малина молочная', 340, 'классические бабл ти', img['bt-7'], [], { text: 'новинка', color: 'pink' }),
+  item('jb-1', 'манго джусбол', 350, 'с джусболами', img['jb-1'], ['jb-2']),
+  item('jb-2', 'личи джусбол', 350, 'с джусболами', img['jb-2']),
+  item('jb-3', 'клубника джусбол', 360, 'с джусболами', img['jb-3']),
+  item('jb-4', 'passion fruit', 370, 'с джусболами', img['jb-4'], [], { text: 'новинка', color: 'pink' }),
+  item('jb-5', 'blueberry pop', 360, 'с джусболами', img['jb-5']),
+  item('jb-6', 'персик джусбол', 355, 'с джусболами', img['jb-6']),
+  item('mt-1', 'матча латте', 320, 'матча', img['mt-1'], ['mt-2'], { text: 'хит', color: 'accent' }),
+  item('mt-2', 'матча бабл ти', 340, 'матча', img['mt-2']),
+  item('mt-3', 'матча frappe lite', 330, 'матча', img['mt-3']),
+  item('mt-4', 'матча кокос', 345, 'матча', img['mt-4']),
+  item('mt-5', 'ice matcha', 335, 'матча', img['mt-5']),
+  item('mt-6', 'матча oreo', 360, 'матча', img['mt-6'], [], { text: 'новинка', color: 'pink' }),
+  item('pp-1', 'протеин бабл', 280, 'пп', img['pp-1'], [], { text: 'пп', color: 'green' }),
+  item('pp-2', 'смузи зелёный', 270, 'пп', img['pp-2']),
+  item('pp-3', 'лайт манго', 260, 'пп', img['pp-3']),
+  item('pp-4', 'огуречный fresh', 255, 'пп', img['pp-4']),
+  item('pp-5', 'berry protein', 285, 'пп', img['pp-5']),
+  item('fr-1', 'карамель фраппе', 360, 'фраппе', img['fr-1'], ['fr-2']),
+  item('fr-2', 'шоколад фраппе', 370, 'фраппе', img['fr-2']),
+  item('fr-3', 'ваниль фраппе', 350, 'фраппе', img['fr-3']),
+  item('fr-4', 'матча фраппе', 365, 'фраппе', img['fr-4']),
+  item('fr-5', 'cookies фраппе', 375, 'фраппе', img['fr-5'], [], { text: 'топ', color: 'orange' }),
+  item('gb-1', 'лимон газированный', 300, 'газированные бабл ти', img['gb-1']),
+  item('gb-2', 'грейпфрут spark', 310, 'газированные бабл ти', img['gb-2']),
+  item('gb-3', 'yuzu spark', 320, 'газированные бабл ти', img['gb-3'], [], { text: 'новинка', color: 'pink' }),
+  item('gb-4', 'cola bubble', 305, 'газированные бабл ти', img['gb-4']),
+  item('gb-5', 'виноград spark', 315, 'газированные бабл ти', img['gb-5']),
+  item('tn-1', 'бабл тоник бузина', 290, 'бабл тоники', img['tn-1']),
+  item('tn-2', 'бабл тоник лайм', 280, 'бабл тоники', img['tn-2']),
+  item('tn-3', 'имбирный тоник', 295, 'бабл тоники', img['tn-3']),
+  item('tn-4', 'тоник маракуйя', 300, 'бабл тоники', img['tn-4']),
+  item('sn-1', 'круассан', 180, 'закуски', img['sn-1']),
+  item('sn-2', 'сырная палочка', 160, 'закуски', img['sn-2']),
+  item('sn-3', 'эдамame', 150, 'закуски', img['sn-3']),
+  item('sn-4', 'онигири', 170, 'закуски', img['sn-4']),
+  item('sn-5', 'matcha chips', 140, 'закуски', img['sn-5']),
+  item('sn-6', 'mochi sticks', 155, 'закуски', img['sn-6']),
+  item('ds-1', 'тирамису', 320, 'десерты', img['ds-1']),
+  item('ds-2', 'чизкейк', 340, 'десерты', img['ds-2'], [], { text: 'хит', color: 'accent' }),
+  item('ds-3', 'mochi trio', 290, 'десерты', img['ds-3']),
+  item('ds-4', 'brownie', 310, 'десерты', img['ds-4']),
+  item('ds-5', 'macaron box', 350, 'десерты', img['ds-5']),
+  item('ds-6', 'panna cotta', 300, 'десерты', img['ds-6']),
+  item('cb-1', 'бабл + круассан', 420, 'комбо', img['cb-1'], ['cb-2']),
+  item('cb-2', 'матча + десерт', 580, 'комбо', img['cb-2']),
+  item('cb-3', 'двойной бабл', 520, 'комбо', img['cb-3']),
+  item('cb-4', 'triple bubble', 650, 'комбо', img['cb-4'], [], { text: 'выгодно', color: 'orange' }),
+  item('cb-5', 'семейный сет', 890, 'комбо', img['cb-5'], [], { text: '-15%', color: 'dark' }),
 ];
 
 export type menu_store = {

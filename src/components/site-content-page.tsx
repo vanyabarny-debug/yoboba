@@ -2,7 +2,6 @@
 
 import { createElement, Suspense, useEffect, useState, type ReactNode } from 'react';
 import site_chrome from '@/components/site-chrome';
-import BrandMark from '@/components/brand-mark';
 import {
   get_page_by_slug,
   subscribe_site_content_store,
@@ -180,9 +179,161 @@ export default function site_content_page({ slug, children }: props) {
     );
   }
 
+  function parse_etymology_entry(text: string) {
+    const numbered = text.match(/^(\d+)\.\s+([\s\S]+)$/);
+    if (!numbered) return null;
+    const [, , rest] = numbered;
+    const [raw_title, ...lines] = rest.split('\n');
+    const title = raw_title.trim();
+    let meta = '';
+    let reading = '';
+    let sense = '';
+    let kanji = '';
+    const body: string[] = [];
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (trimmed.startsWith('meta:')) meta = trimmed.slice(5).trim();
+      else if (trimmed.startsWith('reading:')) reading = trimmed.slice(8).trim();
+      else if (trimmed.startsWith('sense:')) sense = trimmed.slice(6).trim();
+      else if (trimmed.startsWith('kanji:')) kanji = trimmed.slice(6).trim();
+      else if (trimmed) body.push(trimmed);
+    }
+    return { title, meta, reading, sense, kanji, body: body.join(' ') };
+  }
+
+  function render_etymology_entry(text: string, index: number) {
+    const entry = parse_etymology_entry(text);
+    if (!entry) return null;
+    const accents = [
+      { panel: 'from-[#eef4ff] to-white', mark: 'text-accent' },
+      { panel: 'from-[#e8f7f0] to-white', mark: 'text-[#0f7a4c]' },
+    ];
+    const tint = accents[index % accents.length];
+    return (
+      <article
+        key={entry.title}
+        className={`relative overflow-hidden rounded-[2px] border border-neutral-200/90 bg-gradient-to-b ${tint.panel} p-5 sm:p-6`}
+      >
+        <div
+          className="pointer-events-none absolute inset-x-0 top-0 h-px bg-accent/30"
+          aria-hidden
+        />
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <p className="text-[11px] font-bold uppercase tracking-[0.22em] text-neutral-500">
+              {entry.meta || 'морфема'}
+            </p>
+            <div className="mt-3 flex items-end gap-3">
+              <h3 className={`font-display text-5xl sm:text-6xl font-bold leading-none ${tint.mark}`}>
+                {entry.title}
+              </h3>
+              {entry.kanji ? (
+                <span className="pb-1 font-display text-3xl sm:text-4xl font-bold leading-none text-neutral-900/80">
+                  {entry.kanji}
+                </span>
+              ) : null}
+            </div>
+          </div>
+          <span className="font-display text-sm font-bold tabular-nums text-neutral-400">
+            §{String(index + 1).padStart(2, '0')}
+          </span>
+        </div>
+
+        <dl className="mt-5 grid gap-3 border-t border-dashed border-neutral-300/80 pt-4 text-sm">
+          {entry.reading ? (
+            <div className="grid gap-1 sm:grid-cols-[7rem_1fr] sm:items-baseline">
+              <dt className="text-[11px] font-bold uppercase tracking-[0.18em] text-neutral-500">
+                чтение
+              </dt>
+              <dd className="font-medium text-neutral-800">{entry.reading}</dd>
+            </div>
+          ) : null}
+          {entry.sense ? (
+            <div className="grid gap-1 sm:grid-cols-[7rem_1fr] sm:items-baseline">
+              <dt className="text-[11px] font-bold uppercase tracking-[0.18em] text-neutral-500">
+                значение
+              </dt>
+              <dd className="font-medium text-neutral-800">{entry.sense}</dd>
+            </div>
+          ) : null}
+        </dl>
+
+        {entry.body ? (
+          <p className="mt-4 text-[15px] font-medium leading-relaxed text-neutral-700">
+            {entry.body}
+          </p>
+        ) : null}
+      </article>
+    );
+  }
+
+  function render_etymology_section(section: content_section) {
+    const [lead, ...notes] = section.prose;
+    return (
+      <section
+        key={section.title}
+        className="relative mt-14 overflow-hidden rounded-[28px] border border-neutral-200 bg-[#f7f9fc] px-5 py-8 sm:px-8 sm:py-10"
+      >
+        <div
+          className="pointer-events-none absolute inset-0 opacity-[0.35]"
+          style={{
+            backgroundImage:
+              'repeating-linear-gradient(0deg, transparent, transparent 27px, rgba(0,57,166,0.06) 28px)',
+          }}
+          aria-hidden
+        />
+        <div className="relative">
+          <p className="text-[11px] font-bold uppercase tracking-[0.28em] text-accent">
+            этимология · морфология · смысл
+          </p>
+          <h2 className="mt-3 font-display text-3xl sm:text-5xl font-bold leading-[0.98] text-neutral-900">
+            {section.title}
+          </h2>
+
+          <div className="mt-7 rounded-[2px] border border-neutral-300/80 bg-white/90 p-5 sm:p-6">
+            <div className="flex flex-wrap items-end gap-x-4 gap-y-2">
+              <span className="font-display text-4xl sm:text-5xl font-bold leading-none text-neutral-900">
+                yomoyo
+              </span>
+              <span className="pb-1 font-mono text-sm text-neutral-500">/joˈmojo/</span>
+            </div>
+            <p className="mt-2 text-[12px] font-bold uppercase tracking-[0.18em] text-neutral-500">
+              имя бренда · сложное слово · yo + moyo
+            </p>
+            {lead ? (
+              <p className="mt-4 max-w-3xl text-[16px] font-medium leading-relaxed text-neutral-800">
+                {lead}
+              </p>
+            ) : null}
+          </div>
+
+          <div className="mt-5 flex flex-wrap items-center gap-2 text-sm font-bold text-neutral-700">
+            <span className="border border-neutral-300 bg-white px-3 py-1.5">yo</span>
+            <span className="text-neutral-400">+</span>
+            <span className="border border-neutral-300 bg-white px-3 py-1.5">moyo</span>
+            <span className="text-neutral-400">→</span>
+            <span className="bg-accent px-3 py-1.5 text-white">yomoyo</span>
+          </div>
+
+          {notes.length > 0 ? (
+            <div className="mt-5 max-w-3xl space-y-3 text-[15px] font-medium leading-relaxed text-neutral-700">
+              {notes.map((paragraph) => (
+                <p key={paragraph.slice(0, 32)}>{paragraph}</p>
+              ))}
+            </div>
+          ) : null}
+
+          <div className="mt-7 grid gap-4 lg:grid-cols-2">
+            {section.cards.map((block, index) => render_etymology_entry(block, index))}
+          </div>
+        </div>
+      </section>
+    );
+  }
+
   function render_cards_body(
     section: content_section,
-    variant: 'cards' | 'list' | 'lang',
+    variant: 'cards' | 'list' | 'lang' | 'etymology',
     compact: boolean,
     columns: string
   ) {
@@ -210,13 +361,18 @@ export default function site_content_page({ slug, children }: props) {
 
   function render_section(
     section: content_section,
-    options?: { variant?: 'cards' | 'list' | 'lang'; compact?: boolean; columns?: string }
+    options?: {
+      variant?: 'cards' | 'list' | 'lang' | 'etymology';
+      compact?: boolean;
+      columns?: string;
+    }
   ) {
     const {
       variant = 'cards',
       compact = false,
       columns = 'sm:grid-cols-2 xl:grid-cols-3',
     } = options ?? {};
+    if (variant === 'etymology') return render_etymology_section(section);
     return (
       <section key={section.title} className="mt-12">
         <h2 className="font-display text-3xl sm:text-4xl font-bold text-neutral-900">
@@ -234,15 +390,15 @@ export default function site_content_page({ slug, children }: props) {
     );
   }
 
-  function section_variant(title: string): 'cards' | 'list' | 'lang' {
-    if (title === 'что такое koppu x?') return 'lang';
+  function section_variant(title: string): 'cards' | 'list' | 'lang' | 'etymology' {
+    if (title === 'почему yomoyo?') return 'etymology';
     if (title === 'что мы готовим и как') return 'list';
     return 'cards';
   }
 
   return with_chrome(
     <div className="page-shell py-8 sm:py-10 pb-16">
-      <section className="grid gap-6 min-[900px]:grid-cols-[1fr_0.95fr] min-[900px]:items-center">
+      <section className="grid gap-6">
         <div>
           <h1 className="font-display text-4xl sm:text-5xl lg:text-6xl font-bold leading-[0.98] text-neutral-900">
             {page.title}
@@ -253,11 +409,6 @@ export default function site_content_page({ slug, children }: props) {
             ))}
           </div>
         </div>
-        {is_about && (
-          <div className="flex items-center justify-center py-4 sm:py-6">
-            <BrandMark size="hero" />
-          </div>
-        )}
       </section>
 
       {is_about ? (

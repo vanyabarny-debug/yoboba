@@ -1,6 +1,6 @@
 'use client';
 
-import { BRAND_NAME } from '@/lib/brand';
+import { BRAND_COLOR_ACCENT, BRAND_NAME } from '@/lib/brand';
 
 import { useCallback, useEffect, useState, createElement } from 'react';
 import { create_client } from '@/lib/supabase/client';
@@ -59,7 +59,7 @@ function order_card({ order: o, on_pay }: { order: order; on_pay: (o: order) => 
               cy="18"
               r="15.5"
               fill="none"
-              stroke={meta.urgent ? '#D81B7B' : '#0468F0'}
+              stroke={meta.urgent ? BRAND_COLOR_ACCENT : '#111111'}
               strokeWidth="3"
               strokeLinecap="round"
               strokeDasharray={`${meta.progress} 100`}

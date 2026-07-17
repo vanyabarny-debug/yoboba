@@ -1,32 +1,15 @@
 import type { Metadata, Viewport } from 'next';
 import { createElement } from 'react';
-import { Inter, JetBrains_Mono, Montserrat_Alternates } from 'next/font/google';
-import { BRAND_COLOR_BLUE, BRAND_NAME } from '@/lib/brand';
+import { BRAND_COLOR_ACCENT, BRAND_NAME } from '@/lib/brand';
+import { default_brand_fonts_stylesheet_href } from '@/lib/brand-font-catalog';
+import { core_font_variable_classes } from '@/lib/brand-fonts-core';
 import './globals.css';
 import auth_bootstrap from '@/components/auth-bootstrap';
 import brand_theme from '@/components/brand-theme';
 import pwa_register from '@/components/pwa-register';
 
-const inter = Inter({
-  variable: '--font-inter',
-  subsets: ['latin', 'cyrillic'],
-  weight: ['400', '500', '600', '700'],
-});
-
-const jetbrains_mono = JetBrains_Mono({
-  variable: '--font-jetbrains-mono',
-  subsets: ['latin', 'cyrillic'],
-  weight: ['400', '500', '600'],
-});
-
-const montserrat_alternates = Montserrat_Alternates({
-  variable: '--font-montserrat-alt',
-  subsets: ['latin', 'cyrillic'],
-  weight: ['500', '600', '700', '800'],
-});
-
 export const metadata: Metadata = {
-  title: `${BRAND_NAME} — кофейный киоск`,
+  title: `${BRAND_NAME} — bubble tea`,
   description: 'заказ к времени, баллы, сторис',
   manifest: '/manifest.json',
   appleWebApp: {
@@ -37,7 +20,7 @@ export const metadata: Metadata = {
 };
 
 export const viewport: Viewport = {
-  themeColor: BRAND_COLOR_BLUE,
+  themeColor: BRAND_COLOR_ACCENT,
   width: 'device-width',
   initialScale: 1,
   maximumScale: 1,
@@ -49,11 +32,17 @@ export default function root_layout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  const default_fonts_href = default_brand_fonts_stylesheet_href();
+
   return (
-    <html
-      lang="ru"
-      className={`${inter.variable} ${jetbrains_mono.variable} ${montserrat_alternates.variable} h-full antialiased`}
-    >
+    <html lang="ru" className={`${core_font_variable_classes} h-full antialiased`}>
+      <head>
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
+        {default_fonts_href ? (
+          <link id="yoboba-brand-google-fonts" rel="stylesheet" href={default_fonts_href} />
+        ) : null}
+      </head>
       <body className="min-h-full bg-page text-foreground font-sans">
         {process.env.NODE_ENV === 'development' ? (
           <script

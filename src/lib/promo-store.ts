@@ -1,6 +1,6 @@
 import type { promo_banner } from '@/lib/types';
 
-export const promo_store_version = 4;
+export const promo_store_version = 6;
 
 const storage_key = 'yoboba_promo_store';
 const update_event = 'yoboba-promo-update';
@@ -29,7 +29,7 @@ export const default_promos: promo_banner[] = [
   },
   {
     id: 'promo-4',
-    title: 'приложение koppu x',
+    title: 'приложение yomoyo',
     image_url: '/images/promos/promo4.svg',
     link_url: '/',
     is_active: true,

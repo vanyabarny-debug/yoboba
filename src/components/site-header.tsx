@@ -93,14 +93,13 @@ export default function site_header({
             <button
               type="button"
               onClick={on_home}
-              className="flex flex-col items-start text-left hover:opacity-90 transition-opacity"
+              className="group m-0 inline-flex w-max max-w-full flex-col items-start justify-start gap-1 border-0 bg-transparent p-0 text-left hover:opacity-90 transition-opacity"
               aria-label={`${brand_name} — на главную, все меню`}
             >
-              <BrandWordmark className="text-[32px] sm:text-[38px]" />
-              <span className="text-[12px] sm:text-[13px] text-neutral-600 font-semibold tracking-normal mt-3 leading-tight">
+              <BrandWordmark className="text-[32px] sm:text-[38px] leading-none" />
+              <span className="block w-full text-left text-[12px] sm:text-[13px] font-medium leading-tight text-neutral-600">
                 {brand.tagline.split('\n').map((line, i) => (
-                  <span key={i}>
-                    {i > 0 && <br />}
+                  <span key={i} className="block text-left">
                     {line}
                   </span>
                 ))}
@@ -127,7 +126,7 @@ export default function site_header({
           >
             <p className="text-[16px] sm:text-[17px] leading-snug">
               заберу заказ в городе{' '}
-              <span className="font-bold text-accent-pink capitalize group-hover:underline decoration-2 underline-offset-2">
+              <span className="font-bold text-accent capitalize group-hover:underline decoration-2 underline-offset-2">
                 {city}
               </span>
             </p>
@@ -161,7 +160,7 @@ export default function site_header({
             <button
               type="button"
               onClick={on_login}
-              className="inline-flex items-center justify-center text-center rounded-pill bg-accent-pink text-accent-foreground px-4 sm:px-6 py-2.5 text-sm font-bold hover:opacity-90 transition-opacity whitespace-nowrap"
+              className="inline-flex items-center justify-center text-center rounded-pill bg-accent text-accent-foreground px-4 sm:px-6 py-2.5 text-sm font-bold hover:opacity-90 transition-opacity whitespace-nowrap"
             >
               войти
             </button>

@@ -4,10 +4,10 @@ module.exports = {
   theme: {
     extend: {
       colors: {
-        accent: 'var(--color-accent, #0468F0)',
-        'accent-soft': 'var(--color-accent-soft, #1A7AF5)',
-        'accent-pink': 'var(--color-accent-pink, #D81B7B)',
-        'accent-pink-soft': 'var(--color-accent-pink-soft, #F0358F)',
+        accent: 'var(--color-accent, #0039A6)',
+        'accent-soft': 'var(--color-accent-soft, #002D7A)',
+        'accent-pink': 'var(--color-accent-pink, #0039A6)',
+        'accent-pink-soft': 'var(--color-accent-pink-soft, #002D7A)',
         'accent-foreground': '#ffffff',
         highlight: 'var(--color-accent-soft, #1A7AF5)',
         cyan: '#42e8df',
