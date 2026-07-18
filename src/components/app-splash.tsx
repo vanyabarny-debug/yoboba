@@ -7,8 +7,6 @@ import BrandWordmark from '@/components/brand-wordmark';
 const EXIT_AT = 5100; // уезжаем шторкой вверх
 const REMOVE_AT = 5950; // убираем из DOM
 
-const SPLASH_TAGLINE = 'сложный день? — лёгкое решение!';
-
 type pearl = { x: number; y: number; vx: number; vy: number; r: number };
 type rect = { left: number; right: number; top: number; bottom: number };
 type collider = { r: rect; bounce: number };
@@ -27,7 +25,6 @@ export default function app_splash() {
   const [phase, set_phase] = useState<'run' | 'exit'>('run');
   const canvas_ref = useRef<HTMLCanvasElement>(null);
   const logo_ref = useRef<HTMLDivElement>(null);
-  const tagline_ref = useRef<HTMLParagraphElement>(null);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -112,16 +109,6 @@ export default function app_splash() {
       const out: collider[] = [];
       const logo = logo_rect();
       if (logo) out.push({ r: logo, bounce: 0.02 });
-      const tag = tagline_ref.current;
-      if (tag) {
-        const r = tag.getBoundingClientRect();
-        if (r.width > 2 && r.height > 2) {
-          out.push({
-            r: { left: r.left, right: r.right, top: r.top + r.height * 0.15, bottom: r.bottom },
-            bounce: 0.12,
-          });
-        }
-      }
       return out;
     }
 
@@ -351,13 +338,6 @@ export default function app_splash() {
         <div ref={logo_ref} className="app-splash-logo">
           <BrandWordmark className="text-[72px]" />
         </div>
-
-        <p
-          ref={tagline_ref}
-          className="app-splash-tagline text-center text-[15px] font-semibold text-neutral-700"
-        >
-          {SPLASH_TAGLINE}
-        </p>
       </div>
     </div>
   );

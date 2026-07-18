@@ -14,16 +14,16 @@ function menu_badge_inner({ text, className = '', size = 'md' }: props) {
 
   const size_class =
     size === 'sm'
-      ? 'px-2.5 py-[5px] text-[11px]'
-      : 'px-3.5 py-[6px] text-[12px] sm:text-[13px]';
+      ? 'px-3 py-[5px] text-[12px]'
+      : 'px-3.5 py-[6px] text-[13px] sm:text-[14px]';
 
   return (
     <span
-      className={`inline-flex max-w-none shrink-0 items-center justify-center whitespace-nowrap rounded-pill font-sans font-extrabold lowercase leading-none tracking-[0.01em] text-white ${size_class} ${className}`}
+      className={`inline-flex max-w-none shrink-0 items-center justify-center whitespace-nowrap rounded-pill font-sans font-black lowercase leading-none tracking-[0.02em] text-white ${size_class} ${className}`}
       style={{
         background: menu_badge_style.gradient,
-        boxShadow: `inset 0 1px 0 rgba(255,255,255,0.55), 0 2px 0 ${menu_badge_style.shadow}, 0 5px 14px rgba(0,0,0,0.2)`,
-        textShadow: '0 1px 0 rgba(0,0,0,0.15)',
+        boxShadow: `0 2px 0 ${menu_badge_style.shadow}, 0 5px 14px rgba(0,0,0,0.25)`,
+        textShadow: '0 1px 2px rgba(0,0,10,0.55)',
       }}
     >
       {trimmed}
