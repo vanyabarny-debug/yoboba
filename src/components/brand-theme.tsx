@@ -12,7 +12,12 @@ export default function brand_theme() {
   useEffect(() => {
     function sync() {
       const settings = get_brand_settings();
-      load_brand_google_fonts(settings.font_sans, settings.font_display);
+      load_brand_google_fonts(
+        settings.font_sans,
+        settings.font_display,
+        settings.font_logo,
+        settings.font_heading_soft
+      );
       apply_brand_theme(settings);
     }
     sync();

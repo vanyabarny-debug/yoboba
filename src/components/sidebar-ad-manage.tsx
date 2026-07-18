@@ -223,7 +223,7 @@ export default function sidebar_ad_manage() {
                 <input
                   value={editing.image_url}
                   onChange={(e) => set_editing({ ...editing, image_url: e.target.value })}
-                  placeholder="/images/sidebar/slide1.svg"
+                  placeholder="/images/sidebar/slide1.png"
                   className="mt-1 w-full rounded-xl border border-surface px-3 py-2 text-sm"
                   required
                 />

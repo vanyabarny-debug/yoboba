@@ -320,7 +320,7 @@ export default function category_nav({
         <button
           type="button"
           onClick={on_cart_click}
-          className="hidden min-[1024px]:flex flex-shrink-0 items-center justify-center gap-1.5 sm:gap-2 rounded-pill bg-accent text-accent-foreground pl-3 pr-3.5 sm:px-5 py-2.5 text-sm font-semibold hover:opacity-95 transition-opacity"
+          className="hidden min-[1024px]:flex flex-shrink-0 items-center justify-center gap-1.5 sm:gap-2 rounded-pill bg-accent text-accent-foreground pl-3 pr-3.5 sm:px-5 py-2.5 text-sm font-bold shadow-[0_6px_18px_rgba(255,107,107,0.35)] hover:shadow-[0_8px_22px_rgba(255,107,107,0.45)] hover:-translate-y-px transition-all"
         >
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
             <path

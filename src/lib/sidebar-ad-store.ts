@@ -1,6 +1,6 @@
 import type { sidebar_ad_slide } from '@/lib/types';
 
-export const sidebar_ad_store_version = 4;
+export const sidebar_ad_store_version = 5;
 
 const storage_key = 'yoboba_sidebar_ad_store';
 const update_event = 'yoboba-sidebar-ad-update';
@@ -12,14 +12,14 @@ export const default_sidebar_slides: sidebar_ad_slide[] = [
     id: 'side-1',
     title: 'удобная оплата',
     subtitle: 'картой или на кассе',
-    image_url: '/images/sidebar/slide1.svg',
+    image_url: '/images/sidebar/slide1.png',
     is_active: true,
   },
   {
     id: 'side-2',
     title: 'приложение yomoyo',
     subtitle: 'ещё выгоднее в pwa',
-    image_url: '/images/sidebar/slide2.svg',
+    image_url: '/images/sidebar/slide2.png',
     link_url: '/',
     is_active: true,
   },
@@ -27,7 +27,7 @@ export const default_sidebar_slides: sidebar_ad_slide[] = [
     id: 'side-3',
     title: 'комбо недели',
     subtitle: 'бабл + закуска',
-    image_url: '/images/sidebar/slide3.svg',
+    image_url: '/images/sidebar/slide3.png',
     menu_id: 'cb-1',
     is_active: true,
   },
@@ -62,7 +62,10 @@ function repair_sidebar_store(store: sidebar_ad_store): sidebar_ad_store {
       ...existing,
       title:
         existing?.title && /баблтишн/i.test(existing.title) ? def.title : existing?.title ?? def.title,
-      image_url: existing?.image_url || def.image_url,
+      image_url:
+        !existing?.image_url || existing.image_url.endsWith('.svg')
+          ? def.image_url
+          : existing.image_url,
       is_active: existing?.is_active ?? def.is_active,
     });
   }

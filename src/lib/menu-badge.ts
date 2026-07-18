@@ -2,10 +2,10 @@ import type { menu_badge_color, menu_item } from '@/lib/types';
 
 export type { menu_badge_color };
 
-/** единый оранжевый для всех плашек */
+/** фирменный синий (pearl/deep) — гармонирует с коралловым акцентом */
 export const menu_badge_style = {
-  gradient: 'linear-gradient(180deg, #ffb74d 0%, #ff9100 50%, #ff6900 100%)',
-  shadow: '#e65100',
+  gradient: 'linear-gradient(180deg, #1e5bd6 0%, #0039a6 55%, #002d7a 100%)',
+  shadow: '#001a4d',
 };
 
 export function menu_item_has_badge(item: menu_item) {
@@ -24,6 +24,6 @@ export function normalize_menu_badge(item: menu_item): menu_item {
   };
 }
 
-/** внутри блока фото, по диагонали */
+/** прижата в левый верхний угол, поверх края карточки */
 export const menu_badge_corner_class =
-  'pointer-events-none absolute z-30 left-2 top-2 origin-top-left -rotate-[12deg] sm:left-2.5 sm:top-2.5';
+  'pointer-events-none absolute z-30 -left-2.5 -top-2 origin-top-left -rotate-[6deg] sm:-left-3 sm:-top-2.5';

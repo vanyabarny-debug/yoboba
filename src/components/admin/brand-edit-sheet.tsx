@@ -49,7 +49,7 @@ function color_field({
         <input
           value={value}
           onChange={(e) => on_change(e.target.value)}
-          placeholder="#0039A6"
+          placeholder="#FF6B6B"
           className="flex-1 rounded-xl border border-surface px-3 py-2 text-sm font-mono"
         />
       </div>
@@ -72,13 +72,23 @@ export default function brand_edit_sheet({ open, focus = 'all', on_close, on_sav
 
   useEffect(() => {
     if (!open) return;
-    load_brand_google_fonts(draft.font_sans, draft.font_display);
+    load_brand_google_fonts(
+      draft.font_sans,
+      draft.font_display,
+      draft.font_logo,
+      draft.font_heading_soft
+    );
     apply_brand_theme(draft);
   }, [open, draft]);
 
   function handle_cancel() {
     if (snapshot) {
-      load_brand_google_fonts(snapshot.font_sans, snapshot.font_display);
+      load_brand_google_fonts(
+        snapshot.font_sans,
+        snapshot.font_display,
+        snapshot.font_logo,
+        snapshot.font_heading_soft
+      );
       apply_brand_theme(snapshot);
     }
     on_close();
@@ -107,6 +117,7 @@ export default function brand_edit_sheet({ open, focus = 'all', on_close, on_sav
   const show_tagline = focus === 'all' || focus === 'tagline';
   const show_theme = focus === 'all' || focus === 'logo';
   const weight_options = brand_font_weight_options(draft.font_display);
+  const logo_weight_options = brand_font_weight_options(draft.font_logo);
 
   return createElement(admin_sheet, {
     open: true,
@@ -138,13 +149,12 @@ export default function brand_edit_sheet({ open, focus = 'all', on_close, on_sav
             <p className="text-[11px] text-neutral-400">
               превью:{' '}
               <span
-                className="leading-none text-neutral-900 text-2xl"
+                className="leading-none text-accent text-2xl"
                 style={{
-                  fontFamily: brand_font_stacks[draft.font_display],
-                  fontWeight: draft.display_weight,
-                  letterSpacing: `${draft.display_tracking}em`,
+                  fontFamily: brand_font_stacks[draft.font_logo],
+                  fontWeight: draft.logo_weight,
+                  letterSpacing: `${draft.logo_tracking}em`,
                   fontSynthesis: 'none',
-                  zoom: draft.display_scale,
                 }}
               >
                 {draft.brand_word || '…'}
@@ -172,12 +182,12 @@ export default function brand_edit_sheet({ open, focus = 'all', on_close, on_sav
             <div className="space-y-2 rounded-xl border border-surface bg-surface/40 p-3">
               <p className="text-xs font-medium text-neutral-500">основные цвета</p>
               {color_field({
-                label: 'красный (кнопки, акценты)',
+                label: 'coral / CTA',
                 value: draft.color_accent,
                 on_change: (color_accent) => set_draft({ ...draft, color_accent }),
               })}
               {color_field({
-                label: 'тёмно-красный (hover)',
+                label: 'deep / hover',
                 value: draft.color_accent_pink,
                 on_change: (color_accent_pink) => set_draft({ ...draft, color_accent_pink }),
               })}
@@ -187,7 +197,7 @@ export default function brand_edit_sheet({ open, focus = 'all', on_close, on_sav
                 on_change: (color_background) => set_draft({ ...draft, color_background }),
               })}
               {color_field({
-                label: 'цвет текста',
+                label: 'цвет текста (ink)',
                 value: draft.color_foreground,
                 on_change: (color_foreground) => set_draft({ ...draft, color_foreground }),
               })}
@@ -196,7 +206,28 @@ export default function brand_edit_sheet({ open, focus = 'all', on_close, on_sav
             <div className="space-y-2 rounded-xl border border-surface bg-surface/40 p-3">
               <p className="text-xs font-medium text-neutral-500">шрифты</p>
               <label className="block space-y-1">
-                <span className="text-xs text-neutral-500">основной текст</span>
+                <span className="text-xs text-neutral-500">wordmark (логотип)</span>
+                <select
+                  value={draft.font_logo}
+                  onChange={(e) => {
+                    const font_logo = e.target.value as brand_font_id;
+                    set_draft((prev) => ({
+                      ...prev,
+                      font_logo,
+                      logo_weight: clamp_font_weight(font_logo, prev.logo_weight),
+                    }));
+                  }}
+                  className="w-full rounded-xl border border-surface px-3 py-2 text-sm bg-white"
+                >
+                  {brand_font_display_options.map((id) => (
+                    <option key={id} value={id}>
+                      {brand_font_labels[id]}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="block space-y-1">
+                <span className="text-xs text-neutral-500">основной текст (body)</span>
                 <select
                   value={draft.font_sans}
                   onChange={(e) =>
@@ -212,7 +243,26 @@ export default function brand_edit_sheet({ open, focus = 'all', on_close, on_sav
                 </select>
               </label>
               <label className="block space-y-1">
-                <span className="text-xs text-neutral-500">логотип и заголовки</span>
+                <span className="text-xs text-neutral-500">мягкие заголовки</span>
+                <select
+                  value={draft.font_heading_soft}
+                  onChange={(e) =>
+                    set_draft({
+                      ...draft,
+                      font_heading_soft: e.target.value as brand_font_id,
+                    })
+                  }
+                  className="w-full rounded-xl border border-surface px-3 py-2 text-sm bg-white"
+                >
+                  {brand_font_display_options.map((id) => (
+                    <option key={id} value={id}>
+                      {brand_font_labels[id]}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="block space-y-1">
+                <span className="text-xs text-neutral-500">игровые заголовки (script)</span>
                 <select
                   value={draft.font_display}
                   onChange={(e) => set_display_font(e.target.value as brand_font_id)}
@@ -227,7 +277,50 @@ export default function brand_edit_sheet({ open, focus = 'all', on_close, on_sav
               </label>
               <label className="block space-y-1">
                 <span className="text-xs text-neutral-500">
-                  начертание (только доступные у шрифта)
+                  начертание wordmark
+                </span>
+                <select
+                  value={draft.logo_weight}
+                  onChange={(e) =>
+                    set_draft({
+                      ...draft,
+                      logo_weight: Number(e.target.value) as brand_font_weight,
+                    })
+                  }
+                  className="w-full rounded-xl border border-surface px-3 py-2 text-sm bg-white"
+                >
+                  {logo_weight_options.map((weight) => (
+                    <option key={weight} value={weight}>
+                      {brand_font_weight_label(weight)}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="block space-y-1">
+                <span className="flex items-center justify-between text-xs text-neutral-500">
+                  <span>tracking wordmark</span>
+                  <span className="font-mono text-neutral-700">
+                    {draft.logo_tracking.toFixed(3)}em
+                  </span>
+                </span>
+                <input
+                  type="range"
+                  min={-0.08}
+                  max={0.16}
+                  step={0.005}
+                  value={draft.logo_tracking}
+                  onChange={(e) =>
+                    set_draft({
+                      ...draft,
+                      logo_tracking: Number(e.target.value),
+                    })
+                  }
+                  className="w-full accent-[var(--color-accent)]"
+                />
+              </label>
+              <label className="block space-y-1">
+                <span className="text-xs text-neutral-500">
+                  начертание игровых заголовков
                 </span>
                 <select
                   value={draft.display_weight}
@@ -253,7 +346,7 @@ export default function brand_edit_sheet({ open, focus = 'all', on_close, on_sav
               </label>
               <label className="block space-y-1">
                 <span className="flex items-center justify-between text-xs text-neutral-500">
-                  <span>межбуквенное расстояние</span>
+                  <span>tracking заголовков</span>
                   <span className="font-mono text-neutral-700">
                     {draft.display_tracking.toFixed(3)}em
                   </span>
@@ -279,7 +372,7 @@ export default function brand_edit_sheet({ open, focus = 'all', on_close, on_sav
               </label>
               <label className="block space-y-1">
                 <span className="flex items-center justify-between text-xs text-neutral-500">
-                  <span>масштаб заголовков и акцентов</span>
+                  <span>масштаб игровых заголовков</span>
                   <span className="font-mono text-neutral-700">
                     {Math.round(draft.display_scale * 100)}%
                   </span>
@@ -287,7 +380,7 @@ export default function brand_edit_sheet({ open, focus = 'all', on_close, on_sav
                 <input
                   type="range"
                   min={0.7}
-                  max={1.6}
+                  max={4}
                   step={0.05}
                   value={draft.display_scale}
                   onChange={(e) =>

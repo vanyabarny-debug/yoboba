@@ -25,7 +25,7 @@ export default function profile_chip({
       <button
         type="button"
         onClick={on_login}
-        className="inline-flex items-center justify-center rounded-pill bg-accent text-accent-foreground px-4 py-2.5 text-sm font-bold hover:opacity-90 transition-opacity whitespace-nowrap"
+        className="inline-flex items-center justify-center rounded-pill bg-surface px-4 py-2.5 text-sm font-semibold text-neutral-800 hover:bg-menu transition-colors whitespace-nowrap"
       >
         войти
       </button>

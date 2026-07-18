@@ -7,6 +7,7 @@ import './globals.css';
 import auth_bootstrap from '@/components/auth-bootstrap';
 import brand_theme from '@/components/brand-theme';
 import pwa_register from '@/components/pwa-register';
+import app_splash from '@/components/app-splash';
 
 export const metadata: Metadata = {
   title: `${BRAND_NAME} — bubble tea`,
@@ -54,6 +55,7 @@ export default function root_layout({
         {createElement(pwa_register)}
         {createElement(brand_theme)}
         {createElement(auth_bootstrap)}
+        {createElement(app_splash)}
         {children}
       </body>
     </html>

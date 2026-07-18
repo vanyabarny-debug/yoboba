@@ -870,7 +870,7 @@ export default function home_client({
         </div>
 
         <main className={`menu-sheet-main py-5 sm:py-6 ${cart_count > 0 ? 'pb-[calc(7rem+var(--safe-bottom))]' : 'pb-[calc(6rem+var(--safe-bottom))]'} sm:pb-28`}>
-            <div className="page-shell min-[1024px]:flex min-[1024px]:gap-2">
+            <div className="page-shell min-[1024px]:flex min-[1024px]:gap-6 min-[1024px]:pr-1">
               <div className="min-w-0 min-[1024px]:flex-[4]">
               {is_admin_edit
                 ? createElement(menu_grid_admin, {
@@ -904,7 +904,7 @@ export default function home_client({
                   })}
             </div>
             <aside
-              className="sticky-ad-slide hidden min-[1024px]:block min-w-[220px] min-[1024px]:flex-[1.85] shrink-0 sticky z-10 self-start"
+              className="sticky-ad-slide hidden min-[1024px]:block min-w-[200px] max-w-[280px] min-[1024px]:flex-[1.2] shrink-0 sticky z-10 self-start"
               style={{
                 top: header_h + nav_h + sticky_ad_gap,
                 marginTop: active_category === null ? desktop_category_heading_offset : 0,

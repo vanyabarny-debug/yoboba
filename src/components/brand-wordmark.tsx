@@ -21,13 +21,12 @@ export default function brand_wordmark({ className = '' }: props) {
 
   return (
     <span
-      className={`block text-left leading-none text-neutral-900 ${className}`}
+      className={`block text-left leading-none text-accent ${className}`}
       style={{
-        fontFamily: brand_font_stacks[brand.font_display],
-        fontWeight: brand.display_weight,
-        letterSpacing: `${brand.display_tracking}em`,
+        fontFamily: brand_font_stacks[brand.font_logo],
+        fontWeight: brand.logo_weight,
+        letterSpacing: `${brand.logo_tracking}em`,
         fontSynthesis: 'none',
-        zoom: brand.display_scale,
       }}
     >
       {brand.brand_word}

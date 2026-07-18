@@ -1,6 +1,8 @@
 import {
   DEFAULT_DISPLAY_WEIGHT,
   DEFAULT_FONT_DISPLAY,
+  DEFAULT_FONT_HEADING_SOFT,
+  DEFAULT_FONT_LOGO,
   DEFAULT_FONT_SANS,
   type brand_font_id,
 } from '@/lib/brand';
@@ -90,7 +92,7 @@ export const brand_font_catalog: Record<brand_font_id, brand_font_def> = {
   comfortaa: def('★ Comfortaa — bubble / soft', '"Comfortaa", var(--font-inter), system-ui, sans-serif', [400, 500, 600, 700], {
     google_family: 'Comfortaa',
   }),
-  nunito: def('Nunito', '"Nunito", var(--font-inter), system-ui, sans-serif', [400, 500, 600, 700, 800, 900], {
+  nunito: def('★ Nunito — мягкие заголовки', '"Nunito", var(--font-inter), system-ui, sans-serif', [400, 500, 600, 700, 800, 900], {
     google_family: 'Nunito',
   }),
   montserrat: def('★ Montserrat Alternates', '"Montserrat Alternates", var(--font-inter), system-ui, sans-serif', [400, 500, 600, 700, 800], {
@@ -302,6 +304,9 @@ export const brand_font_catalog: Record<brand_font_id, brand_font_def> = {
   caveat: def('★ Caveat — handwritten fun', '"Caveat", cursive', [400, 500, 600, 700], {
     google_family: 'Caveat',
   }),
+  fredoka: def('★ Fredoka — soft wordmark', '"Fredoka", system-ui, sans-serif', [400, 500, 600, 700], {
+    google_family: 'Fredoka',
+  }),
 };
 
 export const brand_font_stacks = Object.fromEntries(
@@ -313,6 +318,7 @@ export const brand_font_labels = Object.fromEntries(
 ) as Record<brand_font_id, string>;
 
 export const brand_font_sans_options: brand_font_id[] = [
+  'comfortaa',
   'inter',
   'tiktok_sans',
   'ubuntu_sans',
@@ -339,10 +345,15 @@ export const brand_font_sans_options: brand_font_id[] = [
   'onest',
   'sofia',
   'jura',
+  'fredoka',
 ];
 
 /** топы 2025–26 с кириллицей → референсы → остальные */
 export const brand_font_display_options: brand_font_id[] = [
+  'caveat',
+  'nunito',
+  'fredoka',
+  'comfortaa',
   'tiktok_sans',
   'dela_gothic',
   'sofia_condensed',
@@ -364,7 +375,6 @@ export const brand_font_display_options: brand_font_id[] = [
   'oranienbaum',
   'literata',
   'spectral',
-  'caveat',
   'ubuntu_sans',
   'nunito_sans',
   'fira_condensed',
@@ -438,9 +448,16 @@ function google_css_spec(font_id: brand_font_id) {
 
 const GOOGLE_FONTS_LINK_ID = 'yoboba-brand-google-fonts';
 
-export function brand_fonts_stylesheet_href(font_sans: brand_font_id, font_display: brand_font_id) {
+export function brand_fonts_stylesheet_href(
+  font_sans: brand_font_id,
+  font_display: brand_font_id,
+  font_logo?: brand_font_id,
+  font_heading_soft?: brand_font_id
+) {
   const specs = new Set<string>();
-  for (const id of [font_sans, font_display]) {
+  for (const id of [font_sans, font_display, font_logo, font_heading_soft].filter(
+    Boolean
+  ) as brand_font_id[]) {
     const spec = google_css_spec(id);
     if (spec) specs.add(spec);
   }
@@ -448,9 +465,19 @@ export function brand_fonts_stylesheet_href(font_sans: brand_font_id, font_displ
   return `https://fonts.googleapis.com/css2?${[...specs].join('&')}&display=swap`;
 }
 
-export function load_brand_google_fonts(font_sans: brand_font_id, font_display: brand_font_id) {
+export function load_brand_google_fonts(
+  font_sans: brand_font_id,
+  font_display: brand_font_id,
+  font_logo?: brand_font_id,
+  font_heading_soft?: brand_font_id
+) {
   if (typeof document === 'undefined') return;
-  const href = brand_fonts_stylesheet_href(font_sans, font_display);
+  const href = brand_fonts_stylesheet_href(
+    font_sans,
+    font_display,
+    font_logo,
+    font_heading_soft
+  );
   document.getElementById(GOOGLE_FONTS_LINK_ID)?.remove();
   if (!href) return;
 
@@ -462,5 +489,10 @@ export function load_brand_google_fonts(font_sans: brand_font_id, font_display: 
 }
 
 export function default_brand_fonts_stylesheet_href() {
-  return brand_fonts_stylesheet_href(DEFAULT_FONT_SANS, DEFAULT_FONT_DISPLAY);
+  return brand_fonts_stylesheet_href(
+    DEFAULT_FONT_SANS,
+    DEFAULT_FONT_DISPLAY,
+    DEFAULT_FONT_LOGO,
+    DEFAULT_FONT_HEADING_SOFT
+  );
 }

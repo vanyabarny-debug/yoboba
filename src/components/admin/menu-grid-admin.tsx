@@ -1,6 +1,6 @@
 'use client';
 
-import { createElement, useState } from 'react';
+import { createElement, useEffect, useState } from 'react';
 import type { menu_item } from '@/lib/types';
 import menu_image from '@/components/menu-image';
 import { menu_badge_on_card } from '@/components/menu-badge';
@@ -8,6 +8,8 @@ import { menu_item_has_badge } from '@/lib/menu-badge';
 import edit_pencil from '@/components/admin/edit-pencil';
 import product_photo_picker from '@/components/admin/product-photo-picker';
 import { desktop_category_heading_offset } from '@/components/menu-grid';
+import { get_category_heading_style, subscribe_menu_store } from '@/lib/menu-store';
+import { category_heading_class_name } from '@/lib/heading-style';
 
 type props = {
   items: menu_item[];
@@ -226,6 +228,9 @@ export default function menu_grid_admin({
   on_add_item,
   on_delete_item,
 }: props) {
+  const [, set_tick] = useState(0);
+  useEffect(() => subscribe_menu_store(() => set_tick((t) => t + 1)), []);
+
   const visible_categories = active_category
     ? [active_category]
     : categories.filter((cat) => items.some((i) => i.category === cat));
@@ -243,6 +248,7 @@ export default function menu_grid_admin({
       {visible_categories.map((category) => {
         const cat_items = items.filter((i) => i.category === category);
         const desktop_cells = pad_row(cat_items);
+        const heading_style = get_category_heading_style(category);
 
         return (
           <section
@@ -252,7 +258,7 @@ export default function menu_grid_admin({
           >
             {!active_category && (
               <div className="flex items-center justify-between mb-4 sm:mb-5">
-                <h2 className="font-display text-xl sm:text-2xl font-bold capitalize">
+                <h2 className={category_heading_class_name(heading_style, 'text-xl sm:text-2xl font-bold capitalize')}>
                   {category}
                 </h2>
                 <button

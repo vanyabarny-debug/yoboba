@@ -1,6 +1,8 @@
 import type { menu_badge_color, menu_item } from '@/lib/types';
+import type { heading_style } from '@/lib/heading-style';
+import { default_category_heading_styles } from '@/lib/heading-style';
 
-export const store_version = 13;
+export const store_version = 14;
 
 export const default_categories = [
   'классические бабл ти',
@@ -190,6 +192,8 @@ export type menu_store = {
   categories: string[];
   items: menu_item[];
   removed_item_ids?: string[];
+  /** soft = Nunito, playful = Caveat */
+  category_heading_styles?: Record<string, heading_style>;
 };
 
 const storage_key = 'yoboba_menu_store';
@@ -260,6 +264,10 @@ function repair_menu_store(store: menu_store): menu_store {
     categories,
     items,
     removed_item_ids: store.removed_item_ids ?? [],
+    category_heading_styles: {
+      ...default_category_heading_styles,
+      ...(store.category_heading_styles ?? {}),
+    },
   };
   if (JSON.stringify(repaired) !== JSON.stringify(store)) {
     localStorage.setItem(storage_key, JSON.stringify(repaired));
@@ -273,6 +281,7 @@ export function get_default_store(): menu_store {
     categories: [...default_categories],
     items: default_menu_items.map((i) => ({ ...i })),
     removed_item_ids: [],
+    category_heading_styles: { ...default_category_heading_styles },
   };
 }
 
@@ -295,6 +304,10 @@ export function get_menu_store(): menu_store {
         categories: parsed.categories?.length ? parsed.categories : defaults.categories,
         items: merge_default_badges(parsed.items?.length ? parsed.items : defaults.items),
         removed_item_ids: parsed.removed_item_ids ?? [],
+        category_heading_styles: {
+          ...defaults.category_heading_styles,
+          ...(parsed.category_heading_styles ?? {}),
+        },
       };
       localStorage.setItem(storage_key, JSON.stringify(merged));
       return repair_menu_store(merged);
@@ -338,6 +351,14 @@ export function rename_category(old_name: string, new_name: string) {
   store.items = store.items.map((i) =>
     i.category === old_name ? { ...i, category: trimmed } : i
   );
+  const styles = { ...(store.category_heading_styles ?? {}) };
+  const prev_style =
+    styles[old_name] ?? default_category_heading_styles[old_name] ?? undefined;
+  if (prev_style) {
+    styles[trimmed] = prev_style;
+    delete styles[old_name];
+    store.category_heading_styles = styles;
+  }
   save_menu_store(store);
 }
 
@@ -345,7 +366,30 @@ export function delete_category(name: string) {
   const store = get_menu_store();
   store.categories = store.categories.filter((c) => c !== name);
   store.items = store.items.filter((i) => i.category !== name);
+  if (store.category_heading_styles?.[name]) {
+    const styles = { ...store.category_heading_styles };
+    delete styles[name];
+    store.category_heading_styles = styles;
+  }
   save_menu_store(store);
+}
+
+export function set_category_heading_style(category: string, style: heading_style) {
+  const store = get_menu_store();
+  store.category_heading_styles = {
+    ...(store.category_heading_styles ?? {}),
+    [category]: style,
+  };
+  save_menu_store(store);
+}
+
+export function get_category_heading_style(category: string): heading_style {
+  const store = typeof window === 'undefined' ? get_default_store() : get_menu_store();
+  return (
+    store.category_heading_styles?.[category] ??
+    default_category_heading_styles[category] ??
+    'soft'
+  );
 }
 
 export function move_category(name: string, dir: -1 | 1) {

@@ -272,13 +272,13 @@ export default function site_content_page({ slug, children }: props) {
     return (
       <section
         key={section.title}
-        className="relative mt-14 overflow-hidden rounded-[28px] border border-neutral-200 bg-[#f7f9fc] px-5 py-8 sm:px-8 sm:py-10"
+        className="relative mt-14 overflow-hidden rounded-[28px] border border-neutral-200 bg-pearl px-5 py-8 sm:px-8 sm:py-10"
       >
         <div
-          className="pointer-events-none absolute inset-0 opacity-[0.35]"
+          className="pointer-events-none absolute inset-0 opacity-40"
           style={{
             backgroundImage:
-              'repeating-linear-gradient(0deg, transparent, transparent 27px, rgba(0,57,166,0.06) 28px)',
+              'repeating-linear-gradient(0deg, transparent, transparent 27px, color-mix(in srgb, var(--color-accent) 18%, transparent) 28px)',
           }}
           aria-hidden
         />
@@ -286,7 +286,7 @@ export default function site_content_page({ slug, children }: props) {
           <p className="text-[11px] font-bold uppercase tracking-[0.28em] text-accent">
             этимология · морфология · смысл
           </p>
-          <h2 className="mt-3 font-display text-3xl sm:text-5xl font-bold leading-[0.98] text-neutral-900">
+          <h2 className="mt-3 font-heading-soft text-3xl sm:text-5xl font-bold leading-[0.98] text-neutral-900">
             {section.title}
           </h2>
 
@@ -375,7 +375,7 @@ export default function site_content_page({ slug, children }: props) {
     if (variant === 'etymology') return render_etymology_section(section);
     return (
       <section key={section.title} className="mt-12">
-        <h2 className="font-display text-3xl sm:text-4xl font-bold text-neutral-900">
+        <h2 className="font-heading-soft text-3xl sm:text-4xl font-bold text-neutral-900">
           {section.title}
         </h2>
         {section.prose.length > 0 && (
@@ -400,7 +400,7 @@ export default function site_content_page({ slug, children }: props) {
     <div className="page-shell py-8 sm:py-10 pb-16">
       <section className="grid gap-6">
         <div>
-          <h1 className="font-display text-4xl sm:text-5xl lg:text-6xl font-bold leading-[0.98] text-neutral-900">
+          <h1 className="font-heading-soft text-4xl sm:text-5xl lg:text-6xl font-bold leading-[0.98] text-neutral-900">
             {page.title}
           </h1>
           <div className="mt-6 max-w-3xl space-y-4 text-[16px] font-medium leading-relaxed text-neutral-800">
@@ -445,7 +445,7 @@ export default function site_content_page({ slug, children }: props) {
             ))}
             {sections.map((section) => (
               <div key={section.title}>
-                <h2 className="font-display text-2xl font-bold text-neutral-900">
+                <h2 className="font-heading-soft text-2xl font-bold text-neutral-900">
                   {section.title}
                 </h2>
                 {section.prose.map((paragraph) => (

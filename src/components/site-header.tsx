@@ -122,7 +122,7 @@ export default function site_header({
           <button
             type="button"
             onClick={on_city_click}
-            className="group min-w-0 text-left border-l border-surface/80 pl-4 sm:pl-5 rounded-r-xl -my-1 py-1 pr-3 hover:bg-surface/60 transition-colors"
+            className="group min-w-0 text-left pl-4 sm:pl-5 rounded-xl -my-1 py-1 pr-3 hover:bg-surface/60 transition-colors"
           >
             <p className="text-[16px] sm:text-[17px] leading-snug">
               заберу заказ в городе{' '}
@@ -160,7 +160,7 @@ export default function site_header({
             <button
               type="button"
               onClick={on_login}
-              className="inline-flex items-center justify-center text-center rounded-pill bg-accent text-accent-foreground px-4 sm:px-6 py-2.5 text-sm font-bold hover:opacity-90 transition-opacity whitespace-nowrap"
+              className="inline-flex items-center justify-center text-center rounded-pill bg-surface px-4 sm:px-6 py-2.5 text-sm font-semibold text-neutral-800 hover:bg-menu transition-colors whitespace-nowrap"
             >
               войти
             </button>

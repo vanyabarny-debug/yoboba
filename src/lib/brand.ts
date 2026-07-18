@@ -4,9 +4,16 @@ export const BRAND_SUFFIX = '';
 export const BRAND_TAGLINE = 'первая баблтишная в городе';
 export const BRAND_LOGO_SRC = '/images/logo/gong-cha-lantern.png';
 
-/** глубокий насыщенный синий — белый текст читается (~7:1) */
-export const BRAND_COLOR_ACCENT = '#0039A6';
+/** coral / energy — основной CTA и акцент */
+export const BRAND_COLOR_ACCENT = '#FF6B6B';
 export const BRAND_COLOR_ACCENT_DARK = '#002D7A';
+export const BRAND_COLOR_INK = '#20181B';
+export const BRAND_COLOR_PAGE = '#F4F5F6';
+export const BRAND_COLOR_SURFACE = '#FFFFFF';
+export const BRAND_COLOR_MUTE = '#8B8689';
+/** pearl-паттерн (точки тапиоки) */
+export const BRAND_PEARL = '#0039A6';
+export const BRAND_PEARL_DOT = '#20181B';
 
 /** @deprecated используй BRAND_COLOR_ACCENT */
 export const BRAND_COLOR_BLUE = BRAND_COLOR_ACCENT;
@@ -92,11 +99,22 @@ export type brand_font_id =
   | 'fira_condensed'
   | 'nunito_sans'
   | 'zen_maru'
-  | 'caveat';
+  | 'caveat'
+  | 'fredoka';
 
-export const DEFAULT_FONT_SANS: brand_font_id = 'inter';
-export const DEFAULT_FONT_DISPLAY: brand_font_id = 'geologica';
+/** body */
+export const DEFAULT_FONT_SANS: brand_font_id = 'comfortaa';
+/** заголовки игровые / script */
+export const DEFAULT_FONT_DISPLAY: brand_font_id = 'caveat';
+/** заголовки мягкие (по умолчанию) */
+export const DEFAULT_FONT_HEADING_SOFT: brand_font_id = 'nunito';
+/** wordmark */
+export const DEFAULT_FONT_LOGO: brand_font_id = 'fredoka';
 export const DEFAULT_DISPLAY_WEIGHT = 700;
 export const DEFAULT_DISPLAY_TRACKING = -0.02;
-/** масштаб заголовков/акцентов (1 = 100%) */
-export const DEFAULT_DISPLAY_SCALE = 1;
+export const DEFAULT_LOGO_WEIGHT = 600;
+export const DEFAULT_LOGO_TRACKING = 0.04;
+/** масштаб только для игровых заголовков (1 = 100%) */
+export const DEFAULT_DISPLAY_SCALE = 2;
+export type heading_style = 'soft' | 'playful';
+export const DEFAULT_HEADING_STYLE: heading_style = 'soft';
