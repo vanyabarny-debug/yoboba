@@ -1,12 +1,13 @@
 /* eslint-disable no-restricted-globals */
 
-const cache_name = 'yoboba-v1';
+const cache_name = 'yoboba-v2';
 const static_assets = [
   '/',
   '/login',
   '/manifest.json',
   '/icons/icon-192.png',
   '/icons/icon-512.png',
+  '/icons/icon-maskable-512.png',
 ];
 
 self.addEventListener('install', (event) => {
