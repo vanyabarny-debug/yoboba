@@ -158,6 +158,11 @@ body::-webkit-scrollbar {
   border-top-left-radius: var(--menu-sheet-radius);
   border-top-right-radius: var(--menu-sheet-radius);
   overflow: hidden;
+  /* iOS Safari: border-radius + overflow:hidden внутри sticky-родителя
+     рисует чёрные углы. Свой корректный слой это чинит. */
+  transform: translateZ(0);
+  -webkit-backface-visibility: hidden;
+  backface-visibility: hidden;
 }
 
 .menu-sheet-nav-box > nav {
