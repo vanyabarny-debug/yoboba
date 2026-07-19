@@ -3,9 +3,10 @@
 import { useEffect, useRef, useState } from 'react';
 import BrandWordmark from '@/components/brand-wordmark';
 
-// вся композиция укладывается в 6 секунд:
-const EXIT_AT = 5100; // уезжаем шторкой вверх
-const REMOVE_AT = 5950; // убираем из DOM
+// тайминги композиции:
+const SWAP_AT = 3100; // текст свапается: логотип уезжает влево, справа въезжает слоган
+const EXIT_AT = 4900; // вся заставка растворяется в прозрачность
+const REMOVE_AT = 5600; // убираем из DOM
 
 type pearl = { x: number; y: number; vx: number; vy: number; r: number };
 type rect = { left: number; right: number; top: number; bottom: number };
@@ -22,17 +23,24 @@ function make_rng(seed: number) {
 
 export default function app_splash() {
   const [removed, set_removed] = useState(false);
-  const [phase, set_phase] = useState<'run' | 'exit'>('run');
+  const [phase, set_phase] = useState<'run' | 'swap' | 'exit'>('run');
   const canvas_ref = useRef<HTMLCanvasElement>(null);
   const logo_ref = useRef<HTMLDivElement>(null);
+  const phase_ref = useRef<'run' | 'swap' | 'exit'>('run');
+
+  useEffect(() => {
+    phase_ref.current = phase;
+  }, [phase]);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
 
+    const t_swap = setTimeout(() => set_phase('swap'), SWAP_AT);
     const t_exit = setTimeout(() => set_phase('exit'), EXIT_AT);
     const t_remove = setTimeout(() => set_removed(true), REMOVE_AT);
 
     return () => {
+      clearTimeout(t_swap);
       clearTimeout(t_exit);
       clearTimeout(t_remove);
     };
@@ -107,6 +115,9 @@ export default function app_splash() {
     // у логотипа почти нулевой отскок — шарики не подпрыгивают, а скользят
     function get_colliders(): collider[] {
       const out: collider[] = [];
+      // после свапа логотип уезжает — снимаем его коллайдер, чтобы он не тащил
+      // за собой шарики (слоган коллайдером не является вовсе)
+      if (phase_ref.current !== 'run') return out;
       const logo = logo_rect();
       if (logo) out.push({ r: logo, bounce: 0.02 });
       return out;
@@ -281,8 +292,8 @@ export default function app_splash() {
 
       resolve_collisions(get_colliders());
 
-      // соскальзывание: попав на логотип, шарик сразу катится к краю и уходит вниз
-      {
+      // соскальзывание с логотипа — только пока он на месте (до свапа)
+      if (phase_ref.current === 'run') {
         const logo = logo_rect();
         if (logo) {
           const cx = (logo.left + logo.right) / 2;
@@ -327,10 +338,10 @@ export default function app_splash() {
 
   return (
     <div
-      className={`app-splash ${phase === 'exit' ? 'is-exit' : ''}`}
+      className={`app-splash ${phase !== 'run' ? 'is-swap' : ''} ${phase === 'exit' ? 'is-exit' : ''}`}
       role="status"
       aria-label="загрузка приложения"
-      aria-hidden={phase === 'exit'}
+      aria-hidden={phase !== 'run'}
     >
       <canvas ref={canvas_ref} className="app-splash-canvas" aria-hidden="true" />
 
@@ -338,6 +349,11 @@ export default function app_splash() {
         <div ref={logo_ref} className="app-splash-logo">
           <BrandWordmark className="text-[72px]" />
         </div>
+        <p className="app-splash-slogan">
+          радость,
+          <br />
+          которую ты заслуживаешь
+        </p>
       </div>
     </div>
   );

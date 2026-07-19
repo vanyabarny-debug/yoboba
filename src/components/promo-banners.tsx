@@ -176,7 +176,7 @@ export default function promo_banners({
 
   return (
     <section id="promos" className="mb-6 sm:mb-8 bg-page overflow-visible">
-      <div ref={wrap_ref} className="relative mx-auto w-full max-w-[72rem] overflow-visible">
+      <div ref={wrap_ref} className="relative mx-auto w-full overflow-visible">
         {can_left && (
           <button
             type="button"
