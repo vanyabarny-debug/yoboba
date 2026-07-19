@@ -2,6 +2,9 @@
 @config "../../tailwind.config.js";
 
 :root {
+  /* сайт спроектирован под светлую тему — запрещаем браузерам (Android/Yandex)
+     автоматически инвертировать фон, из-за чего появлялись чёрные уголки */
+  color-scheme: light;
   --background: #f4f5f6;
   --foreground: #20181b;
   --color-accent: #ff6b6b;
