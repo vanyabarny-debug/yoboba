@@ -6,6 +6,7 @@ import { create_client } from '@/lib/supabase/client';
 import menu_image from '@/components/menu-image';
 import { menu_badge_on_card } from '@/components/menu-badge';
 import { menu_item_has_badge } from '@/lib/menu-badge';
+import { fly_to_cart } from '@/lib/fly-to-cart';
 import {
   get_composition,
   get_description,
@@ -68,6 +69,7 @@ export default function product_drawer({
   on_return_to_cart,
 }: props) {
   const [qty, set_qty] = useState(1);
+  const image_ref = useRef<HTMLDivElement>(null);
   const [volume, set_volume] = useState<(typeof volumes)[number]['id']>('450');
   const [topping, set_topping] = useState(0);
   const [details_open, set_details_open] = useState(false);
@@ -270,6 +272,7 @@ export default function product_drawer({
   function handle_add_to_cart() {
     if (!active_item) return;
 
+    fly_to_cart(image_ref.current);
     on_add(active_item, qty);
 
     if (topping > 0) {
@@ -317,7 +320,10 @@ export default function product_drawer({
           className={`product-panel product-panel-sheet relative flex h-full w-full flex-col overflow-hidden bg-white shadow-[0_24px_80px_rgba(0,0,0,0.22)] sm:h-[min(88vh,620px)] sm:max-h-[88vh] sm:flex-row sm:rounded-[28px] ${sheet_open ? 'is-visible' : ''}`}
           {...sheet_props}
         >
-          <div className="relative w-full shrink-0 aspect-square overflow-hidden bg-[#f3f4f6] sm:aspect-auto sm:h-full sm:w-[43%]">
+          <div
+            ref={image_ref}
+            className="relative w-full shrink-0 aspect-square overflow-hidden bg-[#f3f4f6] sm:aspect-auto sm:h-full sm:w-[43%]"
+          >
             {createElement(menu_image, {
               item: active_item,
               className: 'h-full w-full sm:!aspect-auto',
@@ -497,7 +503,9 @@ export default function product_drawer({
                     <button
                       type="button"
                       onClick={() => set_qty((q) => Math.max(1, q - 1))}
-                      className="flex h-9 w-9 items-center justify-center rounded-full text-lg text-neutral-800"
+                      disabled={qty <= 1}
+                      aria-label="уменьшить количество"
+                      className="flex h-9 w-9 items-center justify-center rounded-full text-lg text-neutral-800 disabled:text-neutral-400/70"
                     >
                       −
                     </button>
@@ -532,7 +540,9 @@ export default function product_drawer({
                     <button
                       type="button"
                       onClick={() => set_qty((q) => Math.max(1, q - 1))}
-                      className="flex h-9 w-9 items-center justify-center rounded-full text-lg text-neutral-800"
+                      disabled={qty <= 1}
+                      aria-label="уменьшить количество"
+                      className="flex h-9 w-9 items-center justify-center rounded-full text-lg text-neutral-800 disabled:text-neutral-400/70"
                     >
                       −
                     </button>

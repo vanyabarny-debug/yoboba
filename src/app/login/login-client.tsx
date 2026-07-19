@@ -159,7 +159,6 @@ export default function login_client() {
                   disabled={loading || !vk_ready}
                   className="w-full rounded-pill bg-[#0077FF] text-white py-3.5 font-semibold disabled:opacity-50 flex items-center justify-center gap-2"
                 >
-                  <span aria-hidden="true">VK</span>
                   {loading ? 'переходим...' : 'войти через vk'}
                 </button>
 

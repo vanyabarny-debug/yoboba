@@ -93,7 +93,7 @@ export default function site_header({
             <button
               type="button"
               onClick={on_home}
-              className="group m-0 inline-flex w-max max-w-full flex-col items-start justify-start gap-1 border-0 bg-transparent p-0 text-left hover:opacity-90 transition-opacity"
+              className="group m-0 inline-flex w-max max-w-full flex-col items-start justify-start gap-2 border-0 bg-transparent p-0 text-left hover:opacity-90 transition-opacity"
               aria-label={`${brand_name} — на главную, все меню`}
             >
               <BrandWordmark className="text-[32px] sm:text-[38px] leading-none" />

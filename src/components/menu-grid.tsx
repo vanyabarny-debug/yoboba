@@ -1,10 +1,11 @@
 'use client';
 
-import { createElement, useEffect, useState } from 'react';
+import { createElement, useEffect, useRef, useState } from 'react';
 import type { menu_item, promo_banner } from '@/lib/types';
 import menu_image from '@/components/menu-image';
 import { menu_badge_on_card } from '@/components/menu-badge';
 import { menu_item_has_badge } from '@/lib/menu-badge';
+import { fly_to_cart } from '@/lib/fly-to-cart';
 import promo_inline from '@/components/promo-inline';
 import { get_category_heading_style, subscribe_menu_store } from '@/lib/menu-store';
 import { category_heading_class_name } from '@/lib/heading-style';
@@ -44,6 +45,13 @@ function dish_card({
   on_quick_add?: (item: menu_item) => void;
 }) {
   const available = item.is_available;
+  const image_ref = useRef<HTMLDivElement>(null);
+
+  function quick_add() {
+    if (!on_quick_add) return;
+    fly_to_cart(image_ref.current);
+    on_quick_add(item);
+  }
 
   return (
     <div className="group flex h-full w-full flex-col items-center text-center">
@@ -55,6 +63,7 @@ function dish_card({
         {/* wrapper без overflow — плашка может выходить за край карточки */}
         <div className="relative w-full mb-2">
           <div
+            ref={image_ref}
             className={`relative aspect-square w-full overflow-hidden rounded-card ${
               available ? '' : 'opacity-45 saturate-[0.6]'
             }`}
@@ -87,22 +96,20 @@ function dish_card({
         <button
           type="button"
           disabled={!available}
-          onClick={() =>
-            available ? (on_quick_add ? on_quick_add(item) : on_item_click(item)) : undefined
-          }
+          onClick={() => (available ? on_item_click(item) : undefined)}
           className={`inline-flex rounded-pill px-4 py-2 text-[15px] font-extrabold tabular-nums transition-colors ${
             available
               ? 'bg-surface text-neutral-900 hover:bg-surface/80'
               : 'bg-surface/60 text-neutral-400 cursor-not-allowed'
           }`}
-          aria-label={`добавить ${item.name} в корзину за ${item.price} рублей`}
+          aria-label={`${item.name}, ${item.price} рублей — подробнее`}
         >
           {item.price} ₽
         </button>
         {available && on_quick_add && (
           <button
             type="button"
-            onClick={() => on_quick_add(item)}
+            onClick={quick_add}
             className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-accent hover:bg-accent/10 transition-colors"
             aria-label={`быстро добавить ${item.name} в корзину`}
           >

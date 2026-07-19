@@ -238,10 +238,12 @@ export default function cart_drawer({
                         <div className="flex items-center gap-1 rounded-full bg-[#f3f4f6] p-1">
                           <button
                             type="button"
+                            disabled={line.quantity <= 1}
                             onClick={() =>
                               on_update_qty(line.item.id, Math.max(1, line.quantity - 1))
                             }
-                            className="flex h-8 w-8 items-center justify-center rounded-full text-lg text-neutral-700"
+                            aria-label="уменьшить количество"
+                            className="flex h-8 w-8 items-center justify-center rounded-full text-lg text-neutral-700 disabled:text-neutral-400/70"
                           >
                             −
                           </button>

@@ -22,7 +22,7 @@ function menu_badge_inner({ text, className = '', size = 'md' }: props) {
       className={`inline-flex max-w-none shrink-0 items-center justify-center whitespace-nowrap rounded-pill font-sans font-black lowercase leading-none tracking-[0.02em] text-white ${size_class} ${className}`}
       style={{
         background: menu_badge_style.gradient,
-        boxShadow: `0 2px 0 ${menu_badge_style.shadow}, 0 5px 14px rgba(0,0,0,0.25)`,
+        boxShadow: `0 2px 0 ${menu_badge_style.shadow}`,
         textShadow: '0 1px 2px rgba(0,0,10,0.55)',
       }}
     >

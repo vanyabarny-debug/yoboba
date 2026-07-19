@@ -13,6 +13,7 @@ export default function cart_fab({ count, total, on_click }: props) {
     <button
       type="button"
       onClick={on_click}
+      data-cart-target
       className="fixed mobile-fab-offset z-40 min-[1024px]:hidden flex items-center gap-2 rounded-pill bg-accent text-accent-foreground pl-4 pr-5 py-3 shadow-[0_4px_16px_rgba(0,0,0,0.18)] font-semibold animate-in fade-in zoom-in-95 duration-200"
       aria-label={`корзина, ${total} рублей`}
     >
