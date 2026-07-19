@@ -7,6 +7,7 @@ type props = {
   on_click: () => void;
   className?: string;
   size?: 'carousel' | 'inline';
+  dim?: boolean;
 };
 
 export default function promo_card({
@@ -14,6 +15,7 @@ export default function promo_card({
   on_click,
   className = '',
   size = 'carousel',
+  dim = false,
 }: props) {
   const size_class =
     size === 'inline'
@@ -24,7 +26,7 @@ export default function promo_card({
     <button
       type="button"
       onClick={on_click}
-      className={`relative ${size === 'inline' ? '' : 'flex-shrink-0'} ${size_class} rounded-card overflow-hidden isolate text-left hover:brightness-[1.03] transition-[filter] ${className}`}
+      className={`relative ${size === 'inline' ? '' : 'flex-shrink-0'} ${size_class} rounded-card overflow-hidden isolate text-left hover:brightness-[1.03] transition-[filter,opacity] ${dim ? 'opacity-50 saturate-[0.7]' : ''} ${className}`}
     >
       <img
         src={promo.image_url}

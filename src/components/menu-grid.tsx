@@ -19,6 +19,7 @@ type props = {
   promos?: promo_banner[];
   on_promo_click?: (promo: promo_banner) => void;
   inline_promos?: boolean;
+  viewed_promo_ids?: Set<string>;
 };
 
 const cols = 4;
@@ -142,6 +143,7 @@ export default function menu_grid({
   promos = [],
   on_promo_click,
   inline_promos = false,
+  viewed_promo_ids,
 }: props) {
   const [, set_tick] = useState(0);
   useEffect(() => subscribe_menu_store(() => set_tick((t) => t + 1)), []);
@@ -212,6 +214,7 @@ export default function menu_grid({
               createElement(promo_inline, {
                 promos: category_promos,
                 on_promo_click: on_promo_click!,
+                viewed_ids: viewed_promo_ids,
               })}
           </div>
         );

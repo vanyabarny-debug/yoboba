@@ -7,9 +7,10 @@ import promo_card from '@/components/promo-card';
 type props = {
   promos: promo_banner[];
   on_promo_click: (promo: promo_banner) => void;
+  viewed_ids?: Set<string>;
 };
 
-export default function promo_inline({ promos, on_promo_click }: props) {
+export default function promo_inline({ promos, on_promo_click, viewed_ids }: props) {
   if (!promos.length) return null;
 
   return (
@@ -20,6 +21,7 @@ export default function promo_inline({ promos, on_promo_click }: props) {
             key: promo.id,
             promo,
             size: 'inline',
+            dim: viewed_ids?.has(promo.id) ?? false,
             on_click: () => on_promo_click(promo),
           })
         )}

@@ -26,6 +26,8 @@ export type promo_banner = {
   link_url?: string;
   menu_id?: string | null;
   category?: string | null;
+  /** подпись кнопки перехода в сторис (по умолчанию «перейти») */
+  cta_label?: string;
   is_active: boolean;
 };
 

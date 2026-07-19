@@ -10,6 +10,7 @@ import {
   reset_promo_store,
   upsert_promo,
 } from '@/lib/promo-store';
+import { classify_promo_link, allowed_platform_labels } from '@/lib/promo-link';
 
 const empty_promo: promo_banner = {
   id: '',
@@ -20,6 +21,7 @@ const empty_promo: promo_banner = {
   link_url: '',
   menu_id: null,
   category: null,
+  cta_label: '',
   is_active: true,
 };
 
@@ -38,14 +40,20 @@ export default function promo_manage() {
   function handle_save(e: React.FormEvent) {
     e.preventDefault();
     if (!editing) return;
+    const link = classify_promo_link(editing.link_url);
+    if (!link.ok) {
+      alert(link.reason);
+      return;
+    }
     const payload: promo_banner = {
       ...editing,
       id: editing.id || new_promo_id(),
       title: editing.title.trim(),
       subtitle: editing.subtitle?.trim() || undefined,
       badge: editing.badge?.trim() || undefined,
+      cta_label: editing.cta_label?.trim() || undefined,
       image_url: editing.image_url.trim(),
-      link_url: editing.link_url?.trim() || undefined,
+      link_url: link.normalized || undefined,
       menu_id: editing.menu_id?.trim() || null,
       category: editing.category?.trim() || null,
     };
@@ -217,13 +225,25 @@ export default function promo_manage() {
                 />
               </label>
               <label className="block">
+                <span className="text-xs text-neutral-500">подпись кнопки (по умолчанию «перейти»)</span>
+                <input
+                  value={editing.cta_label || ''}
+                  onChange={(e) => set_editing({ ...editing, cta_label: e.target.value })}
+                  placeholder="перейти"
+                  className="mt-1 w-full rounded-xl border border-surface px-3 py-2 text-sm"
+                />
+              </label>
+              <label className="block">
                 <span className="text-xs text-neutral-500">ссылка (необяз.)</span>
                 <input
                   value={editing.link_url || ''}
                   onChange={(e) => set_editing({ ...editing, link_url: e.target.value })}
-                  placeholder="https://..."
+                  placeholder="https://t.me/yomoyo"
                   className="mt-1 w-full rounded-xl border border-surface px-3 py-2 text-sm"
                 />
+                <span className="mt-1 block text-xs text-neutral-400">
+                  внутренние (/rabota) или: {allowed_platform_labels.join(', ')}
+                </span>
               </label>
               <label className="block">
                 <span className="text-xs text-neutral-500">id товара (открыть карточку)</span>

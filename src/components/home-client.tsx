@@ -12,6 +12,7 @@ import cart_drawer, { type cart_line } from '@/components/cart-drawer';
 import cart_fab from '@/components/cart-fab';
 import top_bar from '@/components/top-bar';
 import promo_banners from '@/components/promo-banners';
+import promo_story_viewer from '@/components/promo-story-viewer';
 import promo_edit_sheet from '@/components/admin/promo-edit-sheet';
 import category_nav from '@/components/category-nav';
 import category_edit_sheet from '@/components/admin/category-edit-sheet';
@@ -32,6 +33,11 @@ import {
   upsert_promo,
   default_promos,
 } from '@/lib/promo-store';
+import {
+  get_viewed_promos,
+  mark_promo_viewed,
+  subscribe_viewed_promos,
+} from '@/lib/viewed-promos';
 import sidebar_ad from '@/components/sidebar-ad';
 import {
   default_sidebar_interval_ms,
@@ -154,6 +160,8 @@ export default function home_client({
   const [header_h, set_header_h] = useState(72);
   const [nav_h, set_nav_h] = useState(56);
   const [editing_promo, set_editing_promo] = useState<promo_banner | null>(null);
+  const [story_index, set_story_index] = useState<number | null>(null);
+  const [viewed_promos, set_viewed_promos] = useState<Set<string>>(() => new Set());
   const [editing_slide, set_editing_slide] = useState<sidebar_ad_slide | null>(null);
   const [editing_link, set_editing_link] = useState<top_bar_link | null>(null);
   const [editing_category, set_editing_category] = useState<string | null>(null);
@@ -172,6 +180,7 @@ export default function home_client({
     : Boolean(user_id && !is_anonymous);
   const cart_count = cart_lines.reduce((s, l) => s + l.quantity, 0);
   const cart_total = cart_lines.reduce((s, l) => s + l.item.price * l.quantity, 0);
+  const active_promos = promos.filter((p) => p.is_active);
 
   useEffect(() => {
     const category = search_params.get('category');
@@ -306,6 +315,14 @@ export default function home_client({
     reload_promos();
     return subscribe_promo_store(reload_promos);
   }, [demo_mode]);
+
+  useEffect(() => {
+    function reload_viewed() {
+      set_viewed_promos(get_viewed_promos());
+    }
+    reload_viewed();
+    return subscribe_viewed_promos(reload_viewed);
+  }, []);
 
   useEffect(() => {
     if (!demo_mode) return;
@@ -683,6 +700,12 @@ export default function home_client({
   }
 
   function handle_promo_click(promo: promo_banner) {
+    const idx = active_promos.findIndex((p) => p.id === promo.id);
+    set_story_index(idx >= 0 ? idx : 0);
+  }
+
+  function perform_promo_action(promo: promo_banner) {
+    set_story_index(null);
     if (promo.menu_id) {
       const item = menu.find((i) => i.id === promo.menu_id);
       if (item) {
@@ -700,7 +723,11 @@ export default function home_client({
       return;
     }
     if (promo.link_url && promo.link_url !== '/') {
-      router.push(promo.link_url);
+      if (promo.link_url.startsWith('/')) {
+        router.push(promo.link_url);
+      } else {
+        window.open(promo.link_url, '_blank', 'noopener,noreferrer');
+      }
     }
   }
 
@@ -835,6 +862,7 @@ export default function home_client({
           } : {
             promos,
             on_promo_click: handle_promo_click,
+            viewed_ids: viewed_promos,
           })}
         </div>
       )}
@@ -893,6 +921,7 @@ export default function home_client({
                     promos,
                     inline_promos: true,
                     on_promo_click: handle_promo_click,
+                    viewed_promo_ids: viewed_promos,
                     on_item_click: (item: menu_item) => {
                       set_selected(item);
                       set_product_from_cart(false);
@@ -964,6 +993,16 @@ export default function home_client({
           count: cart_count,
           total: cart_total,
           on_click: () => set_cart_open(true),
+        })}
+
+      {!is_admin_edit && story_index !== null &&
+        createElement(promo_story_viewer, {
+          promos: active_promos,
+          start_index: story_index,
+          open: true,
+          on_close: () => set_story_index(null),
+          on_action: perform_promo_action,
+          on_view: (promo: promo_banner) => mark_promo_viewed(promo.id),
         })}
 
       {is_admin_edit && createElement(promo_edit_sheet, {

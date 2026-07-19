@@ -10,6 +10,7 @@ type props = {
   edit_mode?: boolean;
   on_edit_promo?: (promo: promo_banner) => void;
   on_add_promo?: () => void;
+  viewed_ids?: Set<string>;
 };
 
 // пауза между автолистаниями (по одной карточке)
@@ -21,6 +22,7 @@ export default function promo_banners({
   edit_mode = false,
   on_edit_promo,
   on_add_promo,
+  viewed_ids,
 }: props) {
   const active = edit_mode ? promos : promos.filter((p) => p.is_active);
   const scroll_ref = useRef<HTMLDivElement>(null);
@@ -203,7 +205,9 @@ export default function promo_banners({
                   <button
                     type="button"
                     onClick={() => (edit_mode ? on_edit_promo?.(promo) : on_promo_click(promo))}
-                    className="relative w-full h-full text-left hover:brightness-[1.03] transition-[filter]"
+                    className={`relative w-full h-full text-left hover:brightness-[1.03] transition-[filter,opacity] ${
+                      !edit_mode && viewed_ids?.has(promo.id) ? 'opacity-50 saturate-[0.7]' : ''
+                    }`}
                   >
                     <img
                       src={promo.image_url}

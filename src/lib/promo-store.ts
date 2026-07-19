@@ -1,6 +1,6 @@
 import type { promo_banner } from '@/lib/types';
 
-export const promo_store_version = 7;
+export const promo_store_version = 8;
 
 const storage_key = 'yoboba_promo_store';
 const update_event = 'yoboba-promo-update';
