@@ -1,0 +1,17 @@
+services:
+  web:
+    build:
+      context: .
+      args:
+        # compose подставляет значения из соседнего .env
+        NEXT_PUBLIC_SUPABASE_URL: ${NEXT_PUBLIC_SUPABASE_URL}
+        NEXT_PUBLIC_SUPABASE_ANON_KEY: ${NEXT_PUBLIC_SUPABASE_ANON_KEY}
+        NEXT_PUBLIC_SITE_URL: ${NEXT_PUBLIC_SITE_URL}
+        NEXT_PUBLIC_VK_CLIENT_ID: ${NEXT_PUBLIC_VK_CLIENT_ID}
+    image: yomoyo-web
+    # серверные секреты подтягиваются в рантайме
+    env_file: .env
+    restart: unless-stopped
+    # слушаем только localhost — наружу проксирует nginx с TLS
+    ports:
+      - "127.0.0.1:3000:3000"

@@ -1,6 +1,8 @@
 import type { NextConfig } from 'next';
 
 const next_config: NextConfig = {
+  // сборка в минимальный Node-сервер (.next/standalone/server.js) для Docker/VPS
+  output: 'standalone',
   headers: async () => [
     {
       source: '/service-worker.js',
