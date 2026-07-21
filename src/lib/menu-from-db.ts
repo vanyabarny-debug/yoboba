@@ -1,4 +1,5 @@
 import { default_categories } from '@/lib/menu-store';
+import { normalize_menu_item_images } from '@/lib/menu-store';
 import type { menu_item } from '@/lib/types';
 
 export function resolve_menu_categories(menu: menu_item[]) {
@@ -12,5 +13,6 @@ export function resolve_menu_categories(menu: menu_item[]) {
 }
 
 export function resolve_initial_menu(db_menu: menu_item[] | null | undefined) {
-  return db_menu && db_menu.length > 0 ? db_menu : null;
+  if (!db_menu || db_menu.length === 0) return null;
+  return normalize_menu_item_images(db_menu);
 }

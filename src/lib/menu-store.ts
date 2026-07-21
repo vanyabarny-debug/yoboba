@@ -237,6 +237,15 @@ export function apply_menu_item_badges(items: menu_item[]) {
   return merge_default_badges(items);
 }
 
+/** чинит старые SVG-плейсхолдеры из БД на актуальные PNG */
+export function normalize_menu_item_images(items: menu_item[]) {
+  const default_by_id = new Map(default_menu_items.map((i) => [i.id, i]));
+  return items.map((item) => {
+    const fallback = default_by_id.get(item.id);
+    return { ...item, image_url: resolve_image_url(item, fallback) };
+  });
+}
+
 function repair_menu_store(store: menu_store): menu_store {
   const defaults = get_default_store();
   const removed = new Set(store.removed_item_ids ?? []);
