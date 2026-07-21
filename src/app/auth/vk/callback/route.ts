@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 import { create_server_client } from '@/lib/supabase/server';
+import { public_site_origin } from '@/lib/vk-auth-config';
 import {
   exchange_vk_code,
   fetch_vk_user,
@@ -16,6 +17,7 @@ function clear_vk_cookies(response: NextResponse) {
 
 export async function GET(request: Request) {
   const url = new URL(request.url);
+  const origin = public_site_origin(request);
   const code = url.searchParams.get('code');
   const device_id = url.searchParams.get('device_id');
   const state = url.searchParams.get('state');
@@ -28,18 +30,18 @@ export async function GET(request: Request) {
 
   if (vk_error) {
     const res = NextResponse.redirect(
-      new URL(`/login?error=${encodeURIComponent(vk_error)}`, url.origin)
+      new URL(`/login?error=${encodeURIComponent(vk_error)}`, origin)
     );
     return clear_vk_cookies(res);
   }
 
   if (!code || !device_id || !state || !expected_state || !code_verifier) {
-    const res = NextResponse.redirect(new URL('/login?error=vk_missing_params', url.origin));
+    const res = NextResponse.redirect(new URL('/login?error=vk_missing_params', origin));
     return clear_vk_cookies(res);
   }
 
   if (state !== expected_state) {
-    const res = NextResponse.redirect(new URL('/login?error=vk_state_mismatch', url.origin));
+    const res = NextResponse.redirect(new URL('/login?error=vk_state_mismatch', origin));
     return clear_vk_cookies(res);
   }
 
@@ -48,7 +50,7 @@ export async function GET(request: Request) {
       code,
       device_id,
       code_verifier,
-      origin: url.origin,
+      origin,
     });
     const vk_user = await fetch_vk_user(access_token);
 
@@ -72,12 +74,12 @@ export async function GET(request: Request) {
     }
 
     const destination = return_to.startsWith('/') ? return_to : '/';
-    const res = NextResponse.redirect(new URL(destination, url.origin));
+    const res = NextResponse.redirect(new URL(destination, origin));
     return clear_vk_cookies(res);
   } catch (err) {
     const message = err instanceof Error ? err.message : 'vk_auth_failed';
     const res = NextResponse.redirect(
-      new URL(`/login?error=${encodeURIComponent(message)}`, url.origin)
+      new URL(`/login?error=${encodeURIComponent(message)}`, origin)
     );
     return clear_vk_cookies(res);
   }

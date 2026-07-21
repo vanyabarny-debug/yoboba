@@ -6,6 +6,7 @@ import {
 } from '@/lib/pkce';
 import {
   is_vk_auth_configured,
+  public_site_origin,
   vk_authorize_url,
   vk_default_scope,
   vk_redirect_uri,
@@ -21,21 +22,20 @@ const cookie_opts = {
 
 export async function GET(request: Request) {
   const url = new URL(request.url);
+  const origin = public_site_origin(request);
   const return_to = url.searchParams.get('returnTo') || '/';
   const safe_return = return_to.startsWith('/') ? return_to : '/';
 
   try {
     if (!is_vk_auth_configured()) {
-      return NextResponse.redirect(
-        new URL('/login?error=vk_not_configured', url.origin)
-      );
+      return NextResponse.redirect(new URL('/login?error=vk_not_configured', origin));
     }
 
     const state = create_oauth_state();
     const verifier = create_code_verifier();
     const challenge = await create_code_challenge(verifier);
 
-    const redirect_uri = vk_redirect_uri(url.origin);
+    const redirect_uri = vk_redirect_uri(origin);
     const auth_url = new URL(vk_authorize_url);
     auth_url.searchParams.set('client_id', process.env.NEXT_PUBLIC_VK_CLIENT_ID!);
     auth_url.searchParams.set('redirect_uri', redirect_uri);
@@ -53,7 +53,7 @@ export async function GET(request: Request) {
   } catch (err) {
     const message = err instanceof Error ? err.message : 'vk_init_failed';
     return NextResponse.redirect(
-      new URL(`/login?error=${encodeURIComponent(message)}`, url.origin)
+      new URL(`/login?error=${encodeURIComponent(message)}`, origin)
     );
   }
 }

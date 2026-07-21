@@ -18,6 +18,21 @@ export function vk_redirect_uri(origin?: string) {
   return `${base.replace(/\/$/, '')}/auth/vk/callback`;
 }
 
+/** публичный origin сайта (не 0.0.0.0 из Docker HOSTNAME) */
+export function public_site_origin(request: Request) {
+  const configured = process.env.NEXT_PUBLIC_SITE_URL?.replace(/\/$/, '');
+  if (configured) return configured;
+
+  const headers = request.headers;
+  const host = headers.get('x-forwarded-host') || headers.get('host');
+  if (host && !host.startsWith('0.0.0.0') && !host.startsWith('127.0.0.1')) {
+    const proto = headers.get('x-forwarded-proto') || 'https';
+    return `${proto}://${host}`;
+  }
+
+  return new URL(request.url).origin;
+}
+
 export function vk_auth_email(vk_user_id: string) {
   return `vk${vk_user_id}@auth.yoboba`;
 }
