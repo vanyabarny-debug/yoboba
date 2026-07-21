@@ -107,11 +107,25 @@ export async function fetch_vk_user(access_token: string): Promise<vk_user_info>
 }
 
 async function find_user_id_by_email(email: string) {
-  const admin = service_client();
-  // быстрый поиск — без listUsers (тормозил callback → nginx 502)
-  const { data, error } = await admin.auth.admin.getUserByEmail(email);
-  if (error || !data.user) return null;
-  return data.user.id;
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!url || !key) return null;
+
+  // GoTrue admin filter by email — быстрее listUsers
+  const res = await fetch(
+    `${url.replace(/\/$/, '')}/auth/v1/admin/users?email=${encodeURIComponent(email)}`,
+    {
+      headers: {
+        Authorization: `Bearer ${key}`,
+        apikey: key,
+      },
+    }
+  );
+  if (!res.ok) return null;
+
+  const json = (await res.json()) as { users?: { id: string; email?: string }[] };
+  const match = json.users?.find((u) => u.email?.toLowerCase() === email.toLowerCase());
+  return match?.id ?? null;
 }
 
 async function merge_cart(from_id: string, to_id: string) {
