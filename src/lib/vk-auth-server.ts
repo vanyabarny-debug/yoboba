@@ -106,15 +106,12 @@ export async function fetch_vk_user(access_token: string): Promise<vk_user_info>
   return json.user;
 }
 
-async function find_user_id_by_vk(vk_user_id: string) {
+async function find_user_id_by_email(email: string) {
   const admin = service_client();
-  const email = vk_auth_email(vk_user_id);
-
-  const { data: listed } = await admin.auth.admin.listUsers({ page: 1, perPage: 200 });
-  const match = listed.users.find(
-    (u) => u.email === email || u.user_metadata?.vk_id === vk_user_id
-  );
-  return match?.id ?? null;
+  // быстрый поиск — без listUsers (тормозил callback → nginx 502)
+  const { data, error } = await admin.auth.admin.getUserByEmail(email);
+  if (error || !data.user) return null;
+  return data.user.id;
 }
 
 async function merge_cart(from_id: string, to_id: string) {
@@ -171,7 +168,11 @@ export async function upsert_vk_supabase_user(input: {
   const email = input.vk_user.email?.trim() || vk_auth_email(vk_id);
   const name = display_name(input.vk_user);
 
-  let user_id = await find_user_id_by_vk(vk_id);
+  let user_id = await find_user_id_by_email(email);
+  // если пользователь ранее логинился через synthetic vk-email — тоже найдём
+  if (!user_id && email !== vk_auth_email(vk_id)) {
+    user_id = await find_user_id_by_email(vk_auth_email(vk_id));
+  }
   const phone = normalize_phone(input.vk_user.phone);
   const metadata = {
     vk_id,
@@ -214,8 +215,8 @@ export async function upsert_vk_supabase_user(input: {
   await admin.from('profiles').upsert(profile_row, { onConflict: 'id' });
 
   if (input.anonymous_user_id && input.anonymous_user_id !== user_id) {
-    await merge_cart(input.anonymous_user_id, user_id);
-    await admin.auth.admin.deleteUser(input.anonymous_user_id);
+    // только мержим корзину — удаление anon не блокирует вход (иначе nginx 502)
+    await merge_cart(input.anonymous_user_id, user_id).catch(() => {});
   }
 
   const { data: link, error: link_error } = await admin.auth.admin.generateLink({
