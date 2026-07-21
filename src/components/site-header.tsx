@@ -149,13 +149,21 @@ export default function site_header({
             </button>
           )}
           {is_logged_in ? (
-            <button
-              type="button"
-              onClick={on_logout}
-              className="rounded-pill bg-menu px-4 sm:px-6 py-2.5 text-sm font-medium text-neutral-800 hover:bg-surface transition-colors whitespace-nowrap"
-            >
-              выйти
-            </button>
+            <>
+              <a
+                href="/profile"
+                className="rounded-pill bg-surface px-4 sm:px-6 py-2.5 text-sm font-semibold text-neutral-800 hover:bg-menu transition-colors whitespace-nowrap"
+              >
+                профиль
+              </a>
+              <button
+                type="button"
+                onClick={on_logout}
+                className="rounded-pill bg-menu px-4 sm:px-6 py-2.5 text-sm font-medium text-neutral-800 hover:bg-surface transition-colors whitespace-nowrap"
+              >
+                выйти
+              </button>
+            </>
           ) : (
             <button
               type="button"
