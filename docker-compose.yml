@@ -11,6 +11,9 @@ services:
     image: yomoyo-web
     # серверные секреты подтягиваются в рантайме
     env_file: .env
+    environment:
+      # на VPS Node часто падает на IPv6 к внешним API («fetch failed»)
+      NODE_OPTIONS: '--dns-result-order=ipv4first'
     restart: unless-stopped
     # слушаем только localhost — наружу проксирует nginx с TLS
     ports:

@@ -22,6 +22,14 @@ function service_client() {
   );
 }
 
+function wrap_fetch_error(target: string, err: unknown): never {
+  const cause =
+    err instanceof Error
+      ? `${err.message}${err.cause instanceof Error ? `: ${err.cause.message}` : ''}`
+      : String(err);
+  throw new Error(`не удалось связаться с ${target} (${cause})`);
+}
+
 export async function exchange_vk_code(input: {
   code: string;
   device_id: string;
@@ -44,11 +52,16 @@ export async function exchange_vk_code(input: {
     device_id: input.device_id,
   });
 
-  const res = await fetch(vk_token_url, {
-    method: 'POST',
-    headers: { 'content-type': 'application/x-www-form-urlencoded' },
-    body,
-  });
+  let res: Response;
+  try {
+    res = await fetch(vk_token_url, {
+      method: 'POST',
+      headers: { 'content-type': 'application/x-www-form-urlencoded' },
+      body,
+    });
+  } catch (err) {
+    wrap_fetch_error('id.vk.ru', err);
+  }
 
   const json = (await res.json()) as {
     access_token?: string;
@@ -69,11 +82,16 @@ export async function fetch_vk_user(access_token: string): Promise<vk_user_info>
     throw new Error('VK client_id не настроен');
   }
 
-  const res = await fetch(vk_user_info_url, {
-    method: 'POST',
-    headers: { 'content-type': 'application/x-www-form-urlencoded' },
-    body: new URLSearchParams({ access_token, client_id }),
-  });
+  let res: Response;
+  try {
+    res = await fetch(vk_user_info_url, {
+      method: 'POST',
+      headers: { 'content-type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({ access_token, client_id }),
+    });
+  } catch (err) {
+    wrap_fetch_error('id.vk.ru/user_info', err);
+  }
 
   const json = (await res.json()) as {
     user?: vk_user_info;
