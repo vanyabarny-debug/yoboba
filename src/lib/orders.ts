@@ -1,4 +1,4 @@
-import type { order_item } from '@/lib/types';
+import type { order, order_item } from '@/lib/types';
 
 type create_order_input = {
   user_id: string;
@@ -27,4 +27,13 @@ export async function create_order(input: create_order_input) {
   }
 
   return { data: body.order, error: null };
+}
+
+export async function fetch_my_orders() {
+  const res = await fetch('/api/orders', { credentials: 'same-origin' });
+  const body = (await res.json()) as { orders?: order[]; error?: string };
+  if (!res.ok) {
+    return { data: [] as order[], error: new Error(body.error || 'не удалось загрузить заказы') };
+  }
+  return { data: body.orders || [], error: null };
 }

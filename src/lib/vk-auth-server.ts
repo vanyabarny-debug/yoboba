@@ -123,6 +123,16 @@ function display_name(info: vk_user_info) {
   return parts.join(' ').trim() || 'гость';
 }
 
+function normalize_phone(raw?: string | null) {
+  if (!raw) return null;
+  const digits = raw.replace(/\D/g, '');
+  if (!digits) return null;
+  if (digits.length === 11 && digits.startsWith('8')) return `+7${digits.slice(1)}`;
+  if (digits.length === 11 && digits.startsWith('7')) return `+${digits}`;
+  if (digits.length === 10) return `+7${digits}`;
+  return raw.trim().startsWith('+') ? raw.trim() : `+${digits}`;
+}
+
 export async function upsert_vk_supabase_user(input: {
   vk_user: vk_user_info;
   anonymous_user_id?: string | null;
@@ -133,17 +143,22 @@ export async function upsert_vk_supabase_user(input: {
   const name = display_name(input.vk_user);
 
   let user_id = await find_user_id_by_vk(vk_id);
+  const phone = normalize_phone(input.vk_user.phone);
+  const metadata = {
+    vk_id,
+    provider: 'vk',
+    full_name: name,
+    first_name: input.vk_user.first_name || null,
+    last_name: input.vk_user.last_name || null,
+    phone: phone,
+    avatar_url: input.vk_user.avatar || null,
+  };
 
   if (!user_id) {
     const { data, error } = await admin.auth.admin.createUser({
       email,
       email_confirm: true,
-      user_metadata: {
-        vk_id,
-        provider: 'vk',
-        full_name: name,
-        avatar_url: input.vk_user.avatar || null,
-      },
+      user_metadata: metadata,
     });
     if (error || !data.user) {
       throw new Error(error?.message || 'не удалось создать пользователя');
@@ -151,23 +166,23 @@ export async function upsert_vk_supabase_user(input: {
     user_id = data.user.id;
   } else {
     await admin.auth.admin.updateUserById(user_id, {
-      user_metadata: {
-        vk_id,
-        provider: 'vk',
-        full_name: name,
-        avatar_url: input.vk_user.avatar || null,
-      },
+      user_metadata: metadata,
     });
   }
 
-  await admin.from('profiles').upsert(
-    {
-      id: user_id,
-      name,
-      phone: input.vk_user.phone || null,
-    },
-    { onConflict: 'id' }
-  );
+  const profile_row: {
+    id: string;
+    name: string;
+    phone?: string;
+    updated_at: string;
+  } = {
+    id: user_id,
+    name,
+    updated_at: new Date().toISOString(),
+  };
+  if (phone) profile_row.phone = phone;
+
+  await admin.from('profiles').upsert(profile_row, { onConflict: 'id' });
 
   if (input.anonymous_user_id && input.anonymous_user_id !== user_id) {
     await merge_cart(input.anonymous_user_id, user_id);

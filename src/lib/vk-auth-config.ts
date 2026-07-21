@@ -1,7 +1,7 @@
 export const vk_authorize_url = 'https://id.vk.ru/authorize';
 export const vk_token_url = 'https://id.vk.ru/oauth2/auth';
 export const vk_user_info_url = 'https://id.vk.ru/oauth2/user_info';
-export const vk_default_scope = 'vkid.personal_info email';
+export const vk_default_scope = 'vkid.personal_info email phone';
 
 export function is_vk_auth_configured() {
   const public_ok = Boolean(

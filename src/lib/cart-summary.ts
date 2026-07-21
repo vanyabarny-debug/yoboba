@@ -21,6 +21,16 @@ export function calc_order_bonus(total: number): number {
   return Math.floor(total / 10);
 }
 
+/** сколько шариков нужно, чтобы получить напиток бесплатно */
+export const FREE_DRINK_BONUS_THRESHOLD = 50;
+
+export const bonus_earning_rules = [
+  'за каждые 10 ₽ в заказе начисляем 1 шарик тапиоки',
+  `накопите ${FREE_DRINK_BONUS_THRESHOLD} шариков — получите напиток бесплатно`,
+  'шарики начисляются после оформления заказа на ваш аккаунт',
+  'списать шарики можно на кассе — покажите баланс в профиле',
+] as const;
+
 const snack_categories = new Set(['закуски']);
 
 export function is_snack_category(category: string): boolean {

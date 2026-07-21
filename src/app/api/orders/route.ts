@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { create_server_client } from '@/lib/supabase/server';
 import { create_service_client } from '@/lib/supabase/service';
+import { calc_order_bonus } from '@/lib/cart-summary';
 import type { order_item } from '@/lib/types';
 
 export async function GET() {
@@ -43,7 +44,11 @@ export async function POST(request: Request) {
   }
 
   const admin = create_service_client();
-  const { data: profile } = await admin.from('profiles').select('id').eq('id', user.id).maybeSingle();
+  const { data: profile } = await admin
+    .from('profiles')
+    .select('id, bonus_balance')
+    .eq('id', user.id)
+    .maybeSingle();
   if (!profile) {
     await admin.from('profiles').upsert(
       { id: user.id, name: 'гость', bonus_balance: 0, role: 'user' },
@@ -70,5 +75,14 @@ export async function POST(request: Request) {
 
   await supabase.from('cart_items').delete().eq('user_id', user.id);
 
-  return NextResponse.json({ order: data });
+  const earned = calc_order_bonus(total_price);
+  if (earned > 0 && !user.is_anonymous) {
+    const current = profile?.bonus_balance ?? 0;
+    await admin
+      .from('profiles')
+      .update({ bonus_balance: current + earned, updated_at: new Date().toISOString() })
+      .eq('id', user.id);
+  }
+
+  return NextResponse.json({ order: data, bonus_earned: earned });
 }

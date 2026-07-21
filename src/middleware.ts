@@ -28,7 +28,11 @@ export async function middleware(request: NextRequest) {
   const code = request.nextUrl.searchParams.get('code');
   const token_hash = request.nextUrl.searchParams.get('token_hash');
 
-  if ((code || token_hash) && path !== '/auth/callback') {
+  // email/magiclink → /auth/callback; VK OAuth держит свой PKCE в cookies
+  // на /auth/vk/callback — не перехватывать, иначе Supabase ищет чужой verifier
+  const is_vk_oauth =
+    path.startsWith('/auth/vk/') || path.startsWith('/api/auth/vk');
+  if ((code || token_hash) && path !== '/auth/callback' && !is_vk_oauth) {
     const url = request.nextUrl.clone();
     url.pathname = '/auth/callback';
     return NextResponse.redirect(url);
