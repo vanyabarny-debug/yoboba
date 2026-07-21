@@ -28,11 +28,17 @@ export async function exchange_vk_code(input: {
   code_verifier: string;
   origin?: string;
 }) {
+  const client_id = process.env.NEXT_PUBLIC_VK_CLIENT_ID;
+  if (!client_id) {
+    throw new Error('VK client_id не настроен');
+  }
+
+  // VK ID web + PKCE: client_secret в обмене кода не нужен
+  // (если передать неверный secret — часто приходит «client_id is invalid»)
   const body = new URLSearchParams({
     grant_type: 'authorization_code',
     code: input.code,
-    client_id: process.env.NEXT_PUBLIC_VK_CLIENT_ID!,
-    client_secret: process.env.VK_CLIENT_SECRET!,
+    client_id,
     redirect_uri: vk_redirect_uri(input.origin),
     code_verifier: input.code_verifier,
     device_id: input.device_id,
@@ -58,10 +64,15 @@ export async function exchange_vk_code(input: {
 }
 
 export async function fetch_vk_user(access_token: string): Promise<vk_user_info> {
+  const client_id = process.env.NEXT_PUBLIC_VK_CLIENT_ID;
+  if (!client_id) {
+    throw new Error('VK client_id не настроен');
+  }
+
   const res = await fetch(vk_user_info_url, {
     method: 'POST',
     headers: { 'content-type': 'application/x-www-form-urlencoded' },
-    body: new URLSearchParams({ access_token }),
+    body: new URLSearchParams({ access_token, client_id }),
   });
 
   const json = (await res.json()) as {

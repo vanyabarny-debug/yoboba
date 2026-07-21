@@ -15,12 +15,37 @@ function clear_vk_cookies(response: NextResponse) {
   return response;
 }
 
+function read_vk_callback_params(url: URL) {
+  const payload_raw = url.searchParams.get('payload');
+  if (payload_raw) {
+    try {
+      const payload = JSON.parse(payload_raw) as {
+        code?: string;
+        state?: string;
+        device_id?: string;
+        type?: string;
+      };
+      return {
+        code: payload.code ?? null,
+        device_id: payload.device_id ?? null,
+        state: payload.state ?? null,
+      };
+    } catch {
+      /* fall through to flat params */
+    }
+  }
+
+  return {
+    code: url.searchParams.get('code'),
+    device_id: url.searchParams.get('device_id'),
+    state: url.searchParams.get('state'),
+  };
+}
+
 export async function GET(request: Request) {
   const url = new URL(request.url);
   const origin = public_site_origin(request);
-  const code = url.searchParams.get('code');
-  const device_id = url.searchParams.get('device_id');
-  const state = url.searchParams.get('state');
+  const { code, device_id, state } = read_vk_callback_params(url);
   const vk_error = url.searchParams.get('error');
 
   const store = await cookies();

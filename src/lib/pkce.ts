@@ -16,7 +16,8 @@ export async function create_code_challenge(verifier: string) {
 }
 
 export function create_oauth_state() {
-  const bytes = new Uint8Array(16);
+  // VK ID требует state длиной ≥ 32 символа
+  const bytes = new Uint8Array(24);
   crypto.getRandomValues(bytes);
   return base64url(bytes);
 }
