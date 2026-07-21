@@ -131,9 +131,7 @@ export default function site_header({
               </span>
             </p>
             <p className="text-[12px] sm:text-[13px] text-neutral-500 mt-1 leading-relaxed group-hover:text-neutral-700 transition-colors">
-              {is_logged_in
-                ? `${user_name || 'гость'} · ${bonus} баллов`
-                : 'нажмите, если город не ваш'}
+              нажмите, если город не ваш
             </p>
           </button>
         </div>
@@ -149,21 +147,18 @@ export default function site_header({
             </button>
           )}
           {is_logged_in ? (
-            <>
-              <a
-                href="/profile"
-                className="rounded-pill bg-surface px-4 sm:px-6 py-2.5 text-sm font-semibold text-neutral-800 hover:bg-menu transition-colors whitespace-nowrap"
-              >
-                профиль
-              </a>
-              <button
-                type="button"
-                onClick={on_logout}
-                className="rounded-pill bg-menu px-4 sm:px-6 py-2.5 text-sm font-medium text-neutral-800 hover:bg-surface transition-colors whitespace-nowrap"
-              >
-                выйти
-              </button>
-            </>
+            <a
+              href="/profile"
+              className="rounded-pill bg-surface px-4 sm:px-5 py-2.5 text-left hover:bg-menu transition-colors max-w-[14rem]"
+              aria-label="открыть профиль"
+            >
+              <p className="text-sm font-semibold text-neutral-900 truncate">
+                {user_name || 'профиль'}
+              </p>
+              <p className="text-[11px] text-neutral-500 leading-tight mt-0.5">
+                {bonus} шариков
+              </p>
+            </a>
           ) : (
             <button
               type="button"
