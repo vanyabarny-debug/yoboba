@@ -11,7 +11,7 @@ import {
 import { format_phone_input, phone_input_to_e164 } from '@/lib/phone';
 import { category_tile_meta } from '@/lib/category-icons';
 import { get_topping_portion_price_value } from '@/lib/product-details';
-import { tile_grid } from '@/lib/seller-tile-grid';
+import { board_tile_grid, tile_grid } from '@/lib/seller-tile-grid';
 import { use_page_swipe } from '@/lib/use-page-swipe';
 import type { menu_item, order_item } from '@/lib/types';
 import menu_image from '@/components/menu-image';
@@ -395,10 +395,27 @@ export default function pos_panel({
             ))}
           </ul>
 
-          <div className="rounded-2xl bg-neutral-100 px-4 py-3 flex justify-between items-center">
+          <div className="rounded-2xl bg-white border border-neutral-200 px-4 py-3 flex justify-between items-center">
             <span className="text-sm text-neutral-500">итого</span>
             <span className="text-xl font-bold tabular-nums text-neutral-900">{total} ₽</span>
           </div>
+
+          {customer && customer.bonus_balance >= 50 ? (
+            <p className="rounded-xl bg-accent/10 px-3 py-2 text-xs font-semibold text-accent">
+              у гостя {customer.bonus_balance} т. — можно списать 50 т. за напиток бесплатно
+            </p>
+          ) : total >= 10 ? (
+            <p className="text-xs text-neutral-500">
+              начислим{' '}
+              <span className="font-semibold tabular-nums text-accent">
+                +{Math.floor(total / 10)}
+              </span>{' '}
+              тапикоинов
+              {customer ? (
+                <span className="text-neutral-400"> · сейчас {customer.bonus_balance} т.</span>
+              ) : null}
+            </p>
+          ) : null}
 
           <label className="block">
             <span className="text-xs text-neutral-500">телефон гостя</span>
@@ -462,6 +479,7 @@ export default function pos_panel({
     item: selected,
     all_items: items,
     open: sheet_open,
+    customer_bonus: customer?.bonus_balance ?? null,
     on_close: () => {
       set_sheet_open(false);
       set_selected(null);
@@ -514,7 +532,7 @@ export default function pos_panel({
     );
   }
 
-  const { cols: prod_cols, rows: prod_rows } = tile_grid(filtered.length || 1);
+  const { cols: prod_cols, rows: prod_rows } = board_tile_grid(filtered.length || 1);
 
   return (
     <div className="flex flex-col flex-1 min-h-0 h-full gap-2 overflow-hidden">
@@ -547,7 +565,7 @@ export default function pos_panel({
                 onClick={() => open_item(item)}
                 className="flex h-full min-h-0 flex-col items-center justify-center gap-1.5 rounded-2xl border border-neutral-200 bg-white px-2 py-2 active:scale-[0.98] transition overflow-hidden"
               >
-                <div className="relative flex min-h-0 w-full flex-1 items-center justify-center overflow-hidden rounded-xl bg-neutral-50 p-1.5">
+                <div className="relative flex min-h-0 w-full flex-1 items-center justify-center overflow-hidden rounded-xl bg-white p-1.5">
                   {createElement(menu_image, {
                     item,
                     className: 'h-full w-full max-h-full',

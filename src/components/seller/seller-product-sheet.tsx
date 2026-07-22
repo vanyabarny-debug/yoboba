@@ -9,6 +9,10 @@ import {
   get_topping_name,
   get_topping_portion_price_value,
 } from '@/lib/product-details';
+import {
+  calc_order_bonus,
+  FREE_DRINK_BONUS_THRESHOLD,
+} from '@/lib/cart-summary';
 import { create_client } from '@/lib/supabase/client';
 import { is_supabase_configured } from '@/lib/supabase/config';
 
@@ -16,6 +20,8 @@ type props = {
   item: menu_item | null;
   all_items: menu_item[];
   open: boolean;
+  /** баланс тапикоинов гостя, если уже найден по телефону */
+  customer_bonus?: number | null;
   on_close: () => void;
   on_add: (
     item: menu_item,
@@ -34,6 +40,7 @@ export default function seller_product_sheet({
   item,
   all_items,
   open,
+  customer_bonus = null,
   on_close,
   on_add,
 }: props) {
@@ -96,6 +103,11 @@ export default function seller_product_sheet({
   const unit = active
     ? Math.max(0, active.price + volume_add + topping * topping_price)
     : 0;
+  const line_total = unit * qty;
+  const bonus_earn = calc_order_bonus(line_total);
+  const can_pay_with_bonus =
+    customer_bonus != null && customer_bonus >= FREE_DRINK_BONUS_THRESHOLD;
+
   const composition = useMemo(
     () => (active ? get_composition(active) : []),
     [active]
@@ -137,7 +149,7 @@ export default function seller_product_sheet({
       >
         <div className="mx-auto mt-2 h-1 w-10 shrink-0 rounded-full bg-neutral-200 sm:hidden" />
 
-        <div className="relative mx-4 mt-2 aspect-[16/9] max-h-[28vh] w-auto shrink-0 overflow-hidden rounded-2xl bg-neutral-50 self-stretch">
+        <div className="relative mx-4 mt-2 aspect-[16/9] max-h-[28vh] w-auto shrink-0 overflow-hidden rounded-2xl bg-white self-stretch border border-neutral-100">
           {createElement(menu_image, {
             item: active,
             className: 'h-full w-full',
@@ -160,6 +172,21 @@ export default function seller_product_sheet({
               {active.name}
             </h3>
             <p className="mt-0.5 text-base font-bold tabular-nums text-neutral-800">{unit} ₽</p>
+            {can_pay_with_bonus ? (
+              <p className="mt-1.5 rounded-xl bg-accent/10 px-3 py-2 text-xs font-semibold leading-snug text-accent">
+                у гостя {customer_bonus} т. — можно списать {FREE_DRINK_BONUS_THRESHOLD} т. и
+                отдать напиток бесплатно
+              </p>
+            ) : bonus_earn > 0 ? (
+              <p className="mt-1.5 text-xs font-medium text-neutral-500">
+                начислим{' '}
+                <span className="font-semibold tabular-nums text-accent">+{bonus_earn}</span>{' '}
+                тапикоинов
+                {customer_bonus != null ? (
+                  <span className="text-neutral-400"> · сейчас {customer_bonus} т.</span>
+                ) : null}
+              </p>
+            ) : null}
           </div>
 
           <div className="grid shrink-0 grid-cols-2 gap-2">
@@ -185,7 +212,7 @@ export default function seller_product_sheet({
               {topping_name}{' '}
               <span className="font-mono font-semibold">+{topping_price} ₽</span>
             </p>
-            <div className="flex items-center gap-1 rounded-full bg-neutral-100 p-1">
+            <div className="flex items-center gap-1 rounded-full bg-white border border-neutral-200 p-1">
               <button
                 type="button"
                 onClick={() => set_topping((t) => Math.max(0, t - 1))}
@@ -206,7 +233,7 @@ export default function seller_product_sheet({
 
           <div className="flex shrink-0 items-center justify-between gap-3">
             <p className="text-sm text-neutral-700">количество</p>
-            <div className="flex items-center gap-1 rounded-full bg-neutral-100 p-1">
+            <div className="flex items-center gap-1 rounded-full bg-white border border-neutral-200 p-1">
               <button
                 type="button"
                 onClick={() => set_qty((q) => Math.max(1, q - 1))}
@@ -249,13 +276,14 @@ export default function seller_product_sheet({
                     key={rec.id}
                     type="button"
                     onClick={() => suggest(rec)}
-                    className="flex flex-col items-center text-center"
+                    className="flex flex-col items-center text-center rounded-xl border border-neutral-100 bg-white p-1.5"
                   >
-                    <div className="mb-1 aspect-square w-full max-h-16 overflow-hidden rounded-xl bg-neutral-100">
+                    <div className="mb-1 aspect-square w-full max-h-16 overflow-hidden rounded-xl bg-white">
                       {createElement(menu_image, {
                         item: rec,
                         className: 'h-full w-full',
                         variant: 'fill',
+                        fit: 'contain',
                       })}
                     </div>
                     <span className="line-clamp-2 text-[10px] font-medium leading-tight text-neutral-700">
@@ -272,7 +300,8 @@ export default function seller_product_sheet({
             onClick={add_current}
             className="mt-auto w-full shrink-0 rounded-2xl bg-neutral-900 py-3.5 text-sm font-semibold text-white"
           >
-            в заказ · {unit * qty} ₽
+            в заказ · {line_total} ₽
+            {bonus_earn > 0 ? ` · +${bonus_earn} т.` : ''}
           </button>
         </div>
       </div>
