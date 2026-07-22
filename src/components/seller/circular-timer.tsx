@@ -5,9 +5,9 @@ type props = {
   progress: number;
   /** главный текст по центру */
   label: string;
-  /** вторичный текст под главным */
+  /** вторичный текст под главным (не сдвигает центр) */
   sublabel?: string;
-  /** caps — мелкий uppercase; plain — обычный; hero — крупный как номер */
+  /** caps — мелкий uppercase; plain — обычный; hero — номер */
   sublabel_style?: 'caps' | 'plain' | 'hero';
   urgent?: boolean;
   active?: boolean;
@@ -17,6 +17,7 @@ type props = {
   colors?: { fill: string; ring: string; text: string; track?: string };
   compact?: boolean;
   fill?: boolean;
+  /** крупная цифра (номер / таймер); для слов вроде «оплатить» — false */
   hero?: boolean;
   on_click: () => void;
 };
@@ -92,36 +93,35 @@ export default function circular_timer({
     track: colors_prop?.track ?? base.track,
   };
 
-  const label_class = hero
+  const is_action_word = tone === 'pay' || tone === 'handout' || tone === 'done';
+
+  // слова («оплатить») компактнее цифр, чтобы влезали в круг
+  const label_class = is_action_word
     ? fill
-      ? label.length > 8
-        ? 'text-[clamp(0.85rem,7.5cqw,1.45rem)] font-bold leading-none tracking-tight'
-        : label.length > 5
-          ? 'text-[clamp(1rem,9cqw,1.7rem)] font-bold tabular-nums leading-none tracking-tight'
-          : 'text-[clamp(1.35rem,12cqw,2.35rem)] font-bold tabular-nums leading-none tracking-tight'
-      : 'text-2xl font-bold tabular-nums leading-none'
-    : fill
-      ? label.length > 10
-        ? 'text-[clamp(0.7rem,4.5cqw,1.15rem)] font-semibold leading-tight'
-        : label.length > 6
-          ? 'text-[clamp(0.85rem,5.5cqw,1.35rem)] font-semibold leading-tight'
-          : 'text-[clamp(1rem,7cqw,1.65rem)] font-semibold leading-tight'
-      : compact
-        ? 'text-sm font-semibold leading-tight'
-        : 'text-lg font-semibold leading-tight';
+      ? 'text-[clamp(0.72rem,5.2cqw,1.05rem)] font-bold leading-none tracking-tight max-w-[78%] truncate'
+      : 'text-sm font-bold leading-none max-w-[78%] truncate'
+    : hero
+      ? fill
+        ? label.length > 5
+          ? 'text-[clamp(1rem,8.5cqw,1.65rem)] font-bold tabular-nums leading-none tracking-tight'
+          : 'text-[clamp(1.25rem,11cqw,2.1rem)] font-bold tabular-nums leading-none tracking-tight'
+        : 'text-2xl font-bold tabular-nums leading-none'
+      : fill
+        ? 'text-[clamp(0.85rem,6cqw,1.25rem)] font-semibold leading-tight'
+        : 'text-base font-semibold leading-tight';
 
   const sub_class =
     sublabel_style === 'hero'
       ? fill
-        ? 'mt-1.5 text-[clamp(0.75rem,5.5cqw,1.15rem)] font-bold tabular-nums leading-none tracking-tight opacity-80'
-        : 'mt-1 text-base font-bold tabular-nums leading-none opacity-80'
+        ? 'text-[clamp(0.65rem,4.2cqw,0.9rem)] font-bold tabular-nums leading-none tracking-tight opacity-70'
+        : 'text-sm font-bold tabular-nums leading-none opacity-70'
       : sublabel_style === 'plain'
         ? fill
-          ? 'mt-1 text-[clamp(0.7rem,4.2cqw,1rem)] font-semibold tabular-nums leading-none opacity-75'
-          : 'mt-0.5 text-sm font-semibold tabular-nums leading-none opacity-75'
+          ? 'text-[clamp(0.6rem,3.6cqw,0.8rem)] font-semibold tabular-nums leading-none opacity-70'
+          : 'text-xs font-semibold tabular-nums leading-none opacity-70'
         : fill
-          ? 'mt-0.5 text-[clamp(0.55rem,3cqw,0.7rem)] font-medium uppercase tracking-wide opacity-55'
-          : 'mt-0.5 text-[9px] font-medium uppercase tracking-wide opacity-55';
+          ? 'text-[clamp(0.5rem,2.8cqw,0.65rem)] font-medium uppercase tracking-wide opacity-50'
+          : 'text-[9px] font-medium uppercase tracking-wide opacity-50';
 
   return (
     <button
@@ -164,22 +164,26 @@ export default function circular_timer({
           }}
         />
       </svg>
-      <span
-        className={`absolute inset-0 flex flex-col items-center justify-center text-center ${
-          fill ? 'px-[12%]' : compact ? 'px-2' : 'px-4'
-        }`}
-      >
-        {label ? (
-          <span className={label_class} style={{ color: colors.text }}>
-            {label}
-          </span>
-        ) : null}
-        {sublabel ? (
-          <span className={sub_class} style={{ color: colors.text }}>
-            {sublabel}
-          </span>
-        ) : null}
-      </span>
+
+      {/* главный текст — всегда геометрический центр круга */}
+      {label ? (
+        <span
+          className={`pointer-events-none absolute left-1/2 top-1/2 z-[1] -translate-x-1/2 -translate-y-1/2 text-center ${label_class}`}
+          style={{ color: colors.text }}
+        >
+          {label}
+        </span>
+      ) : null}
+
+      {/* номер ниже центра — не вытесняет главный текст вверх */}
+      {sublabel ? (
+        <span
+          className={`pointer-events-none absolute left-1/2 top-[62%] z-[1] -translate-x-1/2 text-center ${sub_class}`}
+          style={{ color: colors.text }}
+        >
+          {sublabel}
+        </span>
+      ) : null}
     </button>
   );
 }

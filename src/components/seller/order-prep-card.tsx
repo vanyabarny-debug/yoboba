@@ -217,7 +217,7 @@ export default function order_prep_card({
     }
     subtitle = `№ ${order_no}`;
     subtitle_style = 'hero';
-    title_hero = true;
+    title_hero = false;
   } else if (cooking) {
     tone = urgent ? 'ready' : 'cooking';
     title = format_countdown_ms(left);
