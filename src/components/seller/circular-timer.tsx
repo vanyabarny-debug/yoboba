@@ -74,10 +74,16 @@ export default function circular_timer({
   const clamped = Math.max(0, Math.min(1, progress));
   const offset = c * (1 - clamped);
   const colors = tones[tone];
+  const track_stroke =
+    tone === 'pay' || tone === 'handout' || tone === 'idle'
+      ? colors.fill
+      : '#e4e4e7';
 
   const label_class = hero
     ? fill
-      ? 'text-[clamp(1.35rem,12cqw,2.35rem)] font-bold tabular-nums leading-none tracking-tight'
+      ? label.length > 5
+        ? 'text-[clamp(1rem,9cqw,1.7rem)] font-bold tabular-nums leading-none tracking-tight'
+        : 'text-[clamp(1.35rem,12cqw,2.35rem)] font-bold tabular-nums leading-none tracking-tight'
       : 'text-2xl font-bold tabular-nums leading-none'
     : fill
       ? label.length > 10
@@ -129,7 +135,7 @@ export default function circular_timer({
           cy={size / 2}
           r={r}
           fill={colors.fill}
-          stroke="#e4e4e7"
+          stroke={track_stroke}
           strokeWidth={stroke}
         />
         <circle

@@ -78,8 +78,8 @@ export default function shift_task_card({ task, mode, on_advance }: props) {
   }, [task.phase, task.id]);
 
   const timer_label =
-    task.phase === 'done'
-      ? 'готово'
+    task.phase === 'done' || mode === 'done'
+      ? task.title
       : task.phase === 'running'
         ? format_countdown_ms(Math.max(0, expected_ms - elapsed))
         : task.phase === 'stopped'

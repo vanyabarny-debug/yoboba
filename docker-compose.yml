@@ -18,3 +18,9 @@ services:
     # слушаем только localhost — наружу проксирует nginx с TLS
     ports:
       - "127.0.0.1:3000:3000"
+    volumes:
+      # касса, смены, операции — переживают rebuild
+      - yoboba_data:/app/data
+
+volumes:
+  yoboba_data:

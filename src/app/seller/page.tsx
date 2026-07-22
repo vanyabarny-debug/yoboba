@@ -47,10 +47,12 @@ type schedule_line = {
 };
 
 type seller_shift = {
+  id: string;
   spot_id: string;
   address: string;
   city: string;
   opened_at: string;
+  shift_date: string;
 };
 
 const shift_key = 'yoboba_seller_shift';
@@ -118,7 +120,17 @@ function save_handed(list: order[]) {
 function load_shift(): seller_shift | null {
   try {
     const raw = sessionStorage.getItem(shift_key);
-    return raw ? (JSON.parse(raw) as seller_shift) : null;
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as Partial<seller_shift>;
+    if (!parsed?.id || !parsed.spot_id) return null;
+    return {
+      id: parsed.id,
+      spot_id: parsed.spot_id,
+      address: parsed.address || '',
+      city: parsed.city || '',
+      opened_at: parsed.opened_at || new Date().toISOString(),
+      shift_date: parsed.shift_date || moscow_today_iso(),
+    };
   } catch {
     return null;
   }
@@ -211,10 +223,12 @@ function clear_prep_on_server(order_id: string) {
 
 function shift_picker({
   spots,
+  busy,
   on_pick,
 }: {
   spots: store_spot[];
-  on_pick: (spot: store_spot) => void;
+  busy?: boolean;
+  on_pick: (spot: store_spot) => void | Promise<void>;
 }) {
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/40 p-4">
@@ -226,8 +240,9 @@ function shift_picker({
             <li key={spot.id}>
               <button
                 type="button"
-                onClick={() => on_pick(spot)}
-                className="w-full rounded-2xl border border-neutral-200 px-4 py-3 text-left hover:border-neutral-400"
+                disabled={busy}
+                onClick={() => void on_pick(spot)}
+                className="w-full rounded-2xl border border-neutral-200 px-4 py-3 text-left hover:border-neutral-400 disabled:opacity-50"
               >
                 <p className="font-semibold text-neutral-900">{spot.address}</p>
                 <p className="text-xs text-neutral-500 capitalize mt-0.5">{spot.city}</p>
@@ -251,6 +266,7 @@ export default function seller_board() {
   const [shift, set_shift] = useState<seller_shift | null>(null);
   const [shift_spots, set_shift_spots] = useState<store_spot[]>([]);
   const [need_shift, set_need_shift] = useState(false);
+  const [shift_busy, set_shift_busy] = useState(false);
   const [prep_map, set_prep_map] = useState<Record<string, Record<string, prep_state>>>({});
   const [order_starts, set_order_starts] = useState<Record<string, number>>({});
   const [handed, set_handed] = useState<order[]>([]);
@@ -750,8 +766,11 @@ export default function seller_board() {
       items_summary: (paying.items as order['items'])
         .map((i) => `${i.name} ×${i.quantity}`)
         .join('; '),
-      shift_date: new Date().toISOString().slice(0, 10),
+      shift_date: shift?.shift_date || moscow_today_iso(),
       created_at: new Date().toISOString(),
+      spot_id: shift?.spot_id || null,
+      spot_address: shift?.address || null,
+      shift_id: shift?.id || null,
     };
 
     const cash_res = await fetch('/api/cash', {
@@ -998,17 +1017,54 @@ export default function seller_board() {
       {need_shift &&
         createElement(shift_picker, {
           spots: shift_spots,
-          on_pick: (spot) => {
-            const next = {
-              spot_id: spot.id,
-              address: spot.address,
-              city: spot.city,
-              opened_at: new Date().toISOString(),
-            };
-            save_shift(next);
-            set_shift(next);
-            set_need_shift(false);
-            set_day_tasks(mark_appeared(next.spot_id, load_day_tasks(next.spot_id)));
+          busy: shift_busy,
+          on_pick: async (spot) => {
+            set_shift_busy(true);
+            try {
+              const sid = seller_id || seller_ref.current.id || 'seller';
+              const sname = seller_name || seller_ref.current.name || 'бариста';
+              const res = await fetch('/api/seller/shifts', {
+                method: 'POST',
+                headers: { 'content-type': 'application/json' },
+                credentials: 'same-origin',
+                body: JSON.stringify({
+                  spot_id: spot.id,
+                  spot_address: spot.address,
+                  spot_city: spot.city,
+                  seller_id: sid,
+                  seller_name: sname,
+                }),
+              });
+              const body = (await res.json().catch(() => null)) as {
+                shift?: {
+                  id: string;
+                  spot_id: string;
+                  spot_address: string;
+                  spot_city: string;
+                  opened_at: string;
+                  shift_date: string;
+                };
+                error?: string;
+              } | null;
+              if (!res.ok || !body?.shift) {
+                alert(body?.error || 'не удалось открыть смену');
+                return;
+              }
+              const next: seller_shift = {
+                id: body.shift.id,
+                spot_id: body.shift.spot_id,
+                address: body.shift.spot_address || spot.address,
+                city: body.shift.spot_city || spot.city,
+                opened_at: body.shift.opened_at,
+                shift_date: body.shift.shift_date,
+              };
+              save_shift(next);
+              set_shift(next);
+              set_need_shift(false);
+              set_day_tasks(mark_appeared(next.spot_id, load_day_tasks(next.spot_id)));
+            } finally {
+              set_shift_busy(false);
+            }
           },
         })}
 
@@ -1026,6 +1082,14 @@ export default function seller_board() {
             <button
               type="button"
               onClick={async () => {
+                if (shift?.id) {
+                  await fetch('/api/seller/shifts', {
+                    method: 'PATCH',
+                    headers: { 'content-type': 'application/json' },
+                    credentials: 'same-origin',
+                    body: JSON.stringify({ id: shift.id, action: 'close' }),
+                  }).catch(() => {});
+                }
                 sessionStorage.removeItem(shift_key);
                 await clear_session();
                 router.push('/admin/login');
@@ -1089,6 +1153,9 @@ export default function seller_board() {
           ? createElement(barista_analytics_panel, {
               seller_id,
               seller_name,
+              spot_id: shift?.spot_id,
+              shift_id: shift?.id,
+              shift_date: shift?.shift_date,
             })
           : null}
       </main>

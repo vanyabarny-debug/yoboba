@@ -299,19 +299,19 @@ export default function order_prep_card({
 
       <div className="flex min-h-0 flex-1 flex-col items-center justify-center px-2 pb-2 pt-3">
         <div className="aspect-square h-[min(100%,78%)] max-w-full">
-          {createElement(circular_timer, {
-            progress: ring_progress,
-            label: order_no,
-            sublabel,
-            sublabel_style,
-            urgent,
-            active: cooking,
-            tone,
-            fill: true,
-            hero: true,
-            disabled: mode === 'done' || (mode === 'ready' && !all_done),
-            on_click: handle_circle,
-          })}
+            {createElement(circular_timer, {
+              progress: ring_progress,
+              label: `№ ${order_no}`,
+              sublabel,
+              sublabel_style,
+              urgent,
+              active: cooking,
+              tone,
+              fill: true,
+              hero: true,
+              disabled: mode === 'done' || (mode === 'ready' && !all_done),
+              on_click: handle_circle,
+            })}
         </div>
         {under_label ? (
           <p className="mt-1.5 max-w-[92%] truncate text-center text-[clamp(0.65rem,2.8cqw,0.82rem)] font-semibold leading-snug opacity-90">

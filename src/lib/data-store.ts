@@ -12,6 +12,7 @@ const seeds: Record<string, unknown> = {
   'prep-events': [],
   'fulfillment-events': [],
   'seller-prep-state': {},
+  'seller-shifts': [],
 };
 
 async function get_cloudflare_env(): Promise<CloudflareEnv | null> {

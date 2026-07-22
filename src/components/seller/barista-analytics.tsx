@@ -2,11 +2,15 @@
 
 import { createElement, useEffect, useState } from 'react';
 import type { barista_analytics } from '@/lib/types';
+import { moscow_today_iso } from '@/lib/order-number';
 import day_summary_panel from '@/components/seller/day-summary';
 
 type props = {
   seller_id: string;
   seller_name: string;
+  spot_id?: string;
+  shift_id?: string;
+  shift_date?: string;
 };
 
 function format_duration(ms: number | null | undefined) {
@@ -18,9 +22,19 @@ function format_duration(ms: number | null | undefined) {
   return `${m} мин ${s.toString().padStart(2, '0')} с`;
 }
 
-export default function barista_analytics_panel({ seller_id, seller_name }: props) {
-  const [shift_date, set_shift_date] = useState(new Date().toISOString().slice(0, 10));
+export default function barista_analytics_panel({
+  seller_id,
+  seller_name,
+  spot_id,
+  shift_id,
+  shift_date: shift_date_prop,
+}: props) {
+  const [shift_date, set_shift_date] = useState(shift_date_prop || moscow_today_iso());
   const [data, set_data] = useState<barista_analytics | null>(null);
+
+  useEffect(() => {
+    if (shift_date_prop) set_shift_date(shift_date_prop);
+  }, [shift_date_prop]);
 
   useEffect(() => {
     const qs = new URLSearchParams({ shift_date, seller_id });
@@ -152,7 +166,12 @@ export default function barista_analytics_panel({ seller_id, seller_name }: prop
 
       <div>
         <h3 className="text-base font-bold text-neutral-900 mb-3">касса</h3>
-        {createElement(day_summary_panel)}
+        {createElement(day_summary_panel, {
+          spot_id,
+          shift_id,
+          seller_id,
+          default_date: shift_date,
+        })}
       </div>
     </div>
   );

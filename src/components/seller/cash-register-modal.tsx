@@ -2,6 +2,8 @@
 
 import { useEffect, useState } from 'react';
 import type { order } from '@/lib/types';
+import { format_order_number } from '@/lib/order-number';
+import { get_topping_portion_price_value } from '@/lib/product-details';
 
 type props = {
   order: order | null;
@@ -9,6 +11,36 @@ type props = {
   on_close: () => void;
   on_complete: (payment_method: 'cash' | 'card', amount_received?: number) => void | Promise<void>;
 };
+
+type line_view = {
+  key: string;
+  title: string;
+  qty: number;
+  topping_note?: string;
+  topping_extra?: number;
+};
+
+function parse_item_lines(items: order['items']): line_view[] {
+  const portion = get_topping_portion_price_value();
+  return items.map((item, i) => {
+    const raw = item.name || '';
+    const m = raw.match(/^(.*?)(?:\s*\+топ\.?\s*(\d+)\s*)?$/i);
+    const base = (m?.[1] || raw).replace(/\s*650мл\s*/i, ' ').trim();
+    const topping_count = m?.[2] ? Number(m[2]) : 0;
+    const has_650 = /650\s*мл/i.test(raw);
+    const title_bits = [base || raw];
+    if (has_650) title_bits.push('650 мл');
+
+    return {
+      key: `${item.menu_id}-${i}`,
+      title: title_bits.join(' · '),
+      qty: item.quantity,
+      topping_note:
+        topping_count > 0 ? `топпинг ×${topping_count}` : undefined,
+      topping_extra: topping_count > 0 ? topping_count * portion * item.quantity : undefined,
+    };
+  });
+}
 
 export default function cash_register_modal({
   order,
@@ -34,6 +66,8 @@ export default function cash_register_modal({
   const received_num = parseFloat(received.replace(',', '.')) || 0;
   const change = method === 'cash' ? Math.max(0, received_num - total) : 0;
   const can_confirm_cash = method === 'cash' && received_num >= total;
+  const order_no = format_order_number(order);
+  const lines = parse_item_lines(order.items as order['items']);
 
   async function confirm() {
     if (!method || busy) return;
@@ -57,7 +91,7 @@ export default function cash_register_modal({
       <div className="relative w-full max-w-md bg-white rounded-t-3xl sm:rounded-3xl shadow-xl overflow-hidden">
         <div className="px-6 pt-5 pb-4 border-b border-neutral-100">
           <div className="mx-auto mb-3 h-1 w-10 rounded-full bg-neutral-200 sm:hidden" />
-          <h2 className="text-xl font-bold text-neutral-900">оплата</h2>
+          <h2 className="text-xl font-bold text-neutral-900">оплата · № {order_no}</h2>
           <p className="text-xs text-neutral-500 mt-0.5">бариста: {seller_name}</p>
         </div>
 
@@ -69,11 +103,24 @@ export default function cash_register_modal({
             </p>
           </div>
 
-          <ul className="rounded-xl bg-neutral-50 px-4 py-3 text-sm space-y-1.5 max-h-32 overflow-y-auto">
-            {(order.items as order['items']).map((item, i) => (
-              <li key={i} className="flex justify-between gap-3">
-                <span className="text-neutral-700">{item.name}</span>
-                <span className="text-neutral-400 shrink-0">×{item.quantity}</span>
+          <ul className="rounded-xl bg-neutral-50 px-4 py-3 text-sm space-y-2 max-h-40 overflow-y-auto">
+            {lines.map((line) => (
+              <li key={line.key} className="flex justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="text-neutral-800 truncate">{line.title}</p>
+                  {line.topping_note ? (
+                    <p className="text-[11px] text-neutral-500 mt-0.5">
+                      {line.topping_note}
+                      {line.topping_extra != null ? (
+                        <span className="font-semibold text-neutral-700">
+                          {' '}
+                          · +{line.topping_extra} ₽
+                        </span>
+                      ) : null}
+                    </p>
+                  ) : null}
+                </div>
+                <span className="text-neutral-400 shrink-0">×{line.qty}</span>
               </li>
             ))}
           </ul>

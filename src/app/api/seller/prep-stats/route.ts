@@ -6,6 +6,7 @@ import {
   add_prep_event,
   get_barista_analytics,
 } from '@/lib/prep-stats-server';
+import { moscow_today_iso } from '@/lib/order-number';
 import type { fulfillment_event, prep_event } from '@/lib/types';
 
 async function is_staff() {
@@ -20,7 +21,7 @@ export async function GET(request: Request) {
   }
 
   const url = new URL(request.url);
-  const shift_date = url.searchParams.get('shift_date') || new Date().toISOString().slice(0, 10);
+  const shift_date = url.searchParams.get('shift_date') || moscow_today_iso();
   const seller_id = url.searchParams.get('seller_id') || undefined;
 
   const analytics = await get_barista_analytics({ shift_date, seller_id });

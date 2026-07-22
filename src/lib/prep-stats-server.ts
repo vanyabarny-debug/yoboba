@@ -1,4 +1,5 @@
 import { read_json_store, write_json_store } from '@/lib/data-store';
+import { moscow_today_iso } from '@/lib/order-number';
 import type {
   barista_analytics,
   drink_stat,
@@ -48,7 +49,7 @@ export async function add_prep_event(
     id: event.id || `prep-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
     drink_pace:
       event.drink_pace || classify_drink_pace(event.actual_ms, event.expected_ms),
-    shift_date: event.shift_date || new Date().toISOString().slice(0, 10),
+    shift_date: event.shift_date || moscow_today_iso(),
   };
   all.push(record);
   await write_json_store(prep_key, all);
@@ -72,7 +73,7 @@ export async function add_fulfillment_event(
     id: event.id || `ful-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
     duration_ms: event.duration_ms ?? Math.max(0, finished - started),
     timing: event.timing || classify_order_timing(finished, pickup),
-    shift_date: event.shift_date || new Date().toISOString().slice(0, 10),
+    shift_date: event.shift_date || moscow_today_iso(),
   };
   all.push(record);
   await write_json_store(fulfill_key, all);

@@ -103,6 +103,11 @@ export type cash_transaction = {
   items_summary: string;
   shift_date: string;
   created_at: string;
+  /** точка смены */
+  spot_id?: string | null;
+  spot_address?: string | null;
+  /** id серверной смены */
+  shift_id?: string | null;
 };
 
 export type day_summary = {
@@ -113,6 +118,20 @@ export type day_summary = {
   transaction_count: number;
   cash_received: number;
   cash_change: number;
+};
+
+/** открытая / закрытая смена кассира на точке */
+export type seller_shift_record = {
+  id: string;
+  spot_id: string;
+  spot_address: string;
+  spot_city: string;
+  seller_id: string;
+  seller_name: string;
+  opened_at: string;
+  closed_at: string | null;
+  /** календарный день смены по Москве */
+  shift_date: string;
 };
 
 /** одно приготовление напитка баристой */

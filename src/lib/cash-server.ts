@@ -11,10 +11,23 @@ async function save_transactions(transactions: cash_transaction[]) {
   await write_json_store(store_key, transactions);
 }
 
-export async function get_transactions(shift_date?: string): Promise<cash_transaction[]> {
+export type cash_filters = {
+  shift_date?: string;
+  shift_id?: string;
+  spot_id?: string;
+  seller_id?: string;
+};
+
+export async function get_transactions(filters: cash_filters | string = {}): Promise<cash_transaction[]> {
   const all = await load_transactions();
-  if (!shift_date) return all;
-  return all.filter((t) => t.shift_date === shift_date);
+  const f: cash_filters = typeof filters === 'string' ? { shift_date: filters } : filters || {};
+  return all.filter((t) => {
+    if (f.shift_id && t.shift_id !== f.shift_id) return false;
+    if (f.spot_id && t.spot_id !== f.spot_id) return false;
+    if (f.seller_id && t.seller_id !== f.seller_id) return false;
+    if (f.shift_date && t.shift_date !== f.shift_date) return false;
+    return true;
+  });
 }
 
 export async function add_transaction(tx: cash_transaction): Promise<cash_transaction> {
@@ -28,7 +41,7 @@ export async function calc_day_summary(
   shift_date: string,
   transactions?: cash_transaction[]
 ): Promise<day_summary> {
-  const txs = (transactions || (await get_transactions(shift_date))).filter(
+  const txs = (transactions || (await get_transactions({ shift_date }))).filter(
     (t) => t.shift_date === shift_date
   );
   let cash_total = 0;
