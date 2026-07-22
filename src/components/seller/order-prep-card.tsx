@@ -189,29 +189,45 @@ export default function order_prep_card({
   }
 
   let tone: 'idle' | 'cooking' | 'ready' | 'pay' | 'handout' | 'done' = 'idle';
-  let sublabel: string | undefined;
-  let sublabel_style: 'caps' | 'plain' = 'caps';
+  /** главный текст в центре круга */
+  let title = `№ ${order_no}`;
+  /** текст под главным */
+  let subtitle: string | undefined;
+  let subtitle_style: 'caps' | 'plain' | 'hero' = 'caps';
+  let title_hero = true;
 
   if (mode === 'done') {
     tone = 'done';
+    title = 'выдан';
+    subtitle = `№ ${order_no}`;
+    subtitle_style = 'hero';
+    title_hero = false;
   } else if (mode === 'ready' && !all_done) {
     tone = 'ready';
-    sublabel = `${done_count}/${drinks.length}`;
-    sublabel_style = 'plain';
+    title = `№ ${order_no}`;
+    subtitle = `${done_count}/${drinks.length}`;
+    subtitle_style = 'plain';
   } else if (mode === 'ready' || all_done) {
     if (paid) {
       tone = 'handout';
-      sublabel = 'выдать';
+      title = 'выдать';
     } else {
       tone = 'pay';
-      sublabel = 'оплатить';
+      title = 'оплатить';
     }
+    subtitle = `№ ${order_no}`;
+    subtitle_style = 'hero';
+    title_hero = true;
   } else if (cooking) {
     tone = urgent ? 'ready' : 'cooking';
-    sublabel = format_countdown_ms(left);
-    sublabel_style = 'plain';
+    title = format_countdown_ms(left);
+    subtitle = `№ ${order_no}`;
+    subtitle_style = 'hero';
+    title_hero = true;
   } else if (current) {
     tone = 'idle';
+    title = `№ ${order_no}`;
+    title_hero = true;
   }
 
   const ring_progress =
@@ -233,6 +249,13 @@ export default function order_prep_card({
         : mode === 'done'
           ? 'выдан'
           : null;
+
+  const timer_colors = {
+    fill: '#ffffff',
+    ring: tint.fg,
+    text: tint.fg,
+    track: tint.border,
+  };
 
   return (
     <article
@@ -299,19 +322,20 @@ export default function order_prep_card({
 
       <div className="flex min-h-0 flex-1 flex-col items-center justify-center px-2 pb-2 pt-3">
         <div className="aspect-square h-[min(100%,78%)] max-w-full">
-            {createElement(circular_timer, {
-              progress: ring_progress,
-              label: `№ ${order_no}`,
-              sublabel,
-              sublabel_style,
-              urgent,
-              active: cooking,
-              tone,
-              fill: true,
-              hero: true,
-              disabled: mode === 'done' || (mode === 'ready' && !all_done),
-              on_click: handle_circle,
-            })}
+          {createElement(circular_timer, {
+            progress: ring_progress,
+            label: title,
+            sublabel: subtitle,
+            sublabel_style: subtitle_style,
+            urgent,
+            active: cooking,
+            tone,
+            colors: timer_colors,
+            fill: true,
+            hero: title_hero,
+            disabled: mode === 'done' || (mode === 'ready' && !all_done),
+            on_click: handle_circle,
+          })}
         </div>
         {under_label ? (
           <p className="mt-1.5 max-w-[92%] truncate text-center text-[clamp(0.65rem,2.8cqw,0.82rem)] font-semibold leading-snug opacity-90">

@@ -1088,9 +1088,8 @@ export default function seller_board() {
         <div className="w-full px-2.5 pt-1.5 pb-1.5">
           <div className="flex items-center justify-between gap-2">
             <div className="min-w-0 flex items-baseline gap-1.5">
-              <h1 className="text-sm font-bold text-neutral-900 truncate">
-                {seller_name}
-              </h1>
+              <span className="text-sm text-neutral-500 shrink-0">бариста</span>
+              <h1 className="text-sm font-bold text-accent truncate">{seller_name}</h1>
               <span className="text-[10px] text-neutral-400 truncate">
                 {shift ? shift.address : 'смена закрыта'}
               </span>

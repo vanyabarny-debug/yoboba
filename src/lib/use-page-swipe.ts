@@ -80,6 +80,8 @@ export function use_page_swipe({
     const i = index_ref.current;
     const n = count_ref.current;
     const can_back = Boolean(on_edge_back_ref.current);
+    // только «назад» (одна страница) — можно тянуть в обе стороны
+    if (can_back && n <= 1) return dx;
     if (i <= 0 && dx > 0 && !can_back) return dx * 0.35;
     if (i >= n - 1 && dx < 0) return dx * 0.35;
     return dx;
@@ -88,7 +90,7 @@ export function use_page_swipe({
   const finish = useCallback((target_index: number, from_x: number, edge_back = false) => {
     const w = width_ref.current || 1;
     let to_x = 0;
-    if (edge_back) to_x = w;
+    if (edge_back) to_x = from_x >= 0 ? w : -w;
     else if (target_index !== index_ref.current) {
       to_x = -(target_index - index_ref.current) * w;
     }
@@ -170,6 +172,12 @@ export function use_page_swipe({
       const i = index_ref.current;
       const n = count_ref.current;
       const passed = Math.abs(dx) > Math.max(COMMIT_PX, w * COMMIT_RATIO);
+
+      // одна страница + on_edge_back: любой горизонтальный свайп = назад
+      if (passed && on_edge_back_ref.current && n <= 1) {
+        finish(i, dx, true);
+        return;
+      }
 
       if (passed && dx > 0 && i <= 0 && on_edge_back_ref.current) {
         finish(i, dx, true);

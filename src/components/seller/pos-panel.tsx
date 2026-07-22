@@ -5,6 +5,7 @@ import {
   default_categories,
   get_menu_store,
   normalize_menu_item_images,
+  resolve_menu_item_image_url,
   subscribe_menu_store,
 } from '@/lib/menu-store';
 import { format_phone_input, phone_input_to_e164 } from '@/lib/phone';
@@ -59,22 +60,46 @@ function cart_bar({
 }) {
   if (count === 0) return null;
   return (
-    <div className="shrink-0 rounded-2xl border border-neutral-200 bg-white/95 backdrop-blur-xl p-3 shadow-[0_8px_24px_rgba(0,0,0,0.08)]">
-      <div className="flex items-center justify-between gap-3 mb-2">
-        <p className="text-sm text-neutral-600">
-          <span className="font-semibold text-neutral-900">{count}</span> поз.
-        </p>
-        <p className="text-base font-bold tabular-nums text-neutral-900">{total} ₽</p>
-      </div>
+    <div className="shrink-0">
       <button
         type="button"
         onClick={on_work}
-        className="w-full rounded-xl bg-neutral-900 py-3 text-sm font-semibold text-white"
+        className="flex w-full items-center justify-center gap-2 rounded-2xl bg-neutral-900 px-4 py-3.5 text-sm font-semibold text-white shadow-[0_8px_24px_rgba(0,0,0,0.08)]"
       >
-        в работу
+        <span>в работу</span>
+        <span className="opacity-40">·</span>
+        <span className="tabular-nums">{count} поз.</span>
+        <span className="opacity-40">·</span>
+        <span className="tabular-nums">{total} ₽</span>
       </button>
     </div>
   );
+}
+
+/** прогрев кэша браузера для картинок меню кассы */
+function warm_menu_image_cache(list: menu_item[]) {
+  if (typeof window === 'undefined') return;
+  const urls = [
+    ...new Set(
+      list
+        .map((i) => resolve_menu_item_image_url(i))
+        .filter((u) => u && !u.endsWith('.svg'))
+    ),
+  ];
+  for (const url of urls) {
+    const img = new Image();
+    img.decoding = 'async';
+    img.src = url;
+  }
+  if ('caches' in window) {
+    void caches.open('yoboba-pos-menu-v1').then((cache) => {
+      for (const url of urls) {
+        void cache.match(url).then((hit) => {
+          if (!hit) void cache.add(url).catch(() => {});
+        });
+      }
+    });
+  }
 }
 
 export default function pos_panel({
@@ -115,6 +140,7 @@ export default function pos_panel({
         (c) => available.some((i) => i.category === c)
       );
       set_categories(from_menu.length ? from_menu : store.categories);
+      warm_menu_image_cache(available);
     }
     sync();
     return subscribe_menu_store(sync);
@@ -158,16 +184,12 @@ export default function pos_panel({
     return items.filter((i) => i.category === category);
   }, [items, category]);
 
-  const category_index = Math.max(0, categories.indexOf(category));
-
+  // свайп в товарах всегда возвращает к категориям (не листает категории)
   const { viewport_ref, page_style } = use_page_swipe({
-    index: category_index,
-    count: Math.max(1, categories.length),
+    index: 0,
+    count: 1,
     enabled: step === 'products' && !sheet_open && !confirm_open,
-    on_index: (next) => {
-      const c = categories[next];
-      if (c) set_category(c);
-    },
+    on_index: () => {},
     on_edge_back: () => {
       set_step('categories');
       set_category('');
@@ -494,14 +516,11 @@ export default function pos_panel({
 
   const { cols: prod_cols, rows: prod_rows } = tile_grid(filtered.length || 1);
 
-  function render_product_grid(cat: string, page_index: number) {
-    const list = items.filter((i) => i.category === cat);
-    const { cols, rows } = tile_grid(list.length || 1);
-    const is_current = page_index === category_index;
-    return (
-      <div key={cat} className="flex h-full min-h-0 flex-col gap-2" style={page_style(page_index)}>
-        <div className="flex items-center gap-2 shrink-0 px-0.5">
-          {is_current ? (
+  return (
+    <div className="flex flex-col flex-1 min-h-0 h-full gap-2 overflow-hidden">
+      <div ref={viewport_ref} className="relative flex-1 min-h-0 overflow-hidden touch-pan-y">
+        <div className="flex h-full min-h-0 flex-col gap-2" style={page_style(0)}>
+          <div className="flex items-center gap-2 shrink-0 px-0.5">
             <button
               type="button"
               onClick={back_to_categories}
@@ -509,61 +528,48 @@ export default function pos_panel({
             >
               ←
             </button>
-          ) : (
-            <span className="w-9" />
-          )}
-          <h2 className="min-w-0 text-sm font-bold text-neutral-900 capitalize truncate">{cat}</h2>
-          <span className="ml-auto text-[10px] tabular-nums text-neutral-400">
-            {page_index + 1}/{categories.length}
-          </span>
-        </div>
-        <div
-          className="grid flex-1 min-h-0 gap-2 overflow-hidden"
-          style={{
-            gridTemplateColumns: `repeat(${is_current ? prod_cols : cols}, minmax(0, 1fr))`,
-            gridTemplateRows: `repeat(${is_current ? prod_rows : rows}, minmax(0, 1fr))`,
-          }}
-        >
-          {list.map((item) => (
-            <button
-              key={item.id}
-              type="button"
-              onClick={() => open_item(item)}
-              className="grid h-full min-h-0 grid-rows-[minmax(0,1fr)_auto_auto] gap-1 rounded-2xl border border-neutral-200 bg-white p-2 text-left active:scale-[0.98] transition overflow-hidden"
-            >
-              <div className="relative h-full min-h-[3.5rem] w-full overflow-hidden rounded-xl bg-neutral-100">
-                {createElement(menu_image, {
-                  item,
-                  className: 'h-full w-full',
-                  variant: 'fill',
-                })}
-              </div>
-              <p className="text-xs sm:text-sm font-semibold text-neutral-900 leading-snug line-clamp-2 text-center">
-                {item.name}
-              </p>
-              <p className="text-sm font-bold tabular-nums text-neutral-900 text-center">
-                {item.price} ₽
-              </p>
-            </button>
-          ))}
-          {list.length === 0 ? (
-            <p className="col-span-full self-center text-sm text-neutral-400 text-center">
-              в разделе пока пусто
-            </p>
-          ) : null}
-        </div>
-      </div>
-    );
-  }
+            <h2 className="min-w-0 text-sm font-bold text-neutral-900 capitalize truncate">
+              {category}
+            </h2>
+          </div>
 
-  const page_indexes = [category_index - 1, category_index, category_index + 1].filter(
-    (i) => i >= 0 && i < categories.length
-  );
-
-  return (
-    <div className="flex flex-col flex-1 min-h-0 h-full gap-2 overflow-hidden">
-      <div ref={viewport_ref} className="relative flex-1 min-h-0 overflow-hidden touch-pan-y">
-        {page_indexes.map((i) => render_product_grid(categories[i], i))}
+          <div
+            className="grid flex-1 min-h-0 gap-2 overflow-hidden"
+            style={{
+              gridTemplateColumns: `repeat(${prod_cols}, minmax(0, 1fr))`,
+              gridTemplateRows: `repeat(${prod_rows}, minmax(0, 1fr))`,
+            }}
+          >
+            {filtered.map((item) => (
+              <button
+                key={item.id}
+                type="button"
+                onClick={() => open_item(item)}
+                className="flex h-full min-h-0 flex-col items-center justify-center gap-1.5 rounded-2xl border border-neutral-200 bg-white px-2 py-2 active:scale-[0.98] transition overflow-hidden"
+              >
+                <div className="relative flex min-h-0 w-full flex-1 items-center justify-center overflow-hidden rounded-xl bg-neutral-50 p-1.5">
+                  {createElement(menu_image, {
+                    item,
+                    className: 'h-full w-full max-h-full',
+                    variant: 'fill',
+                    fit: 'contain',
+                  })}
+                </div>
+                <span className="shrink-0 text-xs sm:text-sm font-semibold leading-snug text-center text-neutral-900 px-1 line-clamp-2">
+                  {item.name}
+                </span>
+                <span className="shrink-0 text-sm font-bold tabular-nums text-neutral-900">
+                  {item.price} ₽
+                </span>
+              </button>
+            ))}
+            {filtered.length === 0 ? (
+              <p className="col-span-full self-center text-sm text-neutral-400 text-center">
+                в разделе пока пусто
+              </p>
+            ) : null}
+          </div>
+        </div>
       </div>
 
       {createElement(cart_bar, {

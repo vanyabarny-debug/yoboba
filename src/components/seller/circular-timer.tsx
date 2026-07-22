@@ -3,53 +3,63 @@
 type props = {
   /** 0 = пусто, 1 = полный круг */
   progress: number;
+  /** главный текст по центру */
   label: string;
+  /** вторичный текст под главным */
   sublabel?: string;
-  /** caps — мелкий uppercase; plain — обычный текст (таймер) */
-  sublabel_style?: 'caps' | 'plain';
+  /** caps — мелкий uppercase; plain — обычный; hero — крупный как номер */
+  sublabel_style?: 'caps' | 'plain' | 'hero';
   urgent?: boolean;
   active?: boolean;
   disabled?: boolean;
   tone?: 'idle' | 'cooking' | 'ready' | 'pay' | 'handout' | 'done';
-  /** компактнее для сетки 2 в ряд */
+  /** цвета плитки заказа — кольцо/заливка не чёрные */
+  colors?: { fill: string; ring: string; text: string; track?: string };
   compact?: boolean;
-  /** заполняет родителя (aspect-square контейнер) */
   fill?: boolean;
-  /** крупная цифра (номер заказа) */
   hero?: boolean;
   on_click: () => void;
 };
 
-const tones: Record<NonNullable<props['tone']>, { ring: string; fill: string; text: string }> = {
+const tones: Record<
+  NonNullable<props['tone']>,
+  { ring: string; fill: string; text: string; track: string }
+> = {
   idle: {
     ring: '#c4c4c8',
-    fill: '#1c1c1f',
-    text: '#ffffff',
+    fill: '#ffffff',
+    text: '#1c1c1f',
+    track: '#e8e8ea',
   },
   cooking: {
     ring: '#1c1c1f',
     fill: '#ffffff',
     text: '#1c1c1f',
+    track: '#e4e4e7',
   },
   ready: {
     ring: '#1c1c1f',
-    fill: '#f4f4f5',
+    fill: '#ffffff',
     text: '#1c1c1f',
+    track: '#e4e4e7',
   },
   pay: {
-    ring: '#1c1c1f',
-    fill: '#1c1c1f',
-    text: '#ffffff',
+    ring: '#ff6b6b',
+    fill: '#ffffff',
+    text: '#1c1c1f',
+    track: '#ffd4d4',
   },
   handout: {
     ring: '#ff6b6b',
-    fill: '#ff6b6b',
-    text: '#ffffff',
+    fill: '#ffffff',
+    text: '#1c1c1f',
+    track: '#ffd4d4',
   },
   done: {
     ring: '#a1a1aa',
     fill: '#f4f4f5',
     text: '#3f3f46',
+    track: '#e4e4e7',
   },
 };
 
@@ -62,6 +72,7 @@ export default function circular_timer({
   active = false,
   disabled = false,
   tone = 'idle',
+  colors: colors_prop,
   compact = false,
   fill = false,
   hero = false,
@@ -73,17 +84,21 @@ export default function circular_timer({
   const c = 2 * Math.PI * r;
   const clamped = Math.max(0, Math.min(1, progress));
   const offset = c * (1 - clamped);
-  const colors = tones[tone];
-  const track_stroke =
-    tone === 'pay' || tone === 'handout' || tone === 'idle'
-      ? colors.fill
-      : '#e4e4e7';
+  const base = tones[tone];
+  const colors = {
+    fill: colors_prop?.fill ?? base.fill,
+    ring: colors_prop?.ring ?? base.ring,
+    text: colors_prop?.text ?? base.text,
+    track: colors_prop?.track ?? base.track,
+  };
 
   const label_class = hero
     ? fill
-      ? label.length > 5
-        ? 'text-[clamp(1rem,9cqw,1.7rem)] font-bold tabular-nums leading-none tracking-tight'
-        : 'text-[clamp(1.35rem,12cqw,2.35rem)] font-bold tabular-nums leading-none tracking-tight'
+      ? label.length > 8
+        ? 'text-[clamp(0.85rem,7.5cqw,1.45rem)] font-bold leading-none tracking-tight'
+        : label.length > 5
+          ? 'text-[clamp(1rem,9cqw,1.7rem)] font-bold tabular-nums leading-none tracking-tight'
+          : 'text-[clamp(1.35rem,12cqw,2.35rem)] font-bold tabular-nums leading-none tracking-tight'
       : 'text-2xl font-bold tabular-nums leading-none'
     : fill
       ? label.length > 10
@@ -92,25 +107,21 @@ export default function circular_timer({
           ? 'text-[clamp(0.85rem,5.5cqw,1.35rem)] font-semibold leading-tight'
           : 'text-[clamp(1rem,7cqw,1.65rem)] font-semibold leading-tight'
       : compact
-        ? label.length > 10
-          ? 'text-[11px] font-semibold leading-tight'
-          : label.length > 6
-            ? 'text-sm font-semibold leading-tight'
-            : 'text-base font-semibold leading-tight'
-        : label.length > 10
-          ? 'text-sm font-semibold leading-tight'
-          : label.length > 6
-            ? 'text-lg font-semibold leading-tight'
-            : 'text-xl font-semibold leading-tight';
+        ? 'text-sm font-semibold leading-tight'
+        : 'text-lg font-semibold leading-tight';
 
   const sub_class =
-    sublabel_style === 'plain'
+    sublabel_style === 'hero'
       ? fill
-        ? 'mt-1 text-[clamp(0.7rem,4.2cqw,1rem)] font-semibold tabular-nums leading-none'
-        : 'mt-0.5 text-sm font-semibold tabular-nums leading-none'
-      : fill
-        ? 'mt-0.5 text-[clamp(0.55rem,3cqw,0.7rem)] font-medium uppercase tracking-wide opacity-55'
-        : 'mt-0.5 text-[9px] font-medium uppercase tracking-wide opacity-55';
+        ? 'mt-1.5 text-[clamp(0.75rem,5.5cqw,1.15rem)] font-bold tabular-nums leading-none tracking-tight opacity-80'
+        : 'mt-1 text-base font-bold tabular-nums leading-none opacity-80'
+      : sublabel_style === 'plain'
+        ? fill
+          ? 'mt-1 text-[clamp(0.7rem,4.2cqw,1rem)] font-semibold tabular-nums leading-none opacity-75'
+          : 'mt-0.5 text-sm font-semibold tabular-nums leading-none opacity-75'
+        : fill
+          ? 'mt-0.5 text-[clamp(0.55rem,3cqw,0.7rem)] font-medium uppercase tracking-wide opacity-55'
+          : 'mt-0.5 text-[9px] font-medium uppercase tracking-wide opacity-55';
 
   return (
     <button
@@ -135,7 +146,7 @@ export default function circular_timer({
           cy={size / 2}
           r={r}
           fill={colors.fill}
-          stroke={track_stroke}
+          stroke={colors.track}
           strokeWidth={stroke}
         />
         <circle
@@ -164,10 +175,7 @@ export default function circular_timer({
           </span>
         ) : null}
         {sublabel ? (
-          <span
-            className={sub_class}
-            style={{ color: colors.text, opacity: sublabel_style === 'plain' ? 0.72 : undefined }}
-          >
+          <span className={sub_class} style={{ color: colors.text }}>
             {sublabel}
           </span>
         ) : null}

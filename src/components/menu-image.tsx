@@ -12,6 +12,8 @@ type props = {
   item: menu_item;
   className?: string;
   variant?: 'card' | 'thumb' | 'fill';
+  /** cover обрезает; contain — целиком влезает */
+  fit?: 'cover' | 'contain';
 };
 
 function is_unusable_src(src: string | null | undefined) {
@@ -31,7 +33,12 @@ function skeleton({ className = '', fill = false }: { className?: string; fill?:
   );
 }
 
-function menu_image_inner({ item, className = '', variant = 'card' }: props) {
+function menu_image_inner({
+  item,
+  className = '',
+  variant = 'card',
+  fit = 'cover',
+}: props) {
   const primary = useMemo(
     () => resolve_menu_item_image_url(item),
     [item.id, item.name, item.image_url]
@@ -45,6 +52,7 @@ function menu_image_inner({ item, className = '', variant = 'card' }: props) {
   const [loaded, set_loaded] = useState(false);
   const img_ref = useRef<HTMLImageElement>(null);
   const fill = variant === 'fill';
+  const object_fit = fit === 'contain' ? 'object-contain' : 'object-cover';
 
   useEffect(() => {
     const next = is_unusable_src(primary) ? fallback : primary;
@@ -68,9 +76,9 @@ function menu_image_inner({ item, className = '', variant = 'card' }: props) {
 
   return (
     <div
-      className={`relative overflow-hidden bg-neutral-200 ${
-        fill ? 'h-full w-full' : 'aspect-square'
-      } ${className}`}
+      className={`relative overflow-hidden ${
+        fit === 'contain' ? 'bg-transparent' : 'bg-neutral-200'
+      } ${fill ? 'h-full w-full' : 'aspect-square'} ${className}`}
     >
       {!loaded && (
         <div className="absolute inset-0 animate-pulse bg-gradient-to-br from-neutral-200 via-neutral-100 to-neutral-200" />
@@ -81,7 +89,7 @@ function menu_image_inner({ item, className = '', variant = 'card' }: props) {
         alt={item.name}
         width={800}
         height={800}
-        className={`absolute inset-0 h-full w-full object-cover object-center transition-opacity duration-300 ${
+        className={`absolute inset-0 h-full w-full ${object_fit} object-center transition-opacity duration-300 ${
           loaded ? 'opacity-100' : 'opacity-0'
         }`}
         loading={variant === 'thumb' ? 'lazy' : 'eager'}
@@ -110,6 +118,7 @@ export default memo(menu_image_inner, (prev, next) => {
     prev.item.name === next.item.name &&
     prev.item.image_url === next.item.image_url &&
     prev.className === next.className &&
-    prev.variant === next.variant
+    prev.variant === next.variant &&
+    prev.fit === next.fit
   );
 });
