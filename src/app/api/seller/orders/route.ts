@@ -4,7 +4,7 @@ import { session_cookie } from '@/lib/session';
 import { calc_order_bonus } from '@/lib/cart-summary';
 import { create_fake_order_from_items, update_demo_order } from '@/lib/demo-orders-server';
 import { load_menu_map } from '@/lib/kitchen-server';
-import { allocate_daily_order_number } from '@/lib/order-number';
+import { allocate_daily_order_number, moscow_today_iso } from '@/lib/order-number';
 import { normalize_phone } from '@/lib/phone';
 import { is_supabase_configured } from '@/lib/supabase/config';
 import { create_service_client } from '@/lib/supabase/service';
@@ -82,40 +82,42 @@ export async function GET(request: Request) {
 
   const url = new URL(request.url);
   if (url.searchParams.get('completed') === '1') {
-    const day = url.searchParams.get('day') || new Date().toISOString().slice(0, 10);
-    const completed: order[] = [];
-    const seen = new Set<string>();
+    const day = url.searchParams.get('day') || moscow_today_iso();
+    const seller_id = url.searchParams.get('seller_id') || undefined;
 
-    const { get_demo_orders } = await import('@/lib/demo-orders-server');
-    for (const o of await get_demo_orders(false)) {
-      if (o.status !== 'completed') continue;
-      const order_day =
-        o.order_day ||
-        new Intl.DateTimeFormat('en-CA', {
-          timeZone: 'Europe/Moscow',
-          year: 'numeric',
-          month: '2-digit',
-          day: '2-digit',
-        }).format(new Date(o.created_at));
-      if (order_day !== day) continue;
-      seen.add(o.id);
-      completed.push(o);
+    // тот же фильтр, что аналитика: уникальные fulfillment за shift_date (+ seller)
+    const { get_fulfillment_order_ids } = await import('@/lib/prep-stats-server');
+    const { get_handed_orders } = await import('@/lib/handed-orders-server');
+    const ids = await get_fulfillment_order_ids({ shift_date: day, seller_id });
+    const handed_snapshots = await get_handed_orders({ shift_date: day, seller_id });
+    const by_id = new Map<string, order>();
+    for (const o of handed_snapshots) {
+      by_id.set(o.id, { ...o, status: 'completed' });
     }
 
-    if (is_supabase_configured()) {
-      const admin = create_service_client();
-      const { data } = await admin
-        .from('orders')
-        .select('*')
-        .eq('status', 'completed')
-        .eq('order_day', day)
-        .order('created_at', { ascending: false })
-        .limit(50);
-      for (const row of (data as order[]) || []) {
-        if (seen.has(row.id)) continue;
-        seen.add(row.id);
-        completed.push({ ...row, is_paid: Boolean(row.is_paid) });
+    let completed: order[] = [];
+
+    if (ids.length > 0) {
+      const missing = ids.filter((id) => !by_id.has(id));
+      if (missing.length) {
+        const { get_demo_orders } = await import('@/lib/demo-orders-server');
+        for (const o of await get_demo_orders(false)) {
+          if (missing.includes(o.id)) by_id.set(o.id, { ...o, status: 'completed' });
+        }
+        if (is_supabase_configured()) {
+          const admin = create_service_client();
+          const { data } = await admin.from('orders').select('*').in('id', missing);
+          for (const row of (data as order[]) || []) {
+            by_id.set(row.id, { ...row, status: 'completed', is_paid: Boolean(row.is_paid) });
+          }
+        }
       }
+      completed = ids
+        .map((id) => by_id.get(id))
+        .filter(Boolean) as order[];
+    } else if (handed_snapshots.length > 0) {
+      // журнал есть, events ещё не поднялись — не раздуваем legacy order_day
+      completed = handed_snapshots;
     }
 
     completed.sort(

@@ -6,8 +6,9 @@ import {
   add_prep_event,
   get_barista_analytics,
 } from '@/lib/prep-stats-server';
+import { record_handed_order } from '@/lib/handed-orders-server';
 import { moscow_today_iso } from '@/lib/order-number';
-import type { fulfillment_event, prep_event } from '@/lib/types';
+import type { fulfillment_event, order, prep_event } from '@/lib/types';
 
 async function is_staff() {
   const store = await cookies();
@@ -63,6 +64,29 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'неполные данные' }, { status: 400 });
     }
     const saved = await add_fulfillment_event(event);
+
+    const snapshot = body.order as order | undefined;
+    await record_handed_order({
+      order:
+        snapshot && snapshot.id
+          ? snapshot
+          : {
+              id: event.order_id,
+              user_id: '',
+              items: [],
+              total_price: 0,
+              status: 'completed',
+              payment_type: 'cash',
+              is_paid: true,
+              pickup_time: event.pickup_at || saved.finished_at,
+              created_at: saved.finished_at,
+            },
+      seller_id: event.seller_id,
+      seller_name: event.seller_name || 'бариста',
+      shift_date: saved.shift_date,
+      handed_at: saved.finished_at,
+    });
+
     return NextResponse.json({ event: saved });
   }
 

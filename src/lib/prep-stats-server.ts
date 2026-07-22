@@ -80,6 +80,23 @@ export async function add_fulfillment_event(
   return record;
 }
 
+export async function get_fulfillment_order_ids(input: {
+  shift_date: string;
+  seller_id?: string;
+}): Promise<string[]> {
+  const all = await load_fulfill();
+  const ids: string[] = [];
+  const seen = new Set<string>();
+  for (const e of all) {
+    if (e.shift_date !== input.shift_date) continue;
+    if (input.seller_id && e.seller_id !== input.seller_id) continue;
+    if (seen.has(e.order_id)) continue;
+    seen.add(e.order_id);
+    ids.push(e.order_id);
+  }
+  return ids;
+}
+
 export async function get_barista_analytics(input: {
   shift_date: string;
   seller_id?: string;
@@ -90,11 +107,21 @@ export async function get_barista_analytics(input: {
     if (seller_id && e.seller_id !== seller_id) return false;
     return true;
   });
-  const fulfills = (await load_fulfill()).filter((e) => {
+  const fulfills_raw = (await load_fulfill()).filter((e) => {
     if (e.shift_date !== shift_date) return false;
     if (seller_id && e.seller_id !== seller_id) return false;
     return true;
   });
+
+  // одна выдача = один заказ (как во вкладке «готовые»)
+  const by_order = new Map<string, (typeof fulfills_raw)[number]>();
+  for (const f of fulfills_raw) {
+    const prev = by_order.get(f.order_id);
+    if (!prev || new Date(f.finished_at) > new Date(prev.finished_at)) {
+      by_order.set(f.order_id, f);
+    }
+  }
+  const fulfills = [...by_order.values()];
 
   const by_drink = new Map<string, { name: string; times: number[] }>();
   for (const p of preps) {

@@ -64,58 +64,58 @@ const handed_key = 'yoboba_seller_handed';
 const paid_key = 'yoboba_seller_paid';
 const NEW_ORDER_BLINK_MS = 2200;
 
-function shift_day() {
-  return moscow_today_iso();
+function shift_day(shift_date?: string | null) {
+  return shift_date || moscow_today_iso();
 }
 
-function load_paid_ids(): Set<string> {
+function load_paid_ids(day: string): Set<string> {
   try {
     const raw = localStorage.getItem(paid_key);
     if (!raw) return new Set();
     const parsed = JSON.parse(raw) as { day?: string; ids?: string[] };
-    if (parsed.day !== shift_day()) return new Set();
+    if (parsed.day !== day) return new Set();
     return new Set(parsed.ids || []);
   } catch {
     return new Set();
   }
 }
 
-function save_paid_ids(ids: Set<string>) {
+function save_paid_ids(day: string, ids: Set<string>) {
   localStorage.setItem(
     paid_key,
-    JSON.stringify({ day: shift_day(), ids: [...ids].slice(-80) })
+    JSON.stringify({ day, ids: [...ids].slice(-80) })
   );
 }
 
-function mark_order_paid_local(id: string) {
-  const ids = load_paid_ids();
+function mark_order_paid_local(id: string, day: string) {
+  const ids = load_paid_ids(day);
   ids.add(id);
-  save_paid_ids(ids);
+  save_paid_ids(day, ids);
   return ids;
 }
 
-function with_sticky_paid(list: order[]): order[] {
-  const paid = load_paid_ids();
+function with_sticky_paid(list: order[], day: string): order[] {
+  const paid = load_paid_ids(day);
   if (!paid.size) return list;
   return list.map((o) => (paid.has(o.id) || o.is_paid ? { ...o, is_paid: true } : o));
 }
 
-function load_handed(): order[] {
+function load_handed(day: string): order[] {
   try {
     const raw = localStorage.getItem(handed_key);
     if (!raw) return [];
     const parsed = JSON.parse(raw) as { day?: string; orders?: order[] };
-    if (parsed.day !== shift_day()) return [];
+    if (parsed.day !== day) return [];
     return parsed.orders || [];
   } catch {
     return [];
   }
 }
 
-function save_handed(list: order[]) {
+function save_handed(day: string, list: order[]) {
   localStorage.setItem(
     handed_key,
-    JSON.stringify({ day: shift_day(), orders: list.slice(0, 50) })
+    JSON.stringify({ day, orders: list.slice(0, 50) })
   );
 }
 
@@ -431,49 +431,55 @@ export default function seller_board() {
 
     schedule_ref.current = lines;
     set_schedule_lines(lines);
-    set_orders(with_sticky_paid(list));
+    const day = shift_day(shift?.shift_date);
+    set_orders(with_sticky_paid(list, day));
     await hydrate_prep(list, lines);
 
-    // выданные за сегодня — вкладка «готовые»
-    const day = shift_day();
+    // выданные за смену — тот же seller_id+day, что в аналитике
+    const sid = seller_ref.current.id || seller_id || '';
     const completed: order[] = [];
     const seen_done = new Set<string>();
+    let from_server = false;
 
-    try {
-      const res = await fetch(
-        `/api/seller/orders?completed=1&day=${encodeURIComponent(day)}`,
-        { credentials: 'same-origin' }
-      );
-      if (res.ok) {
-        const body = (await res.json()) as { orders?: order[] };
-        for (const o of body.orders || []) {
-          if (seen_done.has(o.id)) continue;
-          seen_done.add(o.id);
-          completed.push(o);
+    if (sid) {
+      try {
+        const qs = new URLSearchParams({ completed: '1', day, seller_id: sid });
+        const res = await fetch(`/api/seller/orders?${qs}`, {
+          credentials: 'same-origin',
+        });
+        if (res.ok) {
+          from_server = true;
+          const body = (await res.json()) as { orders?: order[] };
+          for (const o of body.orders || []) {
+            if (seen_done.has(o.id)) continue;
+            seen_done.add(o.id);
+            completed.push(o);
+          }
         }
+      } catch {
+        /* offline */
       }
-    } catch {
-      /* offline */
     }
 
-    const local_handed = load_handed();
-    for (const o of local_handed) {
-      if (seen_done.has(o.id)) continue;
-      seen_done.add(o.id);
-      completed.push(o);
+    if (!from_server) {
+      for (const o of load_handed(day)) {
+        if (seen_done.has(o.id)) continue;
+        seen_done.add(o.id);
+        completed.push(o);
+      }
     }
 
     completed.sort(
       (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
     );
     set_handed(completed);
-    save_handed(completed);
-  }, [hydrate_prep]);
+    save_handed(day, completed);
+  }, [hydrate_prep, shift?.shift_date, seller_id]);
 
   useEffect(() => {
     set_prep_map(load_prep_map());
     set_order_starts(load_order_starts());
-    set_handed(load_handed());
+    set_handed(load_handed(shift_day()));
     const user = get_demo_user();
     if (user) {
       set_seller_id(user.id);
@@ -659,7 +665,7 @@ export default function seller_board() {
     }
 
     if (patch.is_paid) {
-      mark_order_paid_local(id);
+      mark_order_paid_local(id, shift_day(shift?.shift_date));
     }
 
     const server = body?.order;
@@ -671,7 +677,7 @@ export default function seller_board() {
           ...(server || {}),
           ...patch,
         };
-        if (patch.is_paid || load_paid_ids().has(id) || o.is_paid || server?.is_paid) {
+        if (patch.is_paid || load_paid_ids(shift_day(shift?.shift_date)).has(id) || o.is_paid || server?.is_paid) {
           merged.is_paid = true;
         }
         return merged;
@@ -806,10 +812,10 @@ export default function seller_board() {
         payment_type: payment_method,
         status: 'ready',
       });
-      mark_order_paid_local(paying.id);
+      mark_order_paid_local(paying.id, shift_day(shift?.shift_date));
     } catch (e) {
       // касса уже провела оплату — держим «выдать» локально даже если PATCH частично упал
-      mark_order_paid_local(paying.id);
+      mark_order_paid_local(paying.id, shift_day(shift?.shift_date));
       set_orders((prev) =>
         prev.map((o) =>
           o.id === paying.id ? { ...o, is_paid: true, payment_type: payment_method, status: 'ready' } : o
@@ -843,13 +849,16 @@ export default function seller_board() {
 
     const sid = seller_id || seller_ref.current.id || 'seller';
     const sname = seller_name || seller_ref.current.name || 'бариста';
+    const day = shift_day(shift?.shift_date);
+    const done: order = { ...o, status: 'completed', is_paid: o.is_paid ?? true };
 
-    await fetch('/api/seller/prep-stats', {
+    const fulfill_res = await fetch('/api/seller/prep-stats', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       credentials: 'same-origin',
       body: JSON.stringify({
         kind: 'fulfillment',
+        order: done,
         event: {
           seller_id: sid,
           seller_name: sname,
@@ -857,10 +866,15 @@ export default function seller_board() {
           started_at: new Date(started).toISOString(),
           finished_at: new Date().toISOString(),
           pickup_at: o.pickup_time,
-          shift_date: shift?.shift_date || moscow_today_iso(),
+          shift_date: day,
         },
       }),
     });
+    if (!fulfill_res.ok) {
+      const body = (await fulfill_res.json().catch(() => null)) as { error?: string } | null;
+      alert(body?.error || 'не удалось записать выдачу');
+      return;
+    }
 
     try {
       await patch_order(o.id, { status: 'completed' });
@@ -877,10 +891,9 @@ export default function seller_board() {
 
     play_handout_chime();
 
-    const done: order = { ...o, status: 'completed', is_paid: o.is_paid ?? true };
     set_handed((prev) => {
       const next = [done, ...prev.filter((x) => x.id !== o.id)].slice(0, 50);
-      save_handed(next);
+      save_handed(day, next);
       return next;
     });
     set_orders((prev) => prev.filter((row) => row.id !== o.id));
@@ -934,6 +947,8 @@ export default function seller_board() {
   const { open: open_tasks, done: done_tasks } = get_board_tasks(day_tasks);
   const work_board_count = in_work.length + open_tasks.length;
   const ready_board_count = handed_out.length + done_tasks.length;
+  /** бейдж «готовые» = число выдач, как в аналитике (задачи смены не считаем) */
+  const ready_handout_count = handed_out.length;
 
   function render_fill_grid(count: number, children: ReactNode) {
     if (count === 0) return null;
@@ -1136,8 +1151,8 @@ export default function seller_board() {
                     {unread_new}
                   </span>
                 ) : null}
-                {t.id === 'ready' && ready_board_count ? (
-                  <span className="ml-0.5 text-[9px] text-neutral-400">{ready_board_count}</span>
+                {t.id === 'ready' && ready_handout_count ? (
+                  <span className="ml-0.5 text-[9px] text-neutral-400">{ready_handout_count}</span>
                 ) : null}
               </button>
             ))}
