@@ -204,36 +204,42 @@ export default function order_prep_card({
 
   return (
     <article
-      className={`rounded-3xl border bg-white px-4 py-4 transition ${
-        is_new ? 'border-neutral-300 ring-1 ring-neutral-200' : 'border-neutral-100'
+      className={`rounded-2xl border bg-white px-2.5 py-3 transition ${
+        is_new
+          ? 'seller-order-new border-accent ring-2 ring-accent/40'
+          : 'border-neutral-100'
       } ${mode === 'done' ? 'opacity-75' : ''}`}
     >
-      <div className="flex items-start justify-between gap-3">
+      <div className="flex items-start justify-between gap-1.5">
         <div className="min-w-0">
-          <p className="text-[11px] font-medium text-neutral-400">
+          <p className="text-[10px] font-medium text-neutral-400">
             № {format_order_number(o)}
-            {is_new ? <span className="ml-2 text-neutral-600">новый</span> : null}
+            {is_new ? (
+              <span className="ml-1 rounded bg-accent/15 px-1 py-0.5 text-[9px] font-bold uppercase tracking-wide text-accent">
+                новый
+              </span>
+            ) : null}
           </p>
-          <p className="text-[15px] font-semibold text-neutral-900 truncate mt-0.5">
+          <p className="text-sm font-semibold text-neutral-900 truncate mt-0.5">
             {customer_label(o)}
           </p>
-          <p className="text-xs tabular-nums text-neutral-500 mt-0.5">
-            {phone ? format_phone_display(phone) : 'телефон не указан'}
+          <p className="text-[10px] tabular-nums text-neutral-500 mt-0.5 truncate">
+            {phone ? format_phone_display(phone) : 'без телефона'}
           </p>
-          <p className={`text-[11px] mt-1 font-medium ${paid ? 'text-neutral-500' : 'text-neutral-700'}`}>
+          <p className={`text-[10px] mt-0.5 font-medium ${paid ? 'text-neutral-500' : 'text-neutral-700'}`}>
             {paid ? 'оплачен' : 'не оплачен'}
           </p>
         </div>
         <div className="text-right shrink-0">
-          <p className="text-xl font-bold tabular-nums text-neutral-900 leading-none">
+          <p className="text-base font-bold tabular-nums text-neutral-900 leading-none">
             {pickup_label(o.pickup_time)}
           </p>
-          <p className="text-[10px] text-neutral-400 mt-1">выдача</p>
+          <p className="text-[9px] text-neutral-400 mt-0.5">выдача</p>
         </div>
       </div>
 
       {mode !== 'done' && (
-        <div className="mt-4 mb-3">
+        <div className="mt-3 mb-2">
           {createElement(circular_timer, {
             progress: ring_progress,
             label,
@@ -241,11 +247,12 @@ export default function order_prep_card({
             urgent,
             active: cooking,
             tone,
+            compact: true,
             disabled: mode === 'ready' && !all_done,
             on_click: handle_circle,
           })}
           {mode === 'work' && current && !all_done ? (
-            <p className="mt-3 text-center text-sm font-semibold text-neutral-800">
+            <p className="mt-2 text-center text-xs font-semibold text-neutral-800 line-clamp-2">
               {current.name}
             </p>
           ) : null}
@@ -253,18 +260,19 @@ export default function order_prep_card({
       )}
 
       {mode === 'done' && (
-        <div className="mt-3 mb-1 flex justify-center">
+        <div className="mt-2 mb-1 flex justify-center">
           {createElement(circular_timer, {
             progress: 1,
             label: 'выдан',
             tone: 'done',
+            compact: true,
             disabled: true,
             on_click: () => {},
           })}
         </div>
       )}
 
-      <ul className="mt-2 space-y-1">
+      <ul className="mt-1.5 space-y-0.5">
         {list_drinks.map((d) => {
           const st = prep[d.key];
           const is_current = current?.key === d.key && mode === 'work';
@@ -272,7 +280,7 @@ export default function order_prep_card({
           return (
             <li
               key={d.key}
-              className={`flex items-center justify-between gap-2 rounded-xl px-2 py-1.5 text-sm transition ${
+              className={`flex items-center justify-between gap-1 rounded-lg px-1.5 py-1 text-[11px] transition ${
                 is_flying ? 'bg-neutral-100' : ''
               } ${
                 st?.done
@@ -285,8 +293,8 @@ export default function order_prep_card({
               <span className={`truncate ${st?.done ? 'line-through decoration-neutral-300' : ''}`}>
                 {d.name}
               </span>
-              <span className="shrink-0 text-[10px] font-medium uppercase tracking-wide text-neutral-400">
-                {st?.done ? 'готово' : is_current && cooking ? 'сейчас' : 'ожидает'}
+              <span className="shrink-0 text-[9px] font-medium uppercase tracking-wide text-neutral-400">
+                {st?.done ? 'ok' : is_current && cooking ? 'сейчас' : '…'}
               </span>
             </li>
           );
@@ -294,8 +302,8 @@ export default function order_prep_card({
       </ul>
 
       {mode === 'work' && done_count > 0 && !all_done ? (
-        <p className="mt-2 text-center text-[11px] text-neutral-500">
-          {done_count} из {drinks.length} готово
+        <p className="mt-1.5 text-center text-[10px] text-neutral-500">
+          {done_count}/{drinks.length}
         </p>
       ) : null}
     </article>

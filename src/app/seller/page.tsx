@@ -8,7 +8,7 @@ import { get_demo_user, clear_session } from '@/lib/demo-auth';
 import { useRouter } from 'next/navigation';
 import { DEFAULT_PREP_MINUTES } from '@/lib/kitchen-queue';
 import { moscow_today_iso } from '@/lib/order-number';
-import { play_handout_chime, play_new_order_chime, play_payment_chime } from '@/lib/order-chime';
+import { play_handout_chime, play_payment_chime, play_timer_alarm } from '@/lib/order-chime';
 import { get_active_spots, get_spots } from '@/lib/spot-store';
 import type { cash_transaction, order, store_spot } from '@/lib/types';
 import cash_register_modal from '@/components/seller/cash-register-modal';
@@ -207,9 +207,48 @@ export default function seller_board() {
   const [order_starts, set_order_starts] = useState<Record<string, number>>({});
   const [handed, set_handed] = useState<order[]>([]);
   const [fresh_ids, set_fresh_ids] = useState<Set<string>>(new Set());
+  const [unread_new, set_unread_new] = useState(0);
   const known_ids = useRef<Set<string> | null>(null);
   const seller_ref = useRef({ id: '', name: 'бариста' });
   const schedule_ref = useRef<schedule_line[]>([]);
+  const alarm_timer = useRef<number | null>(null);
+  const tab_ref = useRef(tab);
+
+  useEffect(() => {
+    tab_ref.current = tab;
+  }, [tab]);
+
+  function stop_order_alarm() {
+    if (alarm_timer.current != null) {
+      window.clearInterval(alarm_timer.current);
+      alarm_timer.current = null;
+    }
+  }
+
+  function start_order_alarm() {
+    if (alarm_timer.current != null) return;
+    play_timer_alarm();
+    alarm_timer.current = window.setInterval(() => play_timer_alarm(), 2000);
+  }
+
+  function notify_new_orders(count: number) {
+    if (typeof window === 'undefined' || !('Notification' in window)) return;
+    const title = count === 1 ? 'новый заказ' : `новых заказов: ${count}`;
+    const body = 'откройте «в работе», чтобы заглушить сигнал';
+    try {
+      if (Notification.permission === 'granted') {
+        new Notification(title, { body, tag: 'yoboba-seller-new-order' });
+      } else if (Notification.permission === 'default') {
+        void Notification.requestPermission().then((p) => {
+          if (p === 'granted') {
+            new Notification(title, { body, tag: 'yoboba-seller-new-order' });
+          }
+        });
+      }
+    } catch {
+      /* ignore */
+    }
+  }
 
   const hydrate_prep = useCallback(
     async (list: order[], lines: schedule_line[]) => {
@@ -417,21 +456,41 @@ export default function seller_board() {
     known_ids.current = ids;
     if (!newcomers.length) return;
 
-    play_new_order_chime();
+    notify_new_orders(newcomers.length);
     set_fresh_ids((prev) => {
       const next = new Set(prev);
       for (const id of newcomers) next.add(id);
       return next;
     });
+
+    if (tab_ref.current === 'work') {
+      // уже смотрят доску — только мигание, без будильника
+      set_unread_new(0);
+    } else {
+      set_unread_new((n) => n + newcomers.length);
+      start_order_alarm();
+    }
+
     const t = window.setTimeout(() => {
       set_fresh_ids((prev) => {
         const next = new Set(prev);
         for (const id of newcomers) next.delete(id);
         return next;
       });
-    }, 12000);
+    }, 25000);
     return () => window.clearTimeout(t);
   }, [orders]);
+
+  // будильник гасится только когда открыли «в работе»
+  useEffect(() => {
+    if (tab !== 'work') return;
+    stop_order_alarm();
+    set_unread_new(0);
+  }, [tab]);
+
+  useEffect(() => {
+    return () => stop_order_alarm();
+  }, []);
 
   const update_prep = useCallback(
     (order_id: string, drink_key: string, patch: Partial<prep_state>) => {
@@ -717,7 +776,7 @@ export default function seller_board() {
       );
     }
     return (
-      <div className="space-y-3 max-w-md mx-auto">
+      <div className="grid grid-cols-2 gap-3">
         {in_work.map((o) =>
           createElement(order_prep_card, {
             key: `work-${o.id}`,
@@ -744,7 +803,7 @@ export default function seller_board() {
       );
     }
     return (
-      <div className="space-y-3 max-w-md mx-auto">
+      <div className="grid grid-cols-2 gap-3">
         {handed_out.map((o) =>
           createElement(order_prep_card, {
             key: `handed-${o.id}`,
@@ -819,8 +878,20 @@ export default function seller_board() {
                 }`}
               >
                 {t.label}
-                {t.id === 'work' && in_work.length ? ` · ${in_work.length}` : ''}
-                {t.id === 'ready' && handed_out.length ? ` · ${handed_out.length}` : ''}
+                {t.id === 'work' && (unread_new > 0 || in_work.length > 0) ? (
+                  <span
+                    className={`ml-1 inline-flex min-w-[1.25rem] justify-center rounded-full px-1.5 text-[10px] font-bold tabular-nums ${
+                      unread_new > 0
+                        ? 'bg-accent text-white animate-pulse'
+                        : 'bg-neutral-200 text-neutral-600'
+                    }`}
+                  >
+                    {unread_new > 0 ? unread_new : in_work.length}
+                  </span>
+                ) : null}
+                {t.id === 'ready' && handed_out.length ? (
+                  <span className="ml-1 text-[10px] text-neutral-400">· {handed_out.length}</span>
+                ) : null}
               </button>
             ))}
           </div>

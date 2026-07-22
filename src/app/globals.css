@@ -337,6 +337,23 @@ body::-webkit-scrollbar {
   }
 }
 
+/* новый заказ на доске баристы — мигает, пока не «увидят» */
+@keyframes seller-order-blink {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgba(255, 107, 107, 0.55);
+    background-color: #fff;
+  }
+  50% {
+    box-shadow: 0 0 0 6px rgba(255, 107, 107, 0.12);
+    background-color: #fff5f5;
+  }
+}
+
+.seller-order-new {
+  animation: seller-order-blink 0.85s ease-in-out infinite;
+}
+
 .app-splash-logo {
   animation: splash-rise 0.6s cubic-bezier(0.2, 0.8, 0.2, 1);
   transition: transform 0.5s cubic-bezier(0.7, 0, 0.84, 0), opacity 0.4s ease-in;

@@ -9,6 +9,8 @@ type props = {
   active?: boolean;
   disabled?: boolean;
   tone?: 'idle' | 'cooking' | 'ready' | 'pay' | 'handout' | 'done';
+  /** компактнее для сетки 2 в ряд */
+  compact?: boolean;
   on_click: () => void;
 };
 
@@ -53,10 +55,11 @@ export default function circular_timer({
   active = false,
   disabled = false,
   tone = 'idle',
+  compact = false,
   on_click,
 }: props) {
-  const size = 160;
-  const stroke = 6;
+  const size = compact ? 112 : 160;
+  const stroke = compact ? 5 : 6;
   const r = (size - stroke) / 2;
   const c = 2 * Math.PI * r;
   const clamped = Math.max(0, Math.min(1, progress));
@@ -98,10 +101,24 @@ export default function circular_timer({
           }}
         />
       </svg>
-      <span className="absolute inset-0 flex flex-col items-center justify-center px-4 text-center">
+      <span
+        className={`absolute inset-0 flex flex-col items-center justify-center text-center ${
+          compact ? 'px-2' : 'px-4'
+        }`}
+      >
         <span
           className={`font-semibold leading-tight ${
-            label.length > 10 ? 'text-sm' : label.length > 6 ? 'text-lg' : 'text-xl'
+            compact
+              ? label.length > 10
+                ? 'text-[11px]'
+                : label.length > 6
+                  ? 'text-sm'
+                  : 'text-base'
+              : label.length > 10
+                ? 'text-sm'
+                : label.length > 6
+                  ? 'text-lg'
+                  : 'text-xl'
           }`}
           style={{ color: colors.text }}
         >
@@ -109,7 +126,7 @@ export default function circular_timer({
         </span>
         {sublabel ? (
           <span
-            className="mt-1 text-[10px] font-medium uppercase tracking-wide opacity-55"
+            className="mt-0.5 text-[9px] font-medium uppercase tracking-wide opacity-55"
             style={{ color: colors.text }}
           >
             {sublabel}

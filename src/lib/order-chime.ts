@@ -75,16 +75,18 @@ export function play_timer_tick() {
   play_tones([{ freq: 1400, start: 0, dur: 0.05, gain: 0.05, type: 'square' }], 200);
 }
 
-/** будильник — таймер истёк */
+/** будильник — таймер истёк / новый заказ (громкий, повторяемый) */
 export function play_timer_alarm() {
   play_tones(
     [
-      { freq: 880, start: 0, dur: 0.18, gain: 0.1 },
-      { freq: 880, start: 0.22, dur: 0.18, gain: 0.1 },
-      { freq: 880, start: 0.44, dur: 0.18, gain: 0.1 },
-      { freq: 1174, start: 0.7, dur: 0.35, gain: 0.11 },
+      { freq: 880, start: 0, dur: 0.16, gain: 0.14, type: 'square' },
+      { freq: 880, start: 0.2, dur: 0.16, gain: 0.14, type: 'square' },
+      { freq: 1174, start: 0.4, dur: 0.16, gain: 0.15, type: 'square' },
+      { freq: 1174, start: 0.6, dur: 0.16, gain: 0.15, type: 'square' },
+      { freq: 880, start: 0.85, dur: 0.28, gain: 0.16, type: 'square' },
+      { freq: 1320, start: 1.2, dur: 0.35, gain: 0.13, type: 'sawtooth' },
     ],
-    1400
+    1800
   );
 }
 
