@@ -103,24 +103,50 @@ function is_stale_menu_placeholder(url: string) {
   return !(base in img);
 }
 
-function resolve_image_url(item: menu_item, fallback?: menu_item): string | null {
+function resolve_image_url(item: menu_item, fallback?: menu_item): string {
   const url = item.image_url;
-  // внешние/загруженные фото оставляем
-  if (
-    url &&
-    (url.startsWith('data:') ||
-      url.startsWith('blob:') ||
-      url.startsWith('http://') ||
-      url.startsWith('https://'))
-  ) {
+
+  // кастомное фото из админки (data url)
+  if (url?.startsWith('data:') || url?.startsWith('blob:')) {
     return url;
   }
-  // если есть дефолт по id/названию — всегда берём его (чинит рандомный hash по uuid)
-  if (fallback?.image_url) return fallback.image_url;
-  if (url && url.startsWith('/images/menu/') && !is_stale_menu_placeholder(url)) {
+
+  // дефолтный PNG по id/названию — надёжнее старых svg и битых ссылок из БД
+  if (fallback?.image_url) {
+    return fallback.image_url;
+  }
+
+  if (url?.startsWith('http://') || url?.startsWith('https://')) {
     return url;
   }
+
+  if (url?.startsWith('/images/menu/') && !is_stale_menu_placeholder(url)) {
+    return url;
+  }
+
   return placeholder_for_id(item.id);
+}
+
+let default_lookups: {
+  by_id: Map<string, menu_item>;
+  by_name: Map<string, menu_item>;
+} | null = null;
+
+function get_default_lookups() {
+  if (!default_lookups) {
+    default_lookups = {
+      by_id: new Map(default_menu_items.map((i) => [i.id, i])),
+      by_name: new Map(default_menu_items.map((i) => [normalize_item_name(i.name), i])),
+    };
+  }
+  return default_lookups;
+}
+
+/** единая точка: всегда отдаёт рабочий url картинки для карточки */
+export function resolve_menu_item_image_url(item: menu_item): string {
+  const { by_id, by_name } = get_default_lookups();
+  const fallback = find_default_item(item, by_id, by_name);
+  return resolve_image_url(item, fallback);
 }
 
 function item(

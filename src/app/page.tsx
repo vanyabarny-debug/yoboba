@@ -12,6 +12,8 @@ import {
 import home_client from '@/components/home-client';
 import type { menu_item, story } from '@/lib/types';
 
+export const dynamic = 'force-dynamic';
+
 export default async function home_page() {
   if (!is_supabase_configured()) {
     return createElement(

@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server';
 import { create_server_client } from '@/lib/supabase/server';
 import { create_service_client } from '@/lib/supabase/service';
+import { normalize_menu_item_images } from '@/lib/menu-store';
+import type { menu_item } from '@/lib/types';
 
 async function require_user() {
   const supabase = await create_server_client();
@@ -23,7 +25,15 @@ export async function GET() {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
-  return NextResponse.json({ items: data || [] });
+  const rows = (data || []).map((row) => {
+    const raw_menu = row.menu as menu_item | menu_item[] | null;
+    const menu_row = Array.isArray(raw_menu) ? raw_menu[0] : raw_menu;
+    if (!menu_row) return row;
+    const [menu] = normalize_menu_item_images([menu_row]);
+    return { ...row, menu };
+  });
+
+  return NextResponse.json({ items: rows });
 }
 
 export async function POST(request: Request) {

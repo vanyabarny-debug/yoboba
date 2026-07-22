@@ -1,6 +1,6 @@
 /* eslint-disable no-restricted-globals */
 
-const cache_name = 'yoboba-v5';
+const cache_name = 'yoboba-v6';
 const static_assets = [
   '/',
   '/login',
@@ -40,6 +40,12 @@ self.addEventListener('fetch', (event) => {
   const url = new URL(request.url);
 
   if (url.pathname.startsWith('/api/')) return;
+
+  // картинки меню — только сеть, без залипшего кеша 404
+  if (url.pathname.startsWith('/images/menu/')) {
+    event.respondWith(fetch(request));
+    return;
+  }
 
   event.respondWith(
     caches.match(request).then((cached) => {

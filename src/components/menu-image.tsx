@@ -1,8 +1,9 @@
 'use client';
 
-import { memo, useEffect, useState } from 'react';
+import { memo, useEffect, useMemo, useState } from 'react';
 import type { menu_item } from '@/lib/types';
 import { is_custom_menu_photo } from '@/lib/menu-photo';
+import { resolve_menu_item_image_url } from '@/lib/menu-store';
 
 type props = {
   item: menu_item;
@@ -12,7 +13,6 @@ type props = {
 
 function is_unusable_src(src: string | null | undefined) {
   if (!src) return true;
-  // старые SVG-заглушки — не грузим, сразу скелетон
   if (src.endsWith('.svg')) return true;
   return false;
 }
@@ -29,7 +29,7 @@ function skeleton({ className = '' }: { className?: string }) {
 }
 
 function menu_image_inner({ item, className = '', variant = 'card' }: props) {
-  const src = item.image_url;
+  const src = useMemo(() => resolve_menu_item_image_url(item), [item]);
   const unusable = is_unusable_src(src);
   const [failed, set_failed] = useState(unusable);
   const [loaded, set_loaded] = useState(false);
@@ -57,7 +57,7 @@ function menu_image_inner({ item, className = '', variant = 'card' }: props) {
         className={`absolute inset-0 h-full w-full object-cover object-center transition-opacity duration-300 ${
           loaded ? 'opacity-100' : 'opacity-0'
         }`}
-        loading="lazy"
+        loading={variant === 'card' ? 'eager' : 'lazy'}
         decoding="async"
         draggable={false}
         onLoad={() => set_loaded(true)}
@@ -73,6 +73,7 @@ function menu_image_inner({ item, className = '', variant = 'card' }: props) {
 export default memo(menu_image_inner, (prev, next) => {
   return (
     prev.item.id === next.item.id &&
+    prev.item.name === next.item.name &&
     prev.item.image_url === next.item.image_url &&
     prev.className === next.className &&
     prev.variant === next.variant
