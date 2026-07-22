@@ -1,8 +1,8 @@
 'use client';
 
 import { createElement, useEffect, useState } from 'react';
-import Link from 'next/link';
 import type { store_spot } from '@/lib/types';
+import AdminShell from '@/components/admin/admin-shell';
 import spot_edit_sheet from '@/components/admin/spot-edit-sheet';
 import {
   delete_spot,
@@ -35,25 +35,13 @@ export default function spots_manage() {
   }
 
   return (
-    <div className="min-h-screen bg-surface">
-      <header className="bg-page border-b border-surface">
-        <div className="max-w-6xl mx-auto px-4 py-4 flex items-center justify-between">
-          <div>
-            <h1 className="text-xl font-semibold text-accent">точки выдачи</h1>
-            <p className="text-xs text-neutral-500">адреса магазинов для выбора в приложении</p>
-          </div>
-          <nav className="flex gap-3 text-sm">
-            <Link href="/admin" className="text-neutral-600 hover:text-accent">
-              дашборд
-            </Link>
-            <Link href="/" className="text-neutral-400">
-              на сайт
-            </Link>
-          </nav>
+    <AdminShell>
+      <div className="space-y-4">
+        <div>
+          <h2 className="text-lg font-semibold text-neutral-900">точки выдачи</h2>
+          <p className="text-sm text-neutral-500">адреса магазинов для выбора в приложении</p>
         </div>
-      </header>
 
-      <main className="max-w-6xl mx-auto px-4 py-6 space-y-4">
         <button
           type="button"
           onClick={open_create}
@@ -88,7 +76,7 @@ export default function spots_manage() {
             </div>
           ))}
         </div>
-      </main>
+      </div>
 
       {editing &&
         createElement(spot_edit_sheet, {
@@ -97,6 +85,6 @@ export default function spots_manage() {
           on_save: upsert_spot,
           on_delete: delete_spot,
         })}
-    </div>
+    </AdminShell>
   );
 }

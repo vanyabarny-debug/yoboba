@@ -94,11 +94,13 @@ export default function sellers_manage() {
   }
 
   return (
-    <AdminShell
-      title="персонал"
-      subtitle="продавцы и доступ к кассе · вход через /admin/login"
-    >
+    <AdminShell>
       <div className="max-w-3xl mx-auto space-y-4">
+        <div>
+          <h2 className="text-lg font-semibold text-neutral-900">персонал</h2>
+          <p className="text-sm text-neutral-500">продавцы и доступ к кассе</p>
+        </div>
+
         <button
           type="button"
           onClick={open_create}

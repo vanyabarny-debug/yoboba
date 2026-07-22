@@ -1,66 +1,88 @@
 'use client';
 
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import { BRAND_NAME } from '@/lib/brand';
+import { clear_session } from '@/lib/demo-auth';
 
-const tabs = [
+export const admin_tabs = [
   { href: '/admin', label: 'аналитика', match: (p: string) => p === '/admin' },
-  { href: '/admin/menu', label: 'редактирование', match: (p: string) => p === '/admin/menu' },
+  { href: '/admin/menu', label: 'редактирование', match: (p: string) => p.startsWith('/admin/menu') },
   {
     href: '/admin/personnel',
     label: 'персонал',
     match: (p: string) => p.startsWith('/admin/personnel') || p.startsWith('/admin/sellers'),
   },
   { href: '/admin/spots', label: 'точки', match: (p: string) => p.startsWith('/admin/spots') },
-];
+] as const;
 
-export default function admin_shell({
-  title,
-  subtitle,
-  children,
-}: {
-  title: string;
-  subtitle?: string;
-  children: React.ReactNode;
-}) {
+export function AdminHeader({ actions }: { actions?: React.ReactNode }) {
   const pathname = usePathname() || '/admin';
+  const router = useRouter();
+
+  async function handle_logout() {
+    await clear_session();
+    router.push('/admin/login');
+  }
 
   return (
-    <div className="min-h-screen bg-[#f4f5f6]">
-      <header className="sticky top-0 z-40 border-b border-neutral-200/80 bg-white/95 backdrop-blur">
-        <div className="max-w-6xl mx-auto px-4 py-3">
-          <div className="flex items-center justify-between gap-4 mb-3">
-            <div>
-              <h1 className="text-lg font-bold text-neutral-900">{title}</h1>
-              {subtitle && <p className="text-xs text-neutral-500">{subtitle}</p>}
-            </div>
-            <Link href="/" className="text-xs text-neutral-400 hover:text-neutral-700">
-              на сайт
-            </Link>
-          </div>
-          <nav className="flex gap-1 overflow-x-auto pb-0.5">
-            {tabs.map((tab) => {
-              const active = tab.match(pathname);
-              return (
-                <Link
-                  key={tab.href}
-                  href={tab.href}
-                  className={`shrink-0 rounded-pill px-4 py-2 text-sm font-medium transition-colors ${
-                    active
-                      ? 'bg-neutral-900 text-white'
-                      : 'text-neutral-600 hover:bg-neutral-100'
-                  }`}
-                >
-                  {tab.label}
-                </Link>
-              );
-            })}
-          </nav>
+    <header className="sticky top-0 z-50 border-b border-neutral-200/80 bg-white/95 backdrop-blur">
+      <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-x-4 gap-y-2 px-4 py-2.5">
+        <Link href="/admin" className="shrink-0 text-sm font-bold tracking-tight text-neutral-900">
+          {BRAND_NAME}
+          <span className="ml-1.5 font-medium text-neutral-400">admin</span>
+        </Link>
+
+        <nav className="flex min-w-0 flex-1 gap-0.5 overflow-x-auto">
+          {admin_tabs.map((tab) => {
+            const active = tab.match(pathname);
+            return (
+              <Link
+                key={tab.href}
+                href={tab.href}
+                className={`shrink-0 rounded-lg px-3 py-1.5 text-sm font-medium transition-colors ${
+                  active
+                    ? 'bg-neutral-900 text-white'
+                    : 'text-neutral-500 hover:bg-neutral-100 hover:text-neutral-800'
+                }`}
+              >
+                {tab.label}
+              </Link>
+            );
+          })}
+        </nav>
+
+        <div className="ml-auto flex shrink-0 items-center gap-3 text-sm">
+          {actions}
+          <Link href="/" className="text-neutral-400 hover:text-neutral-700">
+            на сайт
+          </Link>
+          <button
+            type="button"
+            onClick={handle_logout}
+            className="text-neutral-500 hover:text-neutral-800"
+          >
+            выйти
+          </button>
         </div>
-      </header>
-      <main className="max-w-6xl mx-auto px-4 py-6">{children}</main>
-      <p className="text-center text-[10px] text-neutral-300 pb-6">{BRAND_NAME} admin</p>
+      </div>
+    </header>
+  );
+}
+
+export default function AdminShell({
+  children,
+  actions,
+  wide = false,
+}: {
+  children: React.ReactNode;
+  actions?: React.ReactNode;
+  wide?: boolean;
+}) {
+  return (
+    <div className="min-h-screen bg-[#f4f5f6]">
+      <AdminHeader actions={actions} />
+      <main className={`mx-auto px-4 py-6 ${wide ? 'max-w-7xl' : 'max-w-6xl'}`}>{children}</main>
     </div>
   );
 }

@@ -89,7 +89,7 @@ export default function admin_login_page() {
       }
 
       create_demo_user({ name: data.name || 'админ', role: 'admin', force: true });
-      window.location.assign('/admin/menu');
+      window.location.assign('/admin');
     } catch {
       set_error('ошибка сети — попробуйте ещё раз');
       set_loading(false);

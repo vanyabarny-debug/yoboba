@@ -20,6 +20,7 @@ import sidebar_edit_sheet from '@/components/admin/sidebar-edit-sheet';
 import top_bar_edit_sheet from '@/components/admin/top-bar-edit-sheet';
 import brand_edit_sheet from '@/components/admin/brand-edit-sheet';
 import { admin_sheet } from '@/components/admin/admin-sheet';
+import { AdminHeader } from '@/components/admin/admin-shell';
 import location_modal from '@/components/location-modal';
 import order_gate_modal from '@/components/order-gate-modal';
 import phone_gate_modal from '@/components/phone-gate-modal';
@@ -860,30 +861,20 @@ export default function home_client({
       className="min-h-screen bg-page"
       style={{ '--site-header-h': `${header_h}px` } as React.CSSProperties}
     >
-      {is_admin_edit && (
-        <div className="bg-accent/10 border-b border-accent/20 sticky mobile-sticky-top z-50">
-          <div className="page-shell py-2 flex items-center justify-between gap-3 text-sm">
-            <span className="font-medium text-accent">режим редактирования</span>
-            <div className="flex items-center gap-3">
-              <Link href="/admin/sellers" className="text-neutral-700 hover:text-accent">
-                продавцы
-              </Link>
-              <button
-                type="button"
-                onClick={() => {
-                  if (confirm('сбросить меню к дефолту?')) reset_menu_store();
-                }}
-                className="text-neutral-400"
-              >
-                сброс
-              </button>
-              <button type="button" onClick={handle_logout} className="text-neutral-600">
-                выйти
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      {is_admin_edit &&
+        createElement(AdminHeader, {
+          actions: createElement(
+            'button',
+            {
+              type: 'button',
+              onClick: () => {
+                if (confirm('сбросить меню к дефолту?')) reset_menu_store();
+              },
+              className: 'text-neutral-400 hover:text-neutral-700',
+            },
+            'сброс'
+          ),
+        })}
 
       <div className="hidden min-[1024px]:block bg-page border-b border-surface/70">
         {createElement(top_bar, is_admin_edit ? {
@@ -916,7 +907,7 @@ export default function home_client({
           on_city_click: () => set_location_open(true),
           on_login: handle_login,
           on_logout: handle_logout,
-          on_admin: () => router.push('/admin/menu'),
+          on_admin: () => router.push('/admin'),
         })}
       </div>
 

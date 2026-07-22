@@ -152,7 +152,7 @@ export default function site_chrome({ children }: props) {
           on_city_click: () => set_location_open(true),
           on_login: handle_login,
           on_logout: handle_logout,
-          on_admin: () => router.push('/admin/menu'),
+          on_admin: () => router.push('/admin'),
         })}
       </div>
 
