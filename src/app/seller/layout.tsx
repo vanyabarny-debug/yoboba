@@ -9,7 +9,7 @@ export const metadata: Metadata = {
   manifest: '/manifest-admin.json',
   appleWebApp: {
     capable: true,
-    statusBarStyle: 'default',
+    statusBarStyle: 'black-translucent',
     title: SQUAD_SHORT,
   },
   icons: {
@@ -26,7 +26,7 @@ export const metadata: Metadata = {
 };
 
 export const viewport: Viewport = {
-  themeColor: '#ffffff',
+  themeColor: '#FF6B6B',
   colorScheme: 'light',
   width: 'device-width',
   initialScale: 1,
@@ -37,10 +37,10 @@ export const viewport: Viewport = {
 export default function seller_layout({ children }: { children: React.ReactNode }) {
   return (
     <>
-      {/* белая заглушка под статус-бар (время / вайфай), чтобы шапка не сливалась */}
+      {/* коралловая заглушка под статус-бар (время / вайфай) */}
       <div
         aria-hidden
-        className="pointer-events-none fixed inset-x-0 top-0 z-[100] bg-white"
+        className="pointer-events-none fixed inset-x-0 top-0 z-[100] bg-accent"
         style={{ height: 'var(--safe-top)' }}
       />
       {children}

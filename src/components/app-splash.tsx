@@ -378,7 +378,7 @@ export default function app_splash() {
 
       <div className="app-splash-content">
         <div ref={logo_ref} className="app-splash-logo">
-          <BrandWordmark className="text-[72px]" />
+          <BrandWordmark className="text-[72px] !text-[#0039a6]" />
         </div>
         <p className="app-splash-slogan">
           радость,
