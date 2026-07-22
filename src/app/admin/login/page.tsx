@@ -69,7 +69,13 @@ export default function admin_login_page() {
         body: JSON.stringify({ login: login.trim(), password }),
       });
 
-      const data = await res.json().catch(() => ({}));
+      const data = (await res.json().catch(() => ({}))) as {
+        role?: string;
+        seller_id?: string;
+        name?: string;
+        spot_ids?: string[];
+        error?: string;
+      };
 
       if (!res.ok) {
         set_error(data.error || 'неверный логин или пароль');
@@ -80,10 +86,17 @@ export default function admin_login_page() {
       if (data.role === 'seller') {
         create_demo_user({
           id: data.seller_id || `seller-${Date.now()}`,
-          name: data.name || 'продавец',
+          name: data.name || 'бариста',
           role: 'seller',
           force: true,
         });
+        if (typeof window !== 'undefined') {
+          sessionStorage.setItem(
+            'yoboba_seller_spot_ids',
+            JSON.stringify(data.spot_ids || [])
+          );
+          sessionStorage.removeItem('yoboba_seller_shift');
+        }
         window.location.assign('/seller');
         return;
       }

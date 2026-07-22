@@ -241,14 +241,18 @@ export default function home_client({
       const res = await fetch('/api/orders/demo', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ items, pickup_time }),
+        body: JSON.stringify({
+          items,
+          pickup_time,
+          customer_name: user?.name || 'гость',
+          customer_phone: user?.phone || null,
+        }),
       });
+      const body = (await res.json()) as { order?: import('@/lib/types').order; error?: string };
       if (!res.ok) {
-        const body = (await res.json()) as { error?: string };
         set_order_error(body.error || 'не удалось оформить заказ');
         return;
       }
-      const body = (await res.json()) as { order?: import('@/lib/types').order };
       set_order_error('');
       set_cart_lines([]);
       save_guest_cart([]);
@@ -290,7 +294,7 @@ export default function home_client({
       num ? `заказ № ${num} — заберите в ${label}` : `заказ отправлен — заберите в ${label}`
     );
     window.setTimeout(() => set_order_toast(''), 4500);
-  }, [cart_lines, user_id, demo_mode]);
+  }, [cart_lines, user_id, demo_mode, user?.name, user?.phone]);
 
   function needs_checkout_gate() {
     if (demo_mode) return false;

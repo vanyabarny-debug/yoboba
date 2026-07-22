@@ -42,7 +42,12 @@ export async function POST(request: Request) {
   const order = await create_fake_order_from_items(
     items,
     body.pickup_minutes ?? 12,
-    pickup_time
+    pickup_time,
+    {
+      name: body.customer_name,
+      phone: body.customer_phone,
+      is_paid: false,
+    }
   );
   return NextResponse.json({ order });
 }

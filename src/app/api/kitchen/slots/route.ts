@@ -1,7 +1,6 @@
 import { NextResponse } from 'next/server';
-import { build_kitchen_schedule, suggest_pickup_slots } from '@/lib/kitchen-queue';
+import { is_pickup_feasible, suggest_pickup_slots } from '@/lib/kitchen-queue';
 import { load_active_orders, load_menu_map } from '@/lib/kitchen-server';
-import type { order_item } from '@/lib/types';
 
 type cart_line = { menu_id: string; name: string; quantity: number };
 
@@ -24,7 +23,7 @@ export async function POST(request: Request) {
     if (Number.isNaN(at)) {
       return NextResponse.json({ error: 'неверное время' }, { status: 400 });
     }
-    const { feasible } = build_kitchen_schedule({
+    const feasible = is_pickup_feasible({
       active_orders,
       menu_by_id,
       cart_lines,

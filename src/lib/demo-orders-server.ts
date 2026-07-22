@@ -64,7 +64,8 @@ export async function update_demo_order(
 export async function create_fake_order_from_items(
   items: order['items'],
   pickup_minutes = 12,
-  pickup_time_iso?: string
+  pickup_time_iso?: string,
+  customer?: { name?: string; phone?: string; is_paid?: boolean }
 ): Promise<order> {
   const total = items.reduce((s, i) => s + i.price * i.quantity, 0);
   return add_demo_order({
@@ -73,6 +74,9 @@ export async function create_fake_order_from_items(
     total_price: total,
     status: 'new',
     payment_type: 'cash',
+    is_paid: customer?.is_paid ?? false,
+    customer_name: customer?.name || 'гость',
+    customer_phone: customer?.phone || null,
     pickup_time:
       pickup_time_iso ?? new Date(Date.now() + pickup_minutes * 60000).toISOString(),
   });

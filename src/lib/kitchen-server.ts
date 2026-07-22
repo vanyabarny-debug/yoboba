@@ -51,11 +51,32 @@ export async function load_active_orders(): Promise<order[]> {
       .select('*')
       .in('status', ['new', 'preparing', 'ready'])
       .order('pickup_time', { ascending: true });
-    for (const o of (data as order[]) || []) {
-      if (!seen.has(o.id)) {
-        seen.add(o.id);
-        merged.push(o);
+
+    const rows = (data as order[]) || [];
+    const need_profile = rows.filter((o) => !o.customer_name || !o.customer_phone);
+    const profile_map = new Map<string, { name?: string | null; phone?: string | null }>();
+
+    if (need_profile.length) {
+      const ids = [...new Set(need_profile.map((o) => o.user_id))];
+      const { data: profiles } = await supabase
+        .from('profiles')
+        .select('id, name, phone')
+        .in('id', ids);
+      for (const p of profiles || []) {
+        profile_map.set(p.id, p);
       }
+    }
+
+    for (const o of rows) {
+      if (seen.has(o.id)) continue;
+      seen.add(o.id);
+      const profile = profile_map.get(o.user_id);
+      merged.push({
+        ...o,
+        is_paid: Boolean(o.is_paid),
+        customer_name: o.customer_name || profile?.name || 'гость',
+        customer_phone: o.customer_phone || profile?.phone || null,
+      });
     }
   }
 
@@ -63,3 +84,4 @@ export async function load_active_orders(): Promise<order[]> {
     (a, b) => new Date(a.pickup_time).getTime() - new Date(b.pickup_time).getTime()
   );
 }
+

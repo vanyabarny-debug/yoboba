@@ -4,7 +4,7 @@ import { create_service_client } from '@/lib/supabase/service';
 import { calc_order_bonus } from '@/lib/cart-summary';
 import { normalize_phone } from '@/lib/phone';
 import { allocate_daily_order_number } from '@/lib/order-number';
-import { build_kitchen_schedule } from '@/lib/kitchen-queue';
+import { is_pickup_feasible } from '@/lib/kitchen-queue';
 import { load_active_orders, load_menu_map } from '@/lib/kitchen-server';
 import type { order_item } from '@/lib/types';
 
@@ -61,23 +61,11 @@ export async function POST(request: Request) {
     name: i.name,
     quantity: i.quantity,
   }));
-  const { feasible } = build_kitchen_schedule({
-    active_orders,
-    menu_by_id,
-    cart_lines,
-    pickup_at,
-  });
-  if (!feasible) {
-    return NextResponse.json(
-      { error: 'это время уже занято — выберите другой слот' },
-      { status: 409 }
-    );
-  }
 
   const admin = create_service_client();
   const { data: profile } = await admin
     .from('profiles')
-    .select('id, bonus_balance, phone')
+    .select('id, bonus_balance, phone, name')
     .eq('id', user.id)
     .maybeSingle();
   if (!profile) {
@@ -97,6 +85,24 @@ export async function POST(request: Request) {
     );
   }
 
+  const customer_name =
+    (profile?.name || '').trim() ||
+    ((user.user_metadata as { name?: string } | undefined)?.name || '').trim() ||
+    'гость';
+
+  const feasible = is_pickup_feasible({
+    active_orders,
+    menu_by_id,
+    cart_lines,
+    pickup_at,
+  });
+  if (!feasible) {
+    return NextResponse.json(
+      { error: 'это время уже занято — выберите другой слот' },
+      { status: 409 }
+    );
+  }
+
   let daily_number: { order_day: string; order_number: number };
   try {
     daily_number = await allocate_daily_order_number(admin);
@@ -105,20 +111,41 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: message }, { status: 500 });
   }
 
-  const { data, error } = await supabase
-    .from('orders')
-    .insert({
-      user_id: user.id,
-      items,
-      total_price,
-      payment_type,
-      pickup_time,
-      status: 'new',
-      order_number: daily_number.order_number,
-      order_day: daily_number.order_day,
-    })
-    .select()
-    .single();
+  const order_payload = {
+    user_id: user.id,
+    items,
+    total_price,
+    payment_type,
+    pickup_time,
+    status: 'new' as const,
+    is_paid: false,
+    customer_name,
+    customer_phone: profile_phone,
+    order_number: daily_number.order_number,
+    order_day: daily_number.order_day,
+  };
+
+  let { data, error } = await supabase.from('orders').insert(order_payload).select().single();
+
+  // если колонки is_paid / customer_* ещё не добавлены в Supabase — пишем без них
+  if (error && /is_paid|customer_name|customer_phone/i.test(error.message)) {
+    const retry = await supabase
+      .from('orders')
+      .insert({
+        user_id: user.id,
+        items,
+        total_price,
+        payment_type,
+        pickup_time,
+        status: 'new',
+        order_number: daily_number.order_number,
+        order_day: daily_number.order_day,
+      })
+      .select()
+      .single();
+    data = retry.data;
+    error = retry.error;
+  }
 
   if (error || !data) {
     return NextResponse.json({ error: error?.message || 'не удалось создать заказ' }, { status: 500 });

@@ -40,6 +40,7 @@ export async function POST(request: Request) {
     password: body.password,
     name: body.name.trim(),
     is_active: body.is_active !== false,
+    spot_ids: Array.isArray(body.spot_ids) ? body.spot_ids : [],
   });
 
   return NextResponse.json({ seller: record });

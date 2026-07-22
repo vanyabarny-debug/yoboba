@@ -90,6 +90,7 @@ export async function POST(request: Request) {
         role: 'seller' as user_role,
         seller_id: seller.id,
         name: seller.name,
+        spot_ids: seller.spot_ids ?? [],
       });
       res.cookies.set(session_cookie, 'seller', cookie_opts);
       res.cookies.set(seller_id_cookie, seller.id, cookie_opts);

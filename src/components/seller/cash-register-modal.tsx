@@ -40,7 +40,7 @@ export default function cash_register_modal({
         <div className="px-6 pt-5 pb-4 border-b border-surface bg-gradient-to-b from-accent/5 to-white">
           <div className="mx-auto mb-3 h-1 w-10 rounded-full bg-neutral-200 sm:hidden" />
           <h2 className="text-xl font-bold text-neutral-900">оплата</h2>
-          <p className="text-xs text-neutral-500 mt-0.5">кассир: {seller_name}</p>
+          <p className="text-xs text-neutral-500 mt-0.5">бариста: {seller_name}</p>
         </div>
 
         <div className="px-6 py-5 space-y-4">

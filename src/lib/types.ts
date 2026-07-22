@@ -68,6 +68,10 @@ export type order = {
   total_price: number;
   status: 'new' | 'preparing' | 'ready' | 'completed' | 'cancelled';
   payment_type: 'cash' | 'card' | 'online';
+  /** false / undefined = ещё не оплачен */
+  is_paid?: boolean;
+  customer_name?: string | null;
+  customer_phone?: string | null;
   pickup_time: string;
   created_at: string;
   /** порядковый номер за день: 1, 2, 3… */
@@ -83,6 +87,8 @@ export type seller = {
   name: string;
   is_active: boolean;
   created_at: string;
+  /** точки, на которых кассир может открыть смену */
+  spot_ids?: string[];
 };
 
 export type cash_transaction = {
