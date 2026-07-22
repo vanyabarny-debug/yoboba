@@ -120,11 +120,18 @@ export default function admin_login_page() {
       <div className="flex-1 flex items-center justify-center p-4">
         <div className="w-full max-w-sm">
           <div className="text-center mb-8">
-            <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center overflow-hidden rounded-2xl bg-neutral-900">
-              <img src="/icons/yosquad-mark.svg" alt="yoSquad" width={64} height={64} />
-            </div>
-            <h1 className="text-xl font-bold tracking-tight">
-              <span className="text-accent">yo</span>Squad
+            <img
+              src="/icons/yosquad-192.png"
+              alt="yoSquad"
+              width={72}
+              height={72}
+              className="mx-auto mb-4 rounded-2xl shadow-sm"
+            />
+            <h1
+              className="text-2xl font-bold tracking-tight text-accent"
+              style={{ fontFamily: 'Fredoka, system-ui, sans-serif' }}
+            >
+              yoSquad
             </h1>
             <p className="text-sm text-neutral-500 mt-2">вход для команды точки</p>
           </div>
