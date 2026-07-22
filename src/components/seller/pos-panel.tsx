@@ -9,6 +9,7 @@ import {
 import { format_phone_input, phone_input_to_e164 } from '@/lib/phone';
 import { category_tile_meta } from '@/lib/category-icons';
 import { get_topping_portion_price_value } from '@/lib/product-details';
+import { tile_grid } from '@/lib/seller-tile-grid';
 import type { menu_item, order_item } from '@/lib/types';
 import menu_image from '@/components/menu-image';
 import seller_product_sheet from '@/components/seller/seller-product-sheet';
@@ -375,18 +376,12 @@ export default function pos_panel({ on_created }: props) {
     on_add: add_configured,
   });
 
-  function tile_grid(count: number) {
-    const cols = count <= 2 ? 1 : count <= 6 ? 2 : 3;
-    const rows = Math.max(1, Math.ceil(Math.max(count, 1) / cols));
-    return { cols, rows };
-  }
-
   if (step === 'categories') {
     const { cols, rows } = tile_grid(categories.length);
     return (
-      <div className="flex flex-col flex-1 min-h-0 h-full gap-2">
+      <div className="flex flex-col flex-1 min-h-0 h-full gap-2 overflow-hidden">
         <div
-          className="grid flex-1 min-h-0 gap-2"
+          className="grid flex-1 min-h-0 gap-2 overflow-hidden"
           style={{
             gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))`,
             gridTemplateRows: `repeat(${rows}, minmax(0, 1fr))`,
@@ -399,15 +394,15 @@ export default function pos_panel({ on_created }: props) {
                 key={c}
                 type="button"
                 onClick={() => open_category(c)}
-                className="flex h-full min-h-0 flex-col items-center justify-center gap-2 rounded-2xl border px-2 py-3 active:scale-[0.98] transition"
+                className="flex h-full min-h-0 flex-col items-center justify-center gap-2 rounded-2xl border px-2 py-3 active:scale-[0.98] transition overflow-hidden"
                 style={{
                   backgroundColor: meta.bg,
                   borderColor: meta.border,
                   color: meta.fg,
                 }}
               >
-                {meta.icon({ className: 'h-8 w-8 sm:h-10 sm:w-10' })}
-                <span className="text-xs sm:text-sm font-semibold leading-snug text-center capitalize px-1">
+                {meta.icon({ className: 'h-8 w-8 sm:h-10 sm:w-10 shrink-0' })}
+                <span className="text-xs sm:text-sm font-semibold leading-snug text-center capitalize px-1 line-clamp-2">
                   {meta.label}
                 </span>
               </button>
@@ -426,10 +421,10 @@ export default function pos_panel({ on_created }: props) {
     );
   }
 
-  const { cols: prod_cols, rows: prod_rows } = tile_grid(filtered.length);
+  const { cols: prod_cols, rows: prod_rows } = tile_grid(filtered.length || 1);
 
   return (
-    <div className="flex flex-col flex-1 min-h-0 h-full gap-2">
+    <div className="flex flex-col flex-1 min-h-0 h-full gap-2 overflow-hidden">
       <div className="flex items-center gap-2 shrink-0">
         <button
           type="button"
@@ -444,7 +439,7 @@ export default function pos_panel({ on_created }: props) {
       </div>
 
       <div
-        className="grid flex-1 min-h-0 gap-2"
+        className="grid flex-1 min-h-0 gap-2 overflow-hidden"
         style={{
           gridTemplateColumns: `repeat(${prod_cols}, minmax(0, 1fr))`,
           gridTemplateRows: `repeat(${prod_rows}, minmax(0, 1fr))`,
@@ -455,7 +450,7 @@ export default function pos_panel({ on_created }: props) {
             key={item.id}
             type="button"
             onClick={() => open_item(item)}
-            className="flex h-full min-h-0 flex-col rounded-2xl border border-neutral-200 bg-white p-2 text-left active:scale-[0.98] transition"
+            className="flex h-full min-h-0 flex-col rounded-2xl border border-neutral-200 bg-white p-2 text-left active:scale-[0.98] transition overflow-hidden"
           >
             <div className="relative min-h-0 flex-1 w-full overflow-hidden rounded-xl bg-neutral-50">
               {createElement(menu_image, {
@@ -464,7 +459,7 @@ export default function pos_panel({ on_created }: props) {
                 variant: 'card',
               })}
             </div>
-            <p className="mt-1.5 shrink-0 text-xs sm:text-sm font-semibold text-neutral-900 leading-snug line-clamp-2 text-center">
+            <p className="mt-1 shrink-0 text-xs sm:text-sm font-semibold text-neutral-900 leading-snug line-clamp-2 text-center">
               {item.name}
             </p>
             <p className="mt-0.5 shrink-0 text-sm font-bold tabular-nums text-neutral-900 text-center">

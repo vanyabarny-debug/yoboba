@@ -1,22 +1,35 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState, createElement } from 'react';
+import { useCallback, useEffect, useRef, useState, createElement, type ReactNode } from 'react';
 import { create_client } from '@/lib/supabase/client';
 import { is_supabase_configured } from '@/lib/supabase/config';
 import { get_demo_user, clear_session } from '@/lib/demo-auth';
 import { useRouter } from 'next/navigation';
 import { DEFAULT_PREP_MINUTES } from '@/lib/kitchen-queue';
 import { moscow_today_iso } from '@/lib/order-number';
-import { play_handout_chime, play_payment_chime, play_timer_alarm } from '@/lib/order-chime';
+import {
+  play_drink_ready_chime,
+  play_handout_chime,
+  play_payment_chime,
+  play_start_chime,
+  play_timer_alarm,
+} from '@/lib/order-chime';
 import { get_active_spots, get_spots } from '@/lib/spot-store';
 import type { cash_transaction, order, store_spot } from '@/lib/types';
 import cash_register_modal from '@/components/seller/cash-register-modal';
 import barista_analytics_panel from '@/components/seller/barista-analytics';
 import pos_panel from '@/components/seller/pos-panel';
+import shift_task_card from '@/components/seller/shift-task-card';
 import order_prep_card, {
   type drink_row,
   type prep_state,
 } from '@/components/seller/order-prep-card';
+import {
+  load_day_tasks,
+  patch_day_task,
+  type day_task,
+} from '@/lib/seller-day-tasks';
+import { tile_grid } from '@/lib/seller-tile-grid';
 
 type tab = 'work' | 'ready' | 'pos' | 'analytics';
 
@@ -205,6 +218,7 @@ export default function seller_board() {
   const [prep_map, set_prep_map] = useState<Record<string, Record<string, prep_state>>>({});
   const [order_starts, set_order_starts] = useState<Record<string, number>>({});
   const [handed, set_handed] = useState<order[]>([]);
+  const [day_tasks, set_day_tasks] = useState<day_task[]>([]);
   const [fresh_ids, set_fresh_ids] = useState<Set<string>>(new Set());
   const [unread_new, set_unread_new] = useState(0);
   const known_ids = useRef<Set<string> | null>(null);
@@ -491,6 +505,26 @@ export default function seller_board() {
     return () => stop_order_alarm();
   }, []);
 
+  useEffect(() => {
+    if (!shift?.spot_id) {
+      set_day_tasks([]);
+      return;
+    }
+    set_day_tasks(load_day_tasks(shift.spot_id));
+  }, [shift?.spot_id]);
+
+  function start_day_task(task_id: string) {
+    if (!shift?.spot_id) return;
+    play_start_chime();
+    set_day_tasks(patch_day_task(shift.spot_id, task_id, 'in_progress'));
+  }
+
+  function complete_day_task(task_id: string) {
+    if (!shift?.spot_id) return;
+    play_drink_ready_chime();
+    set_day_tasks(patch_day_task(shift.spot_id, task_id, 'done'));
+  }
+
   const update_prep = useCallback(
     (order_id: string, drink_key: string, patch: Partial<prep_state>) => {
       set_prep_map((prev) => {
@@ -766,16 +800,48 @@ export default function seller_board() {
     { id: 'analytics', label: 'аналитика' },
   ];
 
+  const open_tasks = day_tasks.filter((t) => t.status !== 'done');
+  const done_tasks = day_tasks.filter((t) => t.status === 'done');
+  const work_board_count = in_work.length + open_tasks.length;
+  const ready_board_count = handed_out.length + done_tasks.length;
+
+  function render_fill_grid(count: number, children: ReactNode) {
+    if (count === 0) return null;
+    const { cols, rows } = tile_grid(count);
+    return (
+      <div
+        className="grid flex-1 min-h-0 gap-2 overflow-hidden h-full"
+        style={{
+          gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))`,
+          gridTemplateRows: `repeat(${rows}, minmax(0, 1fr))`,
+        }}
+      >
+        {children}
+      </div>
+    );
+  }
+
   function render_work_list() {
-    if (in_work.length === 0) {
+    const items = work_board_count;
+    if (items === 0) {
       return (
-        <div className="rounded-2xl border border-dashed border-neutral-300 bg-white/70 px-4 py-14 text-center text-sm text-neutral-400">
+        <div className="flex-1 flex items-center justify-center rounded-2xl border border-dashed border-neutral-300 bg-white/70 text-sm text-neutral-400">
           пусто
         </div>
       );
     }
-    return (
-      <div className="grid grid-cols-2 gap-3">
+    return render_fill_grid(
+      items,
+      <>
+        {open_tasks.map((t) =>
+          createElement(shift_task_card, {
+            key: `task-${t.id}`,
+            task: t,
+            mode: 'work',
+            on_start: start_day_task,
+            on_complete: complete_day_task,
+          })
+        )}
         {in_work.map((o) =>
           createElement(order_prep_card, {
             key: `work-${o.id}`,
@@ -789,20 +855,31 @@ export default function seller_board() {
             on_final_action,
           })
         )}
-      </div>
+      </>
     );
   }
 
   function render_handed_list() {
-    if (handed_out.length === 0) {
+    const items = ready_board_count;
+    if (items === 0) {
       return (
-        <div className="rounded-2xl border border-dashed border-neutral-300 bg-white/70 px-4 py-14 text-center text-sm text-neutral-400">
+        <div className="flex-1 flex items-center justify-center rounded-2xl border border-dashed border-neutral-300 bg-white/70 text-sm text-neutral-400">
           за смену ещё ничего не выдавали
         </div>
       );
     }
-    return (
-      <div className="grid grid-cols-2 gap-3">
+    return render_fill_grid(
+      items,
+      <>
+        {done_tasks.map((t) =>
+          createElement(shift_task_card, {
+            key: `task-done-${t.id}`,
+            task: t,
+            mode: 'done',
+            on_start: start_day_task,
+            on_complete: complete_day_task,
+          })
+        )}
         {handed_out.map((o) =>
           createElement(order_prep_card, {
             key: `handed-${o.id}`,
@@ -819,7 +896,7 @@ export default function seller_board() {
             on_final_action: () => {},
           })
         )}
-      </div>
+      </>
     );
   }
 
@@ -838,6 +915,7 @@ export default function seller_board() {
             save_shift(next);
             set_shift(next);
             set_need_shift(false);
+            set_day_tasks(load_day_tasks(next.spot_id));
           },
         })}
 
@@ -876,7 +954,7 @@ export default function seller_board() {
                 }`}
               >
                 {t.label}
-                {t.id === 'work' && (unread_new > 0 || in_work.length > 0) ? (
+                {t.id === 'work' && (unread_new > 0 || work_board_count > 0) ? (
                   <span
                     className={`ml-0.5 inline-flex min-w-[1rem] justify-center rounded-full px-1 text-[9px] font-bold tabular-nums ${
                       unread_new > 0
@@ -884,11 +962,11 @@ export default function seller_board() {
                         : 'bg-neutral-200 text-neutral-600'
                     }`}
                   >
-                    {unread_new > 0 ? unread_new : in_work.length}
+                    {unread_new > 0 ? unread_new : work_board_count}
                   </span>
                 ) : null}
-                {t.id === 'ready' && handed_out.length ? (
-                  <span className="ml-0.5 text-[9px] text-neutral-400">{handed_out.length}</span>
+                {t.id === 'ready' && ready_board_count ? (
+                  <span className="ml-0.5 text-[9px] text-neutral-400">{ready_board_count}</span>
                 ) : null}
               </button>
             ))}
@@ -897,8 +975,10 @@ export default function seller_board() {
       </header>
 
       <main
-        className={`flex-1 min-h-0 w-full ${
-          tab === 'pos' ? 'px-2 py-2 flex flex-col' : 'max-w-3xl mx-auto px-4 py-4'
+        className={`flex-1 min-h-0 w-full overflow-hidden ${
+          tab === 'analytics'
+            ? 'max-w-3xl mx-auto px-4 py-4 overflow-y-auto'
+            : 'px-2 py-2 flex flex-col'
         }`}
       >
         {tab === 'work' ? render_work_list() : null}

@@ -58,8 +58,8 @@ export default function circular_timer({
   compact = false,
   on_click,
 }: props) {
-  const size = compact ? 112 : 160;
-  const stroke = compact ? 5 : 6;
+  const size = compact ? 88 : 160;
+  const stroke = compact ? 4.5 : 6;
   const r = (size - stroke) / 2;
   const c = 2 * Math.PI * r;
   const clamped = Math.max(0, Math.min(1, progress));

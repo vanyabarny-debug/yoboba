@@ -11,6 +11,7 @@ import {
   play_timer_tick,
 } from '@/lib/order-chime';
 import type { order } from '@/lib/types';
+import { color_for_id } from '@/lib/seller-tile-grid';
 import circular_timer from '@/components/seller/circular-timer';
 
 export type drink_row = {
@@ -71,6 +72,7 @@ export default function order_prep_card({
   const alarmed_for = useRef<string | null>(null);
   const paid = Boolean(o.is_paid);
   const phone = (o.customer_phone || '').trim();
+  const tint = color_for_id(o.id);
 
   const done_count = drinks.filter((d) => prep[d.key]?.done).length;
   const all_done = drinks.length > 0 && done_count === drinks.length;
@@ -204,42 +206,43 @@ export default function order_prep_card({
 
   return (
     <article
-      className={`rounded-2xl border bg-white px-2.5 py-3 transition ${
-        is_new
-          ? 'seller-order-new border-accent ring-2 ring-accent/40'
-          : 'border-neutral-100'
-      } ${mode === 'done' ? 'opacity-75' : ''}`}
+      className={`flex h-full min-h-0 flex-col overflow-hidden rounded-2xl border px-2 py-2 transition ${
+        is_new ? 'seller-order-new ring-2 ring-accent/40' : ''
+      } ${mode === 'done' ? 'opacity-80' : ''}`}
+      style={{
+        backgroundColor: tint.bg,
+        borderColor: is_new ? undefined : tint.border,
+        color: tint.fg,
+      }}
     >
-      <div className="flex items-start justify-between gap-1.5">
+      <div className="flex items-start justify-between gap-1 shrink-0">
         <div className="min-w-0">
-          <p className="text-[10px] font-medium text-neutral-400">
+          <p className="text-[9px] font-medium opacity-70">
             № {format_order_number(o)}
             {is_new ? (
-              <span className="ml-1 rounded bg-accent/15 px-1 py-0.5 text-[9px] font-bold uppercase tracking-wide text-accent">
+              <span className="ml-1 rounded bg-accent px-1 py-0.5 text-[8px] font-bold uppercase tracking-wide text-white">
                 новый
               </span>
             ) : null}
           </p>
-          <p className="text-sm font-semibold text-neutral-900 truncate mt-0.5">
-            {customer_label(o)}
+          <p className="text-xs font-bold truncate mt-0.5">{customer_label(o)}</p>
+          <p className="text-[9px] tabular-nums opacity-70 mt-0.5 truncate">
+            {phone ? format_phone_display(phone) : 'без тел.'}
           </p>
-          <p className="text-[10px] tabular-nums text-neutral-500 mt-0.5 truncate">
-            {phone ? format_phone_display(phone) : 'без телефона'}
-          </p>
-          <p className={`text-[10px] mt-0.5 font-medium ${paid ? 'text-neutral-500' : 'text-neutral-700'}`}>
+          <p className="text-[9px] mt-0.5 font-medium opacity-80">
             {paid ? 'оплачен' : 'не оплачен'}
           </p>
         </div>
         <div className="text-right shrink-0">
-          <p className="text-base font-bold tabular-nums text-neutral-900 leading-none">
+          <p className="text-sm font-bold tabular-nums leading-none">
             {pickup_label(o.pickup_time)}
           </p>
-          <p className="text-[9px] text-neutral-400 mt-0.5">выдача</p>
+          <p className="text-[8px] opacity-60 mt-0.5">выдача</p>
         </div>
       </div>
 
       {mode !== 'done' && (
-        <div className="mt-3 mb-2">
+        <div className="mt-1.5 mb-1 min-h-0 flex-1 flex flex-col items-center justify-center">
           {createElement(circular_timer, {
             progress: ring_progress,
             label,
@@ -252,7 +255,7 @@ export default function order_prep_card({
             on_click: handle_circle,
           })}
           {mode === 'work' && current && !all_done ? (
-            <p className="mt-2 text-center text-xs font-semibold text-neutral-800 line-clamp-2">
+            <p className="mt-1 text-center text-[10px] font-semibold line-clamp-1 opacity-90">
               {current.name}
             </p>
           ) : null}
@@ -260,7 +263,7 @@ export default function order_prep_card({
       )}
 
       {mode === 'done' && (
-        <div className="mt-2 mb-1 flex justify-center">
+        <div className="mt-1 mb-1 min-h-0 flex-1 flex justify-center items-center">
           {createElement(circular_timer, {
             progress: 1,
             label: 'выдан',
@@ -272,37 +275,34 @@ export default function order_prep_card({
         </div>
       )}
 
-      <ul className="mt-1.5 space-y-0.5">
-        {list_drinks.map((d) => {
+      <ul className="mt-auto space-y-0.5 shrink-0 max-h-[28%] overflow-hidden">
+        {list_drinks.slice(0, 3).map((d) => {
           const st = prep[d.key];
           const is_current = current?.key === d.key && mode === 'work';
           const is_flying = flying_key === d.key;
           return (
             <li
               key={d.key}
-              className={`flex items-center justify-between gap-1 rounded-lg px-1.5 py-1 text-[11px] transition ${
-                is_flying ? 'bg-neutral-100' : ''
-              } ${
-                st?.done
-                  ? 'text-neutral-500'
-                  : is_current
-                    ? 'bg-neutral-50 text-neutral-900'
-                    : 'text-neutral-500'
-              }`}
+              className={`flex items-center justify-between gap-1 rounded-lg px-1 py-0.5 text-[10px] transition ${
+                is_flying ? 'bg-white/50' : ''
+              } ${is_current ? 'bg-white/40 font-semibold' : 'opacity-75'}`}
             >
-              <span className={`truncate ${st?.done ? 'line-through decoration-neutral-300' : ''}`}>
+              <span className={`truncate ${st?.done ? 'line-through opacity-50' : ''}`}>
                 {d.name}
               </span>
-              <span className="shrink-0 text-[9px] font-medium uppercase tracking-wide text-neutral-400">
+              <span className="shrink-0 text-[8px] font-medium uppercase tracking-wide opacity-60">
                 {st?.done ? 'ok' : is_current && cooking ? 'сейчас' : '…'}
               </span>
             </li>
           );
         })}
+        {list_drinks.length > 3 ? (
+          <li className="text-[9px] opacity-60 text-center">+{list_drinks.length - 3}</li>
+        ) : null}
       </ul>
 
       {mode === 'work' && done_count > 0 && !all_done ? (
-        <p className="mt-1.5 text-center text-[10px] text-neutral-500">
+        <p className="mt-1 text-center text-[9px] opacity-70 shrink-0">
           {done_count}/{drinks.length}
         </p>
       ) : null}
