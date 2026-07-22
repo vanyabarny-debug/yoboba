@@ -1,0 +1,340 @@
+import { NextResponse } from 'next/server';
+import { cookies } from 'next/headers';
+import { session_cookie } from '@/lib/session';
+import { calc_order_bonus } from '@/lib/cart-summary';
+import { create_fake_order_from_items, update_demo_order } from '@/lib/demo-orders-server';
+import { load_menu_map } from '@/lib/kitchen-server';
+import { allocate_daily_order_number } from '@/lib/order-number';
+import { normalize_phone } from '@/lib/phone';
+import { is_supabase_configured } from '@/lib/supabase/config';
+import { create_service_client } from '@/lib/supabase/service';
+import { clear_order_prep } from '@/lib/seller-prep-server';
+import type { order, order_item } from '@/lib/types';
+
+async function is_staff() {
+  const store = await cookies();
+  const role = store.get(session_cookie)?.value;
+  return role === 'admin' || role === 'seller';
+}
+
+async function find_profile_by_phone(phone: string) {
+  if (!is_supabase_configured()) return null;
+  const admin = create_service_client();
+  const { data } = await admin
+    .from('profiles')
+    .select('id, name, phone, bonus_balance')
+    .eq('phone', phone)
+    .maybeSingle();
+  return data as {
+    id: string;
+    name: string | null;
+    phone: string | null;
+    bonus_balance: number | null;
+  } | null;
+}
+
+/** создаём реального пользователя в auth+profiles — иначе FK на orders.user_id падает */
+async function resolve_walk_in_user_id(
+  customer_name: string,
+  customer_phone: string | null
+): Promise<{ user_id: string; bonus_earned_base: boolean }> {
+  const admin = create_service_client();
+
+  if (customer_phone) {
+    const existing = await find_profile_by_phone(customer_phone);
+    if (existing) return { user_id: existing.id, bonus_earned_base: true };
+  }
+
+  const email = `walkin-${crypto.randomUUID()}@yoboba.internal`;
+  const { data: created, error } = await admin.auth.admin.createUser({
+    email,
+    email_confirm: true,
+    user_metadata: {
+      name: customer_name,
+      phone: customer_phone || undefined,
+    },
+  });
+
+  if (error || !created.user) {
+    throw new Error(error?.message || 'не удалось создать гостя точки');
+  }
+
+  const user_id = created.user.id;
+  await admin.from('profiles').upsert(
+    {
+      id: user_id,
+      name: customer_name,
+      phone: customer_phone,
+      bonus_balance: 0,
+      role: 'user',
+      updated_at: new Date().toISOString(),
+    },
+    { onConflict: 'id' }
+  );
+
+  return { user_id, bonus_earned_base: Boolean(customer_phone) };
+}
+
+export async function GET(request: Request) {
+  if (!(await is_staff())) {
+    return NextResponse.json({ error: 'доступ запрещён' }, { status: 403 });
+  }
+
+  const url = new URL(request.url);
+  if (url.searchParams.get('completed') === '1') {
+    const day = url.searchParams.get('day') || new Date().toISOString().slice(0, 10);
+    const completed: order[] = [];
+    const seen = new Set<string>();
+
+    const { get_demo_orders } = await import('@/lib/demo-orders-server');
+    for (const o of await get_demo_orders(false)) {
+      if (o.status !== 'completed') continue;
+      const order_day =
+        o.order_day ||
+        new Intl.DateTimeFormat('en-CA', {
+          timeZone: 'Europe/Moscow',
+          year: 'numeric',
+          month: '2-digit',
+          day: '2-digit',
+        }).format(new Date(o.created_at));
+      if (order_day !== day) continue;
+      seen.add(o.id);
+      completed.push(o);
+    }
+
+    if (is_supabase_configured()) {
+      const admin = create_service_client();
+      const { data } = await admin
+        .from('orders')
+        .select('*')
+        .eq('status', 'completed')
+        .eq('order_day', day)
+        .order('created_at', { ascending: false })
+        .limit(50);
+      for (const row of (data as order[]) || []) {
+        if (seen.has(row.id)) continue;
+        seen.add(row.id);
+        completed.push({ ...row, is_paid: Boolean(row.is_paid) });
+      }
+    }
+
+    completed.sort(
+      (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+    );
+    return NextResponse.json({ orders: completed });
+  }
+
+  const raw = url.searchParams.get('phone');
+  const phone = normalize_phone(raw);
+  if (!phone) {
+    return NextResponse.json({ customer: null });
+  }
+
+  const profile = await find_profile_by_phone(phone);
+  if (!profile) {
+    return NextResponse.json({ customer: null, phone });
+  }
+
+  return NextResponse.json({
+    phone,
+    customer: {
+      id: profile.id,
+      name: (profile.name || '').trim() || null,
+      phone: profile.phone,
+      bonus_balance: profile.bonus_balance ?? 0,
+    },
+  });
+}
+
+export async function POST(request: Request) {
+  if (!(await is_staff())) {
+    return NextResponse.json({ error: 'доступ запрещён' }, { status: 403 });
+  }
+
+  const body = await request.json();
+  const raw_items = body.items as order_item[] | undefined;
+  if (!raw_items?.length) {
+    return NextResponse.json({ error: 'корзина пуста' }, { status: 400 });
+  }
+
+  const menu = await load_menu_map();
+  const items: order_item[] = raw_items.map((row) => {
+    const m = menu.get(row.menu_id);
+    return {
+      menu_id: row.menu_id,
+      name: m?.name || row.name,
+      price: m?.price ?? row.price,
+      quantity: Math.max(1, Math.round(Number(row.quantity) || 1)),
+    };
+  });
+
+  const total_price = items.reduce((s, i) => s + i.price * i.quantity, 0);
+  const pickup_minutes = Math.max(5, Math.min(60, Number(body.pickup_minutes) || 10));
+  const customer_phone = normalize_phone(body.customer_phone as string | undefined);
+  const is_paid = Boolean(body.is_paid);
+  const payment_type = (body.payment_type as 'cash' | 'card') || 'cash';
+  const pickup_time =
+    (body.pickup_time as string | undefined) ||
+    new Date(Date.now() + pickup_minutes * 60_000).toISOString();
+
+  let customer_name =
+    (body.customer_name as string | undefined)?.trim() || 'гость точки';
+  let user_id: string | null = null;
+  let bonus_earned = 0;
+  let can_earn_bonus = false;
+
+  if (customer_phone) {
+    const profile = await find_profile_by_phone(customer_phone);
+    if (profile) {
+      user_id = profile.id;
+      can_earn_bonus = true;
+      const profile_name = (profile.name || '').trim();
+      if (profile_name) customer_name = profile_name;
+      bonus_earned = calc_order_bonus(total_price);
+    }
+  }
+
+  if (is_supabase_configured()) {
+    try {
+      const admin = create_service_client();
+      if (!user_id) {
+        const resolved = await resolve_walk_in_user_id(customer_name, customer_phone);
+        user_id = resolved.user_id;
+        // баллы только если гость уже был в базе — не новому walk-in
+      }
+
+      const daily = await allocate_daily_order_number(admin);
+      const payload = {
+        user_id,
+        items,
+        total_price,
+        payment_type,
+        is_paid,
+        customer_name,
+        customer_phone,
+        pickup_time,
+        status: 'new' as const,
+        order_number: daily.order_number,
+        order_day: daily.order_day,
+      };
+
+      let { data, error } = await admin.from('orders').insert(payload).select('*').single();
+
+      if (error && /is_paid|customer_name|customer_phone/i.test(error.message)) {
+        const retry = await admin
+          .from('orders')
+          .insert({
+            user_id,
+            items,
+            total_price,
+            payment_type,
+            pickup_time,
+            status: 'new',
+            order_number: daily.order_number,
+            order_day: daily.order_day,
+          })
+          .select('*')
+          .single();
+        data = retry.data;
+        error = retry.error;
+      }
+
+      if (error) {
+        return NextResponse.json({ error: error.message }, { status: 500 });
+      }
+
+      if (data) {
+        if (bonus_earned > 0 && can_earn_bonus) {
+          const { data: profile } = await admin
+            .from('profiles')
+            .select('bonus_balance')
+            .eq('id', user_id)
+            .maybeSingle();
+          const current = (profile?.bonus_balance as number | null) ?? 0;
+          await admin
+            .from('profiles')
+            .update({
+              bonus_balance: current + bonus_earned,
+              updated_at: new Date().toISOString(),
+            })
+            .eq('id', user_id);
+        }
+        return NextResponse.json({
+          order: {
+            ...data,
+            customer_name,
+            customer_phone,
+            is_paid,
+          },
+          bonus_earned: can_earn_bonus ? bonus_earned : 0,
+        });
+      }
+    } catch (e) {
+      const message = e instanceof Error ? e.message : 'не удалось создать заказ';
+      // если auth admin недоступен — уйдём в demo ниже
+      if (!message.includes('гостя точки') && !/auth/i.test(message)) {
+        return NextResponse.json({ error: message }, { status: 500 });
+      }
+    }
+  }
+
+  const order = await create_fake_order_from_items(items, pickup_minutes, pickup_time, {
+    name: customer_name,
+    phone: customer_phone || undefined,
+    is_paid,
+  });
+
+  return NextResponse.json({ order, bonus_earned: 0 });
+}
+
+export async function PATCH(request: Request) {
+  if (!(await is_staff())) {
+    return NextResponse.json({ error: 'доступ запрещён' }, { status: 403 });
+  }
+
+  const body = await request.json();
+  const id = body.id as string | undefined;
+  const patch = body.patch as Partial<order> | undefined;
+  if (!id || !patch || typeof patch !== 'object') {
+    return NextResponse.json({ error: 'неверные данные' }, { status: 400 });
+  }
+
+  if (id.startsWith('demo-order')) {
+    const updated = await update_demo_order(id, patch);
+    if (!updated) {
+      return NextResponse.json({ error: 'заказ не найден' }, { status: 404 });
+    }
+    if (patch.status === 'completed') {
+      await clear_order_prep(id);
+    }
+    return NextResponse.json({ order: updated });
+  }
+
+  if (!is_supabase_configured()) {
+    return NextResponse.json({ error: 'supabase не настроен' }, { status: 500 });
+  }
+
+  const admin = create_service_client();
+  let { data, error } = await admin.from('orders').update(patch).eq('id', id).select('*').single();
+
+  if (error && /is_paid|customer_/i.test(error.message)) {
+    const { is_paid: _p, customer_name: _n, customer_phone: _ph, ...rest } = patch;
+    if (Object.keys(rest).length) {
+      const retry = await admin.from('orders').update(rest).eq('id', id).select('*').single();
+      data = retry.data;
+      error = retry.error;
+    } else {
+      return NextResponse.json({ order: null, warning: error.message });
+    }
+  }
+
+  if (error) {
+    return NextResponse.json({ error: error.message }, { status: 500 });
+  }
+
+  if (patch.status === 'completed') {
+    await clear_order_prep(id);
+  }
+
+  return NextResponse.json({ order: data });
+}

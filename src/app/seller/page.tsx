@@ -6,15 +6,20 @@ import { create_client } from '@/lib/supabase/client';
 import { is_supabase_configured } from '@/lib/supabase/config';
 import { get_demo_user, clear_session } from '@/lib/demo-auth';
 import { useRouter } from 'next/navigation';
-import { format_order_number } from '@/lib/order-number';
-import { DEFAULT_PREP_MINUTES, format_countdown_ms } from '@/lib/kitchen-queue';
-import { play_new_order_chime } from '@/lib/order-chime';
+import { DEFAULT_PREP_MINUTES } from '@/lib/kitchen-queue';
+import { moscow_today_iso } from '@/lib/order-number';
+import { play_handout_chime, play_new_order_chime, play_payment_chime } from '@/lib/order-chime';
 import { get_active_spots, get_spots } from '@/lib/spot-store';
 import type { cash_transaction, order, store_spot } from '@/lib/types';
 import cash_register_modal from '@/components/seller/cash-register-modal';
-import day_summary_panel from '@/components/seller/day-summary';
+import barista_analytics_panel from '@/components/seller/barista-analytics';
+import pos_panel from '@/components/seller/pos-panel';
+import order_prep_card, {
+  type drink_row,
+  type prep_state,
+} from '@/components/seller/order-prep-card';
 
-type tab = 'orders' | 'summary';
+type tab = 'work' | 'ready' | 'pos' | 'analytics';
 
 type schedule_line = {
   order_id: string;
@@ -27,17 +32,6 @@ type schedule_line = {
   pickup_at: string;
 };
 
-type drink_row = {
-  key: string;
-  name: string;
-  prep_minutes: number;
-};
-
-type prep_state = {
-  started_at: number | null;
-  done: boolean;
-};
-
 type seller_shift = {
   spot_id: string;
   address: string;
@@ -47,6 +41,31 @@ type seller_shift = {
 
 const shift_key = 'yoboba_seller_shift';
 const prep_key = 'yoboba_seller_prep';
+const order_start_key = 'yoboba_seller_order_start';
+const handed_key = 'yoboba_seller_handed';
+
+function shift_day() {
+  return moscow_today_iso();
+}
+
+function load_handed(): order[] {
+  try {
+    const raw = localStorage.getItem(handed_key);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw) as { day?: string; orders?: order[] };
+    if (parsed.day !== shift_day()) return [];
+    return parsed.orders || [];
+  } catch {
+    return [];
+  }
+}
+
+function save_handed(list: order[]) {
+  localStorage.setItem(
+    handed_key,
+    JSON.stringify({ day: shift_day(), orders: list.slice(0, 50) })
+  );
+}
 
 function load_shift(): seller_shift | null {
   try {
@@ -63,208 +82,83 @@ function save_shift(shift: seller_shift) {
 
 function load_prep_map(): Record<string, Record<string, prep_state>> {
   try {
-    return JSON.parse(sessionStorage.getItem(prep_key) || '{}') as Record<
-      string,
-      Record<string, prep_state>
-    >;
+    const raw = localStorage.getItem(prep_key) || sessionStorage.getItem(prep_key) || '{}';
+    return JSON.parse(raw) as Record<string, Record<string, prep_state>>;
   } catch {
     return {};
   }
 }
 
 function save_prep_map(map: Record<string, Record<string, prep_state>>) {
-  sessionStorage.setItem(prep_key, JSON.stringify(map));
+  const raw = JSON.stringify(map);
+  localStorage.setItem(prep_key, raw);
+  sessionStorage.setItem(prep_key, raw);
 }
 
-function pickup_label(pickup_time: string) {
-  return new Date(pickup_time).toLocaleTimeString('ru-RU', {
-    hour: '2-digit',
-    minute: '2-digit',
-  });
+function load_order_starts(): Record<string, number> {
+  try {
+    return JSON.parse(localStorage.getItem(order_start_key) || '{}') as Record<string, number>;
+  } catch {
+    return {};
+  }
 }
 
-function format_phone(phone?: string | null) {
-  const p = (phone || '').trim();
-  return p || null;
-}
-
-function customer_label(o: order) {
-  const name = (o.customer_name || '').trim();
-  return name || 'гость';
+function save_order_starts(map: Record<string, number>) {
+  localStorage.setItem(order_start_key, JSON.stringify(map));
 }
 
 function expand_drinks(o: order, lines: schedule_line[]): drink_row[] {
-  if (lines.length) {
-    return lines.map((l, i) => ({
-      key: `${l.menu_id}-${i}`,
-      name: l.name,
-      prep_minutes: l.prep_minutes || DEFAULT_PREP_MINUTES,
-    }));
+  const prep_by_menu = new Map<string, number>();
+  for (const l of lines) {
+    if (!prep_by_menu.has(l.menu_id)) {
+      prep_by_menu.set(l.menu_id, l.prep_minutes || DEFAULT_PREP_MINUTES);
+    }
   }
   const rows: drink_row[] = [];
   for (const item of o.items as order['items']) {
     for (let q = 0; q < item.quantity; q++) {
       rows.push({
-        key: `${item.menu_id}-${q}`,
+        key: `${o.id}:${item.menu_id}:${q}`,
         name: item.name,
-        prep_minutes: DEFAULT_PREP_MINUTES,
+        menu_id: item.menu_id,
+        prep_minutes: prep_by_menu.get(item.menu_id) || DEFAULT_PREP_MINUTES,
       });
     }
   }
   return rows;
 }
 
-function order_card({
-  order: o,
-  lines,
-  is_new,
-  prep,
-  on_pay,
-  on_start_drink,
-  on_mark_drink_done,
-  on_hand_out,
-}: {
-  order: order;
-  lines: schedule_line[];
-  is_new: boolean;
-  prep: Record<string, prep_state>;
-  on_pay: (o: order) => void;
-  on_start_drink: (order_id: string, drink_key: string, prep_minutes: number) => void;
-  on_mark_drink_done: (order_id: string, drink_key: string) => void;
-  on_hand_out: (o: order) => void;
-}) {
-  const [now, set_now] = useState(Date.now());
-  const drinks = expand_drinks(o, lines);
-  const paid = Boolean(o.is_paid);
-  const phone = format_phone(o.customer_phone);
-  const in_ready_column = o.status === 'ready';
+function all_drinks_done_map(
+  drinks: drink_row[],
+  existing?: Record<string, prep_state>
+): Record<string, prep_state> {
+  const next: Record<string, prep_state> = {};
+  for (const d of drinks) {
+    next[d.key] = {
+      started_at: existing?.[d.key]?.started_at ?? null,
+      done: true,
+      finished_at: existing?.[d.key]?.finished_at ?? Date.now(),
+    };
+  }
+  return next;
+}
 
-  useEffect(() => {
-    const id = setInterval(() => set_now(Date.now()), 1000);
-    return () => clearInterval(id);
-  }, []);
+function sync_prep_to_server(order_id: string, prep: Record<string, prep_state>) {
+  void fetch('/api/seller/prep-state', {
+    method: 'PUT',
+    headers: { 'content-type': 'application/json' },
+    credentials: 'same-origin',
+    body: JSON.stringify({ order_id, prep }),
+  });
+}
 
-  // авто-готово по таймеру
-  useEffect(() => {
-    for (const d of drinks) {
-      const st = prep[d.key];
-      if (!st || st.done || !st.started_at) continue;
-      const ends = st.started_at + d.prep_minutes * 60_000;
-      if (now >= ends) on_mark_drink_done(o.id, d.key);
-    }
-  }, [now, drinks, prep, o.id, on_mark_drink_done]);
-
-  const all_done =
-    drinks.length > 0 && drinks.every((d) => prep[d.key]?.done);
-  const show_hand_out = in_ready_column || all_done;
-
-  return (
-    <article
-      className={`rounded-2xl border bg-white px-4 py-3.5 transition ${
-        is_new
-          ? 'border-accent ring-2 ring-accent/25 animate-[pulse_1.2s_ease-in-out_2]'
-          : 'border-neutral-100'
-      }`}
-    >
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <p className="text-[11px] font-medium text-neutral-400">
-            № {format_order_number(o)}
-            {is_new ? <span className="ml-2 text-accent">новый</span> : null}
-          </p>
-          <p className="text-[15px] font-semibold text-neutral-900 truncate mt-0.5">
-            {customer_label(o)}
-          </p>
-          {phone ? (
-            <p className="text-xs text-neutral-500 tabular-nums mt-0.5">{phone}</p>
-          ) : (
-            <p className="text-xs text-amber-600 mt-0.5">телефон не указан</p>
-          )}
-        </div>
-        <div className="text-right shrink-0">
-          <p className="text-xl font-bold tabular-nums text-accent leading-none">
-            {pickup_label(o.pickup_time)}
-          </p>
-          <p className="text-[10px] text-neutral-400 mt-1">выдача</p>
-          <p
-            className={`text-[11px] mt-1 font-medium ${
-              paid ? 'text-emerald-600' : 'text-amber-600'
-            }`}
-          >
-            {paid ? 'оплачен' : 'не оплачен'}
-          </p>
-        </div>
-      </div>
-
-      {!in_ready_column && (
-        <ul className="mt-3 space-y-1.5">
-          {drinks.map((d) => {
-            const st = prep[d.key] || { started_at: null, done: false };
-            const ends_at = st.started_at
-              ? st.started_at + d.prep_minutes * 60_000
-              : null;
-            const left = ends_at ? Math.max(0, ends_at - now) : 0;
-            const cooking = Boolean(st.started_at && !st.done);
-
-            return (
-              <li
-                key={d.key}
-                className="flex items-center justify-between gap-2 text-sm py-1"
-              >
-                <div className="min-w-0">
-                  <p className="truncate text-neutral-800">{d.name}</p>
-                  <p className="text-[10px] text-neutral-400">{d.prep_minutes} мин</p>
-                </div>
-                <div className="shrink-0">
-                  {st.done ? (
-                    <span className="text-xs font-semibold text-emerald-600">готово</span>
-                  ) : cooking ? (
-                    <span className="font-mono text-base font-bold tabular-nums text-accent">
-                      {format_countdown_ms(left)}
-                    </span>
-                  ) : (
-                    <button
-                      type="button"
-                      onClick={() => on_start_drink(o.id, d.key, d.prep_minutes)}
-                      className="rounded-lg bg-neutral-900 px-3 py-1.5 text-xs font-semibold text-white"
-                    >
-                      начать
-                    </button>
-                  )}
-                </div>
-              </li>
-            );
-          })}
-        </ul>
-      )}
-
-      <div className="mt-3 flex items-center justify-between gap-2">
-        <p className="text-base font-bold font-mono tabular-nums text-neutral-900">
-          {o.total_price} ₽
-        </p>
-        <div className="flex gap-2">
-          {!paid && (
-            <button
-              type="button"
-              onClick={() => on_pay(o)}
-              className="rounded-xl border border-neutral-200 px-3 py-2 text-sm font-medium text-neutral-700"
-            >
-              касса
-            </button>
-          )}
-          {show_hand_out && (
-            <button
-              type="button"
-              onClick={() => on_hand_out(o)}
-              className="rounded-xl bg-accent px-3.5 py-2 text-sm font-semibold text-accent-foreground"
-            >
-              выдан
-            </button>
-          )}
-        </div>
-      </div>
-    </article>
-  );
+function clear_prep_on_server(order_id: string) {
+  void fetch('/api/seller/prep-state', {
+    method: 'PUT',
+    headers: { 'content-type': 'application/json' },
+    credentials: 'same-origin',
+    body: JSON.stringify({ order_id, clear: true }),
+  });
 }
 
 function shift_picker({
@@ -285,7 +179,7 @@ function shift_picker({
               <button
                 type="button"
                 onClick={() => on_pick(spot)}
-                className="w-full rounded-2xl border border-neutral-200 px-4 py-3 text-left hover:border-accent/40"
+                className="w-full rounded-2xl border border-neutral-200 px-4 py-3 text-left hover:border-neutral-400"
               >
                 <p className="font-semibold text-neutral-900">{spot.address}</p>
                 <p className="text-xs text-neutral-500 capitalize mt-0.5">{spot.city}</p>
@@ -300,7 +194,7 @@ function shift_picker({
 
 export default function seller_board() {
   const router = useRouter();
-  const [tab, set_tab] = useState<tab>('orders');
+  const [tab, set_tab] = useState<tab>('work');
   const [orders, set_orders] = useState<order[]>([]);
   const [schedule_lines, set_schedule_lines] = useState<schedule_line[]>([]);
   const [paying, set_paying] = useState<order | null>(null);
@@ -310,10 +204,51 @@ export default function seller_board() {
   const [shift_spots, set_shift_spots] = useState<store_spot[]>([]);
   const [need_shift, set_need_shift] = useState(false);
   const [prep_map, set_prep_map] = useState<Record<string, Record<string, prep_state>>>({});
+  const [order_starts, set_order_starts] = useState<Record<string, number>>({});
+  const [handed, set_handed] = useState<order[]>([]);
   const [fresh_ids, set_fresh_ids] = useState<Set<string>>(new Set());
   const known_ids = useRef<Set<string> | null>(null);
+  const seller_ref = useRef({ id: '', name: 'бариста' });
+  const schedule_ref = useRef<schedule_line[]>([]);
+
+  const hydrate_prep = useCallback(
+    async (list: order[], lines: schedule_line[]) => {
+      let remote: Record<string, Record<string, prep_state>> = {};
+      try {
+        const res = await fetch('/api/seller/prep-state', { credentials: 'same-origin' });
+        if (res.ok) {
+          const body = (await res.json()) as {
+            prep?: Record<string, Record<string, prep_state>>;
+          };
+          remote = body.prep || {};
+        }
+      } catch {
+        /* local only */
+      }
+
+      const local = load_prep_map();
+      const merged: Record<string, Record<string, prep_state>> = { ...local, ...remote };
+
+      for (const o of list) {
+        const drinks = expand_drinks(
+          o,
+          lines.filter((l) => l.order_id === o.id)
+        );
+        if (o.status === 'ready') {
+          merged[o.id] = all_drinks_done_map(drinks, merged[o.id]);
+        }
+      }
+
+      save_prep_map(merged);
+      set_prep_map(merged);
+    },
+    []
+  );
 
   const load = useCallback(async () => {
+    let list: order[] = [];
+    let lines: schedule_line[] = [];
+
     try {
       const sched_res = await fetch('/api/kitchen/schedule', { credentials: 'same-origin' });
       if (sched_res.ok) {
@@ -321,65 +256,109 @@ export default function seller_board() {
           lines?: schedule_line[];
           orders?: order[];
         };
-        set_schedule_lines(body.lines ?? []);
-        if (body.orders) {
-          set_orders(body.orders);
-          return;
-        }
+        lines = body.lines ?? [];
+        if (body.orders) list = body.orders;
       }
     } catch {
       /* fallback */
     }
 
-    const merged: order[] = [];
-    const seen = new Set<string>();
-    try {
-      const demo_res = await fetch('/api/orders/demo');
-      if (demo_res.ok) {
-        const demo_data = (await demo_res.json()) as { orders: order[] };
-        for (const o of demo_data.orders || []) {
-          if (!seen.has(o.id)) {
-            seen.add(o.id);
-            merged.push(o);
+    if (!list.length) {
+      const merged: order[] = [];
+      const seen = new Set<string>();
+      try {
+        const demo_res = await fetch('/api/orders/demo');
+        if (demo_res.ok) {
+          const demo_data = (await demo_res.json()) as { orders: order[] };
+          for (const o of demo_data.orders || []) {
+            if (!seen.has(o.id)) {
+              seen.add(o.id);
+              merged.push(o);
+            }
           }
+        }
+      } catch {
+        /* offline */
+      }
+
+      if (is_supabase_configured()) {
+        const supabase = create_client();
+        const { data } = await supabase
+          .from('orders')
+          .select('*, profiles:user_id(name, phone)')
+          .in('status', ['new', 'preparing', 'ready'])
+          .order('created_at', { ascending: false });
+        for (const row of (data as Array<
+          order & { profiles?: { name?: string; phone?: string } | null }
+        >) || []) {
+          if (seen.has(row.id)) continue;
+          seen.add(row.id);
+          const profile = row.profiles;
+          merged.push({
+            ...row,
+            customer_name: row.customer_name || profile?.name || 'гость',
+            customer_phone: row.customer_phone || profile?.phone || null,
+            is_paid: Boolean(row.is_paid),
+          });
+        }
+      }
+
+      merged.sort(
+        (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+      );
+      list = merged;
+    }
+
+    schedule_ref.current = lines;
+    set_schedule_lines(lines);
+    set_orders(list);
+    await hydrate_prep(list, lines);
+
+    // выданные за сегодня — вкладка «готовые»
+    const day = shift_day();
+    const completed: order[] = [];
+    const seen_done = new Set<string>();
+
+    try {
+      const res = await fetch(
+        `/api/seller/orders?completed=1&day=${encodeURIComponent(day)}`,
+        { credentials: 'same-origin' }
+      );
+      if (res.ok) {
+        const body = (await res.json()) as { orders?: order[] };
+        for (const o of body.orders || []) {
+          if (seen_done.has(o.id)) continue;
+          seen_done.add(o.id);
+          completed.push(o);
         }
       }
     } catch {
       /* offline */
     }
 
-    if (is_supabase_configured()) {
-      const supabase = create_client();
-      const { data } = await supabase
-        .from('orders')
-        .select('*, profiles:user_id(name, phone)')
-        .in('status', ['new', 'preparing', 'ready'])
-        .order('created_at', { ascending: false });
-      for (const row of (data as Array<order & { profiles?: { name?: string; phone?: string } | null }>) || []) {
-        if (seen.has(row.id)) continue;
-        seen.add(row.id);
-        const profile = row.profiles;
-        merged.push({
-          ...row,
-          customer_name: row.customer_name || profile?.name || 'гость',
-          customer_phone: row.customer_phone || profile?.phone || null,
-          is_paid: Boolean(row.is_paid),
-        });
-      }
+    const local_handed = load_handed();
+    for (const o of local_handed) {
+      if (seen_done.has(o.id)) continue;
+      seen_done.add(o.id);
+      completed.push(o);
     }
 
-    merged.sort(
+    completed.sort(
       (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
     );
-    set_orders(merged);
-  }, []);
+    set_handed(completed);
+    save_handed(completed);
+  }, [hydrate_prep]);
 
   useEffect(() => {
     set_prep_map(load_prep_map());
+    set_order_starts(load_order_starts());
+    set_handed(load_handed());
     const user = get_demo_user();
     if (user) {
       set_seller_id(user.id);
       set_seller_name(user.name);
+      seller_ref.current = { id: user.id, name: user.name };
     }
 
     const existing = load_shift();
@@ -389,25 +368,33 @@ export default function seller_board() {
     } else {
       let allowed_ids: string[] = [];
       try {
-        allowed_ids = JSON.parse(sessionStorage.getItem('yoboba_seller_spot_ids') || '[]') as string[];
+        allowed_ids = JSON.parse(
+          sessionStorage.getItem('yoboba_seller_spot_ids') || '[]'
+        ) as string[];
       } catch {
         allowed_ids = [];
       }
       const all = get_active_spots();
       const available =
-        allowed_ids.length > 0 ? all.filter((s) => allowed_ids.includes(s.id)) : all.length ? all : get_spots();
+        allowed_ids.length > 0
+          ? all.filter((s) => allowed_ids.includes(s.id))
+          : all.length
+            ? all
+            : get_spots();
       set_shift_spots(available.length ? available : get_spots());
       set_need_shift(true);
     }
 
     load();
-    const poll = window.setInterval(load, 3000);
+    const poll = window.setInterval(load, 4000);
 
     if (is_supabase_configured()) {
       const supabase = create_client();
       const channel = supabase
         .channel('seller-orders')
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, () => load())
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, () =>
+          load()
+        )
         .subscribe();
       return () => {
         window.clearInterval(poll);
@@ -417,7 +404,6 @@ export default function seller_board() {
     return () => window.clearInterval(poll);
   }, [load]);
 
-  // звук + подсветка новых
   useEffect(() => {
     const ids = new Set(orders.map((o) => o.id));
     if (!known_ids.current) {
@@ -462,10 +448,12 @@ export default function seller_board() {
         order_prep[drink_key] = {
           started_at: order_prep[drink_key]?.started_at ?? null,
           done: order_prep[drink_key]?.done ?? false,
+          finished_at: order_prep[drink_key]?.finished_at ?? null,
           ...patch,
         };
         const next = { ...prev, [order_id]: order_prep };
         save_prep_map(next);
+        sync_prep_to_server(order_id, order_prep);
         return next;
       });
     },
@@ -473,39 +461,89 @@ export default function seller_board() {
   );
 
   async function patch_order(id: string, patch: Partial<order>) {
-    if (id.startsWith('demo-order')) {
-      await fetch('/api/orders/demo', {
-        method: 'PATCH',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ id, patch }),
-      });
-      return;
+    const res = await fetch('/api/seller/orders', {
+      method: 'PATCH',
+      headers: { 'content-type': 'application/json' },
+      credentials: 'same-origin',
+      body: JSON.stringify({ id, patch }),
+    });
+    if (!res.ok) {
+      const body = (await res.json().catch(() => null)) as { error?: string } | null;
+      throw new Error(body?.error || 'не удалось обновить заказ');
     }
-    if (is_supabase_configured()) {
-      const supabase = create_client();
-      const { error } = await supabase.from('orders').update(patch).eq('id', id);
-      if (error && /is_paid|customer_/i.test(error.message)) {
-        const { is_paid: _p, customer_name: _n, customer_phone: _ph, ...rest } = patch;
-        if (Object.keys(rest).length) {
-          await supabase.from('orders').update(rest).eq('id', id);
-        }
-      }
-    }
+    set_orders((prev) =>
+      prev.map((o) => (o.id === id ? { ...o, ...patch } : o))
+    );
   }
 
   const start_drink = useCallback(
-    (order_id: string, drink_key: string, _prep_minutes: number) => {
-      update_prep(order_id, drink_key, { started_at: Date.now(), done: false });
-      void patch_order(order_id, { status: 'preparing' }).then(() => load());
+    (order_id: string, drink: drink_row) => {
+      update_prep(order_id, drink.key, { started_at: Date.now(), done: false });
+      set_order_starts((prev) => {
+        if (prev[order_id]) return prev;
+        const next = { ...prev, [order_id]: Date.now() };
+        save_order_starts(next);
+        return next;
+      });
+      void patch_order(order_id, { status: 'preparing' }).catch(() => {});
     },
-    [update_prep, load]
+    [update_prep]
   );
 
   const mark_drink_done = useCallback(
-    (order_id: string, drink_key: string) => {
-      update_prep(order_id, drink_key, { done: true });
+    (
+      order_id: string,
+      drink: drink_row,
+      meta: { actual_ms: number; expected_ms: number; started_at: number }
+    ) => {
+      const prev = load_prep_map();
+      if (prev[order_id]?.[drink.key]?.done) return;
+
+      const order_prep = { ...(prev[order_id] || {}) };
+      order_prep[drink.key] = {
+        started_at: meta.started_at,
+        done: true,
+        finished_at: Date.now(),
+      };
+      const next = { ...prev, [order_id]: order_prep };
+      save_prep_map(next);
+      set_prep_map(next);
+      sync_prep_to_server(order_id, order_prep);
+
+      const o = orders.find((row) => row.id === order_id);
+      void fetch('/api/seller/prep-stats', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        credentials: 'same-origin',
+        body: JSON.stringify({
+          kind: 'prep',
+          event: {
+            seller_id: seller_ref.current.id || seller_id || 'seller',
+            seller_name: seller_ref.current.name || seller_name,
+            order_id,
+            drink_key: drink.key,
+            drink_name: drink.name,
+            menu_id: drink.menu_id,
+            expected_ms: meta.expected_ms,
+            actual_ms: meta.actual_ms,
+            started_at: new Date(meta.started_at).toISOString(),
+            finished_at: new Date().toISOString(),
+            pickup_at: o?.pickup_time || new Date().toISOString(),
+          },
+        }),
+      });
+
+      if (o) {
+        const lines = schedule_ref.current.filter((l) => l.order_id === order_id);
+        const drinks = expand_drinks(o, lines);
+        const all = drinks.length > 0 && drinks.every((d) => next[order_id]?.[d.key]?.done);
+        if (all) {
+          // готово к оплате/выдаче — остаёмся во «в работе», дублируем во «готовые»
+          void patch_order(order_id, { status: 'ready' }).catch(() => {});
+        }
+      }
     },
-    [update_prep]
+    [orders, seller_id, seller_name]
   );
 
   async function complete_payment(payment_method: 'cash' | 'card', amount_received?: number) {
@@ -516,11 +554,14 @@ export default function seller_board() {
         ? Math.max(0, amount_received - total)
         : null;
 
+    const sid = seller_id || seller_ref.current.id || 'seller';
+    const sname = seller_name || seller_ref.current.name || 'бариста';
+
     const tx: cash_transaction = {
       id: `cash-${Date.now()}`,
       order_id: paying.id,
-      seller_id,
-      seller_name,
+      seller_id: sid,
+      seller_name: sname,
       order_total: total,
       payment_method,
       amount_received: payment_method === 'cash' ? amount_received ?? null : null,
@@ -532,30 +573,102 @@ export default function seller_board() {
       created_at: new Date().toISOString(),
     };
 
-    await fetch('/api/cash', {
+    const cash_res = await fetch('/api/cash', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
+      credentials: 'same-origin',
       body: JSON.stringify(tx),
     });
+    if (!cash_res.ok) {
+      const body = (await cash_res.json().catch(() => null)) as { error?: string } | null;
+      alert(body?.error || 'не удалось провести оплату в кассе');
+      return;
+    }
 
-    await patch_order(paying.id, {
-      is_paid: true,
-      payment_type: payment_method,
-      status: paying.status === 'ready' ? 'ready' : 'preparing',
-    });
+    try {
+      await patch_order(paying.id, {
+        is_paid: true,
+        payment_type: payment_method,
+        status: 'ready',
+      });
+    } catch (e) {
+      alert(e instanceof Error ? e.message : 'оплата записана, статус заказа не обновился');
+      return;
+    }
+
+    const drinks = expand_drinks(
+      paying,
+      schedule_ref.current.filter((l) => l.order_id === paying.id)
+    );
+    const done_map = all_drinks_done_map(drinks, prep_map[paying.id]);
+    const next = { ...load_prep_map(), [paying.id]: done_map };
+    save_prep_map(next);
+    set_prep_map(next);
+    sync_prep_to_server(paying.id, done_map);
 
     set_paying(null);
-    await load();
+    play_payment_chime();
   }
 
   async function hand_out(o: order) {
-    if (!confirm('точно выдали заказ?')) return;
-    if (o.status === 'ready') {
+    const started =
+      order_starts[o.id] ||
+      Object.values(prep_map[o.id] || {})
+        .map((p) => p.started_at)
+        .filter((n): n is number => typeof n === 'number')
+        .sort((a, b) => a - b)[0] ||
+      new Date(o.created_at).getTime();
+
+    const sid = seller_id || seller_ref.current.id || 'seller';
+    const sname = seller_name || seller_ref.current.name || 'бариста';
+
+    await fetch('/api/seller/prep-stats', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      credentials: 'same-origin',
+      body: JSON.stringify({
+        kind: 'fulfillment',
+        event: {
+          seller_id: sid,
+          seller_name: sname,
+          order_id: o.id,
+          started_at: new Date(started).toISOString(),
+          finished_at: new Date().toISOString(),
+          pickup_at: o.pickup_time,
+        },
+      }),
+    });
+
+    try {
       await patch_order(o.id, { status: 'completed' });
-    } else {
-      await patch_order(o.id, { status: 'ready' });
+    } catch (e) {
+      alert(e instanceof Error ? e.message : 'не удалось выдать заказ');
+      return;
     }
-    await load();
+
+    clear_prep_on_server(o.id);
+    const map = load_prep_map();
+    delete map[o.id];
+    save_prep_map(map);
+    set_prep_map(map);
+
+    play_handout_chime();
+
+    const done: order = { ...o, status: 'completed', is_paid: o.is_paid ?? true };
+    set_handed((prev) => {
+      const next = [done, ...prev.filter((x) => x.id !== o.id)].slice(0, 50);
+      save_handed(next);
+      return next;
+    });
+    set_orders((prev) => prev.filter((row) => row.id !== o.id));
+  }
+
+  function on_final_action(o: order) {
+    if (!o.is_paid) {
+      set_paying(o);
+      return;
+    }
+    void hand_out(o);
   }
 
   const lines_by_order = new Map<string, schedule_line[]>();
@@ -565,12 +678,92 @@ export default function seller_board() {
     lines_by_order.set(line.order_id, list);
   }
 
+  function drinks_for(o: order) {
+    return expand_drinks(o, lines_by_order.get(o.id) ?? []);
+  }
+
+  function is_all_done(o: order) {
+    if (o.status === 'ready') return true;
+    const drinks = drinks_for(o);
+    if (!drinks.length) return false;
+    return drinks.every((d) => prep_map[o.id]?.[d.key]?.done);
+  }
+
   const in_work = orders
-    .filter((o) => o.status === 'new' || o.status === 'preparing')
+    .filter((o) => o.status === 'new' || o.status === 'preparing' || o.status === 'ready')
     .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
-  const ready = orders
-    .filter((o) => o.status === 'ready')
-    .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+
+  /** вкладка «готовые» — только уже выданные за смену */
+  const handed_out = handed;
+
+  function card_mode_for_work(o: order): 'work' | 'ready' {
+    if (o.status === 'ready' || is_all_done(o)) return 'ready';
+    return 'work';
+  }
+
+  const tabs: { id: tab; label: string }[] = [
+    { id: 'work', label: 'в работе' },
+    { id: 'ready', label: 'готовые' },
+    { id: 'pos', label: 'касса' },
+    { id: 'analytics', label: 'аналитика' },
+  ];
+
+  function render_work_list() {
+    if (in_work.length === 0) {
+      return (
+        <div className="rounded-2xl border border-dashed border-neutral-300 bg-white/70 px-4 py-14 text-center text-sm text-neutral-400">
+          пусто
+        </div>
+      );
+    }
+    return (
+      <div className="space-y-3 max-w-md mx-auto">
+        {in_work.map((o) =>
+          createElement(order_prep_card, {
+            key: `work-${o.id}`,
+            order: o,
+            drinks: drinks_for(o),
+            prep: prep_map[o.id] || {},
+            is_new: fresh_ids.has(o.id),
+            mode: card_mode_for_work(o),
+            on_start_drink: start_drink,
+            on_mark_drink_done: mark_drink_done,
+            on_final_action,
+          })
+        )}
+      </div>
+    );
+  }
+
+  function render_handed_list() {
+    if (handed_out.length === 0) {
+      return (
+        <div className="rounded-2xl border border-dashed border-neutral-300 bg-white/70 px-4 py-14 text-center text-sm text-neutral-400">
+          за смену ещё ничего не выдавали
+        </div>
+      );
+    }
+    return (
+      <div className="space-y-3 max-w-md mx-auto">
+        {handed_out.map((o) =>
+          createElement(order_prep_card, {
+            key: `handed-${o.id}`,
+            order: o,
+            drinks: drinks_for(o),
+            prep:
+              prep_map[o.id] ||
+              Object.fromEntries(
+                drinks_for(o).map((d) => [d.key, { started_at: null, done: true }])
+              ),
+            mode: 'done',
+            on_start_drink: start_drink,
+            on_mark_drink_done: mark_drink_done,
+            on_final_action: () => {},
+          })
+        )}
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-[#f0f1f4]">
@@ -609,23 +802,25 @@ export default function seller_board() {
                 await clear_session();
                 router.push('/admin/login');
               }}
-              className="rounded-xl border border-surface bg-white px-3 py-2 text-xs text-neutral-600"
+              className="rounded-xl border border-neutral-200 bg-white px-3 py-2 text-xs text-neutral-600"
             >
               выйти
             </button>
           </div>
 
-          <div className="mt-4 grid grid-cols-2 gap-1 rounded-2xl bg-surface p-1">
-            {(['orders', 'summary'] as tab[]).map((t) => (
+          <div className="mt-4 grid grid-cols-4 gap-1 rounded-2xl bg-surface p-1">
+            {tabs.map((t) => (
               <button
-                key={t}
+                key={t.id}
                 type="button"
-                onClick={() => set_tab(t)}
-                className={`rounded-xl py-2.5 text-sm font-medium transition ${
-                  tab === t ? 'bg-white text-neutral-900 shadow-sm' : 'text-neutral-500'
+                onClick={() => set_tab(t.id)}
+                className={`rounded-xl py-2.5 text-xs sm:text-sm font-medium transition ${
+                  tab === t.id ? 'bg-white text-neutral-900 shadow-sm' : 'text-neutral-500'
                 }`}
               >
-                {t === 'orders' ? 'заказы' : 'итоги'}
+                {t.label}
+                {t.id === 'work' && in_work.length ? ` · ${in_work.length}` : ''}
+                {t.id === 'ready' && handed_out.length ? ` · ${handed_out.length}` : ''}
               </button>
             ))}
           </div>
@@ -633,65 +828,24 @@ export default function seller_board() {
       </header>
 
       <main className="max-w-3xl mx-auto px-4 py-5">
-        {tab === 'orders' ? (
-          <div className="grid gap-5 md:grid-cols-2">
-            <section>
-              <p className="text-xs font-semibold uppercase tracking-wide text-neutral-400 px-1 mb-3">
-                в работе · {in_work.length}
-              </p>
-              {in_work.length === 0 ? (
-                <div className="rounded-2xl border border-dashed border-neutral-300 bg-white/70 px-4 py-10 text-center text-sm text-neutral-400">
-                  пусто
-                </div>
-              ) : (
-                <div className="space-y-3">
-                  {in_work.map((o) =>
-                    createElement(order_card, {
-                      key: o.id,
-                      order: o,
-                      lines: lines_by_order.get(o.id) ?? [],
-                      is_new: fresh_ids.has(o.id),
-                      prep: prep_map[o.id] || {},
-                      on_pay: set_paying,
-                      on_start_drink: start_drink,
-                      on_mark_drink_done: mark_drink_done,
-                      on_hand_out: hand_out,
-                    })
-                  )}
-                </div>
-              )}
-            </section>
+        {tab === 'work' ? render_work_list() : null}
+        {tab === 'ready' ? render_handed_list() : null}
 
-            <section>
-              <p className="text-xs font-semibold uppercase tracking-wide text-neutral-400 px-1 mb-3">
-                готово · {ready.length}
-              </p>
-              {ready.length === 0 ? (
-                <div className="rounded-2xl border border-dashed border-neutral-300 bg-white/70 px-4 py-10 text-center text-sm text-neutral-400">
-                  пусто
-                </div>
-              ) : (
-                <div className="space-y-3">
-                  {ready.map((o) =>
-                    createElement(order_card, {
-                      key: o.id,
-                      order: o,
-                      lines: lines_by_order.get(o.id) ?? [],
-                      is_new: false,
-                      prep: prep_map[o.id] || {},
-                      on_pay: set_paying,
-                      on_start_drink: start_drink,
-                      on_mark_drink_done: mark_drink_done,
-                      on_hand_out: hand_out,
-                    })
-                  )}
-                </div>
-              )}
-            </section>
-          </div>
-        ) : (
-          createElement(day_summary_panel)
-        )}
+        {tab === 'pos'
+          ? createElement(pos_panel, {
+              on_created: () => {
+                set_tab('work');
+                void load();
+              },
+            })
+          : null}
+
+        {tab === 'analytics'
+          ? createElement(barista_analytics_panel, {
+              seller_id,
+              seller_name,
+            })
+          : null}
       </main>
 
       {createElement(cash_register_modal, {

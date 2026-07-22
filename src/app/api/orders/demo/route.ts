@@ -14,8 +14,9 @@ async function is_staff() {
   return role === 'admin' || role === 'seller';
 }
 
-export async function GET() {
-  return NextResponse.json({ orders: await get_demo_orders(true) });
+export async function GET(request: Request) {
+  const all = new URL(request.url).searchParams.get('all') === '1';
+  return NextResponse.json({ orders: await get_demo_orders(!all) });
 }
 
 export async function POST(request: Request) {

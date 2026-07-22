@@ -115,6 +115,64 @@ export type day_summary = {
   cash_change: number;
 };
 
+/** одно приготовление напитка баристой */
+export type prep_event = {
+  id: string;
+  seller_id: string;
+  seller_name: string;
+  order_id: string;
+  drink_key: string;
+  drink_name: string;
+  menu_id: string;
+  expected_ms: number;
+  actual_ms: number;
+  started_at: string;
+  finished_at: string;
+  pickup_at: string;
+  /** скорость относительно нормы prep_minutes */
+  drink_pace: 'fast' | 'normal' | 'slow';
+  shift_date: string;
+};
+
+/** полная выдача заказа (от старта первого напитка до выдачи) */
+export type fulfillment_event = {
+  id: string;
+  seller_id: string;
+  seller_name: string;
+  order_id: string;
+  started_at: string;
+  finished_at: string;
+  pickup_at: string;
+  duration_ms: number;
+  /** успел ли к pickup_time */
+  timing: 'early' | 'on_time' | 'overdue';
+  shift_date: string;
+};
+
+export type drink_stat = {
+  menu_id: string;
+  name: string;
+  count: number;
+  avg_ms: number;
+  fastest_ms: number;
+  slowest_ms: number;
+};
+
+export type barista_analytics = {
+  shift_date: string;
+  seller_id: string | null;
+  avg_fulfillment_ms: number | null;
+  fulfillment_count: number;
+  early_count: number;
+  on_time_count: number;
+  overdue_count: number;
+  drinks: drink_stat[];
+  most_cooked: drink_stat | null;
+  fastest_drink: drink_stat | null;
+  slowest_drink: drink_stat | null;
+  prep_count: number;
+};
+
 export type live_cart_row = {
   id: string;
   user_id: string;

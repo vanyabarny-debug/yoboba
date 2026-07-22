@@ -9,6 +9,9 @@ const seeds: Record<string, unknown> = {
   sellers: sellers_seed,
   'cash-transactions': [],
   'demo-orders': [],
+  'prep-events': [],
+  'fulfillment-events': [],
+  'seller-prep-state': {},
 };
 
 async function get_cloudflare_env(): Promise<CloudflareEnv | null> {
