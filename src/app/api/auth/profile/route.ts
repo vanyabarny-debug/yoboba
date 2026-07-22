@@ -1,21 +1,12 @@
 import { createServerClient } from '@supabase/ssr';
 import { createClient } from '@supabase/supabase-js';
 import { NextResponse, type NextRequest } from 'next/server';
+import { normalize_phone } from '@/lib/phone';
 
 function merge_cookies(from: NextResponse, to: NextResponse) {
   from.cookies.getAll().forEach((cookie) => {
     to.cookies.set(cookie.name, cookie.value);
   });
-}
-
-function normalize_profile_phone(raw?: unknown): string | null {
-  if (typeof raw !== 'string' || !raw.trim() || raw.includes('*')) return null;
-  const digits = raw.replace(/\D/g, '');
-  if (digits.length < 10) return null;
-  if (digits.length === 11 && digits.startsWith('8')) return `+7${digits.slice(1)}`;
-  if (digits.length === 11 && digits.startsWith('7')) return `+${digits}`;
-  if (digits.length === 10) return `+7${digits}`;
-  return raw.trim().startsWith('+') ? raw.trim() : `+${digits}`;
 }
 
 function make_supabase(request: NextRequest, cookie_response: NextResponse) {
@@ -55,12 +46,11 @@ export async function GET(request: NextRequest) {
     .eq('id', user.id)
     .maybeSingle();
 
-  const meta_phone = normalize_profile_phone(
+  const meta_phone = normalize_phone(
     (user.user_metadata as { phone?: string } | undefined)?.phone
   );
   let resolved_profile = profile;
 
-  // телефон мог сохраниться в user_metadata при VK-входе, но не попасть в profiles
   if (profile && !profile.phone && meta_phone) {
     resolved_profile = { ...profile, phone: meta_phone };
     if (process.env.SUPABASE_SERVICE_ROLE_KEY) {
@@ -97,28 +87,71 @@ export async function PATCH(request: NextRequest) {
     return res;
   }
 
-  const body = (await request.json()) as { name?: string };
-  const name = body.name?.trim();
-  if (!name || name.length < 2) {
-    const res = NextResponse.json({ error: 'укажите имя' }, { status: 400 });
+  const body = (await request.json()) as { name?: string; phone?: string };
+  const updates: { name?: string; phone?: string; updated_at: string } = {
+    updated_at: new Date().toISOString(),
+  };
+
+  if (typeof body.name === 'string') {
+    const name = body.name.trim();
+    if (name.length < 2) {
+      const res = NextResponse.json({ error: 'укажите имя' }, { status: 400 });
+      merge_cookies(cookie_response, res);
+      return res;
+    }
+    updates.name = name;
+  }
+
+  if (typeof body.phone === 'string') {
+    const phone = normalize_phone(body.phone);
+    if (!phone) {
+      const res = NextResponse.json({ error: 'укажите корректный номер' }, { status: 400 });
+      merge_cookies(cookie_response, res);
+      return res;
+    }
+    updates.phone = phone;
+  }
+
+  if (!updates.name && !updates.phone) {
+    const res = NextResponse.json({ error: 'нечего обновлять' }, { status: 400 });
     merge_cookies(cookie_response, res);
     return res;
   }
 
   const { data: profile, error } = await supabase
     .from('profiles')
-    .update({ name, updated_at: new Date().toISOString() })
+    .update(updates)
     .eq('id', user.id)
     .select('id, phone, name, bonus_balance, role')
     .single();
 
   if (error || !profile) {
+    const duplicate = error?.code === '23505' || error?.message?.includes('unique');
     const res = NextResponse.json(
-      { error: error?.message || 'не удалось обновить профиль' },
-      { status: 500 }
+      {
+        error: duplicate
+          ? 'этот номер уже привязан к другому аккаунту'
+          : error?.message || 'не удалось обновить профиль',
+      },
+      { status: duplicate ? 409 : 500 }
     );
     merge_cookies(cookie_response, res);
     return res;
+  }
+
+  if (updates.phone && process.env.SUPABASE_SERVICE_ROLE_KEY) {
+    const admin = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.SUPABASE_SERVICE_ROLE_KEY
+    );
+    await admin.auth.admin.updateUserById(user.id, {
+      user_metadata: {
+        ...(user.user_metadata as Record<string, unknown>),
+        phone: updates.phone,
+      },
+      phone: updates.phone,
+      phone_confirm: true,
+    });
   }
 
   const res = NextResponse.json({ profile });

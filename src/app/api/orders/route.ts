@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { create_server_client } from '@/lib/supabase/server';
 import { create_service_client } from '@/lib/supabase/service';
 import { calc_order_bonus } from '@/lib/cart-summary';
+import { normalize_phone } from '@/lib/phone';
 import type { order_item } from '@/lib/types';
 
 export async function GET() {
@@ -46,13 +47,23 @@ export async function POST(request: Request) {
   const admin = create_service_client();
   const { data: profile } = await admin
     .from('profiles')
-    .select('id, bonus_balance')
+    .select('id, bonus_balance, phone')
     .eq('id', user.id)
     .maybeSingle();
   if (!profile) {
     await admin.from('profiles').upsert(
       { id: user.id, name: 'гость', bonus_balance: 0, role: 'user' },
       { onConflict: 'id' }
+    );
+  }
+
+  const profile_phone =
+    normalize_phone(profile?.phone) ||
+    normalize_phone((user.user_metadata as { phone?: string } | undefined)?.phone);
+  if (!profile_phone) {
+    return NextResponse.json(
+      { error: 'укажите номер телефона перед заказом' },
+      { status: 400 }
     );
   }
 

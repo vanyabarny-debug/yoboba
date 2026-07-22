@@ -5,7 +5,7 @@ import { createElement, Suspense, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import site_chrome from '@/components/site-chrome';
 import TapicoinIcon from '@/components/tapicoin-icon';
-import { get_auth_state, sign_out, type profile } from '@/lib/auth';
+import { get_auth_state, sign_out, update_profile, type profile } from '@/lib/auth';
 import {
   bonus_earning_rules,
   FREE_DRINK_BONUS_THRESHOLD,
@@ -23,6 +23,11 @@ import {
   type profile_local,
 } from '@/lib/profile-local';
 import { createBrowserClient } from '@supabase/ssr';
+import {
+  format_phone_display,
+  format_phone_input,
+  phone_input_to_e164,
+} from '@/lib/phone';
 
 function parse_vk_birthday(raw?: string | null): string {
   if (!raw) return '';
@@ -108,15 +113,6 @@ function format_datetime(iso: string) {
   }
 }
 
-function format_phone(phone: string | null | undefined) {
-  if (!phone) return 'не указан';
-  const d = phone.replace(/\D/g, '');
-  if (d.length === 11) {
-    return `+${d[0]} ${d.slice(1, 4)} ${d.slice(4, 7)}-${d.slice(7, 9)}-${d.slice(9)}`;
-  }
-  return phone;
-}
-
 function format_birthday(iso: string) {
   if (!iso) return 'не указан';
   try {
@@ -144,6 +140,10 @@ export default function profile_page() {
   const [orders, set_orders] = useState<order[]>([]);
   const [orders_error, set_orders_error] = useState('');
   const [editing_name, set_editing_name] = useState(false);
+  const [editing_phone, set_editing_phone] = useState(false);
+  const [phone_draft, set_phone_draft] = useState('');
+  const [saving_phone, set_saving_phone] = useState(false);
+  const [phone_error, set_phone_error] = useState('');
   const [name_draft, set_name_draft] = useState('');
   const [saving_name, set_saving_name] = useState(false);
   const [name_error, set_name_error] = useState('');
@@ -222,6 +222,29 @@ export default function profile_page() {
     if (!profile) return;
     save_profile_local(profile.id, next);
     set_local(next);
+  }
+
+  async function handle_save_phone() {
+    if (!profile) return;
+    const phone = phone_input_to_e164(phone_draft);
+    if (!phone) {
+      set_phone_error('введите номер полностью');
+      return;
+    }
+
+    set_saving_phone(true);
+    set_phone_error('');
+
+    const { profile: next, error } = await update_profile({ phone });
+    set_saving_phone(false);
+
+    if (error || !next) {
+      set_phone_error(error?.message || 'не удалось сохранить');
+      return;
+    }
+
+    set_profile(next);
+    set_editing_phone(false);
   }
 
   async function handle_save_name() {
@@ -409,14 +432,64 @@ export default function profile_page() {
           </div>
 
           <div>
-            <label className="text-xs text-neutral-500 mb-1.5 block">телефон</label>
-            <p className="rounded-xl bg-page px-3 py-2.5 text-sm font-medium text-neutral-900">
-              {format_phone(profile.phone)}
-            </p>
+            <div className="flex items-center justify-between gap-2 mb-1.5">
+              <label className="text-xs text-neutral-500">телефон</label>
+              {!editing_phone && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    const digits = (profile.phone || '').replace(/\D/g, '');
+                    const local = digits.startsWith('7') ? digits.slice(1) : digits;
+                    set_phone_draft(format_phone_input(local));
+                    set_editing_phone(true);
+                    set_phone_error('');
+                  }}
+                  className="text-xs font-semibold text-accent hover:underline"
+                >
+                  {profile.phone ? 'изменить' : 'указать'}
+                </button>
+              )}
+            </div>
+            {editing_phone ? (
+              <div className="space-y-2">
+                <div className="flex items-center rounded-xl border border-neutral-200 bg-page px-3 py-2.5">
+                  <span className="text-sm font-medium text-neutral-500 pr-2">+7</span>
+                  <input
+                    type="tel"
+                    inputMode="numeric"
+                    value={phone_draft}
+                    onChange={(e) => set_phone_draft(format_phone_input(e.target.value))}
+                    placeholder="916 000-00-00"
+                    className="flex-1 bg-transparent text-sm font-medium text-neutral-900 outline-none"
+                    autoFocus
+                  />
+                </div>
+                {phone_error && <p className="text-xs text-red-500">{phone_error}</p>}
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => set_editing_phone(false)}
+                    className="flex-1 rounded-pill border border-neutral-200 py-2 text-sm"
+                  >
+                    отмена
+                  </button>
+                  <button
+                    type="button"
+                    disabled={saving_phone}
+                    onClick={handle_save_phone}
+                    className="flex-1 rounded-pill bg-accent text-accent-foreground py-2 text-sm font-medium disabled:opacity-60"
+                  >
+                    {saving_phone ? 'сохраняем…' : 'сохранить'}
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <p className="rounded-xl bg-page px-3 py-2.5 text-sm font-medium text-neutral-900">
+                {format_phone_display(profile.phone)}
+              </p>
+            )}
             <p className="mt-1.5 text-xs text-neutral-400">
-              {profile.phone
-                ? 'подтягивается из VK при каждом входе'
-                : 'VK не передал номер приложению — войдите снова через VK. Если не поможет: id.vk.com → ваше приложение → доступы → включить «телефон»'}
+              нужен для заказа — спросим перед оформлением, если не указан
             </p>
           </div>
 

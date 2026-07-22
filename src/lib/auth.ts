@@ -229,3 +229,20 @@ export async function get_profile(): Promise<profile | null> {
 
   return data;
 }
+
+export async function update_profile(input: { name?: string; phone?: string }) {
+  const res = await fetch('/api/auth/profile', {
+    method: 'PATCH',
+    credentials: 'same-origin',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(input),
+  });
+  const body = (await res.json()) as { profile?: profile; error?: string };
+  if (!res.ok || !body.profile) {
+    return {
+      profile: null,
+      error: new Error(body.error || 'не удалось сохранить'),
+    };
+  }
+  return { profile: body.profile, error: null };
+}

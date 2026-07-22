@@ -22,6 +22,7 @@ import brand_edit_sheet from '@/components/admin/brand-edit-sheet';
 import { admin_sheet } from '@/components/admin/admin-sheet';
 import location_modal from '@/components/location-modal';
 import order_gate_modal from '@/components/order-gate-modal';
+import phone_gate_modal from '@/components/phone-gate-modal';
 import { add_to_cart, get_cart_items, upsert_cart_item } from '@/lib/cart';
 import site_header from '@/components/site-header';
 import { resolve_menu_categories } from '@/lib/menu-from-db';
@@ -51,6 +52,7 @@ import {
 import type { menu_item, promo_banner, sidebar_ad_slide, story } from '@/lib/types';
 import { get_auth_state, sign_out } from '@/lib/auth';
 import { create_order } from '@/lib/orders';
+import { normalize_phone } from '@/lib/phone';
 import {
   get_demo_user,
   clear_session,
@@ -150,6 +152,7 @@ export default function home_client({
   const [selected_spot, set_selected_spot] = useState<store_spot | null>(null);
   const [location_open, set_location_open] = useState(false);
   const [order_gate_open, set_order_gate_open] = useState(false);
+  const [phone_gate_open, set_phone_gate_open] = useState(false);
   const [pending_action, set_pending_action] = useState<pending_order_action | null>(null);
   const [saved_location, set_saved_location] = useState<user_location | null>(null);
   const [address_confirmed, set_address_confirmed] = useState(false);
@@ -197,6 +200,49 @@ export default function home_client({
       set_cart_open(true);
     }
   }, [search_params]);
+
+  function has_profile_phone() {
+    return Boolean(normalize_phone(user?.phone));
+  }
+
+  const proceed_checkout = useCallback(async () => {
+    if (cart_lines.length === 0) return;
+
+    const uid = user_id;
+    if (!uid) {
+      set_order_error('войдите, чтобы оформить заказ');
+      redirect_to_login();
+      return;
+    }
+
+    const items = cart_lines.map((l) => ({
+      menu_id: l.item.id,
+      name: l.item.name,
+      price: l.item.price,
+      quantity: l.quantity,
+    }));
+    const total_price = cart_lines.reduce((s, l) => s + l.item.price * l.quantity, 0);
+    const pickup_time = new Date(Date.now() + 12 * 60_000).toISOString();
+
+    const { error } = await create_order({
+      user_id: uid,
+      items,
+      total_price,
+      payment_type: 'cash',
+      pickup_time,
+    });
+
+    if (error) {
+      set_order_error(error.message);
+      return;
+    }
+
+    set_order_error('');
+    set_cart_lines([]);
+    set_cart_open(false);
+    set_order_toast(true);
+    window.setTimeout(() => set_order_toast(false), 4500);
+  }, [cart_lines, user_id, router]);
 
   function needs_checkout_gate() {
     if (demo_mode) return false;
@@ -546,7 +592,18 @@ export default function home_client({
       return;
     }
 
-    set_cart_open(true);
+    if (!has_profile_phone()) {
+      set_phone_gate_open(true);
+      return;
+    }
+
+    await proceed_checkout();
+  }
+
+  function handle_phone_saved(phone: string) {
+    set_phone_gate_open(false);
+    set_user((prev) => (prev ? { ...prev, phone } : prev));
+    void proceed_checkout();
   }
 
   function handle_edit_line(item: menu_item) {
@@ -614,41 +671,13 @@ export default function home_client({
       return;
     }
 
-    const uid = user_id;
-    if (!uid) {
-      set_order_error('войдите, чтобы оформить заказ');
-      redirect_to_login();
+    if (!has_profile_phone()) {
+      set_cart_open(false);
+      set_phone_gate_open(true);
       return;
     }
 
-    const items = cart_lines.map((l) => ({
-      menu_id: l.item.id,
-      name: l.item.name,
-      price: l.item.price,
-      quantity: l.quantity,
-    }));
-    const total_price = cart_lines.reduce((s, l) => s + l.item.price * l.quantity, 0);
-    const pickup_time = new Date(Date.now() + 12 * 60_000).toISOString();
-
-    const { error } = await create_order({
-      user_id: uid,
-      items,
-      total_price,
-      payment_type: 'cash',
-      pickup_time,
-    });
-
-    if (error) {
-      set_order_error(error.message);
-      return;
-    }
-
-    set_order_error('');
-
-    set_cart_lines([]);
-    set_cart_open(false);
-    set_order_toast(true);
-    window.setTimeout(() => set_order_toast(false), 4500);
+    await proceed_checkout();
   }
 
   function handle_order_gate_login() {
@@ -1107,6 +1136,12 @@ export default function home_client({
         },
         on_location_confirmed: handle_gate_location_confirmed,
         on_login: handle_order_gate_login,
+      })}
+
+      {!is_admin_edit && createElement(phone_gate_modal, {
+        open: phone_gate_open,
+        on_close: () => set_phone_gate_open(false),
+        on_saved: handle_phone_saved,
       })}
 
       {!is_admin_edit && createElement(location_modal, {
