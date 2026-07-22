@@ -25,8 +25,10 @@ import order_prep_card, {
   type prep_state,
 } from '@/components/seller/order-prep-card';
 import {
+  advance_day_task,
+  get_board_tasks,
   load_day_tasks,
-  patch_day_task,
+  mark_appeared,
   type day_task,
 } from '@/lib/seller-day-tasks';
 import { tile_grid } from '@/lib/seller-tile-grid';
@@ -510,19 +512,23 @@ export default function seller_board() {
       set_day_tasks([]);
       return;
     }
-    set_day_tasks(load_day_tasks(shift.spot_id));
+    const spot = shift.spot_id;
+    function sync() {
+      const loaded = load_day_tasks(spot);
+      set_day_tasks(mark_appeared(spot, loaded));
+    }
+    sync();
+    const id = window.setInterval(sync, 30_000);
+    return () => window.clearInterval(id);
   }, [shift?.spot_id]);
 
-  function start_day_task(task_id: string) {
+  function advance_task(task_id: string) {
     if (!shift?.spot_id) return;
-    play_start_chime();
-    set_day_tasks(patch_day_task(shift.spot_id, task_id, 'in_progress'));
-  }
-
-  function complete_day_task(task_id: string) {
-    if (!shift?.spot_id) return;
-    play_drink_ready_chime();
-    set_day_tasks(patch_day_task(shift.spot_id, task_id, 'done'));
+    const next = advance_day_task(shift.spot_id, task_id);
+    const advanced = next.find((t) => t.id === task_id);
+    if (advanced?.phase === 'running') play_start_chime();
+    if (advanced?.phase === 'done') play_drink_ready_chime();
+    set_day_tasks(next);
   }
 
   const update_prep = useCallback(
@@ -800,8 +806,7 @@ export default function seller_board() {
     { id: 'analytics', label: 'аналитика' },
   ];
 
-  const open_tasks = day_tasks.filter((t) => t.status !== 'done');
-  const done_tasks = day_tasks.filter((t) => t.status === 'done');
+  const { open: open_tasks, done: done_tasks } = get_board_tasks(day_tasks);
   const work_board_count = in_work.length + open_tasks.length;
   const ready_board_count = handed_out.length + done_tasks.length;
 
@@ -838,8 +843,7 @@ export default function seller_board() {
             key: `task-${t.id}`,
             task: t,
             mode: 'work',
-            on_start: start_day_task,
-            on_complete: complete_day_task,
+            on_advance: advance_task,
           })
         )}
         {in_work.map((o) =>
@@ -876,8 +880,7 @@ export default function seller_board() {
             key: `task-done-${t.id}`,
             task: t,
             mode: 'done',
-            on_start: start_day_task,
-            on_complete: complete_day_task,
+            on_advance: advance_task,
           })
         )}
         {handed_out.map((o) =>
@@ -915,7 +918,7 @@ export default function seller_board() {
             save_shift(next);
             set_shift(next);
             set_need_shift(false);
-            set_day_tasks(load_day_tasks(next.spot_id));
+            set_day_tasks(mark_appeared(next.spot_id, load_day_tasks(next.spot_id)));
           },
         })}
 

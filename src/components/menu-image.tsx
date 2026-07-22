@@ -8,7 +8,7 @@ import { resolve_menu_item_image_url } from '@/lib/menu-store';
 type props = {
   item: menu_item;
   className?: string;
-  variant?: 'card' | 'thumb';
+  variant?: 'card' | 'thumb' | 'fill';
 };
 
 function is_unusable_src(src: string | null | undefined) {
@@ -17,10 +17,10 @@ function is_unusable_src(src: string | null | undefined) {
   return false;
 }
 
-function skeleton({ className = '' }: { className?: string }) {
+function skeleton({ className = '', fill = false }: { className?: string; fill?: boolean }) {
   return (
     <div
-      className={`aspect-square overflow-hidden bg-neutral-200 ${className}`}
+      className={`${fill ? 'h-full w-full' : 'aspect-square'} overflow-hidden bg-neutral-200 ${className}`}
       aria-hidden
     >
       <div className="h-full w-full animate-pulse bg-gradient-to-br from-neutral-200 via-neutral-100 to-neutral-200" />
@@ -33,6 +33,7 @@ function menu_image_inner({ item, className = '', variant = 'card' }: props) {
   const unusable = is_unusable_src(src);
   const [failed, set_failed] = useState(unusable);
   const [loaded, set_loaded] = useState(false);
+  const fill = variant === 'fill';
 
   useEffect(() => {
     const bad = is_unusable_src(src);
@@ -41,11 +42,15 @@ function menu_image_inner({ item, className = '', variant = 'card' }: props) {
   }, [src]);
 
   if (failed || !src) {
-    return skeleton({ className });
+    return skeleton({ className, fill });
   }
 
   return (
-    <div className={`relative aspect-square overflow-hidden bg-neutral-200 ${className}`}>
+    <div
+      className={`relative overflow-hidden bg-neutral-200 ${
+        fill ? 'h-full w-full' : 'aspect-square'
+      } ${className}`}
+    >
       {!loaded && (
         <div className="absolute inset-0 animate-pulse bg-gradient-to-br from-neutral-200 via-neutral-100 to-neutral-200" />
       )}
@@ -57,13 +62,13 @@ function menu_image_inner({ item, className = '', variant = 'card' }: props) {
         className={`absolute inset-0 h-full w-full object-cover object-center transition-opacity duration-300 ${
           loaded ? 'opacity-100' : 'opacity-0'
         }`}
-        loading={variant === 'card' ? 'eager' : 'lazy'}
+        loading={variant === 'thumb' ? 'lazy' : 'eager'}
         decoding="async"
         draggable={false}
         onLoad={() => set_loaded(true)}
         onError={() => set_failed(true)}
       />
-      {is_custom_menu_photo(src) && variant === 'card' && (
+      {is_custom_menu_photo(src) && variant !== 'thumb' && (
         <span className="sr-only">загруженное фото</span>
       )}
     </div>

@@ -450,19 +450,19 @@ export default function pos_panel({ on_created }: props) {
             key={item.id}
             type="button"
             onClick={() => open_item(item)}
-            className="flex h-full min-h-0 flex-col rounded-2xl border border-neutral-200 bg-white p-2 text-left active:scale-[0.98] transition overflow-hidden"
+            className="grid h-full min-h-0 grid-rows-[1fr_auto_auto] gap-1 rounded-2xl border border-neutral-200 bg-white p-2 text-left active:scale-[0.98] transition overflow-hidden"
           >
-            <div className="relative min-h-0 flex-1 w-full overflow-hidden rounded-xl bg-neutral-50">
+            <div className="relative min-h-0 w-full overflow-hidden rounded-xl bg-neutral-50">
               {createElement(menu_image, {
                 item,
-                className: 'absolute inset-0 w-full h-full object-cover',
-                variant: 'card',
+                className: 'absolute inset-0',
+                variant: 'fill',
               })}
             </div>
-            <p className="mt-1 shrink-0 text-xs sm:text-sm font-semibold text-neutral-900 leading-snug line-clamp-2 text-center">
+            <p className="text-xs sm:text-sm font-semibold text-neutral-900 leading-snug line-clamp-2 text-center">
               {item.name}
             </p>
-            <p className="mt-0.5 shrink-0 text-sm font-bold tabular-nums text-neutral-900 text-center">
+            <p className="text-sm font-bold tabular-nums text-neutral-900 text-center">
               {item.price} ₽
             </p>
           </button>
