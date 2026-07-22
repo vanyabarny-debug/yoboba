@@ -102,7 +102,7 @@ export async function GET(request: Request) {
     }
 
     console.log('[vk/callback] exchange code');
-    const access_token = await exchange_vk_code({
+    const tokens = await exchange_vk_code({
       code,
       device_id,
       code_verifier,
@@ -110,7 +110,7 @@ export async function GET(request: Request) {
     });
 
     console.log('[vk/callback] fetch user');
-    const vk_user = await fetch_vk_user(access_token);
+    const vk_user = await fetch_vk_user(tokens.access_token, tokens.id_token);
 
     console.log('[vk/callback] upsert supabase user', { vk_id: vk_user.user_id });
     const session = await upsert_vk_supabase_user({

@@ -123,7 +123,7 @@ export default function login_client() {
             <p className="text-sm text-neutral-500 mt-2">
               {demo
                 ? 'демо-режим без supabase'
-                : 'нужен, чтобы оформить заказ и копить шарики'}
+                : 'нужен, чтобы оформить заказ и копить тапикоины'}
             </p>
           </div>
 

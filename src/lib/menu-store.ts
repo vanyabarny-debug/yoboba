@@ -87,6 +87,14 @@ function placeholder_for_id(id: string) {
   return placeholder_pool[hash] ?? img['bt-1'];
 }
 
+function normalize_item_name(name: string) {
+  return name.trim().toLowerCase().replace(/\s+/g, ' ');
+}
+
+function find_default_item(item: menu_item, by_id: Map<string, menu_item>, by_name: Map<string, menu_item>) {
+  return by_id.get(item.id) ?? by_name.get(normalize_item_name(item.name));
+}
+
 function is_stale_menu_placeholder(url: string) {
   // старые SVG-плейсхолдеры и чужие имена — заменить на актуальные PNG
   if (!url.startsWith('/images/menu/')) return false;
@@ -97,15 +105,22 @@ function is_stale_menu_placeholder(url: string) {
 
 function resolve_image_url(item: menu_item, fallback?: menu_item): string | null {
   const url = item.image_url;
-  if (url) {
-    if (url.startsWith('data:') || url.startsWith('blob:') || url.startsWith('http://') || url.startsWith('https://')) {
-      return url;
-    }
-    if (url.startsWith('/images/menu/') && !is_stale_menu_placeholder(url)) {
-      return url;
-    }
+  // внешние/загруженные фото оставляем
+  if (
+    url &&
+    (url.startsWith('data:') ||
+      url.startsWith('blob:') ||
+      url.startsWith('http://') ||
+      url.startsWith('https://'))
+  ) {
+    return url;
   }
-  return fallback?.image_url ?? placeholder_for_id(item.id);
+  // если есть дефолт по id/названию — всегда берём его (чинит рандомный hash по uuid)
+  if (fallback?.image_url) return fallback.image_url;
+  if (url && url.startsWith('/images/menu/') && !is_stale_menu_placeholder(url)) {
+    return url;
+  }
+  return placeholder_for_id(item.id);
 }
 
 function item(
@@ -237,11 +252,14 @@ export function apply_menu_item_badges(items: menu_item[]) {
   return merge_default_badges(items);
 }
 
-/** чинит старые SVG-плейсхолдеры из БД на актуальные PNG */
+/** чинит старые SVG / рандомные png из БД — матч по id или по названию */
 export function normalize_menu_item_images(items: menu_item[]) {
   const default_by_id = new Map(default_menu_items.map((i) => [i.id, i]));
+  const default_by_name = new Map(
+    default_menu_items.map((i) => [normalize_item_name(i.name), i])
+  );
   return items.map((item) => {
-    const fallback = default_by_id.get(item.id);
+    const fallback = find_default_item(item, default_by_id, default_by_name);
     return { ...item, image_url: resolve_image_url(item, fallback) };
   });
 }
@@ -252,10 +270,13 @@ function repair_menu_store(store: menu_store): menu_store {
   const categories =
     store.categories?.length > 0 ? store.categories : defaults.categories;
   const default_by_id = new Map(defaults.items.map((i) => [i.id, i]));
+  const default_by_name = new Map(
+    defaults.items.map((i) => [normalize_item_name(i.name), i])
+  );
   const existing_ids = new Set((store.items ?? []).map((i) => i.id));
   const items = merge_default_badges(
     (store.items ?? []).map((item) => {
-      const fallback = default_by_id.get(item.id);
+      const fallback = find_default_item(item, default_by_id, default_by_name);
       const category = categories.includes(item.category)
         ? item.category
         : fallback?.category ?? categories[0];

@@ -3,6 +3,7 @@
 import { createElement, useEffect, useState } from 'react';
 import BrandWordmark from '@/components/brand-wordmark';
 import profile_chip from '@/components/profile-chip';
+import TapicoinIcon from '@/components/tapicoin-icon';
 import edit_pencil from '@/components/admin/edit-pencil';
 import {
   get_brand_name,
@@ -149,14 +150,15 @@ export default function site_header({
           {is_logged_in ? (
             <a
               href="/profile"
-              className="rounded-pill bg-surface px-4 sm:px-5 py-2.5 text-left hover:bg-menu transition-colors max-w-[14rem]"
+              className="group rounded-pill bg-surface px-4 sm:px-5 py-2.5 text-left hover:bg-[#0039A6] hover:shadow-md hover:-translate-y-0.5 transition-all duration-200 max-w-[14rem]"
               aria-label="открыть профиль"
             >
-              <p className="text-sm font-semibold text-neutral-900 truncate">
+              <p className="text-sm font-semibold text-neutral-900 truncate group-hover:text-white">
                 {user_name || 'профиль'}
               </p>
-              <p className="text-[11px] text-neutral-500 leading-tight mt-0.5">
-                {bonus} шариков
+              <p className="text-[11px] text-neutral-500 leading-tight mt-0.5 inline-flex items-center gap-1 group-hover:text-white/85">
+                <TapicoinIcon size={12} />
+                {bonus} тапикоинов
               </p>
             </a>
           ) : (

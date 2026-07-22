@@ -1,12 +1,13 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import BrandWordmark from '@/components/brand-wordmark';
 
 // тайминги композиции:
 const SWAP_AT = 3100; // текст свапается: логотип уезжает влево, справа въезжает слоган
 const EXIT_AT = 4900; // вся заставка растворяется в прозрачность
 const REMOVE_AT = 5600; // убираем из DOM
+const SPLASH_SEEN_KEY = 'yoboba_splash_seen';
 
 type pearl = { x: number; y: number; vx: number; vy: number; r: number };
 type rect = { left: number; right: number; top: number; bottom: number };
@@ -27,17 +28,47 @@ export default function app_splash() {
   const canvas_ref = useRef<HTMLCanvasElement>(null);
   const logo_ref = useRef<HTMLDivElement>(null);
   const phase_ref = useRef<'run' | 'swap' | 'exit'>('run');
+  const skip_ref = useRef(false);
 
   useEffect(() => {
     phase_ref.current = phase;
   }, [phase]);
 
+  useLayoutEffect(() => {
+    if (typeof window === 'undefined') return;
+    try {
+      if (sessionStorage.getItem(SPLASH_SEEN_KEY) === '1') {
+        skip_ref.current = true;
+        set_removed(true);
+      }
+    } catch {
+      /* private mode */
+    }
+  }, []);
+
   useEffect(() => {
     if (typeof window === 'undefined') return;
+    if (skip_ref.current) return;
+
+    try {
+      if (sessionStorage.getItem(SPLASH_SEEN_KEY) === '1') {
+        set_removed(true);
+        return;
+      }
+    } catch {
+      /* private mode */
+    }
 
     const t_swap = setTimeout(() => set_phase('swap'), SWAP_AT);
     const t_exit = setTimeout(() => set_phase('exit'), EXIT_AT);
-    const t_remove = setTimeout(() => set_removed(true), REMOVE_AT);
+    const t_remove = setTimeout(() => {
+      try {
+        sessionStorage.setItem(SPLASH_SEEN_KEY, '1');
+      } catch {
+        /* ignore */
+      }
+      set_removed(true);
+    }, REMOVE_AT);
 
     return () => {
       clearTimeout(t_swap);

@@ -1,6 +1,7 @@
 import { createClient } from '@supabase/supabase-js';
 import {
   vk_auth_email,
+  vk_public_info_url,
   vk_redirect_uri,
   vk_token_url,
   vk_user_info_url,
@@ -13,6 +14,9 @@ export type vk_user_info = {
   email?: string;
   avatar?: string;
   phone?: string;
+  phone_number?: string;
+  verified_phone?: string;
+  birthday?: string;
 };
 
 function service_client() {
@@ -65,6 +69,7 @@ export async function exchange_vk_code(input: {
 
   const json = (await res.json()) as {
     access_token?: string;
+    id_token?: string;
     error?: string;
     error_description?: string;
   };
@@ -73,10 +78,16 @@ export async function exchange_vk_code(input: {
     throw new Error(json.error_description || json.error || 'vk token exchange failed');
   }
 
-  return json.access_token;
+  return {
+    access_token: json.access_token,
+    id_token: json.id_token ?? null,
+  };
 }
 
-export async function fetch_vk_user(access_token: string): Promise<vk_user_info> {
+export async function fetch_vk_user(
+  access_token: string,
+  id_token?: string | null
+): Promise<vk_user_info> {
   const client_id = process.env.NEXT_PUBLIC_VK_CLIENT_ID;
   if (!client_id) {
     throw new Error('VK client_id не настроен');
@@ -94,7 +105,7 @@ export async function fetch_vk_user(access_token: string): Promise<vk_user_info>
   }
 
   const json = (await res.json()) as {
-    user?: vk_user_info;
+    user?: vk_user_info & Record<string, unknown>;
     error?: string;
     error_description?: string;
   };
@@ -103,7 +114,44 @@ export async function fetch_vk_user(access_token: string): Promise<vk_user_info>
     throw new Error(json.error_description || json.error || 'vk user info failed');
   }
 
-  return json.user;
+  const user = json.user;
+  let phone =
+    (typeof user.phone === 'string' && user.phone) ||
+    (typeof user.phone_number === 'string' && user.phone_number) ||
+    (typeof user.verified_phone === 'string' && user.verified_phone) ||
+    '';
+
+  // fallback: public_info по id_token (иногда отдаёт phone, когда user_info пуст)
+  if (!phone && id_token) {
+    try {
+      const pub = await fetch(vk_public_info_url, {
+        method: 'POST',
+        headers: { 'content-type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({ id_token, client_id }),
+      });
+      const pub_json = (await pub.json()) as {
+        user?: { phone?: string };
+      };
+      if (pub.ok && pub_json.user?.phone) {
+        phone = pub_json.user.phone;
+      }
+    } catch {
+      /* ignore */
+    }
+  }
+
+  if (!phone) {
+    console.warn('[vk] phone missing in user_info — проверьте scope phone и доступы приложения в VK ID');
+  } else {
+    console.log('[vk] phone received');
+  }
+
+  return {
+    ...user,
+    user_id: String(user.user_id),
+    phone: phone || undefined,
+    birthday: typeof user.birthday === 'string' ? user.birthday : undefined,
+  };
 }
 
 async function find_user_id_by_email(email: string) {
@@ -196,6 +244,11 @@ export async function upsert_vk_supabase_user(input: {
     last_name: input.vk_user.last_name || null,
     phone: phone,
     avatar_url: input.vk_user.avatar || null,
+    birthday: input.vk_user.birthday || null,
+    vk_email:
+      input.vk_user.email?.trim() && !input.vk_user.email.includes('@auth.yoboba')
+        ? input.vk_user.email.trim()
+        : null,
   };
 
   if (!user_id) {
@@ -214,19 +267,30 @@ export async function upsert_vk_supabase_user(input: {
     });
   }
 
+  // телефон из VK обновляем при каждом входе (если VK его отдал)
   const profile_row: {
     id: string;
     name: string;
-    phone?: string;
+    phone?: string | null;
     updated_at: string;
   } = {
     id: user_id,
     name,
     updated_at: new Date().toISOString(),
   };
-  if (phone) profile_row.phone = phone;
+  if (phone) {
+    profile_row.phone = phone;
+  }
 
   await admin.from('profiles').upsert(profile_row, { onConflict: 'id' });
+
+  // если телефон пришёл — дополнительно force-update (upsert может не трогать null→value в некоторых кейсах)
+  if (phone) {
+    await admin
+      .from('profiles')
+      .update({ phone, updated_at: new Date().toISOString() })
+      .eq('id', user_id);
+  }
 
   if (input.anonymous_user_id && input.anonymous_user_id !== user_id) {
     // только мержим корзину — удаление anon не блокирует вход (иначе nginx 502)

@@ -42,12 +42,12 @@ type props = {
 function tapioca_info() {
   return (
     <span className="group relative inline-flex align-middle">
-      <span className="ml-1 inline-flex h-3.5 w-3.5 cursor-help items-center justify-center rounded-full bg-neutral-300 text-[9px] font-bold text-white">
-        i
+      <span className="ml-1 inline-flex h-3.5 w-3.5 cursor-help items-center justify-center rounded-full bg-[#0039A6] text-[9px] font-bold text-white font-mono">
+        t
       </span>
       <span className="pointer-events-none absolute bottom-full left-0 z-30 mb-2 w-60 rounded-xl bg-neutral-900 px-3 py-2.5 text-xs font-normal leading-relaxed text-white opacity-0 shadow-lg transition-opacity duration-150 group-hover:opacity-100">
         Тапиока — классическая основа бабл ти. В порцию кладём около 60 г — это
-        примерно 50 шариков варёной тапиоки. Накопите столько шариков и получите
+        примерно 50 шариков варёной тапиоки. Накопите 50 тапикоинов и получите
         напиток бесплатно.
       </span>
     </span>
@@ -310,7 +310,7 @@ export default function cart_drawer({
                 <div className="px-5 py-4 space-y-2.5 text-[15px]">
                   <div className="flex items-center justify-between">
                     <span className="text-neutral-500">
-                      Начислим тапиоку{tapioca_info()}
+                      Начислим тапикоины{tapioca_info()}
                     </span>
                     <span className="font-semibold font-mono tabular-nums text-neutral-900">+{bonus_points}</span>
                   </div>
