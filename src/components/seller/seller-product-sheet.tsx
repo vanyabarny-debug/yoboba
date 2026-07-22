@@ -137,11 +137,12 @@ export default function seller_product_sheet({
       >
         <div className="mx-auto mt-2 h-1 w-10 shrink-0 rounded-full bg-neutral-200 sm:hidden" />
 
-        <div className="relative mx-4 mt-2 aspect-[16/9] max-h-[28vh] w-auto shrink-0 overflow-hidden rounded-2xl bg-neutral-100 self-stretch">
+        <div className="relative mx-4 mt-2 aspect-[16/9] max-h-[28vh] w-auto shrink-0 overflow-hidden rounded-2xl bg-neutral-50 self-stretch">
           {createElement(menu_image, {
             item: active,
             className: 'h-full w-full',
             variant: 'fill',
+            fit: 'contain',
           })}
           <button
             type="button"
