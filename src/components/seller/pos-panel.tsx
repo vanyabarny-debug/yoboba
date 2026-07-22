@@ -1,9 +1,10 @@
 'use client';
 
-import { createElement, useEffect, useMemo, useState } from 'react';
+import { createElement, useEffect, useMemo, useRef, useState, type TouchEvent } from 'react';
 import {
   default_categories,
   get_menu_store,
+  normalize_menu_item_images,
   subscribe_menu_store,
 } from '@/lib/menu-store';
 import { format_phone_input, phone_input_to_e164 } from '@/lib/phone';
@@ -83,11 +84,12 @@ export default function pos_panel({ on_created }: props) {
   const [confirm_open, set_confirm_open] = useState(false);
   const [selected, set_selected] = useState<menu_item | null>(null);
   const [sheet_open, set_sheet_open] = useState(false);
+  const swipe_x = useRef<number | null>(null);
 
   useEffect(() => {
     function sync() {
       const store = get_menu_store();
-      const available = store.items.filter((i) => i.is_available);
+      const available = normalize_menu_item_images(store.items.filter((i) => i.is_available));
       set_items(available);
       const from_menu = (store.categories.length ? store.categories : default_categories).filter(
         (c) => available.some((i) => i.category === c)
@@ -147,6 +149,20 @@ export default function pos_panel({ on_created }: props) {
   function back_to_categories() {
     set_step('categories');
     set_category('');
+  }
+
+  function on_products_touch_start(e: TouchEvent) {
+    swipe_x.current = e.changedTouches[0]?.clientX ?? null;
+  }
+
+  function on_products_touch_end(e: TouchEvent) {
+    const start = swipe_x.current;
+    swipe_x.current = null;
+    if (start == null) return;
+    const end = e.changedTouches[0]?.clientX;
+    if (end == null) return;
+    // свайп вправо (назад) — к категориям
+    if (end - start > 72) back_to_categories();
   }
 
   function open_item(item: menu_item) {
@@ -424,7 +440,11 @@ export default function pos_panel({ on_created }: props) {
   const { cols: prod_cols, rows: prod_rows } = tile_grid(filtered.length || 1);
 
   return (
-    <div className="flex flex-col flex-1 min-h-0 h-full gap-2 overflow-hidden">
+    <div
+      className="flex flex-col flex-1 min-h-0 h-full gap-2 overflow-hidden touch-pan-y"
+      onTouchStart={on_products_touch_start}
+      onTouchEnd={on_products_touch_end}
+    >
       <div className="flex items-center gap-2 shrink-0">
         <button
           type="button"
@@ -450,12 +470,12 @@ export default function pos_panel({ on_created }: props) {
             key={item.id}
             type="button"
             onClick={() => open_item(item)}
-            className="grid h-full min-h-0 grid-rows-[1fr_auto_auto] gap-1 rounded-2xl border border-neutral-200 bg-white p-2 text-left active:scale-[0.98] transition overflow-hidden"
+            className="grid h-full min-h-0 grid-rows-[minmax(0,1fr)_auto_auto] gap-1 rounded-2xl border border-neutral-200 bg-white p-2 text-left active:scale-[0.98] transition overflow-hidden"
           >
-            <div className="relative min-h-0 w-full overflow-hidden rounded-xl bg-neutral-50">
+            <div className="relative h-full min-h-[3.5rem] w-full overflow-hidden rounded-xl bg-neutral-100">
               {createElement(menu_image, {
                 item,
-                className: 'absolute inset-0',
+                className: 'h-full w-full',
                 variant: 'fill',
               })}
             </div>

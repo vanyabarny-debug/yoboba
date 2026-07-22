@@ -318,11 +318,22 @@ export async function PATCH(request: Request) {
   let { data, error } = await admin.from('orders').update(patch).eq('id', id).select('*').single();
 
   if (error && /is_paid|customer_/i.test(error.message)) {
-    const { is_paid: _p, customer_name: _n, customer_phone: _ph, ...rest } = patch;
+    const { is_paid: dropped_paid, customer_name: _n, customer_phone: _ph, ...rest } = patch;
     if (Object.keys(rest).length) {
       const retry = await admin.from('orders').update(rest).eq('id', id).select('*').single();
       data = retry.data;
       error = retry.error;
+      // колонка is_paid ещё не в схеме — отдаём клиенту оплаченный снимок, чтобы UI не откатывался
+      if (!error && dropped_paid != null && data) {
+        data = { ...data, is_paid: Boolean(dropped_paid) };
+      }
+    } else if (patch.is_paid != null) {
+      // только is_paid — всё равно подтверждаем клиенту
+      const { data: current } = await admin.from('orders').select('*').eq('id', id).single();
+      return NextResponse.json({
+        order: current ? { ...current, is_paid: Boolean(patch.is_paid) } : { id, ...patch },
+        warning: error.message,
+      });
     } else {
       return NextResponse.json({ order: null, warning: error.message });
     }

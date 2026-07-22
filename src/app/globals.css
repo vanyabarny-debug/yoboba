@@ -340,21 +340,19 @@ body {
   }
 }
 
-/* новый заказ на доске баристы — мигает, пока не «увидят» */
+/* новый заказ на доске баристы — короткое мягкое мигание */
 @keyframes seller-order-blink {
   0%,
   100% {
-    box-shadow: 0 0 0 0 rgba(255, 107, 107, 0.55);
-    background-color: #fff;
+    box-shadow: 0 0 0 0 rgba(255, 107, 107, 0);
   }
-  50% {
-    box-shadow: 0 0 0 6px rgba(255, 107, 107, 0.12);
-    background-color: #fff5f5;
+  40% {
+    box-shadow: 0 0 0 4px rgba(255, 107, 107, 0.28);
   }
 }
 
 .seller-order-new {
-  animation: seller-order-blink 0.85s ease-in-out infinite;
+  animation: seller-order-blink 0.7s ease-in-out 3;
 }
 
 .app-splash-logo {

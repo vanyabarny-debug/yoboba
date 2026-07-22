@@ -3,7 +3,7 @@ import { DEFAULT_PREP_MINUTES } from '@/lib/kitchen-queue';
 import type { heading_style } from '@/lib/heading-style';
 import { default_category_heading_styles } from '@/lib/heading-style';
 
-export const store_version = 15;
+export const store_version = 16;
 
 export const default_categories = [
   'классические бабл ти',
@@ -105,24 +105,26 @@ function is_stale_menu_placeholder(url: string) {
 }
 
 function resolve_image_url(item: menu_item, fallback?: menu_item): string {
-  const url = item.image_url;
+  const url = (item.image_url || '').trim();
 
-  // кастомное фото из админки (data url)
-  if (url?.startsWith('data:') || url?.startsWith('blob:')) {
+  // кастомное фото из админки
+  if (url.startsWith('data:') || url.startsWith('blob:')) {
     return url;
   }
 
-  // дефолтный PNG по id/названию — надёжнее старых svg и битых ссылок из БД
+  // загруженные в storage / внешние https — приоритетнее дефолта
+  if (url.startsWith('http://') || url.startsWith('https://')) {
+    return url;
+  }
+
+  // актуальный локальный PNG из меню
+  if (url.startsWith('/images/menu/') && !is_stale_menu_placeholder(url)) {
+    return url;
+  }
+
+  // дефолт по id/названию (вместо устаревших svg / пустых ссылок)
   if (fallback?.image_url) {
     return fallback.image_url;
-  }
-
-  if (url?.startsWith('http://') || url?.startsWith('https://')) {
-    return url;
-  }
-
-  if (url?.startsWith('/images/menu/') && !is_stale_menu_placeholder(url)) {
-    return url;
   }
 
   return placeholder_for_id(item.id);

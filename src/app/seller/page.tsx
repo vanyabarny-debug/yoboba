@@ -57,9 +57,43 @@ const shift_key = 'yoboba_seller_shift';
 const prep_key = 'yoboba_seller_prep';
 const order_start_key = 'yoboba_seller_order_start';
 const handed_key = 'yoboba_seller_handed';
+const paid_key = 'yoboba_seller_paid';
+const NEW_ORDER_BLINK_MS = 2200;
 
 function shift_day() {
   return moscow_today_iso();
+}
+
+function load_paid_ids(): Set<string> {
+  try {
+    const raw = localStorage.getItem(paid_key);
+    if (!raw) return new Set();
+    const parsed = JSON.parse(raw) as { day?: string; ids?: string[] };
+    if (parsed.day !== shift_day()) return new Set();
+    return new Set(parsed.ids || []);
+  } catch {
+    return new Set();
+  }
+}
+
+function save_paid_ids(ids: Set<string>) {
+  localStorage.setItem(
+    paid_key,
+    JSON.stringify({ day: shift_day(), ids: [...ids].slice(-80) })
+  );
+}
+
+function mark_order_paid_local(id: string) {
+  const ids = load_paid_ids();
+  ids.add(id);
+  save_paid_ids(ids);
+  return ids;
+}
+
+function with_sticky_paid(list: order[]): order[] {
+  const paid = load_paid_ids();
+  if (!paid.size) return list;
+  return list.map((o) => (paid.has(o.id) || o.is_paid ? { ...o, is_paid: true } : o));
 }
 
 function load_handed(): order[] {
@@ -224,6 +258,7 @@ export default function seller_board() {
   const [fresh_ids, set_fresh_ids] = useState<Set<string>>(new Set());
   const [unread_new, set_unread_new] = useState(0);
   const known_ids = useRef<Set<string> | null>(null);
+  const pending_blink_ref = useRef<Set<string>>(new Set());
   const seller_ref = useRef({ id: '', name: 'бариста' });
   const schedule_ref = useRef<schedule_line[]>([]);
   const alarm_timer = useRef<number | null>(null);
@@ -365,7 +400,7 @@ export default function seller_board() {
 
     schedule_ref.current = lines;
     set_schedule_lines(lines);
-    set_orders(list);
+    set_orders(with_sticky_paid(list));
     await hydrate_prep(list, lines);
 
     // выданные за сегодня — вкладка «готовые»
@@ -472,35 +507,54 @@ export default function seller_board() {
     if (!newcomers.length) return;
 
     notify_new_orders(newcomers.length);
-    set_fresh_ids((prev) => {
-      const next = new Set(prev);
-      for (const id of newcomers) next.add(id);
-      return next;
-    });
 
     if (tab_ref.current === 'work') {
-      // уже смотрят доску — только мигание, без будильника
+      // уже на доске — короткое мигание, без будильника
       set_unread_new(0);
-    } else {
-      set_unread_new((n) => n + newcomers.length);
-      start_order_alarm();
-    }
-
-    const t = window.setTimeout(() => {
       set_fresh_ids((prev) => {
         const next = new Set(prev);
-        for (const id of newcomers) next.delete(id);
+        for (const id of newcomers) next.add(id);
         return next;
       });
-    }, 25000);
-    return () => window.clearTimeout(t);
+      const t = window.setTimeout(() => {
+        set_fresh_ids((prev) => {
+          const next = new Set(prev);
+          for (const id of newcomers) next.delete(id);
+          return next;
+        });
+      }, NEW_ORDER_BLINK_MS);
+      return () => window.clearTimeout(t);
+    }
+
+    // на другой вкладке — копим бейдж и «ожидание просмотра»
+    set_unread_new((n) => n + newcomers.length);
+    start_order_alarm();
+    for (const id of newcomers) pending_blink_ref.current.add(id);
   }, [orders]);
 
-  // будильник гасится только когда открыли «в работе»
+  // впервые открыли «в работе» с новыми — коротко мигнуть и погасить бейдж
   useEffect(() => {
     if (tab !== 'work') return;
     stop_order_alarm();
     set_unread_new(0);
+
+    const ids = [...pending_blink_ref.current];
+    if (!ids.length) return;
+    pending_blink_ref.current.clear();
+
+    set_fresh_ids((prev) => {
+      const next = new Set(prev);
+      for (const id of ids) next.add(id);
+      return next;
+    });
+    const t = window.setTimeout(() => {
+      set_fresh_ids((prev) => {
+        const next = new Set(prev);
+        for (const id of ids) next.delete(id);
+        return next;
+      });
+    }, NEW_ORDER_BLINK_MS);
+    return () => window.clearTimeout(t);
   }, [tab]);
 
   useEffect(() => {
@@ -565,12 +619,33 @@ export default function seller_board() {
       credentials: 'same-origin',
       body: JSON.stringify({ id, patch }),
     });
+    const body = (await res.json().catch(() => null)) as {
+      error?: string;
+      order?: order | null;
+      warning?: string;
+    } | null;
     if (!res.ok) {
-      const body = (await res.json().catch(() => null)) as { error?: string } | null;
       throw new Error(body?.error || 'не удалось обновить заказ');
     }
+
+    if (patch.is_paid) {
+      mark_order_paid_local(id);
+    }
+
+    const server = body?.order;
     set_orders((prev) =>
-      prev.map((o) => (o.id === id ? { ...o, ...patch } : o))
+      prev.map((o) => {
+        if (o.id !== id) return o;
+        const merged = {
+          ...o,
+          ...(server || {}),
+          ...patch,
+        };
+        if (patch.is_paid || load_paid_ids().has(id) || o.is_paid || server?.is_paid) {
+          merged.is_paid = true;
+        }
+        return merged;
+      })
     );
   }
 
@@ -583,6 +658,14 @@ export default function seller_board() {
         save_order_starts(next);
         return next;
       });
+      // взяли в работу — больше не мигаем
+      set_fresh_ids((prev) => {
+        if (!prev.has(order_id)) return prev;
+        const next = new Set(prev);
+        next.delete(order_id);
+        return next;
+      });
+      pending_blink_ref.current.delete(order_id);
       void patch_order(order_id, { status: 'preparing' }).catch(() => {});
     },
     [update_prep]
@@ -689,9 +772,16 @@ export default function seller_board() {
         payment_type: payment_method,
         status: 'ready',
       });
+      mark_order_paid_local(paying.id);
     } catch (e) {
-      alert(e instanceof Error ? e.message : 'оплата записана, статус заказа не обновился');
-      return;
+      // касса уже провела оплату — держим «выдать» локально даже если PATCH частично упал
+      mark_order_paid_local(paying.id);
+      set_orders((prev) =>
+        prev.map((o) =>
+          o.id === paying.id ? { ...o, is_paid: true, payment_type: payment_method, status: 'ready' } : o
+        )
+      );
+      console.warn(e);
     }
 
     const drinks = expand_drinks(
@@ -952,20 +1042,19 @@ export default function seller_board() {
                 key={t.id}
                 type="button"
                 onClick={() => set_tab(t.id)}
-                className={`rounded-lg py-1.5 text-[11px] font-medium transition ${
+                className={`relative rounded-lg py-1.5 text-[11px] font-medium transition ${
                   tab === t.id ? 'bg-white text-neutral-900 shadow-sm' : 'text-neutral-500'
                 }`}
               >
                 {t.label}
-                {t.id === 'work' && (unread_new > 0 || work_board_count > 0) ? (
-                  <span
-                    className={`ml-0.5 inline-flex min-w-[1rem] justify-center rounded-full px-1 text-[9px] font-bold tabular-nums ${
-                      unread_new > 0
-                        ? 'bg-accent text-white animate-pulse'
-                        : 'bg-neutral-200 text-neutral-600'
-                    }`}
-                  >
-                    {unread_new > 0 ? unread_new : work_board_count}
+                {t.id === 'work' && work_board_count > 0 ? (
+                  <span className="ml-0.5 inline-flex min-w-[1rem] justify-center rounded-full bg-neutral-200 px-1 text-[9px] font-bold tabular-nums text-neutral-600">
+                    {work_board_count}
+                  </span>
+                ) : null}
+                {t.id === 'work' && unread_new > 0 ? (
+                  <span className="absolute -right-0.5 -top-1 inline-flex min-w-[1.05rem] items-center justify-center rounded-full bg-accent px-1 py-0.5 text-[9px] font-bold leading-none tabular-nums text-white shadow-sm">
+                    {unread_new}
                   </span>
                 ) : null}
                 {t.id === 'ready' && ready_board_count ? (

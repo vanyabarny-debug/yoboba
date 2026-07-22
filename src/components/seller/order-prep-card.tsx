@@ -237,7 +237,7 @@ export default function order_prep_card({
   return (
     <article
       className={`relative flex h-full min-h-0 flex-col overflow-hidden rounded-2xl border transition ${
-        is_new ? 'seller-order-new ring-2 ring-accent/40' : ''
+        is_new ? 'seller-order-new' : ''
       } ${mode === 'done' ? 'opacity-80' : ''}`}
       style={{
         backgroundColor: tint.bg,
