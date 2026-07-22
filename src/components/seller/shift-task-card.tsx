@@ -1,6 +1,6 @@
 'use client';
 
-import { createElement, useEffect, useState } from 'react';
+import { createElement, useEffect, useState, type ReactNode } from 'react';
 import {
   day_task_color,
   live_elapsed_ms,
@@ -8,11 +8,12 @@ import {
 } from '@/lib/seller-day-tasks';
 import { format_countdown_ms } from '@/lib/kitchen-queue';
 import circular_timer from '@/components/seller/circular-timer';
+import { play_task_done_chime } from '@/lib/order-chime';
 
 type props = {
   task: day_task;
   mode: 'work' | 'done';
-  on_advance: (id: string) => void;
+  on_advance: (id: string, choice?: 'continue' | 'complete') => void;
 };
 
 function task_icon({ className }: { className?: string }) {
@@ -59,9 +60,38 @@ function info_button({
   );
 }
 
+function format_stopwatch_ms(ms: number) {
+  const total_sec = Math.max(0, Math.floor(ms / 1000));
+  const m = Math.floor(total_sec / 60);
+  const s = total_sec % 60;
+  return `${m}:${s.toString().padStart(2, '0')}`;
+}
+
+function circle_shell({
+  children,
+  on_click,
+  className = '',
+}: {
+  children: ReactNode;
+  on_click?: () => void;
+  className?: string;
+}) {
+  const Tag = on_click ? 'button' : 'div';
+  return (
+    <Tag
+      type={on_click ? 'button' : undefined}
+      onClick={on_click}
+      className={`relative flex h-full w-full items-center justify-center overflow-hidden rounded-full bg-neutral-900 text-white shadow-sm transition active:scale-[0.97] ${className}`}
+    >
+      {children}
+    </Tag>
+  );
+}
+
 export default function shift_task_card({ task, mode, on_advance }: props) {
   const [now, set_now] = useState(Date.now());
   const [show_info, set_show_info] = useState(false);
+  const [exiting, set_exiting] = useState(false);
   const color = day_task_color;
   const expected_ms = Math.max(1, task.expected_minutes) * 60_000;
   const elapsed = live_elapsed_ms(task, now);
@@ -69,7 +99,7 @@ export default function shift_task_card({ task, mode, on_advance }: props) {
 
   useEffect(() => {
     if (task.phase !== 'running') return;
-    const id = window.setInterval(() => set_now(Date.now()), 250);
+    const id = window.setInterval(() => set_now(Date.now()), 200);
     return () => window.clearInterval(id);
   }, [task.phase]);
 
@@ -77,56 +107,24 @@ export default function shift_task_card({ task, mode, on_advance }: props) {
     set_show_info(false);
   }, [task.phase, task.id]);
 
-  const timer_label =
-    task.phase === 'done' || mode === 'done'
-      ? task.title
-      : task.phase === 'running'
-        ? format_countdown_ms(Math.max(0, expected_ms - elapsed))
-        : task.phase === 'stopped'
-          ? format_countdown_ms(elapsed)
-          : task.phase === 'armed'
-            ? ''
-            : 'задача';
-
-  const tone =
-    task.phase === 'done'
-      ? 'done'
-      : task.phase === 'running'
-        ? 'cooking'
-        : task.phase === 'stopped'
-          ? 'ready'
-          : 'idle';
-
-  function handle_click() {
-    if (mode === 'done' || task.phase === 'done') return;
-    on_advance(task.id);
+  function go(choice?: 'continue' | 'complete') {
+    if (mode === 'done' || task.phase === 'done' || exiting) return;
+    on_advance(task.id, choice);
   }
 
-  // фаза icon — только универсальная иконка
-  if (task.phase === 'icon' && mode === 'work') {
-    return (
-      <button
-        type="button"
-        onClick={handle_click}
-        className="relative flex h-full min-h-0 w-full flex-col items-center justify-center gap-1.5 overflow-hidden rounded-2xl border active:scale-[0.98] transition"
-        style={{
-          backgroundColor: color.bg,
-          borderColor: color.border,
-          color: color.fg,
-        }}
-      >
-        {createElement(task_icon, { className: 'h-9 w-9 sm:h-11 sm:w-11' })}
-      </button>
-    );
+  function complete_with_anim() {
+    if (exiting || mode === 'done' || task.phase === 'done') return;
+    set_exiting(true);
+    play_task_done_chime();
+    window.setTimeout(() => {
+      on_advance(task.id, 'complete');
+    }, 1600);
   }
 
-  // фаза info — только текст задачи по центру
-  if (task.phase === 'info' && mode === 'work') {
+  if (mode === 'done' || (task.phase === 'done' && !exiting)) {
     return (
-      <button
-        type="button"
-        onClick={handle_click}
-        className="relative flex h-full min-h-0 w-full flex-col items-center justify-center overflow-hidden rounded-2xl border px-3 py-3 text-center active:scale-[0.98] transition"
+      <article
+        className="relative flex h-full min-h-0 flex-col overflow-hidden rounded-2xl border opacity-85"
         style={{
           backgroundColor: color.bg,
           borderColor: color.border,
@@ -139,28 +137,115 @@ export default function shift_task_card({ task, mode, on_advance }: props) {
           on_toggle: () => set_show_info((v) => !v),
           color: color.fg,
         })}
-        <h3 className="max-w-[92%] text-[clamp(0.95rem,4.2cqw,1.35rem)] font-bold leading-tight tracking-tight">
-          {task.title}
-        </h3>
         {show_info ? (
-          <p className="mt-2 max-w-[90%] text-[clamp(0.65rem,2.8cqw,0.85rem)] leading-snug opacity-80">
-            {task.hint}
-          </p>
+          <div
+            className="absolute inset-0 z-10 flex flex-col items-center justify-center px-3 text-center"
+            style={{ backgroundColor: `${color.bg}f5` }}
+          >
+            <h3 className="text-[clamp(0.9rem,4cqw,1.2rem)] font-bold leading-tight">{task.title}</h3>
+            <p className="mt-2 text-[clamp(0.65rem,2.6cqw,0.8rem)] opacity-80">{task.hint}</p>
+            <p className="mt-2 text-[10px] opacity-55">
+              {format_countdown_ms(task.elapsed_ms || 0)}
+            </p>
+          </div>
         ) : null}
-      </button>
+        <div className="flex min-h-0 flex-1 items-center justify-center p-2 pt-3">
+          <div className="aspect-square h-[min(100%,92%)] max-w-full">
+            {createElement(circular_timer, {
+              progress: 1,
+              label: task.title,
+              tone: 'done',
+              fill: true,
+              disabled: true,
+              on_click: () => {},
+            })}
+          </div>
+        </div>
+      </article>
     );
   }
 
-  const timer_phase =
-    task.phase === 'armed' ||
-    task.phase === 'running' ||
-    task.phase === 'stopped' ||
-    task.phase === 'done' ||
-    mode === 'done';
+  let circle: ReactNode = null;
+
+  if (exiting) {
+    circle = (
+      <div className="flex h-full w-full flex-col items-center justify-center gap-2 rounded-full bg-white/85 text-emerald-600 shadow-sm">
+        <span className="text-[clamp(1.6rem,10cqw,2.4rem)] font-bold leading-none animate-in zoom-in-50 fade-in duration-500">
+          ✓
+        </span>
+        <span className="text-[clamp(0.7rem,3cqw,0.9rem)] font-semibold">готово</span>
+      </div>
+    );
+  } else if (task.phase === 'stopped') {
+    circle = (
+      <div
+        className="relative h-full w-full overflow-hidden rounded-full bg-neutral-900 text-white shadow-sm"
+        aria-label="пауза задачи"
+      >
+        <div className="absolute inset-y-0 left-1/2 z-10 w-px bg-white/35" />
+        <button
+          type="button"
+          onClick={() => go('continue')}
+          className="absolute inset-y-0 left-0 flex w-1/2 flex-col items-center justify-center gap-1 px-2 active:bg-white/10"
+        >
+          <span className="text-[clamp(0.62rem,3cqw,0.82rem)] font-semibold leading-tight text-center">
+            продолжить
+          </span>
+          <span className="text-[clamp(0.7rem,3.4cqw,0.95rem)] font-bold tabular-nums opacity-80">
+            {format_stopwatch_ms(elapsed)}
+          </span>
+        </button>
+        <button
+          type="button"
+          onClick={complete_with_anim}
+          className="absolute inset-y-0 right-0 flex w-1/2 flex-col items-center justify-center gap-1 bg-white/10 px-2 active:bg-white/20"
+        >
+          <span className="text-[clamp(0.62rem,3cqw,0.82rem)] font-semibold leading-tight text-center">
+            выполнено
+          </span>
+        </button>
+      </div>
+    );
+  } else if (task.phase === 'icon') {
+    circle = createElement(circle_shell, {
+      on_click: () => go(),
+      children: createElement(task_icon, { className: 'h-[38%] w-[38%]' }),
+    });
+  } else if (task.phase === 'info') {
+    circle = createElement(circle_shell, {
+      on_click: () => go(),
+      children: (
+        <span className="max-w-[78%] text-center text-[clamp(0.8rem,4.5cqw,1.15rem)] font-bold leading-tight">
+          {task.title}
+        </span>
+      ),
+    });
+  } else if (task.phase === 'armed') {
+    circle = createElement(circular_timer, {
+      progress: 0,
+      label: 'начать',
+      tone: 'idle',
+      fill: true,
+      on_click: () => go(),
+    });
+  } else {
+    circle = createElement(circular_timer, {
+      progress,
+      label: format_stopwatch_ms(elapsed),
+      sublabel: 'пауза',
+      active: true,
+      tone: 'cooking',
+      fill: true,
+      hero: true,
+      on_click: () => go(),
+    });
+  }
 
   return (
     <article
-      className="relative flex h-full min-h-0 flex-col overflow-hidden rounded-2xl border"
+      className={`relative flex h-full min-h-0 flex-col overflow-hidden rounded-2xl border transition-all duration-500 ease-out ${
+        exiting ? 'scale-90 opacity-0 pointer-events-none' : 'scale-100 opacity-100'
+      }`}
       style={{
         backgroundColor: color.bg,
         borderColor: color.border,
@@ -179,9 +264,7 @@ export default function shift_task_card({ task, mode, on_advance }: props) {
           className="absolute inset-0 z-10 flex flex-col items-center justify-center px-3 text-center backdrop-blur-[2px]"
           style={{ backgroundColor: `${color.bg}f5` }}
         >
-          <h3 className="text-[clamp(0.9rem,4cqw,1.25rem)] font-bold leading-tight">
-            {task.title}
-          </h3>
+          <h3 className="text-[clamp(0.9rem,4cqw,1.25rem)] font-bold leading-tight">{task.title}</h3>
           <p className="mt-2 text-[clamp(0.65rem,2.6cqw,0.8rem)] leading-snug opacity-80">
             {task.hint}
           </p>
@@ -189,27 +272,9 @@ export default function shift_task_card({ task, mode, on_advance }: props) {
         </div>
       ) : null}
 
-      {timer_phase ? (
-        <div className="flex min-h-0 flex-1 items-center justify-center p-2 pt-3">
-          <div className="aspect-square h-[min(100%,92%)] max-w-full">
-            {createElement(circular_timer, {
-              progress: task.phase === 'done' || mode === 'done' ? 1 : progress,
-              label: timer_label,
-              sublabel:
-                task.phase === 'running'
-                  ? 'стоп'
-                  : task.phase === 'stopped'
-                    ? 'сделано'
-                    : undefined,
-              active: task.phase === 'running',
-              tone: mode === 'done' ? 'done' : tone,
-              fill: true,
-              disabled: mode === 'done' || task.phase === 'done',
-              on_click: handle_click,
-            })}
-          </div>
-        </div>
-      ) : null}
+      <div className="flex min-h-0 flex-1 items-center justify-center p-2 pt-3">
+        <div className="aspect-square h-[min(100%,92%)] max-w-full">{circle}</div>
+      </div>
     </article>
   );
 }

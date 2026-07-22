@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState, createElement, type ReactNode } from 'react';
+import { useCallback, useEffect, useRef, useState, createElement, type ReactNode, type TouchEvent } from 'react';
 import { create_client } from '@/lib/supabase/client';
 import { is_supabase_configured } from '@/lib/supabase/config';
 import { get_demo_user, clear_session } from '@/lib/demo-auth';
@@ -279,10 +279,30 @@ export default function seller_board() {
   const schedule_ref = useRef<schedule_line[]>([]);
   const alarm_timer = useRef<number | null>(null);
   const tab_ref = useRef(tab);
+  const swipe_x = useRef<number | null>(null);
+  const tab_order: tab[] = ['work', 'ready', 'pos', 'analytics'];
 
   useEffect(() => {
     tab_ref.current = tab;
   }, [tab]);
+
+  function on_board_touch_start(e: TouchEvent) {
+    swipe_x.current = e.changedTouches[0]?.clientX ?? null;
+  }
+
+  function on_board_touch_end(e: TouchEvent) {
+    const start = swipe_x.current;
+    swipe_x.current = null;
+    if (start == null) return;
+    const end = e.changedTouches[0]?.clientX;
+    if (end == null) return;
+    const dx = end - start;
+    if (Math.abs(dx) < 80) return;
+    const idx = tab_order.indexOf(tab);
+    if (idx < 0) return;
+    if (dx < 0 && idx < tab_order.length - 1) set_tab(tab_order[idx + 1]);
+    if (dx > 0 && idx > 0) set_tab(tab_order[idx - 1]);
+  }
 
   function stop_order_alarm() {
     if (alarm_timer.current != null) {
@@ -592,12 +612,11 @@ export default function seller_board() {
     return () => window.clearInterval(id);
   }, [shift?.spot_id]);
 
-  function advance_task(task_id: string) {
+  function advance_task(task_id: string, choice?: 'continue' | 'complete') {
     if (!shift?.spot_id) return;
-    const next = advance_day_task(shift.spot_id, task_id);
+    const next = advance_day_task(shift.spot_id, task_id, moscow_today_iso(), choice);
     const advanced = next.find((t) => t.id === task_id);
     if (advanced?.phase === 'running') play_start_chime();
-    if (advanced?.phase === 'done') play_drink_ready_chime();
     set_day_tasks(next);
   }
 
@@ -924,7 +943,7 @@ export default function seller_board() {
     const { cols, rows } = board_tile_grid(count);
     return (
       <div
-        className="grid flex-1 min-h-0 gap-2 overflow-hidden h-full content-start"
+        className="grid flex-1 min-h-0 gap-2 overflow-hidden h-full content-start transition-[grid-template-columns,grid-template-rows] duration-500 ease-out"
         style={{
           gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))`,
           gridTemplateRows: `repeat(${rows}, minmax(0, 1fr))`,
@@ -1131,11 +1150,13 @@ export default function seller_board() {
       </header>
 
       <main
-        className={`flex-1 min-h-0 w-full overflow-hidden ${
+        className={`flex-1 min-h-0 w-full overflow-hidden touch-pan-y ${
           tab === 'analytics'
             ? 'max-w-3xl mx-auto px-4 py-4 overflow-y-auto'
             : 'px-2 py-2 flex flex-col'
         }`}
+        onTouchStart={on_board_touch_start}
+        onTouchEnd={on_board_touch_end}
       >
         {tab === 'work' ? render_work_list() : null}
         {tab === 'ready' ? render_handed_list() : null}

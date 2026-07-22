@@ -118,3 +118,17 @@ export function play_handout_chime() {
     1400
   );
 }
+
+/** задача смены выполнена */
+export function play_task_done_chime() {
+  play_tones(
+    [
+      { freq: 523, start: 0, dur: 0.1, gain: 0.07, type: 'triangle' },
+      { freq: 659, start: 0.1, dur: 0.12, gain: 0.08, type: 'triangle' },
+      { freq: 784, start: 0.22, dur: 0.14, gain: 0.09, type: 'sine' },
+      { freq: 1046, start: 0.36, dur: 0.28, gain: 0.1, type: 'sine' },
+      { freq: 1318, start: 0.52, dur: 0.35, gain: 0.07, type: 'sine' },
+    ],
+    1100
+  );
+}

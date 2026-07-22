@@ -152,7 +152,8 @@ export default function pos_panel({ on_created }: props) {
   }
 
   function on_products_touch_start(e: TouchEvent) {
-    swipe_x.current = e.changedTouches[0]?.clientX ?? null;
+    const t = e.changedTouches[0];
+    swipe_x.current = t ? t.clientX : null;
   }
 
   function on_products_touch_end(e: TouchEvent) {
@@ -161,8 +162,11 @@ export default function pos_panel({ on_created }: props) {
     if (start == null) return;
     const end = e.changedTouches[0]?.clientX;
     if (end == null) return;
-    // свайп вправо (назад) — к категориям
-    if (end - start > 72) back_to_categories();
+    // назад к категориям — только свайп от левого края
+    if (start <= 56 && end - start > 64) {
+      e.stopPropagation();
+      back_to_categories();
+    }
   }
 
   function open_item(item: menu_item) {

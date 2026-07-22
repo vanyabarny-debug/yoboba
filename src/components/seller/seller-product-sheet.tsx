@@ -1,6 +1,6 @@
 'use client';
 
-import { createElement, useEffect, useMemo, useRef, useState } from 'react';
+import { createElement, useEffect, useMemo, useState } from 'react';
 import type { menu_item } from '@/lib/types';
 import menu_image from '@/components/menu-image';
 import {
@@ -43,7 +43,6 @@ export default function seller_product_sheet({
   const [topping, set_topping] = useState(0);
   const [details_open, set_details_open] = useState(false);
   const [recs, set_recs] = useState<menu_item[]>([]);
-  const image_ref = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (!open || !item) return;
@@ -64,7 +63,7 @@ export default function seller_product_sheet({
       const fallback = all_items
         .filter((i) => i.is_available && i.id !== active!.id)
         .filter((i) => i.category === active!.category || i.category.includes('закуск'))
-        .slice(0, 4);
+        .slice(0, 3);
 
       if (!is_supabase_configured()) {
         if (!cancelled) set_recs(fallback);
@@ -77,9 +76,9 @@ export default function seller_product_sheet({
           .select('*')
           .eq('is_available', true)
           .neq('id', active!.id)
-          .limit(8);
+          .limit(6);
         const rows = (data as menu_item[]) || [];
-        if (!cancelled) set_recs(rows.length ? rows.slice(0, 4) : fallback);
+        if (!cancelled) set_recs(rows.length ? rows.slice(0, 3) : fallback);
       } catch {
         if (!cancelled) set_recs(fallback);
       }
@@ -130,37 +129,45 @@ export default function seller_product_sheet({
         className="absolute inset-0 bg-black/40"
         onClick={on_close}
       />
-      <div className="relative w-full max-w-md max-h-[92vh] overflow-y-auto rounded-t-3xl sm:rounded-3xl bg-white shadow-xl">
-        <div className="mx-auto mt-3 h-1 w-10 rounded-full bg-neutral-200 sm:hidden" />
-        <div ref={image_ref} className="relative aspect-[4/3] w-full bg-neutral-100 overflow-hidden">
+      <div
+        className="relative flex w-full max-w-md flex-col overflow-hidden rounded-t-3xl bg-white shadow-xl sm:rounded-3xl"
+        style={{
+          maxHeight: 'min(92dvh, calc(100dvh - var(--safe-top) - var(--safe-bottom) - 1rem))',
+        }}
+      >
+        <div className="mx-auto mt-2 h-1 w-10 shrink-0 rounded-full bg-neutral-200 sm:hidden" />
+
+        <div className="relative mx-4 mt-2 aspect-[16/9] max-h-[28vh] w-auto shrink-0 overflow-hidden rounded-2xl bg-neutral-100 self-stretch">
           {createElement(menu_image, {
             item: active,
             className: 'h-full w-full',
-            variant: 'card',
+            variant: 'fill',
           })}
           <button
             type="button"
             onClick={on_close}
-            className="absolute top-3 right-3 h-9 w-9 rounded-full bg-white/95 text-neutral-700 text-lg font-bold shadow"
+            className="absolute top-2 right-2 h-8 w-8 rounded-full bg-white/95 text-base font-bold text-neutral-700 shadow"
             aria-label="закрыть"
           >
             ×
           </button>
         </div>
 
-        <div className="px-5 py-4 space-y-4">
-          <div>
-            <h3 className="text-xl font-bold text-neutral-900">{active.name}</h3>
-            <p className="text-lg font-bold tabular-nums text-neutral-800 mt-1">{unit} ₽</p>
+        <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-hidden px-4 pb-4 pt-3">
+          <div className="shrink-0">
+            <h3 className="text-lg font-bold leading-tight text-neutral-900 line-clamp-2">
+              {active.name}
+            </h3>
+            <p className="mt-0.5 text-base font-bold tabular-nums text-neutral-800">{unit} ₽</p>
           </div>
 
-          <div className="grid grid-cols-2 gap-2">
+          <div className="grid shrink-0 grid-cols-2 gap-2">
             {volumes.map((v) => (
               <button
                 key={v.id}
                 type="button"
                 onClick={() => set_volume(v.id)}
-                className={`rounded-xl border py-2.5 text-sm font-semibold ${
+                className={`rounded-xl border py-2 text-sm font-semibold ${
                   volume === v.id
                     ? 'border-neutral-900 bg-neutral-900 text-white'
                     : 'border-neutral-200 bg-white text-neutral-700'
@@ -172,7 +179,7 @@ export default function seller_product_sheet({
             ))}
           </div>
 
-          <div className="flex items-center justify-between gap-3">
+          <div className="flex shrink-0 items-center justify-between gap-3">
             <p className="text-sm text-neutral-700">
               {topping_name}{' '}
               <span className="font-mono font-semibold">+{topping_price} ₽</span>
@@ -181,43 +188,43 @@ export default function seller_product_sheet({
               <button
                 type="button"
                 onClick={() => set_topping((t) => Math.max(0, t - 1))}
-                className="h-9 w-9 rounded-full text-lg"
+                className="h-8 w-8 rounded-full text-lg"
               >
                 −
               </button>
-              <span className="w-7 text-center text-sm font-semibold tabular-nums">{topping}</span>
+              <span className="w-6 text-center text-sm font-semibold tabular-nums">{topping}</span>
               <button
                 type="button"
                 onClick={() => set_topping((t) => Math.min(topping_max, t + 1))}
-                className="h-9 w-9 rounded-full text-lg"
+                className="h-8 w-8 rounded-full text-lg"
               >
                 +
               </button>
             </div>
           </div>
 
-          <div className="flex items-center justify-between gap-3">
+          <div className="flex shrink-0 items-center justify-between gap-3">
             <p className="text-sm text-neutral-700">количество</p>
             <div className="flex items-center gap-1 rounded-full bg-neutral-100 p-1">
               <button
                 type="button"
                 onClick={() => set_qty((q) => Math.max(1, q - 1))}
-                className="h-9 w-9 rounded-full text-lg"
+                className="h-8 w-8 rounded-full text-lg"
               >
                 −
               </button>
-              <span className="w-7 text-center text-sm font-semibold tabular-nums">{qty}</span>
+              <span className="w-6 text-center text-sm font-semibold tabular-nums">{qty}</span>
               <button
                 type="button"
                 onClick={() => set_qty((q) => q + 1)}
-                className="h-9 w-9 rounded-full text-lg"
+                className="h-8 w-8 rounded-full text-lg"
               >
                 +
               </button>
             </div>
           </div>
 
-          <div>
+          <div className="min-h-0 shrink overflow-hidden">
             <button
               type="button"
               onClick={() => set_details_open((o) => !o)}
@@ -226,20 +233,16 @@ export default function seller_product_sheet({
               состав {details_open ? '▴' : '▾'}
             </button>
             {details_open && nutrition ? (
-              <div className="mt-2 text-sm text-neutral-600 space-y-1">
-                <p>
-                  {nutrition.kcal} ккал · б {nutrition.protein} · ж {nutrition.fat} · у{' '}
-                  {nutrition.carb}
-                </p>
-                <p>{composition.join(', ')}</p>
+              <div className="mt-1 text-xs text-neutral-600 line-clamp-3">
+                {nutrition.kcal} ккал · {composition.slice(0, 4).join(', ')}
               </div>
             ) : null}
           </div>
 
           {recs.length > 0 ? (
-            <div>
-              <p className="text-sm font-semibold text-neutral-900 mb-2">предложите гостю</p>
-              <div className="grid grid-cols-4 gap-2">
+            <div className="min-h-0 shrink">
+              <p className="mb-1.5 text-xs font-semibold text-neutral-900">предложите гостю</p>
+              <div className="grid grid-cols-3 gap-2">
                 {recs.map((rec) => (
                   <button
                     key={rec.id}
@@ -247,14 +250,14 @@ export default function seller_product_sheet({
                     onClick={() => suggest(rec)}
                     className="flex flex-col items-center text-center"
                   >
-                    <div className="aspect-square w-full overflow-hidden rounded-xl bg-neutral-100 mb-1">
+                    <div className="mb-1 aspect-square w-full max-h-16 overflow-hidden rounded-xl bg-neutral-100">
                       {createElement(menu_image, {
                         item: rec,
                         className: 'h-full w-full',
-                        variant: 'card',
+                        variant: 'fill',
                       })}
                     </div>
-                    <span className="text-[10px] font-medium text-neutral-700 line-clamp-2 leading-tight">
+                    <span className="line-clamp-2 text-[10px] font-medium leading-tight text-neutral-700">
                       {rec.name}
                     </span>
                   </button>
@@ -266,7 +269,7 @@ export default function seller_product_sheet({
           <button
             type="button"
             onClick={add_current}
-            className="w-full rounded-2xl bg-neutral-900 py-3.5 text-sm font-semibold text-white"
+            className="mt-auto w-full shrink-0 rounded-2xl bg-neutral-900 py-3.5 text-sm font-semibold text-white"
           >
             в заказ · {unit * qty} ₽
           </button>

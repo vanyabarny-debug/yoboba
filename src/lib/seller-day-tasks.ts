@@ -226,7 +226,8 @@ export function live_elapsed_ms(task: day_task, now = Date.now()): number {
 export function advance_day_task(
   spot_id: string,
   task_id: string,
-  day = moscow_today_iso()
+  day = moscow_today_iso(),
+  choice?: 'continue' | 'complete'
 ): day_task[] {
   const now = Date.now();
   const tasks = load_day_tasks(spot_id, day).map((t) => {
@@ -253,6 +254,13 @@ export function advance_day_task(
         };
       }
       case 'stopped':
+        if (choice === 'continue') {
+          return {
+            ...t,
+            phase: 'running' as const,
+            run_started_at: now,
+          };
+        }
         return {
           ...t,
           phase: 'done' as const,
