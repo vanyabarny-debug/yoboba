@@ -2,7 +2,6 @@
 
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { BRAND_NAME } from '@/lib/brand';
 import { clear_session } from '@/lib/demo-auth';
 
 export const admin_tabs = [
@@ -28,9 +27,18 @@ export function AdminHeader({ actions }: { actions?: React.ReactNode }) {
   return (
     <header className="sticky top-0 z-50 border-b border-neutral-200/80 bg-white/95 backdrop-blur">
       <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-x-4 gap-y-2 px-4 py-2.5">
-        <Link href="/admin" className="shrink-0 text-sm font-bold tracking-tight text-neutral-900">
-          {BRAND_NAME}
-          <span className="ml-1.5 font-medium text-neutral-400">admin</span>
+        <Link href="/admin" className="shrink-0 flex items-center gap-2">
+          <img
+            src="/icons/yosquad-mark.svg"
+            alt=""
+            width={28}
+            height={28}
+            className="rounded-lg"
+          />
+          <span className="text-sm font-bold tracking-tight">
+            <span className="text-accent">yo</span>
+            <span className="text-neutral-900">Squad</span>
+          </span>
         </Link>
 
         <nav className="flex min-w-0 flex-1 gap-0.5 overflow-x-auto">

@@ -4,6 +4,13 @@ export const BRAND_SUFFIX = '';
 export const BRAND_TAGLINE = 'первая баблтишная в городе';
 export const BRAND_LOGO_SRC = '/images/logo/gong-cha-lantern.png';
 
+/** staff / admin PWA brand */
+export const SQUAD_NAME = 'yoSquad';
+export const SQUAD_SHORT = 'yoSquad';
+export const SQUAD_TAGLINE = 'команда точки';
+export const SQUAD_ICON_192 = '/icons/yosquad-192.png';
+export const SQUAD_ICON_512 = '/icons/yosquad-512.png';
+
 /** coral / energy — основной CTA и акцент */
 export const BRAND_COLOR_ACCENT = '#FF6B6B';
 export const BRAND_COLOR_ACCENT_DARK = '#002D7A';
