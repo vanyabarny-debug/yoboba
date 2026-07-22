@@ -1,10 +1,21 @@
 import { createServerClient } from '@supabase/ssr';
+import { createClient } from '@supabase/supabase-js';
 import { NextResponse, type NextRequest } from 'next/server';
 
 function merge_cookies(from: NextResponse, to: NextResponse) {
   from.cookies.getAll().forEach((cookie) => {
     to.cookies.set(cookie.name, cookie.value);
   });
+}
+
+function normalize_profile_phone(raw?: unknown): string | null {
+  if (typeof raw !== 'string' || !raw.trim() || raw.includes('*')) return null;
+  const digits = raw.replace(/\D/g, '');
+  if (digits.length < 10) return null;
+  if (digits.length === 11 && digits.startsWith('8')) return `+7${digits.slice(1)}`;
+  if (digits.length === 11 && digits.startsWith('7')) return `+${digits}`;
+  if (digits.length === 10) return `+7${digits}`;
+  return raw.trim().startsWith('+') ? raw.trim() : `+${digits}`;
 }
 
 function make_supabase(request: NextRequest, cookie_response: NextResponse) {
@@ -44,12 +55,32 @@ export async function GET(request: NextRequest) {
     .eq('id', user.id)
     .maybeSingle();
 
+  const meta_phone = normalize_profile_phone(
+    (user.user_metadata as { phone?: string } | undefined)?.phone
+  );
+  let resolved_profile = profile;
+
+  // телефон мог сохраниться в user_metadata при VK-входе, но не попасть в profiles
+  if (profile && !profile.phone && meta_phone) {
+    resolved_profile = { ...profile, phone: meta_phone };
+    if (process.env.SUPABASE_SERVICE_ROLE_KEY) {
+      const admin = createClient(
+        process.env.NEXT_PUBLIC_SUPABASE_URL!,
+        process.env.SUPABASE_SERVICE_ROLE_KEY
+      );
+      await admin
+        .from('profiles')
+        .update({ phone: meta_phone, updated_at: new Date().toISOString() })
+        .eq('id', user.id);
+    }
+  }
+
   const res = NextResponse.json({
     user: {
       id: user.id,
       is_anonymous: user.is_anonymous === true,
     },
-    profile: profile || null,
+    profile: resolved_profile || null,
   });
   merge_cookies(cookie_response, res);
   return res;

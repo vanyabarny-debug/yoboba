@@ -106,6 +106,7 @@ export async function GET(request: Request) {
       code,
       device_id,
       code_verifier,
+      state,
       origin,
     });
 

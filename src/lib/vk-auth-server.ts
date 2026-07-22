@@ -34,10 +34,36 @@ function wrap_fetch_error(target: string, err: unknown): never {
   throw new Error(`не удалось связаться с ${target} (${cause})`);
 }
 
+function decode_jwt_payload(token: string): Record<string, unknown> | null {
+  const parts = token.split('.');
+  if (parts.length < 2) return null;
+  try {
+    const b64 = parts[1].replace(/-/g, '+').replace(/_/g, '/');
+    const padded = b64 + '='.repeat((4 - (b64.length % 4)) % 4);
+    const json = Buffer.from(padded, 'base64').toString('utf8');
+    return JSON.parse(json) as Record<string, unknown>;
+  } catch {
+    return null;
+  }
+}
+
+function pick_phone_raw(...candidates: unknown[]): string {
+  for (const value of candidates) {
+    if (typeof value !== 'string') continue;
+    const trimmed = value.trim();
+    if (!trimmed) continue;
+    // маскированный +7 *** ***-**-00 нам не подходит как полный номер
+    if (trimmed.includes('*')) continue;
+    return trimmed;
+  }
+  return '';
+}
+
 export async function exchange_vk_code(input: {
   code: string;
   device_id: string;
   code_verifier: string;
+  state: string;
   origin?: string;
 }) {
   const client_id = process.env.NEXT_PUBLIC_VK_CLIENT_ID;
@@ -54,6 +80,7 @@ export async function exchange_vk_code(input: {
     redirect_uri: vk_redirect_uri(input.origin),
     code_verifier: input.code_verifier,
     device_id: input.device_id,
+    state: input.state,
   });
 
   let res: Response;
@@ -70,6 +97,7 @@ export async function exchange_vk_code(input: {
   const json = (await res.json()) as {
     access_token?: string;
     id_token?: string;
+    scope?: string;
     error?: string;
     error_description?: string;
   };
@@ -78,9 +106,17 @@ export async function exchange_vk_code(input: {
     throw new Error(json.error_description || json.error || 'vk token exchange failed');
   }
 
+  const granted_scope = json.scope || '';
+  if (!granted_scope.split(/\s+/).includes('phone')) {
+    console.warn(
+      '[vk] access token без scope phone — в кабинете VK ID включите доступ «телефон» для приложения'
+    );
+  }
+
   return {
     access_token: json.access_token,
     id_token: json.id_token ?? null,
+    scope: granted_scope,
   };
 }
 
@@ -115,13 +151,18 @@ export async function fetch_vk_user(
   }
 
   const user = json.user;
-  let phone =
-    (typeof user.phone === 'string' && user.phone) ||
-    (typeof user.phone_number === 'string' && user.phone_number) ||
-    (typeof user.verified_phone === 'string' && user.verified_phone) ||
-    '';
+  const jwt_payload = id_token ? decode_jwt_payload(id_token) : null;
 
-  // fallback: public_info по id_token (иногда отдаёт phone, когда user_info пуст)
+  let phone = pick_phone_raw(
+    user.phone,
+    user.phone_number,
+    user.verified_phone,
+    jwt_payload?.phone,
+    jwt_payload?.phone_number,
+    jwt_payload?.verified_phone
+  );
+
+  // fallback: public_info по id_token (маскированный — только если больше ничего нет)
   if (!phone && id_token) {
     try {
       const pub = await fetch(vk_public_info_url, {
@@ -133,7 +174,8 @@ export async function fetch_vk_user(
         user?: { phone?: string };
       };
       if (pub.ok && pub_json.user?.phone) {
-        phone = pub_json.user.phone;
+        const masked = pick_phone_raw(pub_json.user.phone);
+        if (masked) phone = masked;
       }
     } catch {
       /* ignore */
@@ -141,9 +183,9 @@ export async function fetch_vk_user(
   }
 
   if (!phone) {
-    console.warn('[vk] phone missing in user_info — проверьте scope phone и доступы приложения в VK ID');
+    console.warn('[vk] phone missing after user_info/id_token — проверьте scope phone в VK ID');
   } else {
-    console.log('[vk] phone received');
+    console.log('[vk] phone received', { digits: phone.replace(/\D/g, '').length });
   }
 
   return {
@@ -213,8 +255,10 @@ function display_name(info: vk_user_info) {
 
 function normalize_phone(raw?: string | null) {
   if (!raw) return null;
+  if (raw.includes('*')) return null;
   const digits = raw.replace(/\D/g, '');
   if (!digits) return null;
+  if (digits.length < 10) return null;
   if (digits.length === 11 && digits.startsWith('8')) return `+7${digits.slice(1)}`;
   if (digits.length === 11 && digits.startsWith('7')) return `+${digits}`;
   if (digits.length === 10) return `+7${digits}`;
@@ -255,6 +299,7 @@ export async function upsert_vk_supabase_user(input: {
     const { data, error } = await admin.auth.admin.createUser({
       email,
       email_confirm: true,
+      ...(phone ? { phone, phone_confirm: true } : {}),
       user_metadata: metadata,
     });
     if (error || !data.user) {
@@ -264,6 +309,7 @@ export async function upsert_vk_supabase_user(input: {
   } else {
     await admin.auth.admin.updateUserById(user_id, {
       user_metadata: metadata,
+      ...(phone ? { phone, phone_confirm: true } : {}),
     });
   }
 
