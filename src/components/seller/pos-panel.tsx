@@ -11,7 +11,8 @@ import {
 import { format_phone_input, phone_input_to_e164 } from '@/lib/phone';
 import { category_tile_meta } from '@/lib/category-icons';
 import { get_topping_portion_price_value } from '@/lib/product-details';
-import { board_tile_grid, tile_grid } from '@/lib/seller-tile-grid';
+import { tile_grid, board_tile_grid } from '@/lib/seller-tile-grid';
+import { FREE_DRINK_BONUS_THRESHOLD } from '@/lib/cart-summary';
 import { use_page_swipe } from '@/lib/use-page-swipe';
 import type { menu_item, order_item } from '@/lib/types';
 import menu_image from '@/components/menu-image';
@@ -400,9 +401,10 @@ export default function pos_panel({
             <span className="text-xl font-bold tabular-nums text-neutral-900">{total} ₽</span>
           </div>
 
-          {customer && customer.bonus_balance >= 50 ? (
+          {customer && customer.bonus_balance >= FREE_DRINK_BONUS_THRESHOLD ? (
             <p className="rounded-xl bg-accent/10 px-3 py-2 text-xs font-semibold text-accent">
-              у гостя {customer.bonus_balance} т. — можно списать 50 т. за напиток бесплатно
+              у гостя {customer.bonus_balance} т. — можно списать {FREE_DRINK_BONUS_THRESHOLD} т. за
+              напиток бесплатно
             </p>
           ) : total >= 10 ? (
             <p className="text-xs text-neutral-500">
