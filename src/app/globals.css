@@ -309,10 +309,15 @@ body {
   padding: calc(2rem + var(--safe-top)) 2rem calc(2rem + var(--safe-bottom));
   overflow: hidden;
   box-sizing: border-box;
-  /* yoSquad: коралловый фон, на него льётся молоко */
-  background: linear-gradient(180deg, #ff8585 0%, #ff6b6b 45%, #f25555 100%);
+  /* yomoyo: синий фон, на него льётся молоко; буквы коралловые */
+  background: linear-gradient(180deg, #0043c4 0%, #0039a6 55%, #002d7a 100%);
   opacity: 1;
   transition: opacity 0.7s ease;
+}
+
+/* yoSquad: коралловый фон, синие буквы */
+.app-splash.is-squad {
+  background: linear-gradient(180deg, #ff8585 0%, #ff6b6b 45%, #f25555 100%);
 }
 
 /* финал — вся заставка красиво растворяется в прозрачность */

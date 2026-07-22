@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { usePathname } from 'next/navigation';
 import BrandWordmark from '@/components/brand-wordmark';
 
 // тайминги композиции:
@@ -8,6 +9,7 @@ const SWAP_AT = 3100; // текст свапается: логотип уезж�
 const EXIT_AT = 4900; // вся заставка растворяется в прозрачность
 const REMOVE_AT = 5600; // убираем из DOM
 const SPLASH_SEEN_KEY = 'yoboba_splash_seen';
+const SQUAD_SPLASH_SEEN_KEY = 'yosquad_splash_seen';
 
 type pearl = { x: number; y: number; vx: number; vy: number; r: number };
 type rect = { left: number; right: number; top: number; bottom: number };
@@ -22,7 +24,16 @@ function make_rng(seed: number) {
   };
 }
 
+function is_squad_path(path: string | null) {
+  if (!path) return false;
+  return path.startsWith('/seller') || path.startsWith('/admin');
+}
+
 export default function app_splash() {
+  const pathname = usePathname();
+  const is_squad = is_squad_path(pathname);
+  const seen_key = is_squad ? SQUAD_SPLASH_SEEN_KEY : SPLASH_SEEN_KEY;
+
   const [removed, set_removed] = useState(false);
   const [phase, set_phase] = useState<'run' | 'swap' | 'exit'>('run');
   const canvas_ref = useRef<HTMLCanvasElement>(null);
@@ -37,21 +48,25 @@ export default function app_splash() {
   useLayoutEffect(() => {
     if (typeof window === 'undefined') return;
     try {
-      if (sessionStorage.getItem(SPLASH_SEEN_KEY) === '1') {
+      if (sessionStorage.getItem(seen_key) === '1') {
         skip_ref.current = true;
         set_removed(true);
+      } else {
+        skip_ref.current = false;
+        set_removed(false);
+        set_phase('run');
       }
     } catch {
       /* private mode */
     }
-  }, []);
+  }, [seen_key]);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
     if (skip_ref.current) return;
 
     try {
-      if (sessionStorage.getItem(SPLASH_SEEN_KEY) === '1') {
+      if (sessionStorage.getItem(seen_key) === '1') {
         set_removed(true);
         return;
       }
@@ -63,7 +78,7 @@ export default function app_splash() {
     const t_exit = setTimeout(() => set_phase('exit'), EXIT_AT);
     const t_remove = setTimeout(() => {
       try {
-        sessionStorage.setItem(SPLASH_SEEN_KEY, '1');
+        sessionStorage.setItem(seen_key, '1');
       } catch {
         /* ignore */
       }
@@ -75,7 +90,7 @@ export default function app_splash() {
       clearTimeout(t_exit);
       clearTimeout(t_remove);
     };
-  }, []);
+  }, [seen_key]);
 
   useEffect(() => {
     const canvas = canvas_ref.current;
@@ -376,13 +391,13 @@ export default function app_splash() {
       window.removeEventListener('resize', on_resize);
       window.visualViewport?.removeEventListener('resize', on_resize);
     };
-  }, []);
+  }, [removed, is_squad]);
 
   if (removed) return null;
 
   return (
     <div
-      className={`app-splash ${phase !== 'run' ? 'is-swap' : ''} ${phase === 'exit' ? 'is-exit' : ''}`}
+      className={`app-splash ${is_squad ? 'is-squad' : ''} ${phase !== 'run' ? 'is-swap' : ''} ${phase === 'exit' ? 'is-exit' : ''}`}
       role="status"
       aria-label="загрузка приложения"
       aria-hidden={phase !== 'run'}
@@ -391,7 +406,10 @@ export default function app_splash() {
 
       <div className="app-splash-content">
         <div ref={logo_ref} className="app-splash-logo">
-          <BrandWordmark className="text-[72px] !text-[#0039a6]" />
+          {/* yomoyo: коралл на синем; yoSquad: синий на коралле */}
+          <BrandWordmark
+            className={`text-[72px] ${is_squad ? '!text-[#0039a6]' : '!text-[#FF6B6B]'}`}
+          />
         </div>
         <p className="app-splash-slogan">
           радость,
