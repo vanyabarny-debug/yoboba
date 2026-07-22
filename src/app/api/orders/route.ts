@@ -3,6 +3,7 @@ import { create_server_client } from '@/lib/supabase/server';
 import { create_service_client } from '@/lib/supabase/service';
 import { calc_order_bonus } from '@/lib/cart-summary';
 import { normalize_phone } from '@/lib/phone';
+import { allocate_daily_order_number } from '@/lib/order-number';
 import type { order_item } from '@/lib/types';
 
 export async function GET() {
@@ -67,6 +68,14 @@ export async function POST(request: Request) {
     );
   }
 
+  let daily_number: { order_day: string; order_number: number };
+  try {
+    daily_number = await allocate_daily_order_number(admin);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'не удалось выдать номер заказа';
+    return NextResponse.json({ error: message }, { status: 500 });
+  }
+
   const { data, error } = await supabase
     .from('orders')
     .insert({
@@ -76,6 +85,8 @@ export async function POST(request: Request) {
       payment_type,
       pickup_time,
       status: 'new',
+      order_number: daily_number.order_number,
+      order_day: daily_number.order_day,
     })
     .select()
     .single();

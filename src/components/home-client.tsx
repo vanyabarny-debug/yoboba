@@ -52,6 +52,7 @@ import {
 import type { menu_item, promo_banner, sidebar_ad_slide, story } from '@/lib/types';
 import { get_auth_state, sign_out } from '@/lib/auth';
 import { create_order } from '@/lib/orders';
+import { format_order_number } from '@/lib/order-number';
 import { normalize_phone } from '@/lib/phone';
 import {
   get_demo_user,
@@ -171,7 +172,7 @@ export default function home_client({
   const [editing_lang, set_editing_lang] = useState(false);
   const [editing_brand, set_editing_brand] = useState<false | 'logo' | 'tagline'>(false);
   const [lang_draft, set_lang_draft] = useState({ label: 'язык', href: '/yazyk' });
-  const [order_toast, set_order_toast] = useState(false);
+  const [order_toast, set_order_toast] = useState('');
   const [order_error, set_order_error] = useState('');
   const header_ref = useRef<HTMLDivElement>(null);
   const nav_ref = useRef<HTMLDivElement>(null);
@@ -224,7 +225,7 @@ export default function home_client({
     const total_price = cart_lines.reduce((s, l) => s + l.item.price * l.quantity, 0);
     const pickup_time = new Date(Date.now() + 12 * 60_000).toISOString();
 
-    const { error } = await create_order({
+    const { data, error } = await create_order({
       user_id: uid,
       items,
       total_price,
@@ -240,8 +241,11 @@ export default function home_client({
     set_order_error('');
     set_cart_lines([]);
     set_cart_open(false);
-    set_order_toast(true);
-    window.setTimeout(() => set_order_toast(false), 4500);
+    const num = data ? format_order_number(data) : '';
+    set_order_toast(
+      num ? `заказ № ${num} отправлен — заберите через ~12 мин` : 'заказ отправлен — заберите через ~12 мин'
+    );
+    window.setTimeout(() => set_order_toast(''), 4500);
   }, [cart_lines, user_id, router]);
 
   function needs_checkout_gate() {
@@ -648,11 +652,15 @@ export default function home_client({
         body: JSON.stringify({ items }),
       });
       if (res.ok) {
+        const body = (await res.json()) as { order?: import('@/lib/types').order };
         set_cart_lines([]);
         save_guest_cart([]);
         set_cart_open(false);
-        set_order_toast(true);
-        window.setTimeout(() => set_order_toast(false), 4500);
+        const num = body.order ? format_order_number(body.order) : '';
+        set_order_toast(
+          num ? `заказ № ${num} отправлен — заберите через ~12 мин` : 'заказ отправлен — заберите через ~12 мин'
+        );
+        window.setTimeout(() => set_order_toast(''), 4500);
       }
       return;
     }
@@ -1152,7 +1160,7 @@ export default function home_client({
 
       {order_toast && (
         <div className="fixed bottom-[calc(1.5rem+var(--safe-bottom))] left-1/2 -translate-x-1/2 z-[70] px-5 py-3 rounded-2xl bg-neutral-900 text-white text-sm shadow-lg min-[1024px]:bottom-6">
-          заказ отправлен — заберите через ~12 мин
+          {order_toast}
         </div>
       )}
 

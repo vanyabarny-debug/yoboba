@@ -239,3 +239,5 @@ alter publication supabase_realtime add table public.orders;
 -- миграция для существующей базы (если menu уже создана без плашек):
 -- alter table public.menu add column if not exists badge_text text;
 -- alter table public.menu add column if not exists badge_color text check (badge_color is null or badge_color in ('pink', 'accent', 'orange', 'green', 'purple', 'dark'));
+
+-- дневная нумерация заказов: выполни supabase/order-daily-number.sql

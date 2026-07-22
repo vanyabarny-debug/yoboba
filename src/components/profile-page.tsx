@@ -12,6 +12,7 @@ import {
   format_price,
 } from '@/lib/cart-summary';
 import { fetch_my_orders } from '@/lib/orders';
+import { format_order_number } from '@/lib/order-number';
 import type { order } from '@/lib/types';
 import { is_supabase_configured } from '@/lib/supabase/config';
 import { get_demo_user, clear_session } from '@/lib/demo-auth';
@@ -124,10 +125,6 @@ function format_birthday(iso: string) {
   } catch {
     return iso;
   }
-}
-
-function short_order_id(id: string) {
-  return id.replace(/-/g, '').slice(0, 8).toUpperCase();
 }
 
 export default function profile_page() {
@@ -748,7 +745,7 @@ export default function profile_page() {
                     >
                       <div className="min-w-0">
                         <p className="text-sm font-semibold text-neutral-900">
-                          № {short_order_id(o.id)}
+                          № {format_order_number(o)}
                         </p>
                         <p className="text-xs text-neutral-500 mt-0.5">
                           {format_datetime(o.created_at)} · {status_label[o.status]}

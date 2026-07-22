@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback, createElement } from 'react';
 import { create_client } from '@/lib/supabase/client';
+import { format_order_number } from '@/lib/order-number';
 import type { order } from '@/lib/types';
 
 const columns: { key: order['status']; label: string }[] = [
@@ -43,7 +44,7 @@ function order_card({
   return (
     <article className="bg-white rounded-card border border-surface p-3 shadow-soft">
       <div className="flex justify-between items-start mb-2">
-        <span className="text-xs text-neutral-400">#{o.id.slice(0, 8)}</span>
+        <span className="text-xs text-neutral-400">№ {format_order_number(o)}</span>
         <span
           className={`text-sm font-mono tabular-nums font-semibold ${
             timer === 'пора выдавать' ? 'text-accent' : 'text-neutral-700'

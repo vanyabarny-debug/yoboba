@@ -21,12 +21,12 @@ export async function create_order(input: create_order_input) {
     }),
   });
 
-  const body = (await res.json()) as { order?: unknown; error?: string };
+  const body = (await res.json()) as { order?: order; error?: string };
   if (!res.ok) {
     return { data: null, error: new Error(body.error || 'не удалось создать заказ') };
   }
 
-  return { data: body.order, error: null };
+  return { data: body.order ?? null, error: null };
 }
 
 export async function fetch_my_orders() {

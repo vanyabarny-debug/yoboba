@@ -7,6 +7,7 @@ import { create_client } from '@/lib/supabase/client';
 import { is_supabase_configured } from '@/lib/supabase/config';
 import { get_demo_user, clear_session } from '@/lib/demo-auth';
 import { useRouter } from 'next/navigation';
+import { format_order_number } from '@/lib/order-number';
 import type { cash_transaction, order } from '@/lib/types';
 import cash_register_modal from '@/components/seller/cash-register-modal';
 import day_summary_panel from '@/components/seller/day-summary';
@@ -77,7 +78,7 @@ function order_card({ order: o, on_pay }: { order: order; on_pay: (o: order) => 
           <div className="flex items-start justify-between gap-2 mb-2">
             <div>
               <p className="text-xs font-medium uppercase tracking-wide text-neutral-400">
-                заказ #{o.id.slice(-6)}
+                заказ № {format_order_number(o)}
               </p>
               <p className="text-sm text-neutral-500">{item_count} поз. · без телефона</p>
             </div>

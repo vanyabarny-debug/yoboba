@@ -69,6 +69,10 @@ export type order = {
   payment_type: 'cash' | 'card' | 'online';
   pickup_time: string;
   created_at: string;
+  /** порядковый номер за день: 1, 2, 3… */
+  order_number?: number | null;
+  /** дата смены нумерации (МСК) */
+  order_day?: string | null;
 };
 
 export type seller = {
