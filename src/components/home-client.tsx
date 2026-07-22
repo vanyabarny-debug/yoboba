@@ -8,7 +8,11 @@ import menu_grid from '@/components/menu-grid';
 import menu_grid_admin from '@/components/admin/menu-grid-admin';
 import product_drawer from '@/components/product-drawer';
 import product_drawer_admin from '@/components/admin/product-drawer-admin';
-import cart_drawer, { type cart_line } from '@/components/cart-drawer';
+import cart_drawer, {
+  cart_line_key,
+  cart_line_unit_price,
+  type cart_line,
+} from '@/components/cart-drawer';
 import cart_fab from '@/components/cart-fab';
 import top_bar from '@/components/top-bar';
 import promo_banners from '@/components/promo-banners';
@@ -56,6 +60,7 @@ import { get_auth_state, sign_out } from '@/lib/auth';
 import { create_order } from '@/lib/orders';
 import { format_order_number } from '@/lib/order-number';
 import { normalize_phone } from '@/lib/phone';
+import { get_topping_portion_price_value } from '@/lib/product-details';
 import {
   get_demo_user,
   clear_session,
@@ -106,12 +111,56 @@ function save_guest_cart(lines: cart_line[]) {
   localStorage.setItem(guest_cart_key, JSON.stringify(lines));
 }
 
-function merge_cart_line(lines: cart_line[], item: menu_item, qty: number): cart_line[] {
-  const idx = lines.findIndex((l) => l.item.id === item.id);
-  if (idx === -1) return [...lines, { item, quantity: qty }];
-  const next = [...lines];
-  next[idx] = { ...next[idx], quantity: next[idx].quantity + qty };
-  return next;
+function merge_cart_line(
+  lines: cart_line[],
+  item: menu_item,
+  qty: number,
+  options?: { volume?: '450' | '650'; topping?: number; replace_key?: string }
+): cart_line[] {
+  const volume = options?.volume ?? '450';
+  const topping = options?.topping ?? 0;
+
+  // правка существующей позиции из корзины — заменить, не добавить
+  if (options?.replace_key) {
+    const idx = lines.findIndex((l, i) => cart_line_key(l, i) === options.replace_key);
+    if (idx >= 0) {
+      const next = [...lines];
+      next[idx] = {
+        ...next[idx],
+        item,
+        quantity: qty,
+        volume,
+        topping,
+        key: options.replace_key,
+      };
+      return next;
+    }
+  }
+
+  // та же конфигурация уже в корзине — увеличить qty
+  const same = lines.findIndex(
+    (l) =>
+      l.item.id === item.id &&
+      (l.volume ?? '450') === volume &&
+      (l.topping ?? 0) === topping &&
+      !l.item.id.startsWith('topping-')
+  );
+  if (same >= 0) {
+    const next = [...lines];
+    next[same] = { ...next[same], quantity: next[same].quantity + qty };
+    return next;
+  }
+
+  return [
+    ...lines,
+    {
+      key: `line-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+      item,
+      quantity: qty,
+      volume,
+      topping,
+    },
+  ];
 }
 
 type pending_order_action =
@@ -145,6 +194,12 @@ export default function home_client({
   const [selected, set_selected] = useState<menu_item | null>(null);
   const [drawer_open, set_drawer_open] = useState(false);
   const [product_from_cart, set_product_from_cart] = useState(false);
+  const [editing_line_key, set_editing_line_key] = useState<string | null>(null);
+  const [edit_initial, set_edit_initial] = useState<{
+    qty: number;
+    volume: '450' | '650';
+    topping: number;
+  }>({ qty: 1, volume: '450', topping: 0 });
   const [cart_open, set_cart_open] = useState(false);
   const [cart_lines, set_cart_lines] = useState<cart_line[]>([]);
   const [user, set_user] = useState<demo_user | null>(null);
@@ -186,7 +241,7 @@ export default function home_client({
     ? Boolean(user && user.role === 'user' && !user.is_guest)
     : Boolean(user_id && !is_anonymous);
   const cart_count = cart_lines.reduce((s, l) => s + l.quantity, 0);
-  const cart_total = cart_lines.reduce((s, l) => s + l.item.price * l.quantity, 0);
+  const cart_total = cart_lines.reduce((s, l) => s + cart_line_unit_price(l) * l.quantity, 0);
   const active_promos = promos.filter((p) => p.is_active);
 
   useEffect(() => {
@@ -232,10 +287,10 @@ export default function home_client({
     const items = cart_lines.map((l) => ({
       menu_id: l.item.id,
       name: l.item.name,
-      price: l.item.price,
+      price: cart_line_unit_price(l),
       quantity: l.quantity,
     }));
-    const total_price = cart_lines.reduce((s, l) => s + l.item.price * l.quantity, 0);
+    const total_price = cart_lines.reduce((s, l) => s + cart_line_unit_price(l) * l.quantity, 0);
 
     if (demo_mode) {
       const res = await fetch('/api/orders/demo', {
@@ -458,8 +513,12 @@ export default function home_client({
     save_guest_cart(cart_lines);
   }, [cart_lines, user_id]);
 
-  function add_to_local_cart(item: menu_item, qty: number) {
-    set_cart_lines((prev) => merge_cart_line(prev, item, qty));
+  function add_to_local_cart(
+    item: menu_item,
+    qty: number,
+    options?: { volume?: '450' | '650'; topping?: number; replace_key?: string }
+  ) {
+    set_cart_lines((prev) => merge_cart_line(prev, item, qty, options));
   }
 
   const load_prod_cart = useCallback(async (uid: string) => {
@@ -553,13 +612,24 @@ export default function home_client({
     };
   }, [demo_mode, user_id, load_prod_cart]);
 
-  async function execute_add(item: menu_item, qty: number) {
-    add_to_local_cart(item, qty);
+  async function execute_add(
+    item: menu_item,
+    qty: number,
+    options?: { volume?: '450' | '650'; topping?: number; replace_key?: string }
+  ) {
+    add_to_local_cart(item, qty, options);
 
     if (demo_mode && !user_id) return;
     if (!user_id) return;
 
-    const { error } = await add_to_cart(user_id, item, qty);
+    const volume_add = options?.volume === '650' ? 50 : 0;
+    const topping = options?.topping ?? 0;
+    const server_item: menu_item = {
+      ...item,
+      price: Math.max(0, item.price + volume_add + topping * get_topping_portion_price_value()),
+    };
+
+    const { error } = await add_to_cart(user_id, server_item, qty);
     if (error) {
       console.warn('cart:', error.message);
       return;
@@ -567,45 +637,40 @@ export default function home_client({
     await load_prod_cart(user_id);
   }
 
-  async function handle_add(item: menu_item, qty: number) {
-    await execute_add(item, qty);
+  async function handle_add(
+    item: menu_item,
+    qty: number,
+    options?: { volume?: '450' | '650'; topping?: number }
+  ) {
+    await execute_add(item, qty, {
+      ...options,
+      replace_key: editing_line_key || undefined,
+    });
+    set_editing_line_key(null);
   }
 
-  async function handle_update_qty(menu_id: string, quantity: number) {
-    if (demo_mode && !user_id) {
-      set_cart_lines((prev) =>
-        prev.map((l) => (l.item.id === menu_id ? { ...l, quantity } : l))
-      );
-      return;
-    }
-    if (!user_id) {
-      set_cart_lines((prev) =>
-        prev.map((l) => (l.item.id === menu_id ? { ...l, quantity } : l))
-      );
-      return;
-    }
-    const { error } = await upsert_cart_item(user_id, menu_id, quantity);
-    if (error) {
-      set_cart_lines((prev) =>
-        prev.map((l) => (l.item.id === menu_id ? { ...l, quantity } : l))
-      );
-      return;
-    }
-    await load_prod_cart(user_id);
-  }
+  async function handle_update_qty(line_key: string, quantity: number) {
+    set_cart_lines((prev) =>
+      prev.map((l, i) => (cart_line_key(l, i) === line_key ? { ...l, quantity } : l))
+    );
 
-  async function handle_remove(menu_id: string) {
-    if (demo_mode && !user_id) {
-      set_cart_lines((prev) => prev.filter((l) => l.item.id !== menu_id));
-      return;
-    }
-    if (!user_id) {
-      set_cart_lines((prev) => prev.filter((l) => l.item.id !== menu_id));
-      return;
-    }
-    const { error } = await upsert_cart_item(user_id, menu_id, 0);
+    if (demo_mode && !user_id) return;
+    if (!user_id) return;
+
+    const line = cart_lines.find((l, i) => cart_line_key(l, i) === line_key);
+    if (!line) return;
+    const { error } = await upsert_cart_item(user_id, line.item.id, quantity);
     if (!error) await load_prod_cart(user_id);
-    else set_cart_lines((prev) => prev.filter((l) => l.item.id !== menu_id));
+  }
+
+  async function handle_remove(line_key: string) {
+    const line = cart_lines.find((l, i) => cart_line_key(l, i) === line_key);
+    set_cart_lines((prev) => prev.filter((l, i) => cart_line_key(l, i) !== line_key));
+
+    if (demo_mode && !user_id) return;
+    if (!user_id || !line) return;
+    const { error } = await upsert_cart_item(user_id, line.item.id, 0);
+    if (!error) await load_prod_cart(user_id);
   }
 
   async function handle_clear_cart() {
@@ -658,29 +723,51 @@ export default function home_client({
     open_pickup_picker();
   }
 
-  function handle_edit_line(item: menu_item) {
+  function handle_edit_line(line: cart_line) {
+    const key = line.key || `legacy-${line.item.id}`;
+    set_cart_lines((prev) => {
+      let assigned = false;
+      return prev.map((l) => {
+        if (line.key && l.key === line.key) return { ...l, key };
+        if (!line.key && !assigned && !l.key && l.item.id === line.item.id) {
+          assigned = true;
+          return { ...l, key };
+        }
+        return l;
+      });
+    });
     set_cart_open(false);
-    set_selected(item);
+    set_selected(line.item);
     set_product_from_cart(true);
+    set_editing_line_key(key);
+    set_edit_initial({
+      qty: line.quantity,
+      volume: line.volume ?? '450',
+      topping: line.topping ?? 0,
+    });
     set_drawer_open(true);
   }
 
   function handle_open_from_cart(item: menu_item) {
     set_cart_open(false);
     set_selected(item);
-    set_product_from_cart(true);
+    set_product_from_cart(false);
+    set_editing_line_key(null);
+    set_edit_initial({ qty: 1, volume: '450', topping: 0 });
     set_drawer_open(true);
   }
 
   function handle_product_close() {
     set_drawer_open(false);
     set_product_from_cart(false);
+    set_editing_line_key(null);
     set_selected(null);
   }
 
   function handle_return_to_cart() {
     set_drawer_open(false);
     set_product_from_cart(false);
+    set_editing_line_key(null);
     set_selected(null);
     set_cart_open(true);
   }
@@ -956,6 +1043,8 @@ export default function home_client({
               on_item_click: (item: menu_item) => {
                 set_selected(item);
                 set_product_from_cart(false);
+                set_editing_line_key(null);
+                set_edit_initial({ qty: 1, volume: '450', topping: 0 });
                 set_drawer_open(true);
               },
             })}
@@ -1035,6 +1124,10 @@ export default function home_client({
             open: drawer_open,
             on_close: handle_product_close,
             on_add: handle_add,
+            edit_mode: product_from_cart,
+            initial_qty: edit_initial.qty,
+            initial_volume: edit_initial.volume,
+            initial_topping: edit_initial.topping,
             return_to_cart: product_from_cart,
             on_return_to_cart: handle_return_to_cart,
           })}

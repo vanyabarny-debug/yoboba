@@ -16,25 +16,43 @@ import {
   format_positions,
   format_price,
   get_upsell_items,
-  line_volume_label,
 } from '@/lib/cart-summary';
+import { get_topping_name, get_topping_portion_price_value } from '@/lib/product-details';
 import { default_store_address } from '@/lib/location';
 
 export type cart_line = {
   item: menu_item;
   quantity: number;
+  /** уникальный ключ позиции (чтобы правки не склеивались) */
+  key?: string;
+  volume?: '450' | '650';
+  /** порций топпинга на 1 шт */
+  topping?: number;
 };
+
+export function cart_line_unit_price(line: cart_line): number {
+  if (line.volume == null && (line.topping == null || line.topping === 0)) {
+    return line.item.price;
+  }
+  const volume_add = line.volume === '650' ? 50 : 0;
+  const topping = line.topping ?? 0;
+  return Math.max(0, line.item.price + volume_add + topping * get_topping_portion_price_value());
+}
+
+export function cart_line_key(line: cart_line, index: number) {
+  return line.key || `${line.item.id}-${index}`;
+}
 
 type props = {
   open: boolean;
   lines: cart_line[];
   all_items: menu_item[];
   on_close: () => void;
-  on_update_qty: (menu_id: string, quantity: number) => void;
-  on_remove: (menu_id: string) => void;
+  on_update_qty: (line_key: string, quantity: number) => void;
+  on_remove: (line_key: string) => void;
   on_add?: (item: menu_item, qty: number) => void;
   on_open_item?: (item: menu_item) => void;
-  on_edit?: (item: menu_item) => void;
+  on_edit?: (line: cart_line) => void;
   on_checkout?: () => void;
   on_clear?: () => void;
 };
@@ -107,7 +125,7 @@ export default function cart_drawer({
 
   if (!sheet_visible && !open) return null;
 
-  const total = lines.reduce((s, l) => s + l.item.price * l.quantity, 0);
+  const total = lines.reduce((s, l) => s + cart_line_unit_price(l) * l.quantity, 0);
   const count = lines.reduce((s, l) => s + l.quantity, 0);
   const bonus_points = calc_order_bonus(total);
   const cart_ids = new Set(lines.map((l) => l.item.id));
@@ -191,10 +209,19 @@ export default function cart_drawer({
           ) : (
             <>
               <div className="space-y-2">
-              {lines.map((line) => {
-                const volume = line_volume_label(line.item.category);
+              {lines.map((line, index) => {
+                const key = cart_line_key(line, index);
+                const unit = cart_line_unit_price(line);
+                const volume_label = line.volume ? `${line.volume} мл` : null;
+                const topping_label =
+                  (line.topping ?? 0) > 0
+                    ? `+${line.topping}× ${get_topping_name(line.item)}`
+                    : null;
+                const meta = [volume_label, topping_label, line.item.category]
+                  .filter(Boolean)
+                  .join(' · ');
                 return (
-                  <div key={line.item.id} className="bg-white px-5 py-4">
+                  <div key={key} className="bg-white px-5 py-4">
                     <div className="flex gap-3">
                       {createElement(menu_image, {
                         item: line.item,
@@ -208,28 +235,26 @@ export default function cart_drawer({
                           </p>
                           <button
                             type="button"
-                            onClick={() => on_remove(line.item.id)}
+                            onClick={() => on_remove(key)}
                             aria-label="удалить"
                             className="text-neutral-900 text-xl leading-none hover:text-neutral-600 shrink-0"
                           >
                             ×
                           </button>
                         </div>
-                        <p className="text-sm text-neutral-500 mt-0.5">
-                          {volume ?? line.item.category}
-                        </p>
+                        <p className="text-sm text-neutral-500 mt-0.5">{meta}</p>
                       </div>
                     </div>
 
                     <div className="border-t border-[#f0f0f2] mt-3 pt-3 flex items-center justify-between gap-3">
                       <p className="text-[17px] font-bold font-mono tabular-nums text-neutral-900">
-                        {format_price(line.item.price * line.quantity)} ₽
+                        {format_price(unit * line.quantity)} ₽
                       </p>
                       <div className="flex items-center gap-3">
-                        {on_edit && (
+                        {on_edit && !line.item.id.startsWith('topping-') && (
                           <button
                             type="button"
-                            onClick={() => on_edit(line.item)}
+                            onClick={() => on_edit(line)}
                             className="text-sm font-semibold text-accent hover:underline"
                           >
                             Изменить
@@ -239,9 +264,7 @@ export default function cart_drawer({
                           <button
                             type="button"
                             disabled={line.quantity <= 1}
-                            onClick={() =>
-                              on_update_qty(line.item.id, Math.max(1, line.quantity - 1))
-                            }
+                            onClick={() => on_update_qty(key, Math.max(1, line.quantity - 1))}
                             aria-label="уменьшить количество"
                             className="flex h-8 w-8 items-center justify-center rounded-full text-lg text-neutral-700 disabled:text-neutral-400/70"
                           >
@@ -252,7 +275,7 @@ export default function cart_drawer({
                           </span>
                           <button
                             type="button"
-                            onClick={() => on_update_qty(line.item.id, line.quantity + 1)}
+                            onClick={() => on_update_qty(key, line.quantity + 1)}
                             className="flex h-8 w-8 items-center justify-center rounded-full text-lg text-neutral-700"
                           >
                             +

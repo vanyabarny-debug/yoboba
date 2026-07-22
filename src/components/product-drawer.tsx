@@ -13,7 +13,6 @@ import {
   get_nutrition,
   get_topping_name,
   get_topping_portion_price_value,
-  topping_as_menu_item,
 } from '@/lib/product-details';
 import { subscribe_site_content_store } from '@/lib/site-content-store';
 import { DRAWER_CLOSE_BTN_CLASS, DRAWER_INLINE_CLOSE_BTN_CLASS } from '@/lib/drawer-ui';
@@ -24,7 +23,16 @@ type props = {
   all_items: menu_item[];
   open: boolean;
   on_close: () => void;
-  on_add: (item: menu_item, qty: number) => void;
+  on_add: (
+    item: menu_item,
+    qty: number,
+    options?: { volume: '450' | '650'; topping: number }
+  ) => void;
+  /** правка позиции из корзины */
+  edit_mode?: boolean;
+  initial_qty?: number;
+  initial_volume?: '450' | '650';
+  initial_topping?: number;
   return_to_cart?: boolean;
   on_return_to_cart?: () => void;
 };
@@ -65,6 +73,10 @@ export default function product_drawer({
   open,
   on_close,
   on_add,
+  edit_mode = false,
+  initial_qty = 1,
+  initial_volume = '450',
+  initial_topping = 0,
   return_to_cart = false,
   on_return_to_cart,
 }: props) {
@@ -86,7 +98,8 @@ export default function product_drawer({
   const active_item = nav_item ?? resolved_item;
   const can_go_back = history.length > 0;
   const show_back_arrow = can_go_back || return_to_cart;
-  const show_recommendations = !can_go_back && !return_to_cart;
+  const show_recommendations = !can_go_back && !return_to_cart && !edit_mode;
+  const is_cart_edit = edit_mode || return_to_cart;
 
   function apply_card_state(state: card_state) {
     set_qty(state.qty);
@@ -151,8 +164,17 @@ export default function product_drawer({
   useEffect(() => {
     set_nav_item(null);
     set_history([]);
-    apply_card_state(default_card_state());
-  }, [item?.id]);
+    if (edit_mode || return_to_cart) {
+      apply_card_state({
+        qty: Math.max(1, initial_qty),
+        volume: initial_volume,
+        topping: Math.max(0, initial_topping),
+        details_open: false,
+      });
+    } else {
+      apply_card_state(default_card_state());
+    }
+  }, [item?.id, edit_mode, return_to_cart, initial_qty, initial_volume, initial_topping]);
 
   useEffect(() => {
     const current = active_item;
@@ -273,11 +295,7 @@ export default function product_drawer({
     if (!active_item) return;
 
     fly_to_cart(image_ref.current);
-    on_add(active_item, qty);
-
-    if (topping > 0) {
-      on_add(topping_as_menu_item(active_item), topping * qty);
-    }
+    on_add(active_item, qty, { volume, topping });
 
     if (can_go_back) {
       pop_card();
@@ -524,11 +542,20 @@ export default function product_drawer({
                   <button
                     type="button"
                     onClick={handle_add_to_cart}
-                    aria-label={`в корзину за ${total_price} рублей`}
+                    aria-label={
+                      is_cart_edit
+                        ? `сохранить за ${total_price} рублей`
+                        : `в корзину за ${total_price} рублей`
+                    }
                     className="inline-flex items-center gap-2 rounded-pill bg-accent px-6 py-3 text-accent-foreground hover:opacity-95 transition-opacity"
                   >
-                    <span className="text-xl font-bold leading-none">+</span>
-                    <span className="text-base font-semibold font-mono tabular-nums">{total_price} ₽</span>
+                    {!is_cart_edit && <span className="text-xl font-bold leading-none">+</span>}
+                    <span className="text-base font-semibold">
+                      {is_cart_edit ? 'сохранить' : 'в корзину'}
+                    </span>
+                    <span className="text-base font-semibold font-mono tabular-nums">
+                      {total_price} ₽
+                    </span>
                   </button>
                 </div>
               </div>
@@ -560,9 +587,9 @@ export default function product_drawer({
                 <button
                   type="button"
                   onClick={handle_add_to_cart}
-                  className="w-full rounded-pill bg-accent py-4 text-base font-semibold font-mono tabular-nums text-accent-foreground shadow-[0_8px_24px_rgba(4,104,240,0.28)] hover:opacity-95 transition-opacity"
+                  className="w-full rounded-pill bg-accent py-4 text-base font-semibold text-accent-foreground shadow-[0_8px_24px_rgba(4,104,240,0.28)] hover:opacity-95 transition-opacity"
                 >
-                  в корзину за {total_price} ₽
+                  {is_cart_edit ? 'сохранить' : 'в корзину'} · {total_price} ₽
                 </button>
               </div>
             </div>
