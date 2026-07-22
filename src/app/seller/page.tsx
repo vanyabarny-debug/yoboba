@@ -1,13 +1,14 @@
 'use client';
 
-import { BRAND_NAME } from '@/lib/brand';
-import { useCallback, useEffect, useState, createElement } from 'react';
+import { SQUAD_NAME } from '@/lib/brand';
+import { useCallback, useEffect, useRef, useState, createElement } from 'react';
 import { create_client } from '@/lib/supabase/client';
 import { is_supabase_configured } from '@/lib/supabase/config';
 import { get_demo_user, clear_session } from '@/lib/demo-auth';
 import { useRouter } from 'next/navigation';
 import { format_order_number } from '@/lib/order-number';
-import { format_countdown_ms } from '@/lib/kitchen-queue';
+import { DEFAULT_PREP_MINUTES, format_countdown_ms } from '@/lib/kitchen-queue';
+import { play_new_order_chime } from '@/lib/order-chime';
 import { get_active_spots, get_spots } from '@/lib/spot-store';
 import type { cash_transaction, order, store_spot } from '@/lib/types';
 import cash_register_modal from '@/components/seller/cash-register-modal';
@@ -26,6 +27,17 @@ type schedule_line = {
   pickup_at: string;
 };
 
+type drink_row = {
+  key: string;
+  name: string;
+  prep_minutes: number;
+};
+
+type prep_state = {
+  started_at: number | null;
+  done: boolean;
+};
+
 type seller_shift = {
   spot_id: string;
   address: string;
@@ -34,6 +46,7 @@ type seller_shift = {
 };
 
 const shift_key = 'yoboba_seller_shift';
+const prep_key = 'yoboba_seller_prep';
 
 function load_shift(): seller_shift | null {
   try {
@@ -48,6 +61,21 @@ function save_shift(shift: seller_shift) {
   sessionStorage.setItem(shift_key, JSON.stringify(shift));
 }
 
+function load_prep_map(): Record<string, Record<string, prep_state>> {
+  try {
+    return JSON.parse(sessionStorage.getItem(prep_key) || '{}') as Record<
+      string,
+      Record<string, prep_state>
+    >;
+  } catch {
+    return {};
+  }
+}
+
+function save_prep_map(map: Record<string, Record<string, prep_state>>) {
+  sessionStorage.setItem(prep_key, JSON.stringify(map));
+}
+
 function pickup_label(pickup_time: string) {
   return new Date(pickup_time).toLocaleTimeString('ru-RU', {
     hour: '2-digit',
@@ -56,129 +84,183 @@ function pickup_label(pickup_time: string) {
 }
 
 function format_phone(phone?: string | null) {
-  if (!phone) return 'нет телефона';
-  return phone;
+  const p = (phone || '').trim();
+  return p || null;
+}
+
+function customer_label(o: order) {
+  const name = (o.customer_name || '').trim();
+  return name || 'гость';
+}
+
+function expand_drinks(o: order, lines: schedule_line[]): drink_row[] {
+  if (lines.length) {
+    return lines.map((l, i) => ({
+      key: `${l.menu_id}-${i}`,
+      name: l.name,
+      prep_minutes: l.prep_minutes || DEFAULT_PREP_MINUTES,
+    }));
+  }
+  const rows: drink_row[] = [];
+  for (const item of o.items as order['items']) {
+    for (let q = 0; q < item.quantity; q++) {
+      rows.push({
+        key: `${item.menu_id}-${q}`,
+        name: item.name,
+        prep_minutes: DEFAULT_PREP_MINUTES,
+      });
+    }
+  }
+  return rows;
 }
 
 function order_card({
   order: o,
   lines,
+  is_new,
+  prep,
   on_pay,
+  on_start_drink,
+  on_mark_drink_done,
   on_hand_out,
 }: {
   order: order;
   lines: schedule_line[];
+  is_new: boolean;
+  prep: Record<string, prep_state>;
   on_pay: (o: order) => void;
+  on_start_drink: (order_id: string, drink_key: string, prep_minutes: number) => void;
+  on_mark_drink_done: (order_id: string, drink_key: string) => void;
   on_hand_out: (o: order) => void;
 }) {
   const [now, set_now] = useState(Date.now());
+  const drinks = expand_drinks(o, lines);
+  const paid = Boolean(o.is_paid);
+  const phone = format_phone(o.customer_phone);
+  const in_ready_column = o.status === 'ready';
 
   useEffect(() => {
     const id = setInterval(() => set_now(Date.now()), 1000);
     return () => clearInterval(id);
   }, []);
 
-  const pickup_ms = new Date(o.pickup_time).getTime();
-  const until_pickup = Math.max(0, pickup_ms - now);
-  const urgent = until_pickup < 3 * 60_000;
-  const paid = Boolean(o.is_paid);
+  // авто-готово по таймеру
+  useEffect(() => {
+    for (const d of drinks) {
+      const st = prep[d.key];
+      if (!st || st.done || !st.started_at) continue;
+      const ends = st.started_at + d.prep_minutes * 60_000;
+      if (now >= ends) on_mark_drink_done(o.id, d.key);
+    }
+  }, [now, drinks, prep, o.id, on_mark_drink_done]);
+
+  const all_done =
+    drinks.length > 0 && drinks.every((d) => prep[d.key]?.done);
+  const show_hand_out = in_ready_column || all_done;
 
   return (
     <article
-      className={`rounded-2xl border bg-white overflow-hidden shadow-[0_4px_24px_rgba(0,0,0,0.05)] ${
-        urgent ? 'border-accent/30' : 'border-neutral-100'
+      className={`rounded-2xl border bg-white px-4 py-3.5 transition ${
+        is_new
+          ? 'border-accent ring-2 ring-accent/25 animate-[pulse_1.2s_ease-in-out_2]'
+          : 'border-neutral-100'
       }`}
     >
-      <div className="flex items-start justify-between gap-3 px-4 py-3 border-b border-neutral-100">
+      <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <p className="text-[11px] font-semibold uppercase tracking-wide text-neutral-400">
+          <p className="text-[11px] font-medium text-neutral-400">
             № {format_order_number(o)}
+            {is_new ? <span className="ml-2 text-accent">новый</span> : null}
           </p>
-          <p className="text-base font-bold text-neutral-900 truncate">
-            {o.customer_name || 'гость'}
+          <p className="text-[15px] font-semibold text-neutral-900 truncate mt-0.5">
+            {customer_label(o)}
           </p>
-          <p className="text-xs text-neutral-500 tabular-nums">{format_phone(o.customer_phone)}</p>
+          {phone ? (
+            <p className="text-xs text-neutral-500 tabular-nums mt-0.5">{phone}</p>
+          ) : (
+            <p className="text-xs text-amber-600 mt-0.5">телефон не указан</p>
+          )}
         </div>
         <div className="text-right shrink-0">
-          <p className="text-lg font-bold tabular-nums text-neutral-900">{pickup_label(o.pickup_time)}</p>
-          <p
-            className={`text-sm font-mono font-bold tabular-nums ${
-              urgent ? 'text-accent' : 'text-neutral-600'
-            }`}
-          >
-            {format_countdown_ms(until_pickup)}
+          <p className="text-xl font-bold tabular-nums text-accent leading-none">
+            {pickup_label(o.pickup_time)}
           </p>
-          <span
-            className={`mt-1 inline-block rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase ${
-              paid ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'
+          <p className="text-[10px] text-neutral-400 mt-1">выдача</p>
+          <p
+            className={`text-[11px] mt-1 font-medium ${
+              paid ? 'text-emerald-600' : 'text-amber-600'
             }`}
           >
             {paid ? 'оплачен' : 'не оплачен'}
-          </span>
+          </p>
         </div>
       </div>
 
-      <ul className="px-3 py-3 space-y-1.5">
-        {lines.length > 0
-          ? lines.map((line, i) => {
-              const start = new Date(line.start_at).getTime();
-              const end = new Date(line.end_at).getTime();
-              let label = format_countdown_ms(Math.max(0, end - now));
-              let hint = `${line.prep_minutes} мин`;
-              let tone = 'bg-neutral-50 text-neutral-700';
-              if (now < start) {
-                label = format_countdown_ms(start - now);
-                hint = 'до старта';
-              } else if (now >= end) {
-                label = '✓';
-                hint = 'на выдаче';
-                tone = 'bg-accent/10 text-accent';
-              } else {
-                tone = 'bg-neutral-900 text-white';
-              }
-              return (
-                <li
-                  key={`${line.menu_id}-${i}`}
-                  className={`flex items-center justify-between gap-3 rounded-xl px-3 py-2.5 text-sm ${tone}`}
-                >
-                  <span className="truncate font-medium">{line.name}</span>
-                  <span className="shrink-0 text-right">
-                    <span className="block font-mono font-bold tabular-nums">{label}</span>
-                    <span className="block text-[10px] opacity-70">{hint}</span>
-                  </span>
-                </li>
-              );
-            })
-          : (o.items as order['items']).map((item, i) => (
-              <li
-                key={i}
-                className="flex justify-between gap-2 rounded-xl bg-neutral-50 px-3 py-2 text-sm text-neutral-700"
-              >
-                <span className="truncate">{item.name}</span>
-                <span className="text-neutral-400 shrink-0">×{item.quantity}</span>
-              </li>
-            ))}
-      </ul>
+      {!in_ready_column && (
+        <ul className="mt-3 space-y-1.5">
+          {drinks.map((d) => {
+            const st = prep[d.key] || { started_at: null, done: false };
+            const ends_at = st.started_at
+              ? st.started_at + d.prep_minutes * 60_000
+              : null;
+            const left = ends_at ? Math.max(0, ends_at - now) : 0;
+            const cooking = Boolean(st.started_at && !st.done);
 
-      <div className="flex items-center justify-between gap-2 px-4 py-3 bg-neutral-50/80">
-        <p className="text-lg font-bold font-mono tabular-nums">{o.total_price} ₽</p>
+            return (
+              <li
+                key={d.key}
+                className="flex items-center justify-between gap-2 text-sm py-1"
+              >
+                <div className="min-w-0">
+                  <p className="truncate text-neutral-800">{d.name}</p>
+                  <p className="text-[10px] text-neutral-400">{d.prep_minutes} мин</p>
+                </div>
+                <div className="shrink-0">
+                  {st.done ? (
+                    <span className="text-xs font-semibold text-emerald-600">готово</span>
+                  ) : cooking ? (
+                    <span className="font-mono text-base font-bold tabular-nums text-accent">
+                      {format_countdown_ms(left)}
+                    </span>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => on_start_drink(o.id, d.key, d.prep_minutes)}
+                      className="rounded-lg bg-neutral-900 px-3 py-1.5 text-xs font-semibold text-white"
+                    >
+                      начать
+                    </button>
+                  )}
+                </div>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+
+      <div className="mt-3 flex items-center justify-between gap-2">
+        <p className="text-base font-bold font-mono tabular-nums text-neutral-900">
+          {o.total_price} ₽
+        </p>
         <div className="flex gap-2">
           {!paid && (
             <button
               type="button"
               onClick={() => on_pay(o)}
-              className="rounded-xl bg-accent px-3.5 py-2 text-sm font-semibold text-accent-foreground"
+              className="rounded-xl border border-neutral-200 px-3 py-2 text-sm font-medium text-neutral-700"
             >
               касса
             </button>
           )}
-          <button
-            type="button"
-            onClick={() => on_hand_out(o)}
-            className="rounded-xl border border-neutral-200 bg-white px-3.5 py-2 text-sm font-semibold text-neutral-800"
-          >
-            выдан
-          </button>
+          {show_hand_out && (
+            <button
+              type="button"
+              onClick={() => on_hand_out(o)}
+              className="rounded-xl bg-accent px-3.5 py-2 text-sm font-semibold text-accent-foreground"
+            >
+              выдан
+            </button>
+          )}
         </div>
       </div>
     </article>
@@ -196,20 +278,17 @@ function shift_picker({
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/40 p-4">
       <div className="w-full max-w-md rounded-3xl bg-white p-6 shadow-xl">
         <h2 className="text-xl font-bold text-neutral-900">открыть смену</h2>
-        <p className="text-sm text-neutral-500 mt-1 mb-4">выберите точку, на которой работаете</p>
+        <p className="text-sm text-neutral-500 mt-1 mb-4">точка работы</p>
         <ul className="space-y-2">
           {spots.map((spot) => (
             <li key={spot.id}>
               <button
                 type="button"
                 onClick={() => on_pick(spot)}
-                className="w-full rounded-2xl border border-neutral-200 px-4 py-3 text-left hover:border-accent/40 hover:bg-accent/5"
+                className="w-full rounded-2xl border border-neutral-200 px-4 py-3 text-left hover:border-accent/40"
               >
                 <p className="font-semibold text-neutral-900">{spot.address}</p>
-                <p className="text-xs text-neutral-500 capitalize mt-0.5">
-                  {spot.city}
-                  {spot.label ? ` · ${spot.label}` : ''}
-                </p>
+                <p className="text-xs text-neutral-500 capitalize mt-0.5">{spot.city}</p>
               </button>
             </li>
           ))}
@@ -230,6 +309,9 @@ export default function seller_board() {
   const [shift, set_shift] = useState<seller_shift | null>(null);
   const [shift_spots, set_shift_spots] = useState<store_spot[]>([]);
   const [need_shift, set_need_shift] = useState(false);
+  const [prep_map, set_prep_map] = useState<Record<string, Record<string, prep_state>>>({});
+  const [fresh_ids, set_fresh_ids] = useState<Set<string>>(new Set());
+  const known_ids = useRef<Set<string> | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -270,24 +352,30 @@ export default function seller_board() {
       const supabase = create_client();
       const { data } = await supabase
         .from('orders')
-        .select('*')
+        .select('*, profiles:user_id(name, phone)')
         .in('status', ['new', 'preparing', 'ready'])
-        .order('pickup_time', { ascending: true });
-      for (const o of (data as order[]) || []) {
-        if (!seen.has(o.id)) {
-          seen.add(o.id);
-          merged.push(o);
-        }
+        .order('created_at', { ascending: false });
+      for (const row of (data as Array<order & { profiles?: { name?: string; phone?: string } | null }>) || []) {
+        if (seen.has(row.id)) continue;
+        seen.add(row.id);
+        const profile = row.profiles;
+        merged.push({
+          ...row,
+          customer_name: row.customer_name || profile?.name || 'гость',
+          customer_phone: row.customer_phone || profile?.phone || null,
+          is_paid: Boolean(row.is_paid),
+        });
       }
     }
 
     merged.sort(
-      (a, b) => new Date(a.pickup_time).getTime() - new Date(b.pickup_time).getTime()
+      (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
     );
     set_orders(merged);
   }, []);
 
   useEffect(() => {
+    set_prep_map(load_prep_map());
     const user = get_demo_user();
     if (user) {
       set_seller_id(user.id);
@@ -329,6 +417,61 @@ export default function seller_board() {
     return () => window.clearInterval(poll);
   }, [load]);
 
+  // звук + подсветка новых
+  useEffect(() => {
+    const ids = new Set(orders.map((o) => o.id));
+    if (!known_ids.current) {
+      known_ids.current = ids;
+      return;
+    }
+    const newcomers: string[] = [];
+    for (const id of ids) {
+      if (!known_ids.current.has(id)) newcomers.push(id);
+    }
+    known_ids.current = ids;
+    if (!newcomers.length) return;
+
+    play_new_order_chime();
+    set_fresh_ids((prev) => {
+      const next = new Set(prev);
+      for (const id of newcomers) next.add(id);
+      return next;
+    });
+    const t = window.setTimeout(() => {
+      set_fresh_ids((prev) => {
+        const next = new Set(prev);
+        for (const id of newcomers) next.delete(id);
+        return next;
+      });
+    }, 12000);
+    return () => window.clearTimeout(t);
+  }, [orders]);
+
+  const update_prep = useCallback(
+    (order_id: string, drink_key: string, patch: Partial<prep_state>) => {
+      set_prep_map((prev) => {
+        const current = prev[order_id]?.[drink_key];
+        if (
+          patch.done === true &&
+          current?.done === true &&
+          patch.started_at === undefined
+        ) {
+          return prev;
+        }
+        const order_prep = { ...(prev[order_id] || {}) };
+        order_prep[drink_key] = {
+          started_at: order_prep[drink_key]?.started_at ?? null,
+          done: order_prep[drink_key]?.done ?? false,
+          ...patch,
+        };
+        const next = { ...prev, [order_id]: order_prep };
+        save_prep_map(next);
+        return next;
+      });
+    },
+    []
+  );
+
   async function patch_order(id: string, patch: Partial<order>) {
     if (id.startsWith('demo-order')) {
       await fetch('/api/orders/demo', {
@@ -341,12 +484,29 @@ export default function seller_board() {
     if (is_supabase_configured()) {
       const supabase = create_client();
       const { error } = await supabase.from('orders').update(patch).eq('id', id);
-      if (error && /is_paid/i.test(error.message)) {
-        const { is_paid: _paid, customer_name: _n, customer_phone: _p, ...rest } = patch;
-        await supabase.from('orders').update(rest).eq('id', id);
+      if (error && /is_paid|customer_/i.test(error.message)) {
+        const { is_paid: _p, customer_name: _n, customer_phone: _ph, ...rest } = patch;
+        if (Object.keys(rest).length) {
+          await supabase.from('orders').update(rest).eq('id', id);
+        }
       }
     }
   }
+
+  const start_drink = useCallback(
+    (order_id: string, drink_key: string, _prep_minutes: number) => {
+      update_prep(order_id, drink_key, { started_at: Date.now(), done: false });
+      void patch_order(order_id, { status: 'preparing' }).then(() => load());
+    },
+    [update_prep, load]
+  );
+
+  const mark_drink_done = useCallback(
+    (order_id: string, drink_key: string) => {
+      update_prep(order_id, drink_key, { done: true });
+    },
+    [update_prep]
+  );
 
   async function complete_payment(payment_method: 'cash' | 'card', amount_received?: number) {
     if (!paying) return;
@@ -390,8 +550,11 @@ export default function seller_board() {
 
   async function hand_out(o: order) {
     if (!confirm('точно выдали заказ?')) return;
-    const next_status = o.status === 'ready' ? 'completed' : 'ready';
-    await patch_order(o.id, { status: next_status });
+    if (o.status === 'ready') {
+      await patch_order(o.id, { status: 'completed' });
+    } else {
+      await patch_order(o.id, { status: 'ready' });
+    }
     await load();
   }
 
@@ -402,8 +565,12 @@ export default function seller_board() {
     lines_by_order.set(line.order_id, list);
   }
 
-  const in_work = orders.filter((o) => o.status === 'new' || o.status === 'preparing');
-  const ready = orders.filter((o) => o.status === 'ready');
+  const in_work = orders
+    .filter((o) => o.status === 'new' || o.status === 'preparing')
+    .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+  const ready = orders
+    .filter((o) => o.status === 'ready')
+    .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
 
   return (
     <div className="min-h-screen bg-[#f0f1f4]">
@@ -428,11 +595,9 @@ export default function seller_board() {
           <div className="flex items-center justify-between gap-3">
             <div className="min-w-0">
               <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-accent">
-                {BRAND_NAME}
+                {SQUAD_NAME}
               </p>
-              <h1 className="text-xl font-bold text-neutral-900">
-                бариста {seller_name}
-              </h1>
+              <h1 className="text-xl font-bold text-neutral-900">бариста {seller_name}</h1>
               <p className="text-xs text-neutral-500 truncate">
                 {shift ? shift.address : 'смена не открыта'}
               </p>
@@ -485,7 +650,11 @@ export default function seller_board() {
                       key: o.id,
                       order: o,
                       lines: lines_by_order.get(o.id) ?? [],
+                      is_new: fresh_ids.has(o.id),
+                      prep: prep_map[o.id] || {},
                       on_pay: set_paying,
+                      on_start_drink: start_drink,
+                      on_mark_drink_done: mark_drink_done,
                       on_hand_out: hand_out,
                     })
                   )}
@@ -508,7 +677,11 @@ export default function seller_board() {
                       key: o.id,
                       order: o,
                       lines: lines_by_order.get(o.id) ?? [],
+                      is_new: false,
+                      prep: prep_map[o.id] || {},
                       on_pay: set_paying,
+                      on_start_drink: start_drink,
+                      on_mark_drink_done: mark_drink_done,
                       on_hand_out: hand_out,
                     })
                   )}

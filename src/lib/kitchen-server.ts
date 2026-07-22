@@ -53,11 +53,10 @@ export async function load_active_orders(): Promise<order[]> {
       .order('pickup_time', { ascending: true });
 
     const rows = (data as order[]) || [];
-    const need_profile = rows.filter((o) => !o.customer_name || !o.customer_phone);
     const profile_map = new Map<string, { name?: string | null; phone?: string | null }>();
+    const ids = [...new Set(rows.map((o) => o.user_id).filter(Boolean))];
 
-    if (need_profile.length) {
-      const ids = [...new Set(need_profile.map((o) => o.user_id))];
+    if (ids.length) {
       const { data: profiles } = await supabase
         .from('profiles')
         .select('id, name, phone')
@@ -74,12 +73,13 @@ export async function load_active_orders(): Promise<order[]> {
       merged.push({
         ...o,
         is_paid: Boolean(o.is_paid),
-        customer_name: o.customer_name || profile?.name || 'гость',
+        customer_name: (o.customer_name || profile?.name || '').trim() || 'гость',
         customer_phone: o.customer_phone || profile?.phone || null,
       });
     }
   }
 
+  // для кухни — по времени выдачи; доска бариста пересортирует «новые сверху»
   return merged.sort(
     (a, b) => new Date(a.pickup_time).getTime() - new Date(b.pickup_time).getTime()
   );
