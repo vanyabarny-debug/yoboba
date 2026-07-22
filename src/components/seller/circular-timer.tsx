@@ -5,6 +5,8 @@ type props = {
   progress: number;
   label: string;
   sublabel?: string;
+  /** caps — мелкий uppercase; plain — обычный текст (таймер) */
+  sublabel_style?: 'caps' | 'plain';
   urgent?: boolean;
   active?: boolean;
   disabled?: boolean;
@@ -13,6 +15,8 @@ type props = {
   compact?: boolean;
   /** заполняет родителя (aspect-square контейнер) */
   fill?: boolean;
+  /** крупная цифра (номер заказа) */
+  hero?: boolean;
   on_click: () => void;
 };
 
@@ -53,12 +57,14 @@ export default function circular_timer({
   progress,
   label,
   sublabel,
+  sublabel_style = 'caps',
   urgent = false,
   active = false,
   disabled = false,
   tone = 'idle',
   compact = false,
   fill = false,
+  hero = false,
   on_click,
 }: props) {
   const size = fill ? 100 : compact ? 88 : 160;
@@ -68,6 +74,37 @@ export default function circular_timer({
   const clamped = Math.max(0, Math.min(1, progress));
   const offset = c * (1 - clamped);
   const colors = tones[tone];
+
+  const label_class = hero
+    ? fill
+      ? 'text-[clamp(1.35rem,12cqw,2.35rem)] font-bold tabular-nums leading-none tracking-tight'
+      : 'text-2xl font-bold tabular-nums leading-none'
+    : fill
+      ? label.length > 10
+        ? 'text-[clamp(0.7rem,4.5cqw,1.15rem)] font-semibold leading-tight'
+        : label.length > 6
+          ? 'text-[clamp(0.85rem,5.5cqw,1.35rem)] font-semibold leading-tight'
+          : 'text-[clamp(1rem,7cqw,1.65rem)] font-semibold leading-tight'
+      : compact
+        ? label.length > 10
+          ? 'text-[11px] font-semibold leading-tight'
+          : label.length > 6
+            ? 'text-sm font-semibold leading-tight'
+            : 'text-base font-semibold leading-tight'
+        : label.length > 10
+          ? 'text-sm font-semibold leading-tight'
+          : label.length > 6
+            ? 'text-lg font-semibold leading-tight'
+            : 'text-xl font-semibold leading-tight';
+
+  const sub_class =
+    sublabel_style === 'plain'
+      ? fill
+        ? 'mt-1 text-[clamp(0.7rem,4.2cqw,1rem)] font-semibold tabular-nums leading-none'
+        : 'mt-0.5 text-sm font-semibold tabular-nums leading-none'
+      : fill
+        ? 'mt-0.5 text-[clamp(0.55rem,3cqw,0.7rem)] font-medium uppercase tracking-wide opacity-55'
+        : 'mt-0.5 text-[9px] font-medium uppercase tracking-wide opacity-55';
 
   return (
     <button
@@ -116,37 +153,14 @@ export default function circular_timer({
         }`}
       >
         {label ? (
-          <span
-            className={`font-semibold leading-tight ${
-              fill
-                ? label.length > 10
-                  ? 'text-[clamp(0.7rem,4.5cqw,1.15rem)]'
-                  : label.length > 6
-                    ? 'text-[clamp(0.85rem,5.5cqw,1.35rem)]'
-                    : 'text-[clamp(1rem,7cqw,1.65rem)]'
-                : compact
-                  ? label.length > 10
-                    ? 'text-[11px]'
-                    : label.length > 6
-                      ? 'text-sm'
-                      : 'text-base'
-                  : label.length > 10
-                    ? 'text-sm'
-                    : label.length > 6
-                      ? 'text-lg'
-                      : 'text-xl'
-            }`}
-            style={{ color: colors.text }}
-          >
+          <span className={label_class} style={{ color: colors.text }}>
             {label}
           </span>
         ) : null}
         {sublabel ? (
           <span
-            className={`mt-0.5 font-medium uppercase tracking-wide opacity-55 ${
-              fill ? 'text-[clamp(0.55rem,3cqw,0.7rem)]' : 'text-[9px]'
-            }`}
-            style={{ color: colors.text }}
+            className={sub_class}
+            style={{ color: colors.text, opacity: sublabel_style === 'plain' ? 0.72 : undefined }}
           >
             {sublabel}
           </span>

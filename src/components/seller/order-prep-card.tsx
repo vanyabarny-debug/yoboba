@@ -56,6 +56,32 @@ function customer_label(o: order) {
   return (o.customer_name || '').trim() || 'гость';
 }
 
+function info_button({
+  open,
+  on_toggle,
+  color,
+}: {
+  open: boolean;
+  on_toggle: () => void;
+  color: string;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={(e) => {
+        e.stopPropagation();
+        on_toggle();
+      }}
+      className="absolute right-1.5 top-1.5 z-20 flex h-7 w-7 items-center justify-center rounded-full bg-white/70 text-[11px] font-bold leading-none backdrop-blur-sm active:scale-95"
+      style={{ color }}
+      aria-label={open ? 'скрыть детали' : 'детали заказа'}
+      aria-pressed={open}
+    >
+      {open ? '×' : 'i'}
+    </button>
+  );
+}
+
 export default function order_prep_card({
   order: o,
   drinks,
@@ -68,20 +94,19 @@ export default function order_prep_card({
   on_final_action,
 }: props) {
   const [now, set_now] = useState(Date.now());
+  const [show_info, set_show_info] = useState(false);
   const warned_sec = useRef<number | null>(null);
   const alarmed_for = useRef<string | null>(null);
   const paid = Boolean(o.is_paid);
   const phone = (o.customer_phone || '').trim();
   const tint = color_for_id(o.id);
+  const order_no = format_order_number(o);
 
   const done_count = drinks.filter((d) => prep[d.key]?.done).length;
   const all_done = drinks.length > 0 && done_count === drinks.length;
   const current = drinks.find((d) => !prep[d.key]?.done) || null;
   const current_st = current ? prep[current.key] : null;
   const cooking = Boolean(current && current_st?.started_at && !current_st.done);
-  const current_index = current
-    ? drinks.findIndex((d) => d.key === current.key) + 1
-    : drinks.length;
 
   useEffect(() => {
     const id = setInterval(() => set_now(Date.now()), 250);
@@ -117,6 +142,10 @@ export default function order_prep_card({
   useEffect(() => {
     warned_sec.current = null;
   }, [current?.key]);
+
+  useEffect(() => {
+    set_show_info(false);
+  }, [o.id, mode]);
 
   const expected_ms = current ? current.prep_minutes * 60_000 : 0;
   const ends_at =
@@ -160,152 +189,136 @@ export default function order_prep_card({
   }
 
   let tone: 'idle' | 'cooking' | 'ready' | 'pay' | 'handout' | 'done' = 'idle';
-  let label = 'начать';
-  let sublabel = drinks.length > 1 ? `1 из ${drinks.length}` : undefined;
+  let sublabel: string | undefined;
+  let sublabel_style: 'caps' | 'plain' = 'caps';
 
   if (mode === 'done') {
     tone = 'done';
-    label = 'выдан';
-    sublabel = undefined;
   } else if (mode === 'ready' && !all_done) {
     tone = 'ready';
-    label = `${done_count}/${drinks.length}`;
-    sublabel = 'собирается';
+    sublabel = `${done_count}/${drinks.length}`;
+    sublabel_style = 'plain';
   } else if (mode === 'ready' || all_done) {
     if (paid) {
       tone = 'handout';
-      label = 'выдать';
+      sublabel = 'выдать';
     } else {
       tone = 'pay';
-      label = 'оплатить';
+      sublabel = 'оплатить';
     }
-    sublabel = undefined;
   } else if (cooking) {
     tone = urgent ? 'ready' : 'cooking';
-    label = format_countdown_ms(left);
-    sublabel = 'готово';
+    sublabel = format_countdown_ms(left);
+    sublabel_style = 'plain';
   } else if (current) {
     tone = 'idle';
-    label = 'начать';
-    sublabel = `${current_index} из ${drinks.length}`;
   }
-
-  const show_done_list = mode === 'ready' || mode === 'done';
-  const list_drinks = show_done_list
-    ? drinks.filter((d) => prep[d.key]?.done)
-    : drinks;
 
   const ring_progress =
     mode === 'ready' && !all_done
       ? done_count / Math.max(drinks.length, 1)
-      : mode === 'ready' || all_done
+      : mode === 'ready' || all_done || mode === 'done'
         ? 1
         : cooking
           ? progress
           : 1;
 
+  const under_label =
+    mode === 'work' && current && !all_done
+      ? current.name
+      : mode === 'ready' && all_done
+        ? paid
+          ? 'к выдаче'
+          : 'к оплате'
+        : mode === 'done'
+          ? 'выдан'
+          : null;
+
   return (
     <article
-      className={`flex h-full min-h-0 flex-col overflow-hidden rounded-2xl border px-2 py-2 transition ${
+      className={`relative flex h-full min-h-0 flex-col overflow-hidden rounded-2xl border transition ${
         is_new ? 'seller-order-new ring-2 ring-accent/40' : ''
       } ${mode === 'done' ? 'opacity-80' : ''}`}
       style={{
         backgroundColor: tint.bg,
         borderColor: is_new ? undefined : tint.border,
         color: tint.fg,
+        containerType: 'size',
       }}
     >
-      <div className="flex items-start justify-between gap-1 shrink-0">
-        <div className="min-w-0">
-          <p className="text-[9px] font-medium opacity-70">
-            № {format_order_number(o)}
-            {is_new ? (
-              <span className="ml-1 rounded bg-accent px-1 py-0.5 text-[8px] font-bold uppercase tracking-wide text-white">
-                новый
-              </span>
-            ) : null}
-          </p>
-          <p className="text-xs font-bold truncate mt-0.5">{customer_label(o)}</p>
-          <p className="text-[9px] tabular-nums opacity-70 mt-0.5 truncate">
-            {phone ? format_phone_display(phone) : 'без тел.'}
-          </p>
-          <p className="text-[9px] mt-0.5 font-medium opacity-80">
-            {paid ? 'оплачен' : 'не оплачен'}
-          </p>
-        </div>
-        <div className="text-right shrink-0">
-          <p className="text-sm font-bold tabular-nums leading-none">
-            {pickup_label(o.pickup_time)}
-          </p>
-          <p className="text-[8px] opacity-60 mt-0.5">выдача</p>
-        </div>
-      </div>
+      {createElement(info_button, {
+        open: show_info,
+        on_toggle: () => set_show_info((v) => !v),
+        color: tint.fg,
+      })}
 
-      {mode !== 'done' && (
-        <div className="mt-1.5 mb-1 min-h-0 flex-1 flex flex-col items-center justify-center">
+      {show_info ? (
+        <div
+          className="absolute inset-0 z-10 flex flex-col overflow-hidden px-3 py-3 pt-9 text-left backdrop-blur-[2px]"
+          style={{ backgroundColor: `${tint.bg}f5` }}
+        >
+          <div className="min-h-0 flex-1 overflow-y-auto">
+            <p className="text-[10px] font-bold uppercase tracking-wide opacity-55">
+              № {order_no}
+              {is_new ? ' · новый' : ''}
+            </p>
+            <p className="mt-1 text-[clamp(0.85rem,3.8cqw,1.1rem)] font-bold leading-tight">
+              {customer_label(o)}
+            </p>
+            <p className="mt-0.5 text-[clamp(0.65rem,2.6cqw,0.8rem)] tabular-nums opacity-80">
+              {phone ? format_phone_display(phone) : 'без телефона'}
+            </p>
+            <p className="mt-1 text-[10px] opacity-70">
+              выдача {pickup_label(o.pickup_time)} · {paid ? 'оплачен' : 'не оплачен'}
+            </p>
+            <ul className="mt-2.5 space-y-1">
+              {drinks.map((d) => {
+                const st = prep[d.key];
+                const is_current = current?.key === d.key && mode === 'work';
+                const is_flying = flying_key === d.key;
+                return (
+                  <li
+                    key={d.key}
+                    className={`flex items-center justify-between gap-1 rounded-lg px-1.5 py-1 text-[clamp(0.65rem,2.5cqw,0.78rem)] ${
+                      is_flying ? 'bg-white/50' : is_current ? 'bg-white/40 font-semibold' : 'bg-white/25'
+                    }`}
+                  >
+                    <span className={`truncate ${st?.done ? 'line-through opacity-50' : ''}`}>
+                      {d.name}
+                    </span>
+                    <span className="shrink-0 text-[9px] font-medium uppercase tracking-wide opacity-55">
+                      {st?.done ? 'ok' : is_current && cooking ? 'сейчас' : '…'}
+                    </span>
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
+        </div>
+      ) : null}
+
+      <div className="flex min-h-0 flex-1 flex-col items-center justify-center px-2 pb-2 pt-3">
+        <div className="aspect-square h-[min(100%,78%)] max-w-full">
           {createElement(circular_timer, {
             progress: ring_progress,
-            label,
+            label: order_no,
             sublabel,
+            sublabel_style,
             urgent,
             active: cooking,
             tone,
-            compact: true,
-            disabled: mode === 'ready' && !all_done,
+            fill: true,
+            hero: true,
+            disabled: mode === 'done' || (mode === 'ready' && !all_done),
             on_click: handle_circle,
           })}
-          {mode === 'work' && current && !all_done ? (
-            <p className="mt-1 text-center text-[10px] font-semibold line-clamp-1 opacity-90">
-              {current.name}
-            </p>
-          ) : null}
         </div>
-      )}
-
-      {mode === 'done' && (
-        <div className="mt-1 mb-1 min-h-0 flex-1 flex justify-center items-center">
-          {createElement(circular_timer, {
-            progress: 1,
-            label: 'выдан',
-            tone: 'done',
-            compact: true,
-            disabled: true,
-            on_click: () => {},
-          })}
-        </div>
-      )}
-
-      <ul className="mt-auto space-y-0.5 shrink-0 max-h-[28%] overflow-hidden">
-        {list_drinks.slice(0, 3).map((d) => {
-          const st = prep[d.key];
-          const is_current = current?.key === d.key && mode === 'work';
-          const is_flying = flying_key === d.key;
-          return (
-            <li
-              key={d.key}
-              className={`flex items-center justify-between gap-1 rounded-lg px-1 py-0.5 text-[10px] transition ${
-                is_flying ? 'bg-white/50' : ''
-              } ${is_current ? 'bg-white/40 font-semibold' : 'opacity-75'}`}
-            >
-              <span className={`truncate ${st?.done ? 'line-through opacity-50' : ''}`}>
-                {d.name}
-              </span>
-              <span className="shrink-0 text-[8px] font-medium uppercase tracking-wide opacity-60">
-                {st?.done ? 'ok' : is_current && cooking ? 'сейчас' : '…'}
-              </span>
-            </li>
-          );
-        })}
-        {list_drinks.length > 3 ? (
-          <li className="text-[9px] opacity-60 text-center">+{list_drinks.length - 3}</li>
+        {under_label ? (
+          <p className="mt-1.5 max-w-[92%] truncate text-center text-[clamp(0.65rem,2.8cqw,0.82rem)] font-semibold leading-snug opacity-90">
+            {under_label}
+          </p>
         ) : null}
-      </ul>
-
-      {mode === 'work' && done_count > 0 && !all_done ? (
-        <p className="mt-1 text-center text-[9px] opacity-70 shrink-0">
-          {done_count}/{drinks.length}
-        </p>
-      ) : null}
+      </div>
     </article>
   );
 }
