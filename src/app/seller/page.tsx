@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState, createElement, type ReactNode, type TouchEvent } from 'react';
+import { useCallback, useEffect, useRef, useState, createElement, type ReactNode } from 'react';
 import { create_client } from '@/lib/supabase/client';
 import { is_supabase_configured } from '@/lib/supabase/config';
 import { get_demo_user, clear_session } from '@/lib/demo-auth';
@@ -15,6 +15,7 @@ import {
   play_timer_alarm,
 } from '@/lib/order-chime';
 import { get_active_spots, get_spots } from '@/lib/spot-store';
+import { use_page_swipe } from '@/lib/use-page-swipe';
 import type { cash_transaction, order, store_spot } from '@/lib/types';
 import cash_register_modal from '@/components/seller/cash-register-modal';
 import barista_analytics_panel from '@/components/seller/barista-analytics';
@@ -33,7 +34,8 @@ import {
 } from '@/lib/seller-day-tasks';
 import { board_tile_grid } from '@/lib/seller-tile-grid';
 
-type tab = 'work' | 'ready' | 'pos' | 'analytics';
+const tab_order = ['work', 'ready', 'pos', 'analytics'] as const;
+type tab = (typeof tab_order)[number];
 
 type schedule_line = {
   order_id: string;
@@ -273,36 +275,29 @@ export default function seller_board() {
   const [day_tasks, set_day_tasks] = useState<day_task[]>([]);
   const [fresh_ids, set_fresh_ids] = useState<Set<string>>(new Set());
   const [unread_new, set_unread_new] = useState(0);
+  const [pos_depth, set_pos_depth] = useState(false);
   const known_ids = useRef<Set<string> | null>(null);
   const pending_blink_ref = useRef<Set<string>>(new Set());
   const seller_ref = useRef({ id: '', name: 'бариста' });
   const schedule_ref = useRef<schedule_line[]>([]);
   const alarm_timer = useRef<number | null>(null);
   const tab_ref = useRef(tab);
-  const swipe_x = useRef<number | null>(null);
-  const tab_order: tab[] = ['work', 'ready', 'pos', 'analytics'];
+  const tab_index = tab_order.indexOf(tab);
+
+  const { viewport_ref, page_style } = use_page_swipe({
+    index: Math.max(0, tab_index),
+    count: tab_order.length,
+    enabled: !paying && !need_shift && !(tab === 'pos' && pos_depth),
+    on_index: (next) => set_tab(tab_order[next] ?? 'work'),
+  });
 
   useEffect(() => {
     tab_ref.current = tab;
   }, [tab]);
 
-  function on_board_touch_start(e: TouchEvent) {
-    swipe_x.current = e.changedTouches[0]?.clientX ?? null;
-  }
-
-  function on_board_touch_end(e: TouchEvent) {
-    const start = swipe_x.current;
-    swipe_x.current = null;
-    if (start == null) return;
-    const end = e.changedTouches[0]?.clientX;
-    if (end == null) return;
-    const dx = end - start;
-    if (Math.abs(dx) < 80) return;
-    const idx = tab_order.indexOf(tab);
-    if (idx < 0) return;
-    if (dx < 0 && idx < tab_order.length - 1) set_tab(tab_order[idx + 1]);
-    if (dx > 0 && idx > 0) set_tab(tab_order[idx - 1]);
-  }
+  useEffect(() => {
+    if (tab !== 'pos') set_pos_depth(false);
+  }, [tab]);
 
   function stop_order_alarm() {
     if (alarm_timer.current != null) {
@@ -1151,42 +1146,49 @@ export default function seller_board() {
         </div>
       </header>
 
-      <main
-        className={`flex-1 min-h-0 w-full overflow-hidden touch-pan-y ${
-          tab === 'analytics'
-            ? 'max-w-3xl mx-auto px-4 py-4 overflow-y-auto'
-            : 'px-2 py-2 flex flex-col'
-        }`}
-        onTouchStart={on_board_touch_start}
-        onTouchEnd={on_board_touch_end}
-      >
-        {tab === 'work' ? render_work_list() : null}
-        {tab === 'ready' ? render_handed_list() : null}
-
-        {tab === 'pos'
-          ? createElement(pos_panel, {
-              on_created: () => {
-                set_tab('work');
-                void load();
-              },
-              seller_id,
-              seller_name,
-              shift_id: shift?.id || null,
-              shift_date: shift?.shift_date,
-              spot_id: shift?.spot_id || null,
-              spot_address: shift?.address || null,
-            })
-          : null}
-
-        {tab === 'analytics'
-          ? createElement(barista_analytics_panel, {
-              seller_id,
-              seller_name,
-              spot_id: shift?.spot_id,
-              shift_id: shift?.id,
-              shift_date: shift?.shift_date,
-            })
-          : null}
+      <main ref={viewport_ref} className="relative flex-1 min-h-0 w-full overflow-hidden touch-pan-y">
+        <div
+          className="absolute inset-0 px-2 py-2 flex flex-col overflow-hidden"
+          style={page_style(0)}
+        >
+          {render_work_list()}
+        </div>
+        <div
+          className="absolute inset-0 px-2 py-2 flex flex-col overflow-hidden"
+          style={page_style(1)}
+        >
+          {render_handed_list()}
+        </div>
+        <div
+          className="absolute inset-0 px-2 py-2 flex flex-col overflow-hidden"
+          style={page_style(2)}
+        >
+          {createElement(pos_panel, {
+            on_created: () => {
+              set_tab('work');
+              void load();
+            },
+            on_nav_depth: set_pos_depth,
+            seller_id,
+            seller_name,
+            shift_id: shift?.id || null,
+            shift_date: shift?.shift_date,
+            spot_id: shift?.spot_id || null,
+            spot_address: shift?.address || null,
+          })}
+        </div>
+        <div
+          className="absolute inset-0 max-w-3xl mx-auto px-4 py-4 overflow-y-auto"
+          style={page_style(3)}
+        >
+          {createElement(barista_analytics_panel, {
+            seller_id,
+            seller_name,
+            spot_id: shift?.spot_id,
+            shift_id: shift?.id,
+            shift_date: shift?.shift_date,
+          })}
+        </div>
       </main>
 
       {createElement(cash_register_modal, {

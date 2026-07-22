@@ -1,6 +1,6 @@
 'use client';
 
-import { createElement, useEffect, useMemo, useRef, useState, type TouchEvent } from 'react';
+import { createElement, useEffect, useMemo, useState } from 'react';
 import {
   default_categories,
   get_menu_store,
@@ -11,6 +11,7 @@ import { format_phone_input, phone_input_to_e164 } from '@/lib/phone';
 import { category_tile_meta } from '@/lib/category-icons';
 import { get_topping_portion_price_value } from '@/lib/product-details';
 import { tile_grid } from '@/lib/seller-tile-grid';
+import { use_page_swipe } from '@/lib/use-page-swipe';
 import type { menu_item, order_item } from '@/lib/types';
 import menu_image from '@/components/menu-image';
 import seller_product_sheet from '@/components/seller/seller-product-sheet';
@@ -22,6 +23,7 @@ type cart_line = order_item & {
 
 type props = {
   on_created: () => void;
+  on_nav_depth?: (in_products: boolean) => void;
   seller_id?: string;
   seller_name?: string;
   shift_id?: string | null;
@@ -77,6 +79,7 @@ function cart_bar({
 
 export default function pos_panel({
   on_created,
+  on_nav_depth,
   seller_id = 'seller',
   seller_name = 'бариста',
   shift_id = null,
@@ -98,7 +101,10 @@ export default function pos_panel({
   const [confirm_open, set_confirm_open] = useState(false);
   const [selected, set_selected] = useState<menu_item | null>(null);
   const [sheet_open, set_sheet_open] = useState(false);
-  const swipe_x = useRef<number | null>(null);
+
+  useEffect(() => {
+    on_nav_depth?.(step === 'products');
+  }, [step, on_nav_depth]);
 
   useEffect(() => {
     function sync() {
@@ -152,6 +158,22 @@ export default function pos_panel({
     return items.filter((i) => i.category === category);
   }, [items, category]);
 
+  const category_index = Math.max(0, categories.indexOf(category));
+
+  const { viewport_ref, page_style } = use_page_swipe({
+    index: category_index,
+    count: Math.max(1, categories.length),
+    enabled: step === 'products' && !sheet_open && !confirm_open,
+    on_index: (next) => {
+      const c = categories[next];
+      if (c) set_category(c);
+    },
+    on_edge_back: () => {
+      set_step('categories');
+      set_category('');
+    },
+  });
+
   const total = cart.reduce((s, i) => s + i.price * i.quantity, 0);
   const count = cart.reduce((s, i) => s + i.quantity, 0);
 
@@ -163,24 +185,6 @@ export default function pos_panel({
   function back_to_categories() {
     set_step('categories');
     set_category('');
-  }
-
-  function on_products_touch_start(e: TouchEvent) {
-    const t = e.changedTouches[0];
-    swipe_x.current = t ? t.clientX : null;
-  }
-
-  function on_products_touch_end(e: TouchEvent) {
-    const start = swipe_x.current;
-    swipe_x.current = null;
-    if (start == null) return;
-    const end = e.changedTouches[0]?.clientX;
-    if (end == null) return;
-    // назад к категориям — только свайп от левого края
-    if (start <= 56 && end - start > 64) {
-      e.stopPropagation();
-      back_to_categories();
-    }
   }
 
   function open_item(item: menu_item) {
@@ -490,59 +494,76 @@ export default function pos_panel({
 
   const { cols: prod_cols, rows: prod_rows } = tile_grid(filtered.length || 1);
 
-  return (
-    <div
-      className="flex flex-col flex-1 min-h-0 h-full gap-2 overflow-hidden touch-pan-y"
-      onTouchStart={on_products_touch_start}
-      onTouchEnd={on_products_touch_end}
-    >
-      <div className="flex items-center gap-2 shrink-0">
-        <button
-          type="button"
-          onClick={back_to_categories}
-          className="rounded-lg border border-neutral-200 bg-white px-2.5 py-1.5 text-xs text-neutral-700"
+  function render_product_grid(cat: string, page_index: number) {
+    const list = items.filter((i) => i.category === cat);
+    const { cols, rows } = tile_grid(list.length || 1);
+    const is_current = page_index === category_index;
+    return (
+      <div key={cat} className="flex h-full min-h-0 flex-col gap-2" style={page_style(page_index)}>
+        <div className="flex items-center gap-2 shrink-0 px-0.5">
+          {is_current ? (
+            <button
+              type="button"
+              onClick={back_to_categories}
+              className="rounded-lg border border-neutral-200 bg-white px-2.5 py-1.5 text-xs text-neutral-700"
+            >
+              ←
+            </button>
+          ) : (
+            <span className="w-9" />
+          )}
+          <h2 className="min-w-0 text-sm font-bold text-neutral-900 capitalize truncate">{cat}</h2>
+          <span className="ml-auto text-[10px] tabular-nums text-neutral-400">
+            {page_index + 1}/{categories.length}
+          </span>
+        </div>
+        <div
+          className="grid flex-1 min-h-0 gap-2 overflow-hidden"
+          style={{
+            gridTemplateColumns: `repeat(${is_current ? prod_cols : cols}, minmax(0, 1fr))`,
+            gridTemplateRows: `repeat(${is_current ? prod_rows : rows}, minmax(0, 1fr))`,
+          }}
         >
-          ←
-        </button>
-        <h2 className="min-w-0 text-sm font-bold text-neutral-900 capitalize truncate">
-          {category}
-        </h2>
+          {list.map((item) => (
+            <button
+              key={item.id}
+              type="button"
+              onClick={() => open_item(item)}
+              className="grid h-full min-h-0 grid-rows-[minmax(0,1fr)_auto_auto] gap-1 rounded-2xl border border-neutral-200 bg-white p-2 text-left active:scale-[0.98] transition overflow-hidden"
+            >
+              <div className="relative h-full min-h-[3.5rem] w-full overflow-hidden rounded-xl bg-neutral-100">
+                {createElement(menu_image, {
+                  item,
+                  className: 'h-full w-full',
+                  variant: 'fill',
+                })}
+              </div>
+              <p className="text-xs sm:text-sm font-semibold text-neutral-900 leading-snug line-clamp-2 text-center">
+                {item.name}
+              </p>
+              <p className="text-sm font-bold tabular-nums text-neutral-900 text-center">
+                {item.price} ₽
+              </p>
+            </button>
+          ))}
+          {list.length === 0 ? (
+            <p className="col-span-full self-center text-sm text-neutral-400 text-center">
+              в разделе пока пусто
+            </p>
+          ) : null}
+        </div>
       </div>
+    );
+  }
 
-      <div
-        className="grid flex-1 min-h-0 gap-2 overflow-hidden"
-        style={{
-          gridTemplateColumns: `repeat(${prod_cols}, minmax(0, 1fr))`,
-          gridTemplateRows: `repeat(${prod_rows}, minmax(0, 1fr))`,
-        }}
-      >
-        {filtered.map((item) => (
-          <button
-            key={item.id}
-            type="button"
-            onClick={() => open_item(item)}
-            className="grid h-full min-h-0 grid-rows-[minmax(0,1fr)_auto_auto] gap-1 rounded-2xl border border-neutral-200 bg-white p-2 text-left active:scale-[0.98] transition overflow-hidden"
-          >
-            <div className="relative h-full min-h-[3.5rem] w-full overflow-hidden rounded-xl bg-neutral-100">
-              {createElement(menu_image, {
-                item,
-                className: 'h-full w-full',
-                variant: 'fill',
-              })}
-            </div>
-            <p className="text-xs sm:text-sm font-semibold text-neutral-900 leading-snug line-clamp-2 text-center">
-              {item.name}
-            </p>
-            <p className="text-sm font-bold tabular-nums text-neutral-900 text-center">
-              {item.price} ₽
-            </p>
-          </button>
-        ))}
-        {filtered.length === 0 ? (
-          <p className="col-span-full self-center text-sm text-neutral-400 text-center">
-            в разделе пока пусто
-          </p>
-        ) : null}
+  const page_indexes = [category_index - 1, category_index, category_index + 1].filter(
+    (i) => i >= 0 && i < categories.length
+  );
+
+  return (
+    <div className="flex flex-col flex-1 min-h-0 h-full gap-2 overflow-hidden">
+      <div ref={viewport_ref} className="relative flex-1 min-h-0 overflow-hidden touch-pan-y">
+        {page_indexes.map((i) => render_product_grid(categories[i], i))}
       </div>
 
       {createElement(cart_bar, {
