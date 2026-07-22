@@ -1,6 +1,5 @@
 'use client';
 
-import { SQUAD_NAME } from '@/lib/brand';
 import { useCallback, useEffect, useRef, useState, createElement } from 'react';
 import { create_client } from '@/lib/supabase/client';
 import { is_supabase_configured } from '@/lib/supabase/config';
@@ -825,7 +824,7 @@ export default function seller_board() {
   }
 
   return (
-    <div className="min-h-screen bg-[#f0f1f4]">
+    <div className="min-h-[100dvh] bg-[#f0f1f4] flex flex-col">
       {need_shift &&
         createElement(shift_picker, {
           spots: shift_spots,
@@ -842,17 +841,16 @@ export default function seller_board() {
           },
         })}
 
-      <header className="sticky mobile-sticky-top z-20 border-b border-white/60 bg-white/80 backdrop-blur-xl">
-        <div className="max-w-3xl mx-auto px-4 py-4">
-          <div className="flex items-center justify-between gap-3">
-            <div className="min-w-0">
-              <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-accent">
-                {SQUAD_NAME}
-              </p>
-              <h1 className="text-xl font-bold text-neutral-900">бариста {seller_name}</h1>
-              <p className="text-xs text-neutral-500 truncate">
-                {shift ? shift.address : 'смена не открыта'}
-              </p>
+      <header className="sticky mobile-sticky-top z-20 shrink-0 border-b border-neutral-200/80 bg-white/90 backdrop-blur-xl">
+        <div className="w-full px-2.5 pt-1.5 pb-1.5">
+          <div className="flex items-center justify-between gap-2">
+            <div className="min-w-0 flex items-baseline gap-1.5">
+              <h1 className="text-sm font-bold text-neutral-900 truncate">
+                {seller_name}
+              </h1>
+              <span className="text-[10px] text-neutral-400 truncate">
+                {shift ? shift.address : 'смена закрыта'}
+              </span>
             </div>
             <button
               type="button"
@@ -861,26 +859,26 @@ export default function seller_board() {
                 await clear_session();
                 router.push('/admin/login');
               }}
-              className="rounded-xl border border-neutral-200 bg-white px-3 py-2 text-xs text-neutral-600"
+              className="shrink-0 rounded-lg px-2 py-1 text-[10px] font-medium text-neutral-500"
             >
               выйти
             </button>
           </div>
 
-          <div className="mt-4 grid grid-cols-4 gap-1 rounded-2xl bg-surface p-1">
+          <div className="mt-1.5 grid grid-cols-4 gap-0.5 rounded-xl bg-surface p-0.5">
             {tabs.map((t) => (
               <button
                 key={t.id}
                 type="button"
                 onClick={() => set_tab(t.id)}
-                className={`rounded-xl py-2.5 text-xs sm:text-sm font-medium transition ${
+                className={`rounded-lg py-1.5 text-[11px] font-medium transition ${
                   tab === t.id ? 'bg-white text-neutral-900 shadow-sm' : 'text-neutral-500'
                 }`}
               >
                 {t.label}
                 {t.id === 'work' && (unread_new > 0 || in_work.length > 0) ? (
                   <span
-                    className={`ml-1 inline-flex min-w-[1.25rem] justify-center rounded-full px-1.5 text-[10px] font-bold tabular-nums ${
+                    className={`ml-0.5 inline-flex min-w-[1rem] justify-center rounded-full px-1 text-[9px] font-bold tabular-nums ${
                       unread_new > 0
                         ? 'bg-accent text-white animate-pulse'
                         : 'bg-neutral-200 text-neutral-600'
@@ -890,7 +888,7 @@ export default function seller_board() {
                   </span>
                 ) : null}
                 {t.id === 'ready' && handed_out.length ? (
-                  <span className="ml-1 text-[10px] text-neutral-400">· {handed_out.length}</span>
+                  <span className="ml-0.5 text-[9px] text-neutral-400">{handed_out.length}</span>
                 ) : null}
               </button>
             ))}
@@ -898,7 +896,11 @@ export default function seller_board() {
         </div>
       </header>
 
-      <main className="max-w-3xl mx-auto px-4 py-5">
+      <main
+        className={`flex-1 min-h-0 w-full ${
+          tab === 'pos' ? 'px-2 py-2 flex flex-col' : 'max-w-3xl mx-auto px-4 py-4'
+        }`}
+      >
         {tab === 'work' ? render_work_list() : null}
         {tab === 'ready' ? render_handed_list() : null}
 

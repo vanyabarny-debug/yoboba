@@ -49,17 +49,17 @@ function cart_bar({
 }) {
   if (count === 0) return null;
   return (
-    <div className="sticky bottom-3 z-20 rounded-3xl border border-neutral-200 bg-white/95 backdrop-blur-xl p-4 shadow-[0_8px_24px_rgba(0,0,0,0.08)]">
-      <div className="flex items-center justify-between gap-3 mb-3">
+    <div className="shrink-0 rounded-2xl border border-neutral-200 bg-white/95 backdrop-blur-xl p-3 shadow-[0_8px_24px_rgba(0,0,0,0.08)]">
+      <div className="flex items-center justify-between gap-3 mb-2">
         <p className="text-sm text-neutral-600">
-          <span className="font-semibold text-neutral-900">{count}</span> поз. в заказе
+          <span className="font-semibold text-neutral-900">{count}</span> поз.
         </p>
-        <p className="text-lg font-bold tabular-nums text-neutral-900">{total} ₽</p>
+        <p className="text-base font-bold tabular-nums text-neutral-900">{total} ₽</p>
       </div>
       <button
         type="button"
         onClick={on_work}
-        className="w-full rounded-2xl bg-neutral-900 py-3.5 text-sm font-semibold text-white"
+        className="w-full rounded-xl bg-neutral-900 py-3 text-sm font-semibold text-white"
       >
         в работу
       </button>
@@ -375,15 +375,20 @@ export default function pos_panel({ on_created }: props) {
     on_add: add_configured,
   });
 
+  const cat_cols = categories.length <= 2 ? 1 : categories.length <= 6 ? 2 : 3;
+  const cat_rows = Math.max(1, Math.ceil(categories.length / cat_cols));
+  const prod_cols = 2;
+
   if (step === 'categories') {
     return (
-      <div className="space-y-5 pb-4">
-        <div>
-          <h2 className="text-lg font-bold text-neutral-900">быстрый заказ</h2>
-          <p className="text-sm text-neutral-500 mt-0.5">выберите раздел меню</p>
-        </div>
-
-        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+      <div className="flex flex-col flex-1 min-h-0 h-full gap-2">
+        <div
+          className="grid flex-1 min-h-0 gap-2"
+          style={{
+            gridTemplateColumns: `repeat(${cat_cols}, minmax(0, 1fr))`,
+            gridTemplateRows: `repeat(${cat_rows}, minmax(0, 1fr))`,
+          }}
+        >
           {categories.map((c) => {
             const meta = category_tile_meta(c);
             return (
@@ -391,15 +396,15 @@ export default function pos_panel({ on_created }: props) {
                 key={c}
                 type="button"
                 onClick={() => open_category(c)}
-                className="flex flex-col items-center justify-center gap-2.5 rounded-3xl border px-3 py-5 active:scale-[0.98] transition"
+                className="flex h-full min-h-0 flex-col items-center justify-center gap-2 rounded-2xl border px-2 py-3 active:scale-[0.98] transition"
                 style={{
                   backgroundColor: meta.bg,
                   borderColor: meta.border,
                   color: meta.fg,
                 }}
               >
-                {meta.icon({ className: 'h-9 w-9' })}
-                <span className="text-sm font-semibold leading-snug text-center capitalize">
+                {meta.icon({ className: 'h-8 w-8 sm:h-10 sm:w-10' })}
+                <span className="text-xs sm:text-sm font-semibold leading-snug text-center capitalize px-1">
                   {meta.label}
                 </span>
               </button>
@@ -418,41 +423,56 @@ export default function pos_panel({ on_created }: props) {
     );
   }
 
+  const prod_rows = Math.max(1, Math.ceil(Math.max(filtered.length, 1) / prod_cols));
+  const products_fill = filtered.length > 0 && filtered.length <= 6;
+
   return (
-    <div className="space-y-4 pb-4">
-      <div className="flex items-center gap-3">
+    <div className="flex flex-col flex-1 min-h-0 h-full gap-2">
+      <div className="flex items-center gap-2 shrink-0">
         <button
           type="button"
           onClick={back_to_categories}
-          className="rounded-xl border border-neutral-200 bg-white px-3 py-2 text-sm text-neutral-700"
+          className="rounded-lg border border-neutral-200 bg-white px-2.5 py-1.5 text-xs text-neutral-700"
         >
-          ← разделы
+          ←
         </button>
-        <div className="min-w-0">
-          <h2 className="text-lg font-bold text-neutral-900 capitalize truncate">{category}</h2>
-          <p className="text-sm text-neutral-500">нажмите на товар</p>
-        </div>
+        <h2 className="min-w-0 text-sm font-bold text-neutral-900 capitalize truncate">
+          {category}
+        </h2>
       </div>
 
-      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+      <div
+        className={`grid flex-1 min-h-0 gap-2 ${products_fill ? '' : 'content-start overflow-y-auto'}`}
+        style={
+          products_fill
+            ? {
+                gridTemplateColumns: `repeat(${prod_cols}, minmax(0, 1fr))`,
+                gridTemplateRows: `repeat(${prod_rows}, minmax(0, 1fr))`,
+              }
+            : {
+                gridTemplateColumns: `repeat(${prod_cols}, minmax(0, 1fr))`,
+                gridAutoRows: 'minmax(8.5rem, auto)',
+              }
+        }
+      >
         {filtered.map((item) => (
           <button
             key={item.id}
             type="button"
             onClick={() => open_item(item)}
-            className="rounded-2xl border border-neutral-200 bg-white p-2.5 text-left active:scale-[0.98] transition"
+            className="flex h-full min-h-[7.5rem] flex-col rounded-2xl border border-neutral-200 bg-white p-2 text-left active:scale-[0.98] transition"
           >
-            <div className="relative aspect-square w-full overflow-hidden rounded-xl mb-2">
+            <div className="relative min-h-0 flex-1 w-full overflow-hidden rounded-xl bg-neutral-50">
               {createElement(menu_image, {
                 item,
-                className: 'w-full h-full',
+                className: 'absolute inset-0 w-full h-full object-cover',
                 variant: 'card',
               })}
             </div>
-            <p className="text-sm font-semibold text-neutral-900 leading-snug line-clamp-2 min-h-[2.5rem]">
+            <p className="mt-1.5 shrink-0 text-xs font-semibold text-neutral-900 leading-snug line-clamp-2">
               {item.name}
             </p>
-            <p className="mt-1.5 text-base font-bold tabular-nums text-neutral-900">
+            <p className="mt-0.5 shrink-0 text-sm font-bold tabular-nums text-neutral-900">
               {item.price} ₽
             </p>
           </button>
