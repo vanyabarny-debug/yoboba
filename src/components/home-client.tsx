@@ -23,6 +23,7 @@ import { admin_sheet } from '@/components/admin/admin-sheet';
 import location_modal from '@/components/location-modal';
 import order_gate_modal from '@/components/order-gate-modal';
 import phone_gate_modal from '@/components/phone-gate-modal';
+import pickup_slot_picker from '@/components/pickup-slot-picker';
 import { add_to_cart, get_cart_items, upsert_cart_item } from '@/lib/cart';
 import site_header from '@/components/site-header';
 import { resolve_menu_categories } from '@/lib/menu-from-db';
@@ -154,6 +155,7 @@ export default function home_client({
   const [location_open, set_location_open] = useState(false);
   const [order_gate_open, set_order_gate_open] = useState(false);
   const [phone_gate_open, set_phone_gate_open] = useState(false);
+  const [pickup_picker_open, set_pickup_picker_open] = useState(false);
   const [pending_action, set_pending_action] = useState<pending_order_action | null>(null);
   const [saved_location, set_saved_location] = useState<user_location | null>(null);
   const [address_confirmed, set_address_confirmed] = useState(false);
@@ -206,7 +208,17 @@ export default function home_client({
     return Boolean(normalize_phone(user?.phone));
   }
 
-  const proceed_checkout = useCallback(async () => {
+  function open_pickup_picker() {
+    if (cart_lines.length === 0) return;
+    set_pickup_picker_open(true);
+  }
+
+  async function handle_pickup_confirm(pickup_at: string, label: string) {
+    set_pickup_picker_open(false);
+    await proceed_checkout(pickup_at, label);
+  }
+
+  const proceed_checkout = useCallback(async (pickup_time: string, pickup_label?: string) => {
     if (cart_lines.length === 0) return;
 
     const uid = user_id;
@@ -223,7 +235,34 @@ export default function home_client({
       quantity: l.quantity,
     }));
     const total_price = cart_lines.reduce((s, l) => s + l.item.price * l.quantity, 0);
-    const pickup_time = new Date(Date.now() + 12 * 60_000).toISOString();
+
+    if (demo_mode) {
+      const res = await fetch('/api/orders/demo', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ items, pickup_time }),
+      });
+      if (!res.ok) {
+        const body = (await res.json()) as { error?: string };
+        set_order_error(body.error || 'не удалось оформить заказ');
+        return;
+      }
+      const body = (await res.json()) as { order?: import('@/lib/types').order };
+      set_order_error('');
+      set_cart_lines([]);
+      save_guest_cart([]);
+      set_cart_open(false);
+      const num = body.order ? format_order_number(body.order) : '';
+      const label = pickup_label || new Date(pickup_time).toLocaleTimeString('ru-RU', {
+        hour: '2-digit',
+        minute: '2-digit',
+      });
+      set_order_toast(
+        num ? `заказ № ${num} — заберите в ${label}` : `заказ отправлен — заберите в ${label}`
+      );
+      window.setTimeout(() => set_order_toast(''), 4500);
+      return;
+    }
 
     const { data, error } = await create_order({
       user_id: uid,
@@ -242,11 +281,15 @@ export default function home_client({
     set_cart_lines([]);
     set_cart_open(false);
     const num = data ? format_order_number(data) : '';
+    const label = pickup_label || new Date(pickup_time).toLocaleTimeString('ru-RU', {
+      hour: '2-digit',
+      minute: '2-digit',
+    });
     set_order_toast(
-      num ? `заказ № ${num} отправлен — заберите через ~12 мин` : 'заказ отправлен — заберите через ~12 мин'
+      num ? `заказ № ${num} — заберите в ${label}` : `заказ отправлен — заберите в ${label}`
     );
     window.setTimeout(() => set_order_toast(''), 4500);
-  }, [cart_lines, user_id, router]);
+  }, [cart_lines, user_id, demo_mode]);
 
   function needs_checkout_gate() {
     if (demo_mode) return false;
@@ -601,13 +644,13 @@ export default function home_client({
       return;
     }
 
-    await proceed_checkout();
+    open_pickup_picker();
   }
 
   function handle_phone_saved(phone: string) {
     set_phone_gate_open(false);
     set_user((prev) => (prev ? { ...prev, phone } : prev));
-    void proceed_checkout();
+    open_pickup_picker();
   }
 
   function handle_edit_line(item: menu_item) {
@@ -638,34 +681,22 @@ export default function home_client({
   }
 
   async function handle_checkout() {
+    if (cart_lines.length === 0) return;
+
     if (demo_mode) {
-      if (cart_lines.length === 0) return;
-      const items = cart_lines.map((l) => ({
-        menu_id: l.item.id,
-        name: l.item.name,
-        price: l.item.price,
-        quantity: l.quantity,
-      }));
-      const res = await fetch('/api/orders/demo', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ items }),
-      });
-      if (res.ok) {
-        const body = (await res.json()) as { order?: import('@/lib/types').order };
-        set_cart_lines([]);
-        save_guest_cart([]);
+      if (!is_logged_in && !user_id) {
         set_cart_open(false);
-        const num = body.order ? format_order_number(body.order) : '';
-        set_order_toast(
-          num ? `заказ № ${num} отправлен — заберите через ~12 мин` : 'заказ отправлен — заберите через ~12 мин'
-        );
-        window.setTimeout(() => set_order_toast(''), 4500);
+        redirect_to_login();
+        return;
       }
+      if (needs_checkout_gate()) {
+        set_cart_open(false);
+        open_order_gate({ type: 'checkout' });
+        return;
+      }
+      open_pickup_picker();
       return;
     }
-
-    if (cart_lines.length === 0) return;
 
     if (!is_logged_in) {
       set_cart_open(false);
@@ -685,7 +716,8 @@ export default function home_client({
       return;
     }
 
-    await proceed_checkout();
+    set_cart_open(false);
+    open_pickup_picker();
   }
 
   function handle_order_gate_login() {
@@ -802,6 +834,7 @@ export default function home_client({
       category,
       is_available: true,
       recommendations: [],
+      prep_minutes: 2,
     };
     upsert_menu_item(created);
     set_selected(created);
@@ -1150,6 +1183,17 @@ export default function home_client({
         open: phone_gate_open,
         on_close: () => set_phone_gate_open(false),
         on_saved: handle_phone_saved,
+      })}
+
+      {!is_admin_edit && createElement(pickup_slot_picker, {
+        open: pickup_picker_open,
+        cart_lines: cart_lines.map((l) => ({
+          menu_id: l.item.id,
+          name: l.item.name,
+          quantity: l.quantity,
+        })),
+        on_close: () => set_pickup_picker_open(false),
+        on_confirm: handle_pickup_confirm,
       })}
 
       {!is_admin_edit && createElement(location_modal, {

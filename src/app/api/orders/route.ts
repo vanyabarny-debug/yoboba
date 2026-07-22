@@ -4,6 +4,8 @@ import { create_service_client } from '@/lib/supabase/service';
 import { calc_order_bonus } from '@/lib/cart-summary';
 import { normalize_phone } from '@/lib/phone';
 import { allocate_daily_order_number } from '@/lib/order-number';
+import { build_kitchen_schedule } from '@/lib/kitchen-queue';
+import { load_active_orders, load_menu_map } from '@/lib/kitchen-server';
 import type { order_item } from '@/lib/types';
 
 export async function GET() {
@@ -43,6 +45,33 @@ export async function POST(request: Request) {
 
   if (!items?.length || Number.isNaN(total_price) || !pickup_time) {
     return NextResponse.json({ error: 'неверные данные заказа' }, { status: 400 });
+  }
+
+  const pickup_at = new Date(pickup_time).getTime();
+  if (Number.isNaN(pickup_at) || pickup_at <= Date.now()) {
+    return NextResponse.json({ error: 'неверное время выдачи' }, { status: 400 });
+  }
+
+  const [menu_by_id, active_orders] = await Promise.all([
+    load_menu_map(),
+    load_active_orders(),
+  ]);
+  const cart_lines = items.map((i) => ({
+    menu_id: i.menu_id,
+    name: i.name,
+    quantity: i.quantity,
+  }));
+  const { feasible } = build_kitchen_schedule({
+    active_orders,
+    menu_by_id,
+    cart_lines,
+    pickup_at,
+  });
+  if (!feasible) {
+    return NextResponse.json(
+      { error: 'это время уже занято — выберите другой слот' },
+      { status: 409 }
+    );
   }
 
   const admin = create_service_client();

@@ -1,6 +1,5 @@
-import { createElement } from 'react';
-import sellers_manage from '@/components/admin/sellers-manage';
+import { redirect } from 'next/navigation';
 
-export default function admin_sellers_page() {
-  return createElement(sellers_manage);
+export default function admin_sellers_redirect() {
+  redirect('/admin/personnel');
 }

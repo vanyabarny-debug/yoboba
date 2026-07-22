@@ -1,8 +1,9 @@
 import type { menu_badge_color, menu_item } from '@/lib/types';
+import { DEFAULT_PREP_MINUTES } from '@/lib/kitchen-queue';
 import type { heading_style } from '@/lib/heading-style';
 import { default_category_heading_styles } from '@/lib/heading-style';
 
-export const store_version = 14;
+export const store_version = 15;
 
 export const default_categories = [
   'классические бабл ти',
@@ -166,6 +167,7 @@ function item(
     image_url,
     is_available: true,
     recommendations,
+    prep_minutes: DEFAULT_PREP_MINUTES,
     ...(badge ? { badge_text: badge.text, badge_color: 'orange' as const } : {}),
   };
 }
@@ -307,7 +309,11 @@ function repair_menu_store(store: menu_store): menu_store {
         ? item.category
         : fallback?.category ?? categories[0];
       const image_url = resolve_image_url(item, fallback);
-      return { ...item, category, image_url };
+      const prep_minutes =
+        typeof item.prep_minutes === 'number' && item.prep_minutes > 0
+          ? item.prep_minutes
+          : fallback?.prep_minutes ?? DEFAULT_PREP_MINUTES;
+      return { ...item, category, image_url, prep_minutes };
     })
   );
   for (const def of defaults.items) {

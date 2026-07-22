@@ -1,8 +1,8 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import Link from 'next/link';
 import type { seller } from '@/lib/types';
+import AdminShell from '@/components/admin/admin-shell';
 
 function new_seller_id() {
   return `seller-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
@@ -94,25 +94,11 @@ export default function sellers_manage() {
   }
 
   return (
-    <div className="min-h-screen bg-surface">
-      <header className="bg-page border-b border-surface">
-        <div className="max-w-3xl mx-auto px-4 py-4 flex items-center justify-between">
-          <div>
-            <h1 className="text-xl font-semibold text-accent">продавцы</h1>
-            <p className="text-xs text-neutral-500">вход через /admin/login</p>
-          </div>
-          <nav className="flex gap-3 text-sm">
-            <Link href="/admin/menu" className="text-neutral-600 hover:text-accent">
-              меню
-            </Link>
-            <Link href="/admin" className="text-neutral-400">
-              админка
-            </Link>
-          </nav>
-        </div>
-      </header>
-
-      <main className="max-w-3xl mx-auto px-4 py-6 space-y-4">
+    <AdminShell
+      title="персонал"
+      subtitle="продавцы и доступ к кассе · вход через /admin/login"
+    >
+      <div className="max-w-3xl mx-auto space-y-4">
         <button
           type="button"
           onClick={open_create}
@@ -228,7 +214,7 @@ export default function sellers_manage() {
             </form>
           </div>
         )}
-      </main>
-    </div>
+      </div>
+    </AdminShell>
   );
 }

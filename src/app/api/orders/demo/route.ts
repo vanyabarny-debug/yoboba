@@ -38,7 +38,12 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'корзина пуста' }, { status: 400 });
   }
 
-  const order = await create_fake_order_from_items(items, body.pickup_minutes ?? 12);
+  const pickup_time = body.pickup_time as string | undefined;
+  const order = await create_fake_order_from_items(
+    items,
+    body.pickup_minutes ?? 12,
+    pickup_time
+  );
   return NextResponse.json({ order });
 }
 

@@ -41,6 +41,7 @@ export type menu_item = {
   category: string;
   is_available: boolean;
   recommendations: string[];
+  prep_minutes?: number;
   badge_text?: string;
   badge_color?: menu_badge_color;
 };

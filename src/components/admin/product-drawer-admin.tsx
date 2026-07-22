@@ -117,6 +117,7 @@ export default function product_drawer_admin({ item, open, on_close, on_save, on
       ...draft,
       name: draft.name.trim(),
       price: Math.max(0, Math.round(Number(draft.price) || 0)),
+      prep_minutes: Math.max(1, Math.min(30, Math.round(Number(draft.prep_minutes) || 2))),
       badge_text: badge_enabled ? draft.badge_text : '',
       badge_color: badge_enabled ? 'orange' : undefined,
     });
@@ -385,7 +386,7 @@ export default function product_drawer_admin({ item, open, on_close, on_save, on
                 </div>
               </div>
 
-              <div className="mt-6 flex items-center gap-3">
+              <div className="mt-6 flex flex-wrap items-center gap-3">
                 <label className="text-sm text-neutral-500">базовая цена</label>
                 <input
                   type="number"
@@ -397,6 +398,21 @@ export default function product_drawer_admin({ item, open, on_close, on_save, on
                   className="w-28 rounded-xl border border-surface px-3 py-2 text-sm font-mono"
                 />
                 <span className="text-sm text-neutral-500">₽</span>
+                <span className="w-full sm:w-auto sm:ml-4 text-sm text-neutral-500">готовка</span>
+                <input
+                  type="number"
+                  min={1}
+                  max={30}
+                  value={draft.prep_minutes ?? 2}
+                  onChange={(e) =>
+                    set_draft({
+                      ...draft,
+                      prep_minutes: Math.max(1, Math.min(30, Number(e.target.value) || 2)),
+                    })
+                  }
+                  className="w-20 rounded-xl border border-surface px-3 py-2 text-sm font-mono text-center"
+                />
+                <span className="text-sm text-neutral-500">мин</span>
               </div>
             </div>
 
