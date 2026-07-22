@@ -119,12 +119,13 @@ function merge_cart_line(
 ): cart_line[] {
   const volume = options?.volume ?? '450';
   const topping = options?.topping ?? 0;
+  const next_qty = Math.max(1, qty);
 
-  // правка из корзины: всегда выкидываем старую строку и кладём новую
+  // правка из корзины: жёстко заменить позицию (qty абсолютный, не +=)
   if (options?.replace_key) {
     const key = options.replace_key;
     let removed = false;
-    const without = lines.filter((l, i) => {
+    let base = lines.filter((l, i) => {
       if (removed) return true;
       const k = l.key || cart_line_key(l, i);
       if (k === key || l.key === key) {
@@ -133,23 +134,20 @@ function merge_cart_line(
       }
       return true;
     });
-    // если ключ не совпал — убираем первую позицию с тем же menu_id
-    let base =
-      removed
-        ? without
-        : (() => {
-            let done = false;
-            return lines.filter((l) => {
-              if (done) return true;
-              if (l.item.id === item.id && !l.item.id.startsWith('topping-')) {
-                done = true;
-                return false;
-              }
-              return true;
-            });
-          })();
 
-    // убрать старые отдельные строки топпинга (legacy) для этой категории
+    // ключ не совпал (гонка setState) — убираем первую позицию этого товара
+    if (!removed) {
+      let done = false;
+      base = lines.filter((l) => {
+        if (done) return true;
+        if (l.item.id === item.id && !l.item.id.startsWith('topping-')) {
+          done = true;
+          return false;
+        }
+        return true;
+      });
+    }
+
     const topping_prefix = `topping-${item.category}-`;
     base = base.filter((l) => !l.item.id.startsWith(topping_prefix));
 
@@ -158,7 +156,7 @@ function merge_cart_line(
       {
         key,
         item,
-        quantity: qty,
+        quantity: next_qty,
         volume,
         topping,
       },
@@ -175,7 +173,11 @@ function merge_cart_line(
   );
   if (same >= 0) {
     const next = [...lines];
-    next[same] = { ...next[same], quantity: next[same].quantity + qty };
+    next[same] = {
+      ...next[same],
+      key: next[same].key || `line-${item.id}-${same}`,
+      quantity: next[same].quantity + next_qty,
+    };
     return next;
   }
 
@@ -184,7 +186,7 @@ function merge_cart_line(
     {
       key: `line-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
       item,
-      quantity: qty,
+      quantity: next_qty,
       volume,
       topping,
     },
@@ -263,6 +265,7 @@ export default function home_client({
   const [order_error, set_order_error] = useState('');
   const header_ref = useRef<HTMLDivElement>(null);
   const nav_ref = useRef<HTMLDivElement>(null);
+  const skip_cart_reload_until_ref = useRef(0);
 
   const is_admin_edit = admin_edit_mode;
   const is_staff_admin = !admin_edit_mode && user?.role === 'admin';
@@ -556,15 +559,24 @@ export default function home_client({
       console.warn('cart load:', error.message);
       return;
     }
-    const lines: cart_line[] = (data || [])
-      .filter((row) => row.menu)
-      .map((row) => ({
-        item: row.menu as unknown as menu_item,
-        quantity: row.quantity,
-      }));
-    if (lines.length > 0) {
-      set_cart_lines(lines);
-    }
+    set_cart_lines((prev) => {
+      const by_id = new Map(prev.map((l) => [l.item.id, l]));
+      const lines: cart_line[] = (data || [])
+        .filter((row) => row.menu)
+        .map((row, index) => {
+          const item = row.menu as unknown as menu_item;
+          const prev_line = by_id.get(item.id);
+          return {
+            item,
+            quantity: row.quantity,
+            // сервер не хранит volume/topping/key — сохраняем локальные
+            key: prev_line?.key || `srv-${item.id}-${index}`,
+            volume: prev_line?.volume ?? '450',
+            topping: prev_line?.topping ?? 0,
+          };
+        });
+      return lines;
+    });
   }, []);
 
   const sync_guest_cart_to_server = useCallback(async (uid: string) => {
@@ -633,7 +645,10 @@ export default function home_client({
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'cart_items', filter: `user_id=eq.${user_id}` },
-        () => load_prod_cart(user_id)
+        () => {
+          if (Date.now() < skip_cart_reload_until_ref.current) return;
+          void load_prod_cart(user_id);
+        }
       )
       .subscribe();
     return () => {
@@ -654,6 +669,7 @@ export default function home_client({
     // при правке не делаем delta-add и не перезагружаем серверную корзину —
     // иначе затираются volume/topping и появляется «вторая» позиция
     if (options?.replace_key) {
+      skip_cart_reload_until_ref.current = Date.now() + 2000;
       await upsert_cart_item(user_id, item.id, qty);
       return;
     }
@@ -676,16 +692,21 @@ export default function home_client({
   async function handle_add(
     item: menu_item,
     qty: number,
-    options?: { volume?: '450' | '650'; topping?: number }
+    options?: { volume?: '450' | '650'; topping?: number; replace_key?: string }
   ) {
-    const replace_key = editing_line_key_ref.current || editing_line_key || undefined;
+    // replace_key только явно из drawer при «Изменить» — иначе upsell/quick-add
+    // накладывается на редактируемую строку и удваивает qty
+    const replace_key = options?.replace_key || undefined;
     await execute_add(item, qty, {
-      ...options,
+      volume: options?.volume,
+      topping: options?.topping,
       replace_key,
     });
-    editing_line_key_ref.current = null;
-    set_editing_line_key(null);
-    set_product_from_cart(false);
+    if (replace_key) {
+      editing_line_key_ref.current = null;
+      set_editing_line_key(null);
+      set_product_from_cart(false);
+    }
   }
 
   async function handle_update_qty(line_key: string, quantity: number) {
@@ -699,7 +720,8 @@ export default function home_client({
     const line = cart_lines.find((l, i) => cart_line_key(l, i) === line_key);
     if (!line) return;
     const { error } = await upsert_cart_item(user_id, line.item.id, quantity);
-    if (!error) await load_prod_cart(user_id);
+    // не перезагружаем с сервера — иначе сотрём volume/topping
+    if (error) console.warn('cart qty:', error.message);
   }
 
   async function handle_remove(line_key: string) {
@@ -762,16 +784,25 @@ export default function home_client({
     open_pickup_picker();
   }
 
-  function handle_edit_line(line: cart_line) {
-    const key = line.key || `legacy-${line.item.id}-${Date.now()}`;
+  function handle_edit_line(line: cart_line, line_key?: string) {
+    const key =
+      line_key ||
+      line.key ||
+      `line-${line.item.id}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+
     set_cart_lines((prev) => {
       let assigned = false;
       return prev.map((l, i) => {
-        if (line.key && (l.key === line.key || cart_line_key(l, i) === line.key)) {
+        const k = cart_line_key(l, i);
+        if (line.key && (l.key === line.key || k === line.key)) {
+          return { ...l, key };
+        }
+        if (line_key && (k === line_key || l.key === line_key)) {
           return { ...l, key };
         }
         if (
           !line.key &&
+          !line_key &&
           !assigned &&
           l.item.id === line.item.id &&
           (l.volume ?? '450') === (line.volume ?? '450') &&
@@ -783,6 +814,7 @@ export default function home_client({
         return l;
       });
     });
+
     set_cart_open(false);
     set_selected(line.item);
     set_product_from_cart(true);
@@ -817,7 +849,8 @@ export default function home_client({
   function handle_return_to_cart() {
     set_drawer_open(false);
     set_product_from_cart(false);
-    // не сбрасываем editing_line_key_ref здесь — save может ещё идти
+    editing_line_key_ref.current = null;
+    set_editing_line_key(null);
     set_selected(null);
     set_cart_open(true);
   }
@@ -1176,6 +1209,7 @@ export default function home_client({
             on_close: handle_product_close,
             on_add: handle_add,
             edit_mode: product_from_cart,
+            editing_line_key: editing_line_key,
             initial_qty: edit_initial.qty,
             initial_volume: edit_initial.volume,
             initial_topping: edit_initial.topping,

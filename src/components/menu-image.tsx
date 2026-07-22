@@ -1,9 +1,12 @@
 'use client';
 
-import { memo, useEffect, useMemo, useState } from 'react';
+import { memo, useEffect, useMemo, useRef, useState } from 'react';
 import type { menu_item } from '@/lib/types';
 import { is_custom_menu_photo } from '@/lib/menu-photo';
-import { resolve_menu_item_image_url } from '@/lib/menu-store';
+import {
+  resolve_menu_item_fallback_image_url,
+  resolve_menu_item_image_url,
+} from '@/lib/menu-store';
 
 type props = {
   item: menu_item;
@@ -29,17 +32,35 @@ function skeleton({ className = '', fill = false }: { className?: string; fill?:
 }
 
 function menu_image_inner({ item, className = '', variant = 'card' }: props) {
-  const src = useMemo(() => resolve_menu_item_image_url(item), [item]);
-  const unusable = is_unusable_src(src);
-  const [failed, set_failed] = useState(unusable);
+  const primary = useMemo(
+    () => resolve_menu_item_image_url(item),
+    [item.id, item.name, item.image_url]
+  );
+  const fallback = useMemo(
+    () => resolve_menu_item_fallback_image_url(item),
+    [item.id, item.name, item.image_url]
+  );
+  const [src, set_src] = useState(() => (is_unusable_src(primary) ? fallback : primary));
+  const [failed, set_failed] = useState(() => is_unusable_src(src));
   const [loaded, set_loaded] = useState(false);
+  const img_ref = useRef<HTMLImageElement>(null);
   const fill = variant === 'fill';
 
   useEffect(() => {
-    const bad = is_unusable_src(src);
-    set_failed(bad);
+    const next = is_unusable_src(primary) ? fallback : primary;
+    set_src(next);
+    set_failed(is_unusable_src(next));
     set_loaded(false);
-  }, [src]);
+  }, [primary, fallback]);
+
+  // из кэша браузера load может прийти до onLoad — проверяем complete
+  useEffect(() => {
+    if (!src || failed) return;
+    const el = img_ref.current;
+    if (el && el.complete && el.naturalWidth > 0) {
+      set_loaded(true);
+    }
+  }, [src, failed]);
 
   if (failed || !src) {
     return skeleton({ className, fill });
@@ -55,6 +76,7 @@ function menu_image_inner({ item, className = '', variant = 'card' }: props) {
         <div className="absolute inset-0 animate-pulse bg-gradient-to-br from-neutral-200 via-neutral-100 to-neutral-200" />
       )}
       <img
+        ref={img_ref}
         src={src}
         alt={item.name}
         width={800}
@@ -66,7 +88,14 @@ function menu_image_inner({ item, className = '', variant = 'card' }: props) {
         decoding="async"
         draggable={false}
         onLoad={() => set_loaded(true)}
-        onError={() => set_failed(true)}
+        onError={() => {
+          if (fallback && src !== fallback) {
+            set_src(fallback);
+            set_loaded(false);
+            return;
+          }
+          set_failed(true);
+        }}
       />
       {is_custom_menu_photo(src) && variant !== 'thumb' && (
         <span className="sr-only">загруженное фото</span>

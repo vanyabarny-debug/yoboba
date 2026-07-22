@@ -3,7 +3,7 @@ import { DEFAULT_PREP_MINUTES } from '@/lib/kitchen-queue';
 import type { heading_style } from '@/lib/heading-style';
 import { default_category_heading_styles } from '@/lib/heading-style';
 
-export const store_version = 16;
+export const store_version = 17;
 
 export const default_categories = [
   'классические бабл ти',
@@ -107,27 +107,36 @@ function is_stale_menu_placeholder(url: string) {
 function resolve_image_url(item: menu_item, fallback?: menu_item): string {
   const url = (item.image_url || '').trim();
 
-  // кастомное фото из админки
+  // кастомное фото из админки (data/blob)
   if (url.startsWith('data:') || url.startsWith('blob:')) {
     return url;
   }
 
-  // загруженные в storage / внешние https — приоритетнее дефолта
-  if (url.startsWith('http://') || url.startsWith('https://')) {
-    return url;
-  }
-
-  // актуальный локальный PNG из меню
+  // актуальный локальный PNG
   if (url.startsWith('/images/menu/') && !is_stale_menu_placeholder(url)) {
     return url;
   }
 
-  // дефолт по id/названию (вместо устаревших svg / пустых ссылок)
+  // дефолт по id/названию — надёжнее битых https из БД
   if (fallback?.image_url) {
     return fallback.image_url;
   }
 
+  // внешний url, если дефолта нет (уникальные позиции)
+  if (url.startsWith('http://') || url.startsWith('https://')) {
+    return url;
+  }
+
   return placeholder_for_id(item.id);
+}
+
+/** запасной url, если основной http/cdn упал */
+export function resolve_menu_item_fallback_image_url(item: menu_item): string | null {
+  const { by_id, by_name } = get_default_lookups();
+  const fallback = find_default_item(item, by_id, by_name);
+  if (fallback?.image_url) return fallback.image_url;
+  const ph = placeholder_for_id(item.id);
+  return ph || null;
 }
 
 let default_lookups: {

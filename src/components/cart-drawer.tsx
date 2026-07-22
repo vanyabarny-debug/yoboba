@@ -52,7 +52,7 @@ type props = {
   on_remove: (line_key: string) => void;
   on_add?: (item: menu_item, qty: number) => void;
   on_open_item?: (item: menu_item) => void;
-  on_edit?: (line: cart_line) => void;
+  on_edit?: (line: cart_line, line_key: string) => void;
   on_checkout?: () => void;
   on_clear?: () => void;
 };
@@ -254,7 +254,7 @@ export default function cart_drawer({
                         {on_edit && !line.item.id.startsWith('topping-') && (
                           <button
                             type="button"
-                            onClick={() => on_edit(line)}
+                            onClick={() => on_edit(line, key)}
                             className="text-sm font-semibold text-accent hover:underline"
                           >
                             Изменить

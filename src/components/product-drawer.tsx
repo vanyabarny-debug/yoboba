@@ -26,10 +26,11 @@ type props = {
   on_add: (
     item: menu_item,
     qty: number,
-    options?: { volume: '450' | '650'; topping: number }
+    options?: { volume: '450' | '650'; topping: number; replace_key?: string }
   ) => void | Promise<void>;
   /** правка позиции из корзины */
   edit_mode?: boolean;
+  editing_line_key?: string | null;
   initial_qty?: number;
   initial_volume?: '450' | '650';
   initial_topping?: number;
@@ -74,6 +75,7 @@ export default function product_drawer({
   on_close,
   on_add,
   edit_mode = false,
+  editing_line_key = null,
   initial_qty = 1,
   initial_volume = '450',
   initial_topping = 0,
@@ -93,6 +95,12 @@ export default function product_drawer({
   const [sheet_open, set_sheet_open] = useState(false);
   const [last_item, set_last_item] = useState<menu_item | null>(null);
   const body_ref = useRef<HTMLDivElement>(null);
+  const saving_ref = useRef(false);
+  const editing_key_ref = useRef<string | null>(editing_line_key);
+
+  useEffect(() => {
+    editing_key_ref.current = editing_line_key;
+  }, [editing_line_key]);
 
   const resolved_item = item ?? last_item;
   const active_item = nav_item ?? resolved_item;
@@ -292,10 +300,26 @@ export default function product_drawer({
   }
 
   async function handle_add_to_cart() {
-    if (!active_item) return;
+    if (!active_item || saving_ref.current) return;
+    saving_ref.current = true;
+
+    const replace_key = is_cart_edit
+      ? editing_key_ref.current || editing_line_key || `edit-${active_item.id}`
+      : null;
 
     fly_to_cart(image_ref.current);
-    await on_add(active_item, qty, { volume, topping });
+    try {
+      await on_add(active_item, qty, {
+        volume,
+        topping,
+        ...(replace_key ? { replace_key } : {}),
+      });
+    } finally {
+      // короткая блокировка от двойного тапа
+      window.setTimeout(() => {
+        saving_ref.current = false;
+      }, 400);
+    }
 
     if (can_go_back) {
       pop_card();
