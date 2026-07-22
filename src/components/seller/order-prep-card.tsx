@@ -198,10 +198,9 @@ export default function order_prep_card({
 
   if (mode === 'done') {
     tone = 'done';
-    title = 'выдан';
-    subtitle = `№ ${order_no}`;
-    subtitle_style = 'hero';
-    title_hero = false;
+    title = `№ ${order_no}`;
+    subtitle = undefined;
+    title_hero = true;
   } else if (mode === 'ready' && !all_done) {
     tone = 'ready';
     title = `№ ${order_no}`;
@@ -246,9 +245,7 @@ export default function order_prep_card({
         ? paid
           ? 'к выдаче'
           : 'к оплате'
-        : mode === 'done'
-          ? 'выдан'
-          : null;
+        : null;
 
   const timer_colors = {
     fill: '#ffffff',
