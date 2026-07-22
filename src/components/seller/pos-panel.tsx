@@ -375,18 +375,21 @@ export default function pos_panel({ on_created }: props) {
     on_add: add_configured,
   });
 
-  const cat_cols = categories.length <= 2 ? 1 : categories.length <= 6 ? 2 : 3;
-  const cat_rows = Math.max(1, Math.ceil(categories.length / cat_cols));
-  const prod_cols = 2;
+  function tile_grid(count: number) {
+    const cols = count <= 2 ? 1 : count <= 6 ? 2 : 3;
+    const rows = Math.max(1, Math.ceil(Math.max(count, 1) / cols));
+    return { cols, rows };
+  }
 
   if (step === 'categories') {
+    const { cols, rows } = tile_grid(categories.length);
     return (
       <div className="flex flex-col flex-1 min-h-0 h-full gap-2">
         <div
           className="grid flex-1 min-h-0 gap-2"
           style={{
-            gridTemplateColumns: `repeat(${cat_cols}, minmax(0, 1fr))`,
-            gridTemplateRows: `repeat(${cat_rows}, minmax(0, 1fr))`,
+            gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))`,
+            gridTemplateRows: `repeat(${rows}, minmax(0, 1fr))`,
           }}
         >
           {categories.map((c) => {
@@ -423,8 +426,7 @@ export default function pos_panel({ on_created }: props) {
     );
   }
 
-  const prod_rows = Math.max(1, Math.ceil(Math.max(filtered.length, 1) / prod_cols));
-  const products_fill = filtered.length > 0 && filtered.length <= 6;
+  const { cols: prod_cols, rows: prod_rows } = tile_grid(filtered.length);
 
   return (
     <div className="flex flex-col flex-1 min-h-0 h-full gap-2">
@@ -442,25 +444,18 @@ export default function pos_panel({ on_created }: props) {
       </div>
 
       <div
-        className={`grid flex-1 min-h-0 gap-2 ${products_fill ? '' : 'content-start overflow-y-auto'}`}
-        style={
-          products_fill
-            ? {
-                gridTemplateColumns: `repeat(${prod_cols}, minmax(0, 1fr))`,
-                gridTemplateRows: `repeat(${prod_rows}, minmax(0, 1fr))`,
-              }
-            : {
-                gridTemplateColumns: `repeat(${prod_cols}, minmax(0, 1fr))`,
-                gridAutoRows: 'minmax(8.5rem, auto)',
-              }
-        }
+        className="grid flex-1 min-h-0 gap-2"
+        style={{
+          gridTemplateColumns: `repeat(${prod_cols}, minmax(0, 1fr))`,
+          gridTemplateRows: `repeat(${prod_rows}, minmax(0, 1fr))`,
+        }}
       >
         {filtered.map((item) => (
           <button
             key={item.id}
             type="button"
             onClick={() => open_item(item)}
-            className="flex h-full min-h-[7.5rem] flex-col rounded-2xl border border-neutral-200 bg-white p-2 text-left active:scale-[0.98] transition"
+            className="flex h-full min-h-0 flex-col rounded-2xl border border-neutral-200 bg-white p-2 text-left active:scale-[0.98] transition"
           >
             <div className="relative min-h-0 flex-1 w-full overflow-hidden rounded-xl bg-neutral-50">
               {createElement(menu_image, {
@@ -469,16 +464,16 @@ export default function pos_panel({ on_created }: props) {
                 variant: 'card',
               })}
             </div>
-            <p className="mt-1.5 shrink-0 text-xs font-semibold text-neutral-900 leading-snug line-clamp-2">
+            <p className="mt-1.5 shrink-0 text-xs sm:text-sm font-semibold text-neutral-900 leading-snug line-clamp-2 text-center">
               {item.name}
             </p>
-            <p className="mt-0.5 shrink-0 text-sm font-bold tabular-nums text-neutral-900">
+            <p className="mt-0.5 shrink-0 text-sm font-bold tabular-nums text-neutral-900 text-center">
               {item.price} ₽
             </p>
           </button>
         ))}
         {filtered.length === 0 ? (
-          <p className="col-span-full text-sm text-neutral-400 text-center py-8">
+          <p className="col-span-full self-center text-sm text-neutral-400 text-center">
             в разделе пока пусто
           </p>
         ) : null}
