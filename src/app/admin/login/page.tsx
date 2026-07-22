@@ -2,23 +2,48 @@
 
 import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { agent_log } from '@/lib/agent-log';
 import { create_demo_user } from '@/lib/demo-auth';
 
+function is_standalone_pwa() {
+  if (typeof window === 'undefined') return false;
+  const mq = window.matchMedia('(display-mode: standalone)').matches;
+  const ios = 'standalone' in navigator && Boolean((navigator as Navigator & { standalone?: boolean }).standalone);
+  return mq || ios;
+}
+
 export default function admin_login_page() {
+  const router = useRouter();
   const [login, set_login] = useState('');
   const [password, set_password] = useState('');
   const [loading, set_loading] = useState(false);
   const [error, set_error] = useState('');
+  const [in_pwa, set_in_pwa] = useState(false);
   const mount_id = useRef(`login-${Date.now()}`);
   const render_count = useRef(0);
   render_count.current += 1;
 
   useEffect(() => {
+    set_in_pwa(is_standalone_pwa());
     // #region agent log
     agent_log({ location: 'admin/login/page.tsx:mount', message: 'login page mounted', data: { mountId: mount_id.current }, hypothesisId: 'H1' });
     // #endregion
+
+    // iOS: «Готово» в Safari sheet возвращает сюда с залипшим loading
+    function unlock() {
+      set_loading(false);
+    }
+    function on_page_show(e: PageTransitionEvent) {
+      if (e.persisted) unlock();
+    }
+    window.addEventListener('pageshow', on_page_show);
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible') unlock();
+    });
+
     return () => {
+      window.removeEventListener('pageshow', on_page_show);
       // #region agent log
       agent_log({ location: 'admin/login/page.tsx:unmount', message: 'login page unmounted', data: { mountId: mount_id.current, renderCount: render_count.current }, hypothesisId: 'H1' });
       // #endregion
@@ -97,12 +122,12 @@ export default function admin_login_page() {
           );
           sessionStorage.removeItem('yoboba_seller_shift');
         }
-        window.location.assign('/seller');
+        router.replace('/seller');
         return;
       }
 
       create_demo_user({ name: data.name || 'админ', role: 'admin', force: true });
-      window.location.assign('/admin');
+      router.replace('/admin');
     } catch {
       set_error('ошибка сети — попробуйте ещё раз');
       set_loading(false);
@@ -111,11 +136,13 @@ export default function admin_login_page() {
 
   return (
     <main className="min-h-screen bg-surface flex flex-col">
-      <div className="max-w-6xl mx-auto w-full px-4 py-3">
-        <Link href="/" className="text-sm text-neutral-500">
-          ← на сайт
-        </Link>
-      </div>
+      {!in_pwa && (
+        <div className="max-w-6xl mx-auto w-full px-4 py-3">
+          <Link href="/" className="text-sm text-neutral-500">
+            ← на сайт
+          </Link>
+        </div>
+      )}
 
       <div className="flex-1 flex items-center justify-center p-4">
         <div className="w-full max-w-sm">
