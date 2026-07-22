@@ -83,13 +83,21 @@ export default function app_splash() {
     if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
 
     const dpr = Math.min(window.devicePixelRatio || 1, 2);
-    let W = window.innerWidth;
-    let H = window.innerHeight;
+    function viewport_size() {
+      const vv = window.visualViewport;
+      return {
+        w: Math.round(vv?.width || window.innerWidth || document.documentElement.clientWidth),
+        h: Math.round(vv?.height || window.innerHeight || document.documentElement.clientHeight),
+      };
+    }
+    let { w: W, h: H } = viewport_size();
     canvas.width = W * dpr;
     canvas.height = H * dpr;
+    canvas.style.width = `${W}px`;
+    canvas.style.height = `${H}px`;
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
-    ctx.scale(dpr, dpr);
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
     const rng = make_rng(20260718);
     const pearls: pearl[] = [];
@@ -349,19 +357,24 @@ export default function app_splash() {
     }
 
     function on_resize() {
-      W = window.innerWidth;
-      H = window.innerHeight;
+      const next = viewport_size();
+      W = next.w;
+      H = next.h;
       canvas!.width = W * dpr;
       canvas!.height = H * dpr;
-      ctx!.scale(dpr, dpr);
+      canvas!.style.width = `${W}px`;
+      canvas!.style.height = `${H}px`;
+      ctx!.setTransform(dpr, 0, 0, dpr, 0, 0);
     }
     window.addEventListener('resize', on_resize);
+    window.visualViewport?.addEventListener('resize', on_resize);
 
     raf = requestAnimationFrame(frame);
 
     return () => {
       cancelAnimationFrame(raf);
       window.removeEventListener('resize', on_resize);
+      window.visualViewport?.removeEventListener('resize', on_resize);
     };
   }, []);
 

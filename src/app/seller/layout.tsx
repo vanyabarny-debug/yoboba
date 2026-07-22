@@ -37,11 +37,16 @@ export const viewport: Viewport = {
 export default function seller_layout({ children }: { children: React.ReactNode }) {
   return (
     <>
-      {/* коралловая заглушка под статус-бар (время / вайфай) */}
+      {/* подложка под статус-бар: цвет страницы, без «белой полоски» */}
       <div
         aria-hidden
-        className="pointer-events-none fixed inset-x-0 top-0 z-[100] bg-accent"
+        className="pointer-events-none fixed inset-x-0 top-0 z-[100] bg-[#f0f1f4]"
         style={{ height: 'var(--safe-top)' }}
+      />
+      <div
+        aria-hidden
+        className="pointer-events-none fixed inset-x-0 bottom-0 z-[100] bg-[#f0f1f4]"
+        style={{ height: 'var(--safe-bottom)' }}
       />
       {children}
     </>

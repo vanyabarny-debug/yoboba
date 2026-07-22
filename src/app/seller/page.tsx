@@ -904,7 +904,7 @@ export default function seller_board() {
   }
 
   return (
-    <div className="min-h-[100dvh] bg-[#f0f1f4] flex flex-col">
+    <div className="flex h-[calc(100dvh-var(--safe-top)-var(--safe-bottom))] min-h-0 flex-col bg-[#f0f1f4]">
       {need_shift &&
         createElement(shift_picker, {
           spots: shift_spots,
@@ -922,7 +922,7 @@ export default function seller_board() {
           },
         })}
 
-      <header className="sticky mobile-sticky-top z-20 shrink-0 border-b border-neutral-200/80 bg-white/90 backdrop-blur-xl">
+      <header className="sticky top-[var(--safe-top)] z-20 shrink-0 border-b border-neutral-200/80 bg-white/95 backdrop-blur-xl">
         <div className="w-full px-2.5 pt-1.5 pb-1.5">
           <div className="flex items-center justify-between gap-2">
             <div className="min-w-0 flex items-baseline gap-1.5">
