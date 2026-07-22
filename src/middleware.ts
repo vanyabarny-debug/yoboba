@@ -38,6 +38,19 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(url);
   }
 
+  // yoSquad PWA: start_url = /?app=squad (корень), иначе iOS показывает адресную строку
+  // при переходе с /admin/login → /seller
+  if (path === '/' && request.nextUrl.searchParams.get('app') === 'squad') {
+    const role = request.cookies.get(session_cookie)?.value;
+    const target =
+      role === 'seller' || role === 'barista'
+        ? '/seller'
+        : role === 'admin'
+          ? '/admin'
+          : '/admin/login';
+    return NextResponse.redirect(new URL(target, request.url));
+  }
+
   const is_admin_route = path.startsWith('/admin');
   const is_barista_route = path.startsWith('/barista');
   const is_seller_route = path.startsWith('/seller');

@@ -202,6 +202,12 @@ export default function admin_login_page() {
           <p className="text-xs text-neutral-400 text-center mt-4">
             админ: admin / admin
           </p>
+          {!in_pwa && (
+            <p className="text-xs text-neutral-400 text-center mt-3 leading-relaxed px-2">
+              чтобы убрать адресную строку: «поделиться» → «на экран „Домой“»,
+              открывать только с иконки yoSquad
+            </p>
+          )}
         </div>
       </div>
     </main>

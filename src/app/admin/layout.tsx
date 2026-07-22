@@ -4,10 +4,11 @@ import { SQUAD_NAME, SQUAD_SHORT, SQUAD_TAGLINE } from '@/lib/brand';
 export const metadata: Metadata = {
   title: SQUAD_NAME,
   description: SQUAD_TAGLINE,
+  applicationName: SQUAD_SHORT,
   manifest: '/manifest-admin.json',
   appleWebApp: {
     capable: true,
-    statusBarStyle: 'default',
+    statusBarStyle: 'black-translucent',
     title: SQUAD_SHORT,
   },
   icons: {
@@ -16,6 +17,10 @@ export const metadata: Metadata = {
       { url: '/icons/yosquad-512.png', sizes: '512x512', type: 'image/png' },
     ],
     apple: [{ url: '/icons/yosquad-192.png', sizes: '192x192', type: 'image/png' }],
+  },
+  other: {
+    'mobile-web-app-capable': 'yes',
+    'apple-mobile-web-app-capable': 'yes',
   },
 };
 
