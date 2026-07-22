@@ -745,6 +745,7 @@ export default function seller_board() {
             started_at: new Date(meta.started_at).toISOString(),
             finished_at: new Date().toISOString(),
             pickup_at: o?.pickup_time || new Date().toISOString(),
+            shift_date: shift?.shift_date || moscow_today_iso(),
           },
         }),
       });
@@ -759,7 +760,7 @@ export default function seller_board() {
         }
       }
     },
-    [orders, seller_id, seller_name]
+    [orders, seller_id, seller_name, shift?.shift_date]
   );
 
   async function complete_payment(payment_method: 'cash' | 'card', amount_received?: number) {
@@ -861,6 +862,7 @@ export default function seller_board() {
           started_at: new Date(started).toISOString(),
           finished_at: new Date().toISOString(),
           pickup_at: o.pickup_time,
+          shift_date: shift?.shift_date || moscow_today_iso(),
         },
       }),
     });
@@ -1167,6 +1169,12 @@ export default function seller_board() {
                 set_tab('work');
                 void load();
               },
+              seller_id,
+              seller_name,
+              shift_id: shift?.id || null,
+              shift_date: shift?.shift_date,
+              spot_id: shift?.spot_id || null,
+              spot_address: shift?.address || null,
             })
           : null}
 

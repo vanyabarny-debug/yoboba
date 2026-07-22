@@ -22,6 +22,12 @@ type cart_line = order_item & {
 
 type props = {
   on_created: () => void;
+  seller_id?: string;
+  seller_name?: string;
+  shift_id?: string | null;
+  shift_date?: string;
+  spot_id?: string | null;
+  spot_address?: string | null;
 };
 
 type found_customer = {
@@ -69,7 +75,15 @@ function cart_bar({
   );
 }
 
-export default function pos_panel({ on_created }: props) {
+export default function pos_panel({
+  on_created,
+  seller_id = 'seller',
+  seller_name = 'бариста',
+  shift_id = null,
+  shift_date,
+  spot_id = null,
+  spot_address = null,
+}: props) {
   const [items, set_items] = useState<menu_item[]>([]);
   const [categories, set_categories] = useState<string[]>(default_categories);
   const [step, set_step] = useState<step>('categories');
@@ -256,6 +270,39 @@ export default function pos_panel({ on_created }: props) {
         const body = (await res.json().catch(() => null)) as { error?: string } | null;
         throw new Error(body?.error || 'не удалось создать заказ');
       }
+      const created = (await res.json()) as {
+        order?: { id: string; total_price: number; items?: order_item[] };
+      };
+      const order = created.order;
+
+      if (paid_now && order) {
+        const total = Number(order.total_price) || cart.reduce((s, l) => s + l.price * l.quantity, 0);
+        const items_summary =
+          (order.items || cart)
+            .map((i) => `${i.name} ×${i.quantity}`)
+            .join('; ') || cart.map((l) => `${l.name} ×${l.quantity}`).join('; ');
+        await fetch('/api/cash', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          credentials: 'same-origin',
+          body: JSON.stringify({
+            id: `cash-${Date.now()}`,
+            order_id: order.id,
+            seller_id,
+            seller_name,
+            order_total: total,
+            payment_method: 'cash',
+            amount_received: total,
+            change_given: 0,
+            items_summary,
+            shift_date: shift_date || undefined,
+            spot_id,
+            spot_address,
+            shift_id,
+          }),
+        });
+      }
+
       set_cart([]);
       set_phone_draft('');
       set_customer(null);

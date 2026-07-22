@@ -37,7 +37,11 @@ export default function shifts_manage() {
       set_txs([]);
       return;
     }
-    const qs = new URLSearchParams({ shift_id: selected.id });
+    const qs = new URLSearchParams({
+      shift_id: selected.id,
+      shift_date: selected.shift_date,
+      spot_id: selected.spot_id,
+    });
     fetch(`/api/cash?${qs}`, { credentials: 'same-origin' })
       .then((r) => r.json())
       .then((body: { transactions?: cash_transaction[] }) => set_txs(body.transactions || []))

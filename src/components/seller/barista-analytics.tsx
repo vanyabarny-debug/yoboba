@@ -168,7 +168,6 @@ export default function barista_analytics_panel({
         <h3 className="text-base font-bold text-neutral-900 mb-3">касса</h3>
         {createElement(day_summary_panel, {
           spot_id,
-          shift_id,
           seller_id,
           default_date: shift_date,
         })}

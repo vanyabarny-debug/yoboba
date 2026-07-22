@@ -22,19 +22,68 @@ export async function get_transactions(filters: cash_filters | string = {}): Pro
   const all = await load_transactions();
   const f: cash_filters = typeof filters === 'string' ? { shift_date: filters } : filters || {};
   return all.filter((t) => {
-    if (f.shift_id && t.shift_id !== f.shift_id) return false;
-    if (f.spot_id && t.spot_id !== f.spot_id) return false;
+    if (f.shift_id) {
+      const exact = t.shift_id === f.shift_id;
+      const orphan_same_day =
+        !t.shift_id &&
+        Boolean(f.shift_date) &&
+        t.shift_date === f.shift_date &&
+        (!f.spot_id || !t.spot_id || t.spot_id === f.spot_id);
+      if (!exact && !orphan_same_day) return false;
+    } else if (f.shift_date && t.shift_date !== f.shift_date) {
+      return false;
+    }
+
+    if (f.spot_id && t.spot_id && t.spot_id !== f.spot_id) return false;
     if (f.seller_id && t.seller_id !== f.seller_id) return false;
-    if (f.shift_date && t.shift_date !== f.shift_date) return false;
     return true;
   });
 }
 
-export async function add_transaction(tx: cash_transaction): Promise<cash_transaction> {
+/** записать оплату в кассу; повтор по order_id не дублирует */
+export async function record_cash_for_order(
+  tx: Omit<cash_transaction, 'id' | 'created_at'> & {
+    id?: string;
+    created_at?: string;
+  }
+): Promise<cash_transaction> {
   const all = await load_transactions();
-  all.push(tx);
+  if (tx.order_id) {
+    const existing = all.find((t) => t.order_id === tx.order_id);
+    if (existing) {
+      const merged: cash_transaction = {
+        ...existing,
+        ...tx,
+        id: existing.id,
+        created_at: existing.created_at,
+        order_id: tx.order_id,
+        shift_id: tx.shift_id ?? existing.shift_id ?? null,
+        spot_id: tx.spot_id ?? existing.spot_id ?? null,
+        spot_address: tx.spot_address ?? existing.spot_address ?? null,
+      };
+      const idx = all.findIndex((t) => t.id === existing.id);
+      all[idx] = merged;
+      await save_transactions(all);
+      return merged;
+    }
+  }
+
+  const record: cash_transaction = {
+    ...tx,
+    id: tx.id || `cash-${Date.now()}`,
+    created_at: tx.created_at || new Date().toISOString(),
+    shift_date: tx.shift_date,
+    spot_id: tx.spot_id ?? null,
+    spot_address: tx.spot_address ?? null,
+    shift_id: tx.shift_id ?? null,
+  };
+  all.push(record);
   await save_transactions(all);
-  return tx;
+  return record;
+}
+
+export async function add_transaction(tx: cash_transaction): Promise<cash_transaction> {
+  return record_cash_for_order(tx);
 }
 
 export async function calc_day_summary(
