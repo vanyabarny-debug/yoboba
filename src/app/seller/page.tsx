@@ -31,7 +31,7 @@ import {
   mark_appeared,
   type day_task,
 } from '@/lib/seller-day-tasks';
-import { tile_grid } from '@/lib/seller-tile-grid';
+import { board_tile_grid } from '@/lib/seller-tile-grid';
 
 type tab = 'work' | 'ready' | 'pos' | 'analytics';
 
@@ -812,10 +812,10 @@ export default function seller_board() {
 
   function render_fill_grid(count: number, children: ReactNode) {
     if (count === 0) return null;
-    const { cols, rows } = tile_grid(count);
+    const { cols, rows } = board_tile_grid(count);
     return (
       <div
-        className="grid flex-1 min-h-0 gap-2 overflow-hidden h-full"
+        className="grid flex-1 min-h-0 gap-2 overflow-hidden h-full content-start"
         style={{
           gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))`,
           gridTemplateRows: `repeat(${rows}, minmax(0, 1fr))`,

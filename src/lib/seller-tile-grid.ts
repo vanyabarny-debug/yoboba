@@ -1,4 +1,4 @@
-/** общая сетка плиток кассы / доски — без скролла, всё влезает в экран */
+/** общая сетка плиток кассы — без скролла, всё влезает в экран */
 
 export function tile_grid(count: number): { cols: number; rows: number } {
   const n = Math.max(1, count);
@@ -10,6 +10,21 @@ export function tile_grid(count: number): { cols: number; rows: number } {
   if (n <= 12) return { cols: 3, rows: Math.ceil(n / 3) };
   if (n <= 16) return { cols: 4, rows: Math.ceil(n / 4) };
   const cols = Math.min(4, Math.ceil(Math.sqrt(n)));
+  return { cols, rows: Math.ceil(n / cols) };
+}
+
+/**
+ * сетка доски «в работе» / «готовые»:
+ * до 12 карточек — фиксированные ячейки 4×3 (не растягивать 1–2 на весь экран);
+ * больше — подстраиваем cols/rows под количество.
+ */
+export function board_tile_grid(count: number): { cols: number; rows: number } {
+  const n = Math.max(1, count);
+  if (n <= 12) return { cols: 4, rows: 3 };
+  if (n <= 16) return { cols: 4, rows: 4 };
+  if (n <= 20) return { cols: 5, rows: 4 };
+  if (n <= 25) return { cols: 5, rows: 5 };
+  const cols = Math.min(6, Math.ceil(Math.sqrt(n)));
   return { cols, rows: Math.ceil(n / cols) };
 }
 

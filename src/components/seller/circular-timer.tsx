@@ -11,6 +11,8 @@ type props = {
   tone?: 'idle' | 'cooking' | 'ready' | 'pay' | 'handout' | 'done';
   /** компактнее для сетки 2 в ряд */
   compact?: boolean;
+  /** заполняет родителя (aspect-square контейнер) */
+  fill?: boolean;
   on_click: () => void;
 };
 
@@ -56,10 +58,11 @@ export default function circular_timer({
   disabled = false,
   tone = 'idle',
   compact = false,
+  fill = false,
   on_click,
 }: props) {
-  const size = compact ? 88 : 160;
-  const stroke = compact ? 4.5 : 6;
+  const size = fill ? 100 : compact ? 88 : 160;
+  const stroke = fill ? 5.5 : compact ? 4.5 : 6;
   const r = (size - stroke) / 2;
   const c = 2 * Math.PI * r;
   const clamped = Math.max(0, Math.min(1, progress));
@@ -71,13 +74,19 @@ export default function circular_timer({
       type="button"
       disabled={disabled}
       onClick={on_click}
-      className={`relative mx-auto block shrink-0 rounded-full transition active:scale-[0.97] disabled:opacity-45 ${
-        urgent ? 'animate-[pulse_0.55s_ease-in-out_infinite]' : ''
-      }`}
-      style={{ width: size, height: size }}
-      aria-label={label}
+      className={`relative block shrink-0 rounded-full transition active:scale-[0.97] disabled:opacity-45 ${
+        fill ? 'h-full w-full max-h-full max-w-full' : 'mx-auto'
+      } ${urgent ? 'animate-[pulse_0.55s_ease-in-out_infinite]' : ''}`}
+      style={fill ? undefined : { width: size, height: size }}
+      aria-label={label || 'таймер'}
     >
-      <svg width={size} height={size} className="-rotate-90" aria-hidden>
+      <svg
+        viewBox={`0 0 ${size} ${size}`}
+        width={fill ? undefined : size}
+        height={fill ? undefined : size}
+        className={`-rotate-90 ${fill ? 'h-full w-full' : ''}`}
+        aria-hidden
+      >
         <circle
           cx={size / 2}
           cy={size / 2}
@@ -103,30 +112,40 @@ export default function circular_timer({
       </svg>
       <span
         className={`absolute inset-0 flex flex-col items-center justify-center text-center ${
-          compact ? 'px-2' : 'px-4'
+          fill ? 'px-[12%]' : compact ? 'px-2' : 'px-4'
         }`}
       >
-        <span
-          className={`font-semibold leading-tight ${
-            compact
-              ? label.length > 10
-                ? 'text-[11px]'
-                : label.length > 6
-                  ? 'text-sm'
-                  : 'text-base'
-              : label.length > 10
-                ? 'text-sm'
-                : label.length > 6
-                  ? 'text-lg'
-                  : 'text-xl'
-          }`}
-          style={{ color: colors.text }}
-        >
-          {label}
-        </span>
+        {label ? (
+          <span
+            className={`font-semibold leading-tight ${
+              fill
+                ? label.length > 10
+                  ? 'text-[clamp(0.7rem,4.5cqw,1.15rem)]'
+                  : label.length > 6
+                    ? 'text-[clamp(0.85rem,5.5cqw,1.35rem)]'
+                    : 'text-[clamp(1rem,7cqw,1.65rem)]'
+                : compact
+                  ? label.length > 10
+                    ? 'text-[11px]'
+                    : label.length > 6
+                      ? 'text-sm'
+                      : 'text-base'
+                  : label.length > 10
+                    ? 'text-sm'
+                    : label.length > 6
+                      ? 'text-lg'
+                      : 'text-xl'
+            }`}
+            style={{ color: colors.text }}
+          >
+            {label}
+          </span>
+        ) : null}
         {sublabel ? (
           <span
-            className="mt-0.5 text-[9px] font-medium uppercase tracking-wide opacity-55"
+            className={`mt-0.5 font-medium uppercase tracking-wide opacity-55 ${
+              fill ? 'text-[clamp(0.55rem,3cqw,0.7rem)]' : 'text-[9px]'
+            }`}
             style={{ color: colors.text }}
           >
             {sublabel}
