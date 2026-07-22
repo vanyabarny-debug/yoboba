@@ -27,7 +27,7 @@ type props = {
     item: menu_item,
     qty: number,
     options?: { volume: '450' | '650'; topping: number }
-  ) => void;
+  ) => void | Promise<void>;
   /** правка позиции из корзины */
   edit_mode?: boolean;
   initial_qty?: number;
@@ -291,11 +291,11 @@ export default function product_drawer({
     set_nav_item(rec);
   }
 
-  function handle_add_to_cart() {
+  async function handle_add_to_cart() {
     if (!active_item) return;
 
     fly_to_cart(image_ref.current);
-    on_add(active_item, qty, { volume, topping });
+    await on_add(active_item, qty, { volume, topping });
 
     if (can_go_back) {
       pop_card();

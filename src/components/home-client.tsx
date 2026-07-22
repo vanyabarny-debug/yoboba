@@ -120,21 +120,49 @@ function merge_cart_line(
   const volume = options?.volume ?? '450';
   const topping = options?.topping ?? 0;
 
-  // правка существующей позиции из корзины — заменить, не добавить
+  // правка из корзины: всегда выкидываем старую строку и кладём новую
   if (options?.replace_key) {
-    const idx = lines.findIndex((l, i) => cart_line_key(l, i) === options.replace_key);
-    if (idx >= 0) {
-      const next = [...lines];
-      next[idx] = {
-        ...next[idx],
+    const key = options.replace_key;
+    let removed = false;
+    const without = lines.filter((l, i) => {
+      if (removed) return true;
+      const k = l.key || cart_line_key(l, i);
+      if (k === key || l.key === key) {
+        removed = true;
+        return false;
+      }
+      return true;
+    });
+    // если ключ не совпал — убираем первую позицию с тем же menu_id
+    let base =
+      removed
+        ? without
+        : (() => {
+            let done = false;
+            return lines.filter((l) => {
+              if (done) return true;
+              if (l.item.id === item.id && !l.item.id.startsWith('topping-')) {
+                done = true;
+                return false;
+              }
+              return true;
+            });
+          })();
+
+    // убрать старые отдельные строки топпинга (legacy) для этой категории
+    const topping_prefix = `topping-${item.category}-`;
+    base = base.filter((l) => !l.item.id.startsWith(topping_prefix));
+
+    return [
+      ...base,
+      {
+        key,
         item,
         quantity: qty,
         volume,
         topping,
-        key: options.replace_key,
-      };
-      return next;
-    }
+      },
+    ];
   }
 
   // та же конфигурация уже в корзине — увеличить qty
@@ -195,6 +223,7 @@ export default function home_client({
   const [drawer_open, set_drawer_open] = useState(false);
   const [product_from_cart, set_product_from_cart] = useState(false);
   const [editing_line_key, set_editing_line_key] = useState<string | null>(null);
+  const editing_line_key_ref = useRef<string | null>(null);
   const [edit_initial, set_edit_initial] = useState<{
     qty: number;
     volume: '450' | '650';
@@ -622,6 +651,13 @@ export default function home_client({
     if (demo_mode && !user_id) return;
     if (!user_id) return;
 
+    // при правке не делаем delta-add и не перезагружаем серверную корзину —
+    // иначе затираются volume/topping и появляется «вторая» позиция
+    if (options?.replace_key) {
+      await upsert_cart_item(user_id, item.id, qty);
+      return;
+    }
+
     const volume_add = options?.volume === '650' ? 50 : 0;
     const topping = options?.topping ?? 0;
     const server_item: menu_item = {
@@ -642,11 +678,14 @@ export default function home_client({
     qty: number,
     options?: { volume?: '450' | '650'; topping?: number }
   ) {
+    const replace_key = editing_line_key_ref.current || editing_line_key || undefined;
     await execute_add(item, qty, {
       ...options,
-      replace_key: editing_line_key || undefined,
+      replace_key,
     });
+    editing_line_key_ref.current = null;
     set_editing_line_key(null);
+    set_product_from_cart(false);
   }
 
   async function handle_update_qty(line_key: string, quantity: number) {
@@ -724,12 +763,20 @@ export default function home_client({
   }
 
   function handle_edit_line(line: cart_line) {
-    const key = line.key || `legacy-${line.item.id}`;
+    const key = line.key || `legacy-${line.item.id}-${Date.now()}`;
     set_cart_lines((prev) => {
       let assigned = false;
-      return prev.map((l) => {
-        if (line.key && l.key === line.key) return { ...l, key };
-        if (!line.key && !assigned && !l.key && l.item.id === line.item.id) {
+      return prev.map((l, i) => {
+        if (line.key && (l.key === line.key || cart_line_key(l, i) === line.key)) {
+          return { ...l, key };
+        }
+        if (
+          !line.key &&
+          !assigned &&
+          l.item.id === line.item.id &&
+          (l.volume ?? '450') === (line.volume ?? '450') &&
+          (l.topping ?? 0) === (line.topping ?? 0)
+        ) {
           assigned = true;
           return { ...l, key };
         }
@@ -739,6 +786,7 @@ export default function home_client({
     set_cart_open(false);
     set_selected(line.item);
     set_product_from_cart(true);
+    editing_line_key_ref.current = key;
     set_editing_line_key(key);
     set_edit_initial({
       qty: line.quantity,
@@ -752,6 +800,7 @@ export default function home_client({
     set_cart_open(false);
     set_selected(item);
     set_product_from_cart(false);
+    editing_line_key_ref.current = null;
     set_editing_line_key(null);
     set_edit_initial({ qty: 1, volume: '450', topping: 0 });
     set_drawer_open(true);
@@ -760,6 +809,7 @@ export default function home_client({
   function handle_product_close() {
     set_drawer_open(false);
     set_product_from_cart(false);
+    editing_line_key_ref.current = null;
     set_editing_line_key(null);
     set_selected(null);
   }
@@ -767,7 +817,7 @@ export default function home_client({
   function handle_return_to_cart() {
     set_drawer_open(false);
     set_product_from_cart(false);
-    set_editing_line_key(null);
+    // не сбрасываем editing_line_key_ref здесь — save может ещё идти
     set_selected(null);
     set_cart_open(true);
   }
@@ -1043,6 +1093,7 @@ export default function home_client({
               on_item_click: (item: menu_item) => {
                 set_selected(item);
                 set_product_from_cart(false);
+                editing_line_key_ref.current = null;
                 set_editing_line_key(null);
                 set_edit_initial({ qty: 1, volume: '450', topping: 0 });
                 set_drawer_open(true);
