@@ -282,6 +282,14 @@ export default function seller_board() {
   const schedule_ref = useRef<schedule_line[]>([]);
   const alarm_timer = useRef<number | null>(null);
   const tab_ref = useRef(tab);
+  const shift_date_ref = useRef(shift?.shift_date);
+  const seller_id_ref = useRef(seller_id);
+  const load_gen = useRef(0);
+  const load_inflight = useRef<Promise<void> | null>(null);
+  const load_queued = useRef(false);
+  const empty_board_streak = useRef(0);
+  shift_date_ref.current = shift?.shift_date;
+  seller_id_ref.current = seller_id;
   const tab_index = tab_order.indexOf(tab);
 
   const { viewport_ref, page_style } = use_page_swipe({
@@ -366,115 +374,159 @@ export default function seller_board() {
   );
 
   const load = useCallback(async () => {
-    let list: order[] = [];
-    let lines: schedule_line[] = [];
-
-    try {
-      const sched_res = await fetch('/api/kitchen/schedule', { credentials: 'same-origin' });
-      if (sched_res.ok) {
-        const body = (await sched_res.json()) as {
-          lines?: schedule_line[];
-          orders?: order[];
-        };
-        lines = body.lines ?? [];
-        if (body.orders) list = body.orders;
-      }
-    } catch {
-      /* fallback */
+    if (load_inflight.current) {
+      load_queued.current = true;
+      return;
     }
 
-    if (!list.length) {
-      const merged: order[] = [];
-      const seen = new Set<string>();
+    const run = async () => {
+      const gen = ++load_gen.current;
+      let list: order[] = [];
+      let lines: schedule_line[] = [];
+      let board_ok = false;
+
       try {
-        const demo_res = await fetch('/api/orders/demo');
-        if (demo_res.ok) {
-          const demo_data = (await demo_res.json()) as { orders: order[] };
-          for (const o of demo_data.orders || []) {
-            if (!seen.has(o.id)) {
-              seen.add(o.id);
-              merged.push(o);
+        const sched_res = await fetch('/api/kitchen/schedule', { credentials: 'same-origin' });
+        if (sched_res.ok) {
+          const body = (await sched_res.json()) as {
+            lines?: schedule_line[];
+            orders?: order[];
+          };
+          lines = body.lines ?? [];
+          if (Array.isArray(body.orders)) {
+            list = body.orders;
+            board_ok = true;
+          }
+        }
+      } catch {
+        /* fallback */
+      }
+
+      if (!board_ok) {
+        const merged: order[] = [];
+        const seen = new Set<string>();
+        try {
+          const demo_res = await fetch('/api/orders/demo');
+          if (demo_res.ok) {
+            const demo_data = (await demo_res.json()) as { orders: order[] };
+            for (const o of demo_data.orders || []) {
+              if (!seen.has(o.id)) {
+                seen.add(o.id);
+                merged.push(o);
+              }
+            }
+            board_ok = true;
+          }
+        } catch {
+          /* offline */
+        }
+
+        if (is_supabase_configured()) {
+          const supabase = create_client();
+          const { data } = await supabase
+            .from('orders')
+            .select('*, profiles:user_id(name, phone)')
+            .in('status', ['new', 'preparing', 'ready'])
+            .order('created_at', { ascending: false });
+          for (const row of (data as Array<
+            order & { profiles?: { name?: string; phone?: string } | null }
+          >) || []) {
+            if (seen.has(row.id)) continue;
+            seen.add(row.id);
+            const profile = row.profiles;
+            merged.push({
+              ...row,
+              customer_name: row.customer_name || profile?.name || 'гость',
+              customer_phone: row.customer_phone || profile?.phone || null,
+              is_paid: Boolean(row.is_paid),
+            });
+          }
+          board_ok = true;
+        }
+
+        merged.sort(
+          (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+        );
+        list = merged;
+      }
+
+      if (gen !== load_gen.current) return;
+
+      if (list.length === 0 && board_ok) {
+        empty_board_streak.current += 1;
+      } else if (list.length > 0) {
+        empty_board_streak.current = 0;
+      }
+
+      schedule_ref.current = lines;
+      set_schedule_lines(lines);
+      const day = shift_day(shift_date_ref.current);
+      set_orders((prev) => {
+        // краткий пустой ответ при гонке записи — не мигаем доской и не спамим пушами
+        if (
+          list.length === 0 &&
+          prev.length > 0 &&
+          (!board_ok || empty_board_streak.current < 2)
+        ) {
+          return prev;
+        }
+        return with_sticky_paid(list, day);
+      });
+      await hydrate_prep(list, lines);
+      if (gen !== load_gen.current) return;
+
+      const sid = seller_ref.current.id || seller_id_ref.current || '';
+      const completed: order[] = [];
+      const seen_done = new Set<string>();
+      let from_server = false;
+
+      if (sid) {
+        try {
+          const qs = new URLSearchParams({ completed: '1', day, seller_id: sid });
+          const res = await fetch(`/api/seller/orders?${qs}`, {
+            credentials: 'same-origin',
+          });
+          if (res.ok) {
+            from_server = true;
+            const body = (await res.json()) as { orders?: order[] };
+            for (const o of body.orders || []) {
+              if (seen_done.has(o.id)) continue;
+              seen_done.add(o.id);
+              completed.push(o);
             }
           }
-        }
-      } catch {
-        /* offline */
-      }
-
-      if (is_supabase_configured()) {
-        const supabase = create_client();
-        const { data } = await supabase
-          .from('orders')
-          .select('*, profiles:user_id(name, phone)')
-          .in('status', ['new', 'preparing', 'ready'])
-          .order('created_at', { ascending: false });
-        for (const row of (data as Array<
-          order & { profiles?: { name?: string; phone?: string } | null }
-        >) || []) {
-          if (seen.has(row.id)) continue;
-          seen.add(row.id);
-          const profile = row.profiles;
-          merged.push({
-            ...row,
-            customer_name: row.customer_name || profile?.name || 'гость',
-            customer_phone: row.customer_phone || profile?.phone || null,
-            is_paid: Boolean(row.is_paid),
-          });
+        } catch {
+          /* offline */
         }
       }
 
-      merged.sort(
+      if (gen !== load_gen.current) return;
+
+      if (!from_server) {
+        for (const o of load_handed(day)) {
+          if (seen_done.has(o.id)) continue;
+          seen_done.add(o.id);
+          completed.push(o);
+        }
+      }
+
+      completed.sort(
         (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
       );
-      list = merged;
-    }
+      set_handed(completed);
+      save_handed(day, completed);
+    };
 
-    schedule_ref.current = lines;
-    set_schedule_lines(lines);
-    const day = shift_day(shift?.shift_date);
-    set_orders(with_sticky_paid(list, day));
-    await hydrate_prep(list, lines);
-
-    // выданные за смену — тот же seller_id+day, что в аналитике
-    const sid = seller_ref.current.id || seller_id || '';
-    const completed: order[] = [];
-    const seen_done = new Set<string>();
-    let from_server = false;
-
-    if (sid) {
-      try {
-        const qs = new URLSearchParams({ completed: '1', day, seller_id: sid });
-        const res = await fetch(`/api/seller/orders?${qs}`, {
-          credentials: 'same-origin',
-        });
-        if (res.ok) {
-          from_server = true;
-          const body = (await res.json()) as { orders?: order[] };
-          for (const o of body.orders || []) {
-            if (seen_done.has(o.id)) continue;
-            seen_done.add(o.id);
-            completed.push(o);
-          }
-        }
-      } catch {
-        /* offline */
+    const task = run().finally(() => {
+      if (load_inflight.current === task) load_inflight.current = null;
+      if (load_queued.current) {
+        load_queued.current = false;
+        void load();
       }
-    }
-
-    if (!from_server) {
-      for (const o of load_handed(day)) {
-        if (seen_done.has(o.id)) continue;
-        seen_done.add(o.id);
-        completed.push(o);
-      }
-    }
-
-    completed.sort(
-      (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
-    );
-    set_handed(completed);
-    save_handed(day, completed);
-  }, [hydrate_prep, shift?.shift_date, seller_id]);
+    });
+    load_inflight.current = task;
+    await task;
+  }, [hydrate_prep]);
 
   useEffect(() => {
     set_prep_map(load_prep_map());
@@ -511,15 +563,15 @@ export default function seller_board() {
       set_need_shift(true);
     }
 
-    load();
-    const poll = window.setInterval(load, 4000);
+    void load();
+    const poll = window.setInterval(() => void load(), 4000);
 
     if (is_supabase_configured()) {
       const supabase = create_client();
       const channel = supabase
         .channel('seller-orders')
         .on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, () =>
-          load()
+          void load()
         )
         .subscribe();
       return () => {
@@ -531,16 +583,14 @@ export default function seller_board() {
   }, [load]);
 
   useEffect(() => {
-    const ids = new Set(orders.map((o) => o.id));
+    const ids = orders.map((o) => o.id);
     if (!known_ids.current) {
-      known_ids.current = ids;
+      known_ids.current = new Set(ids);
       return;
     }
-    const newcomers: string[] = [];
-    for (const id of ids) {
-      if (!known_ids.current.has(id)) newcomers.push(id);
-    }
-    known_ids.current = ids;
+    const newcomers = ids.filter((id) => !known_ids.current!.has(id));
+    // только накапливаем — забывание id при мигании доски давало повторные пуши
+    for (const id of ids) known_ids.current.add(id);
     if (!newcomers.length) return;
 
     notify_new_orders(newcomers.length);

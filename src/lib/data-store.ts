@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs';
+import { existsSync, mkdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from 'fs';
 import { join } from 'path';
 import sellers_seed from '../../data/sellers.json';
 
@@ -35,24 +35,47 @@ async function is_cloudflare_runtime() {
   return (await get_cloudflare_env()) !== null;
 }
 
+function sleep_sync_ms(ms: number) {
+  const end = Date.now() + ms;
+  while (Date.now() < end) {
+    /* spin — короткий ретрай чтения при гонке записи */
+  }
+}
+
 function read_from_fs<T>(key: string, fallback: T): T {
   const file_path = join(data_dir, `${key}.json`);
   if (!existsSync(data_dir)) mkdirSync(data_dir, { recursive: true });
   if (!existsSync(file_path)) {
     const seed = (seeds[key] as T | undefined) ?? fallback;
-    writeFileSync(file_path, JSON.stringify(seed, null, 2), 'utf-8');
+    write_to_fs(key, seed);
     return seed;
   }
-  try {
-    return JSON.parse(readFileSync(file_path, 'utf-8')) as T;
-  } catch {
-    return fallback;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      return JSON.parse(readFileSync(file_path, 'utf-8')) as T;
+    } catch {
+      if (attempt < 2) sleep_sync_ms(15);
+    }
   }
+  return fallback;
 }
 
+/** атомарная запись: tmp + rename, чтобы параллельный read не видел пустой/битый JSON */
 function write_to_fs<T>(key: string, value: T) {
   if (!existsSync(data_dir)) mkdirSync(data_dir, { recursive: true });
-  writeFileSync(join(data_dir, `${key}.json`), JSON.stringify(value, null, 2), 'utf-8');
+  const file_path = join(data_dir, `${key}.json`);
+  const tmp = join(data_dir, `.${key}.${process.pid}.${Date.now()}.tmp`);
+  writeFileSync(tmp, JSON.stringify(value, null, 2), 'utf-8');
+  try {
+    renameSync(tmp, file_path);
+  } catch {
+    try {
+      unlinkSync(file_path);
+    } catch {
+      /* ignore */
+    }
+    renameSync(tmp, file_path);
+  }
 }
 
 export async function read_json_store<T>(key: string, fallback: T): Promise<T> {
