@@ -16,12 +16,12 @@ type props = {
   on_advance: (id: string, choice?: 'continue' | 'complete') => void;
 };
 
-function task_icon({ className }: { className?: string }) {
+function task_icon({ className, color }: { className?: string; color: string }) {
   return (
     <svg
       viewBox="0 0 24 24"
       fill="none"
-      stroke="currentColor"
+      stroke={color}
       strokeWidth="1.7"
       strokeLinecap="round"
       strokeLinejoin="round"
@@ -67,24 +67,137 @@ function format_stopwatch_ms(ms: number) {
   return `${m}:${s.toString().padStart(2, '0')}`;
 }
 
-function circle_shell({
+/** круг как у заказа: белая заливка + толстое цветное кольцо */
+function task_ring_shell({
   children,
+  ring,
+  track,
+  progress = 1,
   on_click,
-  className = '',
 }: {
   children: ReactNode;
+  ring: string;
+  track: string;
+  progress?: number;
   on_click?: () => void;
-  className?: string;
 }) {
+  const size = 100;
+  const stroke = 5.5;
+  const r = (size - stroke) / 2;
+  const c = 2 * Math.PI * r;
+  const clamped = Math.max(0, Math.min(1, progress));
+  const offset = c * (1 - clamped);
   const Tag = on_click ? 'button' : 'div';
+
   return (
     <Tag
       type={on_click ? 'button' : undefined}
       onClick={on_click}
-      className={`relative flex h-full w-full items-center justify-center overflow-hidden rounded-full bg-neutral-900 text-white shadow-sm transition active:scale-[0.97] ${className}`}
+      className="relative block h-full w-full max-h-full max-w-full rounded-full transition active:scale-[0.97]"
     >
-      {children}
+      <svg viewBox={`0 0 ${size} ${size}`} className="-rotate-90 h-full w-full" aria-hidden>
+        <circle
+          cx={size / 2}
+          cy={size / 2}
+          r={r}
+          fill="#ffffff"
+          stroke={track}
+          strokeWidth={stroke}
+        />
+        <circle
+          cx={size / 2}
+          cy={size / 2}
+          r={r}
+          fill="none"
+          stroke={ring}
+          strokeWidth={stroke}
+          strokeLinecap="round"
+          strokeDasharray={c}
+          strokeDashoffset={offset}
+        />
+      </svg>
+      <div className="absolute inset-[9%] flex items-center justify-center overflow-hidden rounded-full">
+        {children}
+      </div>
     </Tag>
+  );
+}
+
+/** пауза: две команды в том же кольце, разделитель толщиной кольца */
+function pause_split({
+  ring,
+  track,
+  on_continue,
+  on_complete,
+}: {
+  ring: string;
+  track: string;
+  on_continue: () => void;
+  on_complete: () => void;
+}) {
+  const size = 100;
+  const stroke = 5.5;
+  const r = (size - stroke) / 2;
+
+  return (
+    <div className="relative block h-full w-full max-h-full max-w-full rounded-full">
+      <svg viewBox={`0 0 ${size} ${size}`} className="h-full w-full" aria-hidden>
+        <circle
+          cx={size / 2}
+          cy={size / 2}
+          r={r}
+          fill="#ffffff"
+          stroke={track}
+          strokeWidth={stroke}
+        />
+        <circle
+          cx={size / 2}
+          cy={size / 2}
+          r={r}
+          fill="none"
+          stroke={ring}
+          strokeWidth={stroke}
+        />
+        {/* разделитель той же толщины и цвета, что кольцо */}
+        <line
+          x1={size / 2}
+          y1={stroke * 1.15}
+          x2={size / 2}
+          y2={size - stroke * 1.15}
+          stroke={ring}
+          strokeWidth={stroke}
+          strokeLinecap="round"
+        />
+      </svg>
+      <div className="absolute inset-[9%] flex overflow-hidden rounded-full">
+        <button
+          type="button"
+          onClick={on_continue}
+          className="flex w-1/2 items-center justify-center px-1.5 active:bg-black/[0.04]"
+          aria-label="продолжить"
+        >
+          <span
+            className="text-center text-[clamp(0.58rem,3.2cqw,0.82rem)] font-bold leading-tight"
+            style={{ color: ring }}
+          >
+            продолжить
+          </span>
+        </button>
+        <button
+          type="button"
+          onClick={on_complete}
+          className="flex w-1/2 items-center justify-center px-1.5 active:bg-black/[0.04]"
+          aria-label="выполнено"
+        >
+          <span
+            className="text-center text-[clamp(0.58rem,3.2cqw,0.82rem)] font-bold leading-tight"
+            style={{ color: ring }}
+          >
+            выполнено
+          </span>
+        </button>
+      </div>
+    </div>
   );
 }
 
@@ -96,6 +209,12 @@ export default function shift_task_card({ task, mode, on_advance }: props) {
   const expected_ms = Math.max(1, task.expected_minutes) * 60_000;
   const elapsed = live_elapsed_ms(task, now);
   const progress = Math.min(1, elapsed / expected_ms);
+  const timer_colors = {
+    fill: '#ffffff',
+    ring: color.fg,
+    text: color.fg,
+    track: color.border,
+  };
 
   useEffect(() => {
     if (task.phase !== 'running') return;
@@ -155,6 +274,7 @@ export default function shift_task_card({ task, mode, on_advance }: props) {
               progress: 1,
               label: task.title,
               tone: 'done',
+              colors: timer_colors,
               fill: true,
               disabled: true,
               on_click: () => {},
@@ -168,63 +288,53 @@ export default function shift_task_card({ task, mode, on_advance }: props) {
   let circle: ReactNode = null;
 
   if (exiting) {
-    circle = (
-      <div className="flex h-full w-full flex-col items-center justify-center gap-2 rounded-full bg-white/85 text-emerald-600 shadow-sm">
-        <span className="text-[clamp(1.6rem,10cqw,2.4rem)] font-bold leading-none animate-in zoom-in-50 fade-in duration-500">
-          ✓
-        </span>
-        <span className="text-[clamp(0.7rem,3cqw,0.9rem)] font-semibold">готово</span>
-      </div>
-    );
+    circle = createElement(task_ring_shell, {
+      ring: color.fg,
+      track: color.border,
+      progress: 1,
+      children: (
+        <div className="flex flex-col items-center justify-center gap-1 text-emerald-600">
+          <span className="text-[clamp(1.6rem,10cqw,2.4rem)] font-bold leading-none animate-in zoom-in-50 fade-in duration-500">
+            ✓
+          </span>
+          <span className="text-[clamp(0.7rem,3cqw,0.9rem)] font-semibold">готово</span>
+        </div>
+      ),
+    });
   } else if (task.phase === 'stopped') {
-    circle = (
-      <div
-        className="relative h-full w-full overflow-hidden rounded-full bg-neutral-900 text-white shadow-sm"
-        aria-label="пауза задачи"
-      >
-        <div className="absolute inset-y-0 left-1/2 z-10 w-px bg-white/35" />
-        <button
-          type="button"
-          onClick={() => go('continue')}
-          className="absolute inset-y-0 left-0 flex w-1/2 flex-col items-center justify-center gap-1 px-2 active:bg-white/10"
-        >
-          <span className="text-[clamp(0.62rem,3cqw,0.82rem)] font-semibold leading-tight text-center">
-            продолжить
-          </span>
-          <span className="text-[clamp(0.7rem,3.4cqw,0.95rem)] font-bold tabular-nums opacity-80">
-            {format_stopwatch_ms(elapsed)}
-          </span>
-        </button>
-        <button
-          type="button"
-          onClick={complete_with_anim}
-          className="absolute inset-y-0 right-0 flex w-1/2 flex-col items-center justify-center gap-1 bg-white/10 px-2 active:bg-white/20"
-        >
-          <span className="text-[clamp(0.62rem,3cqw,0.82rem)] font-semibold leading-tight text-center">
-            выполнено
-          </span>
-        </button>
-      </div>
-    );
+    circle = createElement(pause_split, {
+      ring: color.fg,
+      track: color.border,
+      on_continue: () => go('continue'),
+      on_complete: complete_with_anim,
+    });
   } else if (task.phase === 'icon') {
-    circle = createElement(circle_shell, {
+    circle = createElement(task_ring_shell, {
+      ring: color.fg,
+      track: color.border,
+      progress: 1,
       on_click: () => go(),
-      children: createElement(task_icon, { className: 'h-[38%] w-[38%]' }),
+      children: createElement(task_icon, {
+        className: 'h-[42%] w-[42%]',
+        color: color.fg,
+      }),
     });
   } else if (task.phase === 'info') {
-    circle = createElement(circle_shell, {
+    circle = createElement(circular_timer, {
+      progress: 1,
+      label: task.title,
+      tone: 'idle',
+      colors: timer_colors,
+      fill: true,
+      hero: false,
       on_click: () => go(),
-      children: (
-        <span className="max-w-[78%] text-center text-[clamp(0.8rem,4.5cqw,1.15rem)] font-bold leading-tight">
-          {task.title}
-        </span>
-      ),
     });
   } else if (task.phase === 'armed') {
     circle = createElement(circular_timer, {
       progress: 0,
       label: 'начать',
       tone: 'idle',
+      colors: timer_colors,
       fill: true,
       on_click: () => go(),
     });
@@ -235,6 +345,7 @@ export default function shift_task_card({ task, mode, on_advance }: props) {
       sublabel: 'пауза',
       active: true,
       tone: 'cooking',
+      colors: timer_colors,
       fill: true,
       hero: true,
       on_click: () => go(),
