@@ -205,6 +205,7 @@ export default function shift_task_card({ task, mode, on_advance }: props) {
   const [now, set_now] = useState(Date.now());
   const [show_info, set_show_info] = useState(false);
   const [exiting, set_exiting] = useState(false);
+  const [fading, set_fading] = useState(false);
   const color = day_task_color;
   const expected_ms = Math.max(1, task.expected_minutes) * 60_000;
   const elapsed = live_elapsed_ms(task, now);
@@ -234,10 +235,13 @@ export default function shift_task_card({ task, mode, on_advance }: props) {
   function complete_with_anim() {
     if (exiting || mode === 'done' || task.phase === 'done') return;
     set_exiting(true);
+    set_fading(false);
     play_task_done_chime();
+    // сначала даём разглядеть «готово», потом плавно уводим карточку
+    window.setTimeout(() => set_fading(true), 2400);
     window.setTimeout(() => {
       on_advance(task.id, 'complete');
-    }, 1600);
+    }, 3200);
   }
 
   if (mode === 'done' || (task.phase === 'done' && !exiting)) {
@@ -293,11 +297,13 @@ export default function shift_task_card({ task, mode, on_advance }: props) {
       track: color.border,
       progress: 1,
       children: (
-        <div className="flex flex-col items-center justify-center gap-1 text-emerald-600">
-          <span className="text-[clamp(1.6rem,10cqw,2.4rem)] font-bold leading-none animate-in zoom-in-50 fade-in duration-500">
+        <div className="flex flex-col items-center justify-center gap-1.5 text-emerald-600">
+          <span className="text-[clamp(1.8rem,12cqw,2.8rem)] font-bold leading-none animate-in zoom-in-50 fade-in duration-700">
             ✓
           </span>
-          <span className="text-[clamp(0.7rem,3cqw,0.9rem)] font-semibold">готово</span>
+          <span className="text-[clamp(0.75rem,3.4cqw,1rem)] font-semibold animate-in fade-in slide-in-from-bottom-1 duration-700 delay-150">
+            готово
+          </span>
         </div>
       ),
     });
@@ -354,8 +360,12 @@ export default function shift_task_card({ task, mode, on_advance }: props) {
 
   return (
     <article
-      className={`relative flex h-full min-h-0 flex-col overflow-hidden rounded-2xl border transition-all duration-500 ease-out ${
-        exiting ? 'scale-90 opacity-0 pointer-events-none' : 'scale-100 opacity-100'
+      className={`relative flex h-full min-h-0 flex-col overflow-hidden rounded-2xl border transition-all duration-700 ease-out ${
+        fading
+          ? 'scale-90 opacity-0 pointer-events-none'
+          : exiting
+            ? 'scale-100 opacity-100 pointer-events-none'
+            : 'scale-100 opacity-100'
       }`}
       style={{
         backgroundColor: color.bg,
