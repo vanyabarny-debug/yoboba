@@ -99,6 +99,7 @@ const payment_label: Record<order['payment_type'], string> = {
   cash: 'наличными',
   card: 'картой',
   online: 'онлайн',
+  bonus: 'тапикоинами',
 };
 
 function format_datetime(iso: string) {

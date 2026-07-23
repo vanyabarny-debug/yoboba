@@ -67,7 +67,7 @@ export type order = {
   items: order_item[];
   total_price: number;
   status: 'new' | 'preparing' | 'ready' | 'completed' | 'cancelled';
-  payment_type: 'cash' | 'card' | 'online';
+  payment_type: 'cash' | 'card' | 'online' | 'bonus';
   /** false / undefined = ещё не оплачен */
   is_paid?: boolean;
   customer_name?: string | null;
@@ -97,7 +97,7 @@ export type cash_transaction = {
   seller_id: string;
   seller_name: string;
   order_total: number;
-  payment_method: 'cash' | 'card';
+  payment_method: 'cash' | 'card' | 'bonus';
   amount_received: number | null;
   change_given: number | null;
   items_summary: string;

@@ -133,19 +133,33 @@ export async function GET(request: Request) {
   }
 
   const profile = await find_profile_by_phone(phone);
-  if (!profile) {
-    return NextResponse.json({ customer: null, phone });
+  if (profile) {
+    return NextResponse.json({
+      phone,
+      customer: {
+        id: profile.id,
+        name: (profile.name || '').trim() || null,
+        phone: profile.phone,
+        bonus_balance: profile.bonus_balance ?? 0,
+      },
+    });
   }
 
-  return NextResponse.json({
-    phone,
-    customer: {
-      id: profile.id,
-      name: (profile.name || '').trim() || null,
-      phone: profile.phone,
-      bonus_balance: profile.bonus_balance ?? 0,
-    },
-  });
+  const { get_demo_bonus } = await import('@/lib/demo-bonus-server');
+  const demo = await get_demo_bonus(phone);
+  if (demo) {
+    return NextResponse.json({
+      phone,
+      customer: {
+        id: `demo-${phone}`,
+        name: (demo.name || '').trim() || null,
+        phone: demo.phone,
+        bonus_balance: demo.bonus_balance,
+      },
+    });
+  }
+
+  return NextResponse.json({ customer: null, phone });
 }
 
 export async function POST(request: Request) {
@@ -286,7 +300,22 @@ export async function POST(request: Request) {
     is_paid,
   });
 
-  return NextResponse.json({ order, bonus_earned: 0 });
+  let demo_bonus_earned = 0;
+  if (customer_phone) {
+    const { get_demo_bonus, upsert_demo_bonus } = await import('@/lib/demo-bonus-server');
+    const { FREE_DRINK_BONUS_THRESHOLD } = await import('@/lib/cart-summary');
+    const existing = await get_demo_bonus(customer_phone);
+    const earned = calc_order_bonus(total_price);
+    demo_bonus_earned = earned;
+    await upsert_demo_bonus({
+      phone: customer_phone,
+      name: customer_name,
+      // новый демо-гость сразу с порогом, чтобы можно было проверить списание на кассе
+      bonus_balance: (existing?.bonus_balance ?? FREE_DRINK_BONUS_THRESHOLD) + earned,
+    });
+  }
+
+  return NextResponse.json({ order, bonus_earned: demo_bonus_earned });
 }
 
 export async function PATCH(request: Request) {

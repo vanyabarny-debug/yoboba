@@ -814,16 +814,36 @@ export default function seller_board() {
     [orders, seller_id, seller_name, shift?.shift_date]
   );
 
-  async function complete_payment(payment_method: 'cash' | 'card', amount_received?: number) {
+  async function complete_payment(
+    payment_method: 'cash' | 'card' | 'bonus',
+    amount_received?: number
+  ) {
     if (!paying) return;
-    const total = Number(paying.total_price);
+    const total = payment_method === 'bonus' ? 0 : Number(paying.total_price);
     const change =
       payment_method === 'cash' && amount_received != null
-        ? Math.max(0, amount_received - total)
+        ? Math.max(0, amount_received - Number(paying.total_price))
         : null;
 
     const sid = seller_id || seller_ref.current.id || 'seller';
     const sname = seller_name || seller_ref.current.name || 'бариста';
+
+    if (payment_method === 'bonus') {
+      const redeem_res = await fetch('/api/seller/redeem-bonus', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        credentials: 'same-origin',
+        body: JSON.stringify({
+          phone: paying.customer_phone,
+          order_id: paying.id,
+        }),
+      });
+      if (!redeem_res.ok) {
+        const body = (await redeem_res.json().catch(() => null)) as { error?: string } | null;
+        alert(body?.error || 'не удалось списать тапикоины');
+        return;
+      }
+    }
 
     const tx: cash_transaction = {
       id: `cash-${Date.now()}`,
@@ -856,20 +876,20 @@ export default function seller_board() {
       return;
     }
 
+    const patch_payment: Partial<order> = {
+      is_paid: true,
+      payment_type: payment_method === 'bonus' ? 'bonus' : payment_method,
+      status: 'ready',
+    };
+
     try {
-      await patch_order(paying.id, {
-        is_paid: true,
-        payment_type: payment_method,
-        status: 'ready',
-      });
+      await patch_order(paying.id, patch_payment);
       mark_order_paid_local(paying.id, shift_day(shift?.shift_date));
     } catch (e) {
       // касса уже провела оплату — держим «выдать» локально даже если PATCH частично упал
       mark_order_paid_local(paying.id, shift_day(shift?.shift_date));
       set_orders((prev) =>
-        prev.map((o) =>
-          o.id === paying.id ? { ...o, is_paid: true, payment_type: payment_method, status: 'ready' } : o
-        )
+        prev.map((o) => (o.id === paying.id ? { ...o, ...patch_payment } : o))
       );
       console.warn(e);
     }

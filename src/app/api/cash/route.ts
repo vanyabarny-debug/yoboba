@@ -34,7 +34,12 @@ export async function POST(request: Request) {
   }
 
   const body = (await request.json()) as cash_transaction;
-  if (!body.seller_id || !body.order_total || !body.payment_method) {
+  if (
+    !body.seller_id ||
+    body.order_total == null ||
+    Number.isNaN(Number(body.order_total)) ||
+    !body.payment_method
+  ) {
     return NextResponse.json({ error: 'неполные данные' }, { status: 400 });
   }
 

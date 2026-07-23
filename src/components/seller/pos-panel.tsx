@@ -221,11 +221,14 @@ export default function pos_panel({
   }
 
   function open_item(item: menu_item) {
+    if (replace_index != null) {
+      const qty = cart[replace_index]?.quantity ?? 1;
+      add_configured(item, qty, { volume: '450', topping: 0 });
+      return;
+    }
+    set_edit_index(null);
     set_selected(item);
     set_sheet_open(true);
-    if (replace_index == null) {
-      set_edit_index(null);
-    }
   }
 
   function open_cart_line(index: number) {

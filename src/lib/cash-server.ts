@@ -99,6 +99,7 @@ export async function calc_day_summary(
   let cash_change = 0;
 
   for (const t of txs) {
+    if (t.payment_method === 'bonus') continue;
     if (t.payment_method === 'cash') {
       cash_total += t.order_total;
       cash_received += t.amount_received || 0;

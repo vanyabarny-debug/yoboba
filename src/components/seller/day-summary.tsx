@@ -25,6 +25,7 @@ function calc_summary(transactions: cash_transaction[], shift_date: string): day
   let cash_change = 0;
 
   for (const t of transactions) {
+    if (t.payment_method === 'bonus') continue;
     if (t.payment_method === 'cash') {
       cash_total += t.order_total;
       cash_received += t.amount_received || 0;
