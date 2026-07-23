@@ -127,6 +127,9 @@ export default function pos_panel({
   const [confirm_open, set_confirm_open] = useState(false);
   const [selected, set_selected] = useState<menu_item | null>(null);
   const [sheet_open, set_sheet_open] = useState(false);
+  /** индекс позиции в корзине: правка опций или замена на другое блюдо */
+  const [edit_index, set_edit_index] = useState<number | null>(null);
+  const [replace_index, set_replace_index] = useState<number | null>(null);
 
   useEffect(() => {
     on_nav_depth?.(step === 'products');
@@ -210,16 +213,49 @@ export default function pos_panel({
     set_category('');
   }
 
+  function cancel_replace() {
+    set_replace_index(null);
+    set_edit_index(null);
+    set_sheet_open(false);
+    set_selected(null);
+  }
+
   function open_item(item: menu_item) {
+    set_selected(item);
+    set_sheet_open(true);
+    if (replace_index == null) {
+      set_edit_index(null);
+    }
+  }
+
+  function open_cart_line(index: number) {
+    const line = cart[index];
+    if (!line) return;
+    const item = items.find((i) => i.id === line.menu_id);
+    if (!item) return;
+    set_edit_index(index);
+    set_replace_index(null);
     set_selected(item);
     set_sheet_open(true);
   }
 
-  function add_configured(
+  function start_replace_from_sheet() {
+    const idx = edit_index;
+    if (idx == null) return;
+    set_replace_index(idx);
+    set_edit_index(null);
+    set_sheet_open(false);
+    set_selected(null);
+    set_confirm_open(false);
+    set_step('categories');
+    set_category('');
+  }
+
+  function build_line(
     item: menu_item,
     qty: number,
     options?: { volume: '450' | '650'; topping: number }
-  ) {
+  ): cart_line {
     const volume = options?.volume ?? '450';
     const topping = options?.topping ?? 0;
     const volume_add = volume === '650' ? 50 : 0;
@@ -230,29 +266,61 @@ export default function pos_panel({
     const name_bits = [item.name];
     if (volume === '650') name_bits.push('650мл');
     if (topping > 0) name_bits.push(`+топ.${topping}`);
+    return {
+      menu_id: item.id,
+      name: name_bits.join(' '),
+      price: unit,
+      quantity: qty,
+      volume,
+      topping,
+    };
+  }
+
+  function add_configured(
+    item: menu_item,
+    qty: number,
+    options?: { volume: '450' | '650'; topping: number }
+  ) {
+    const line = build_line(item, qty, options);
+
+    if (replace_index != null) {
+      const idx = replace_index;
+      set_cart((prev) => {
+        if (idx < 0 || idx >= prev.length) return prev;
+        const next = [...prev];
+        next[idx] = line;
+        return next;
+      });
+      set_replace_index(null);
+      set_edit_index(null);
+      set_confirm_open(true);
+      return;
+    }
+
+    if (edit_index != null) {
+      const idx = edit_index;
+      set_cart((prev) => {
+        if (idx < 0 || idx >= prev.length) return prev;
+        const next = [...prev];
+        next[idx] = line;
+        return next;
+      });
+      set_edit_index(null);
+      return;
+    }
 
     set_cart((prev) => {
       const key_match = (r: cart_line) =>
-        r.menu_id === item.id &&
-        (r.volume ?? '450') === volume &&
-        (r.topping ?? 0) === topping;
+        r.menu_id === line.menu_id &&
+        (r.volume ?? '450') === (line.volume ?? '450') &&
+        (r.topping ?? 0) === (line.topping ?? 0);
       const idx = prev.findIndex(key_match);
       if (idx >= 0) {
         const next = [...prev];
         next[idx] = { ...next[idx], quantity: next[idx].quantity + qty };
         return next;
       }
-      return [
-        ...prev,
-        {
-          menu_id: item.id,
-          name: name_bits.join(' '),
-          price: unit,
-          quantity: qty,
-          volume,
-          topping,
-        },
-      ];
+      return [...prev, line];
     });
   }
 
@@ -367,9 +435,9 @@ export default function pos_panel({
                 key={`${line.menu_id}-${index}`}
                 className="flex items-start justify-between gap-2 text-sm"
               >
-                <div className="min-w-0">
+                <div className="min-w-0 flex-1">
                   <p className="font-medium text-neutral-900 truncate">{line_label(line)}</p>
-                  <div className="mt-1 flex items-center gap-1">
+                  <div className="mt-1 flex flex-wrap items-center gap-1.5">
                     <button
                       type="button"
                       onClick={() => change_qty(index, -1)}
@@ -386,6 +454,13 @@ export default function pos_panel({
                       className="h-7 w-7 rounded-lg bg-neutral-100"
                     >
                       +
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => open_cart_line(index)}
+                      className="ml-1 rounded-lg border border-neutral-200 bg-white px-2 py-1 text-[11px] font-semibold text-neutral-700"
+                    >
+                      изменить
                     </button>
                   </div>
                 </div>
@@ -477,22 +552,60 @@ export default function pos_panel({
     </div>
   ) : null;
 
+  const editing_line =
+    edit_index != null && cart[edit_index] ? cart[edit_index] : null;
+  const sheet_mode =
+    replace_index != null ? 'replace' : edit_index != null ? 'edit' : 'add';
+  const replace_label =
+    replace_index != null && cart[replace_index]
+      ? line_label(cart[replace_index])
+      : null;
+
+  const replace_banner =
+    replace_index != null ? (
+      <div className="flex shrink-0 items-center gap-2 rounded-2xl border border-accent/30 bg-accent/10 px-3 py-2.5">
+        <p className="min-w-0 flex-1 text-xs font-semibold leading-snug text-accent">
+          выберите блюдо вместо «{replace_label}»
+        </p>
+        <button
+          type="button"
+          onClick={cancel_replace}
+          className="shrink-0 rounded-lg bg-white px-2.5 py-1 text-[11px] font-semibold text-neutral-700 border border-neutral-200"
+        >
+          отмена
+        </button>
+      </div>
+    ) : null;
+
   const sheet = createElement(seller_product_sheet, {
     item: selected,
     all_items: items,
     open: sheet_open,
     customer_bonus: customer?.bonus_balance ?? null,
+    mode: sheet_mode,
+    initial: editing_line
+      ? {
+          volume: editing_line.volume ?? '450',
+          topping: editing_line.topping ?? 0,
+          qty: editing_line.quantity,
+        }
+      : replace_index != null && cart[replace_index]
+        ? { qty: cart[replace_index].quantity, volume: '450', topping: 0 }
+        : null,
     on_close: () => {
       set_sheet_open(false);
       set_selected(null);
+      set_edit_index(null);
     },
     on_add: add_configured,
+    on_start_replace: edit_index != null ? start_replace_from_sheet : undefined,
   });
 
   if (step === 'categories') {
     const { cols, rows } = tile_grid(categories.length);
     return (
       <div className="flex flex-col flex-1 min-h-0 h-full gap-2 overflow-hidden">
+        {replace_banner}
         <div
           className="grid flex-1 min-h-0 gap-2 overflow-hidden"
           style={{
@@ -538,6 +651,7 @@ export default function pos_panel({
 
   return (
     <div className="flex flex-col flex-1 min-h-0 h-full gap-2 overflow-hidden">
+      {replace_banner}
       <div ref={viewport_ref} className="relative flex-1 min-h-0 overflow-hidden touch-pan-y">
         <div className="flex h-full min-h-0 flex-col gap-2" style={page_style(0)}>
           <div className="flex items-center gap-2 shrink-0 px-0.5">
@@ -565,7 +679,11 @@ export default function pos_panel({
                 key={item.id}
                 type="button"
                 onClick={() => open_item(item)}
-                className="flex h-full min-h-0 flex-col items-center justify-center gap-1.5 rounded-2xl border border-neutral-200 bg-white px-2 py-2 active:scale-[0.98] transition overflow-hidden"
+                className={`flex h-full min-h-0 flex-col items-center justify-center gap-1.5 rounded-2xl border bg-white px-2 py-2 active:scale-[0.98] transition overflow-hidden ${
+                  replace_index != null
+                    ? 'border-accent ring-1 ring-accent/30'
+                    : 'border-neutral-200'
+                }`}
               >
                 <div className="relative flex min-h-0 w-full flex-1 items-center justify-center overflow-hidden rounded-xl bg-white p-1.5">
                   {createElement(menu_image, {

@@ -22,12 +22,18 @@ type props = {
   open: boolean;
   /** баланс тапикоинов гостя, если уже найден по телефону */
   customer_bonus?: number | null;
+  /** стартовые опции при правке позиции из корзины */
+  initial?: { volume?: '450' | '650'; topping?: number; qty?: number } | null;
+  /** режим: обычное добавление / правка / выбор замены */
+  mode?: 'add' | 'edit' | 'replace';
   on_close: () => void;
   on_add: (
     item: menu_item,
     qty: number,
     options?: { volume: '450' | '650'; topping: number }
   ) => void;
+  /** начать выбор другого блюда вместо текущего */
+  on_start_replace?: () => void;
 };
 
 const volumes = [
@@ -41,8 +47,11 @@ export default function seller_product_sheet({
   all_items,
   open,
   customer_bonus = null,
+  initial = null,
+  mode = 'add',
   on_close,
   on_add,
+  on_start_replace,
 }: props) {
   const [active, set_active] = useState<menu_item | null>(item);
   const [qty, set_qty] = useState(1);
@@ -54,11 +63,11 @@ export default function seller_product_sheet({
   useEffect(() => {
     if (!open || !item) return;
     set_active(item);
-    set_qty(1);
-    set_volume('450');
-    set_topping(0);
+    set_qty(Math.max(1, initial?.qty ?? 1));
+    set_volume(initial?.volume ?? '450');
+    set_topping(Math.max(0, initial?.topping ?? 0));
     set_details_open(false);
-  }, [open, item]);
+  }, [open, item, initial?.qty, initial?.volume, initial?.topping]);
 
   useEffect(() => {
     if (!open || !active) {
@@ -267,7 +276,7 @@ export default function seller_product_sheet({
             ) : null}
           </div>
 
-          {recs.length > 0 ? (
+          {mode === 'add' && recs.length > 0 ? (
             <div className="min-h-0 shrink">
               <p className="mb-1.5 text-xs font-semibold text-neutral-900">предложите гостю</p>
               <div className="grid grid-cols-3 gap-2">
@@ -295,14 +304,29 @@ export default function seller_product_sheet({
             </div>
           ) : null}
 
-          <button
-            type="button"
-            onClick={add_current}
-            className="mt-auto w-full shrink-0 rounded-2xl bg-neutral-900 py-3.5 text-sm font-semibold text-white"
-          >
-            в заказ · {line_total} ₽
-            {bonus_earn > 0 ? ` · +${bonus_earn} т.` : ''}
-          </button>
+          <div className="mt-auto flex shrink-0 flex-col gap-2">
+            {mode === 'edit' && on_start_replace ? (
+              <button
+                type="button"
+                onClick={on_start_replace}
+                className="w-full rounded-2xl border border-neutral-300 bg-white py-3 text-sm font-semibold text-neutral-800"
+              >
+                заменить
+              </button>
+            ) : null}
+            <button
+              type="button"
+              onClick={add_current}
+              className="w-full rounded-2xl bg-neutral-900 py-3.5 text-sm font-semibold text-white"
+            >
+              {mode === 'replace'
+                ? `заменить · ${line_total} ₽`
+                : mode === 'edit'
+                  ? `сохранить · ${line_total} ₽`
+                  : `в заказ · ${line_total} ₽`}
+              {mode === 'add' && bonus_earn > 0 ? ` · +${bonus_earn} т.` : ''}
+            </button>
+          </div>
         </div>
       </div>
     </div>
