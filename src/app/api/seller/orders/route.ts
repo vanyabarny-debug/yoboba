@@ -128,6 +128,32 @@ export async function GET(request: Request) {
 
   const raw = url.searchParams.get('phone');
   const phone = normalize_phone(raw);
+  const user_id = url.searchParams.get('user_id') || undefined;
+
+  if (!phone && !user_id) {
+    return NextResponse.json({ customer: null });
+  }
+
+  if (user_id && is_supabase_configured()) {
+    const admin = create_service_client();
+    const { data: by_id } = await admin
+      .from('profiles')
+      .select('id, name, phone, bonus_balance')
+      .eq('id', user_id)
+      .maybeSingle();
+    if (by_id) {
+      return NextResponse.json({
+        phone: by_id.phone,
+        customer: {
+          id: by_id.id,
+          name: (by_id.name || '').trim() || null,
+          phone: by_id.phone,
+          bonus_balance: by_id.bonus_balance ?? 0,
+        },
+      });
+    }
+  }
+
   if (!phone) {
     return NextResponse.json({ customer: null });
   }
@@ -187,8 +213,10 @@ export async function POST(request: Request) {
   const total_price = items.reduce((s, i) => s + i.price * i.quantity, 0);
   const pickup_minutes = Math.max(5, Math.min(60, Number(body.pickup_minutes) || 10));
   const customer_phone = normalize_phone(body.customer_phone as string | undefined);
-  const is_paid = Boolean(body.is_paid);
-  const payment_type = (body.payment_type as 'cash' | 'card') || 'cash';
+  let is_paid = Boolean(body.is_paid);
+  let payment_type =
+    (body.payment_type as 'cash' | 'card' | 'bonus' | 'online') || 'cash';
+  const redeem_bonus = Boolean(body.redeem_bonus);
   const pickup_time =
     (body.pickup_time as string | undefined) ||
     new Date(Date.now() + pickup_minutes * 60_000).toISOString();
@@ -198,6 +226,9 @@ export async function POST(request: Request) {
   let user_id: string | null = null;
   let bonus_earned = 0;
   let can_earn_bonus = false;
+  let bonus_redeemed = 0;
+  let bonus_balance: number | null = null;
+  let final_total = total_price;
 
   if (customer_phone) {
     const profile = await find_profile_by_phone(customer_phone);
@@ -206,8 +237,47 @@ export async function POST(request: Request) {
       can_earn_bonus = true;
       const profile_name = (profile.name || '').trim();
       if (profile_name) customer_name = profile_name;
+      bonus_balance = profile.bonus_balance ?? 0;
       bonus_earned = calc_order_bonus(total_price);
     }
+  }
+
+  if (redeem_bonus) {
+    if (!customer_phone) {
+      return NextResponse.json(
+        { error: 'нужен телефон гостя, чтобы списать тапикоины' },
+        { status: 400 }
+      );
+    }
+    const { redeem_bonus_points, ensure_demo_bonus_row } = await import(
+      '@/lib/bonus-server'
+    );
+    const { FREE_DRINK_BONUS_THRESHOLD } = await import('@/lib/cart-summary');
+    if (!is_supabase_configured()) {
+      await ensure_demo_bonus_row({
+        phone: customer_phone,
+        name: customer_name,
+        seed: FREE_DRINK_BONUS_THRESHOLD,
+      });
+    }
+    const result = await redeem_bonus_points({
+      user_id,
+      phone: customer_phone,
+      amount: FREE_DRINK_BONUS_THRESHOLD,
+    });
+    if (!result.ok) {
+      return NextResponse.json(
+        { error: result.error, bonus_balance: result.bonus_balance },
+        { status: result.status }
+      );
+    }
+    bonus_redeemed = result.redeemed;
+    bonus_balance = result.bonus_balance;
+    final_total = 0;
+    is_paid = true;
+    payment_type = 'bonus';
+    can_earn_bonus = false;
+    bonus_earned = 0;
   }
 
   if (is_supabase_configured()) {
@@ -216,15 +286,14 @@ export async function POST(request: Request) {
       if (!user_id) {
         const resolved = await resolve_walk_in_user_id(customer_name, customer_phone);
         user_id = resolved.user_id;
-        // баллы только если гость уже был в базе — не новому walk-in
       }
 
       const daily = await allocate_daily_order_number(admin);
       const payload = {
         user_id,
         items,
-        total_price,
-        payment_type,
+        total_price: final_total,
+        payment_type: payment_type === 'bonus' ? 'online' : payment_type,
         is_paid,
         customer_name,
         customer_phone,
@@ -236,14 +305,14 @@ export async function POST(request: Request) {
 
       let { data, error } = await admin.from('orders').insert(payload).select('*').single();
 
-      if (error && /is_paid|customer_name|customer_phone/i.test(error.message)) {
+      if (error && /is_paid|customer_name|customer_phone|payment_type/i.test(error.message)) {
         const retry = await admin
           .from('orders')
           .insert({
             user_id,
             items,
-            total_price,
-            payment_type,
+            total_price: final_total,
+            payment_type: payment_type === 'bonus' ? 'online' : payment_type,
             pickup_time,
             status: 'new',
             order_number: daily.order_number,
@@ -260,17 +329,18 @@ export async function POST(request: Request) {
       }
 
       if (data) {
-        if (bonus_earned > 0 && can_earn_bonus) {
+        if (bonus_earned > 0 && can_earn_bonus && user_id) {
           const { data: profile } = await admin
             .from('profiles')
             .select('bonus_balance')
             .eq('id', user_id)
             .maybeSingle();
           const current = (profile?.bonus_balance as number | null) ?? 0;
+          bonus_balance = current + bonus_earned;
           await admin
             .from('profiles')
             .update({
-              bonus_balance: current + bonus_earned,
+              bonus_balance,
               updated_at: new Date().toISOString(),
             })
             .eq('id', user_id);
@@ -281,13 +351,16 @@ export async function POST(request: Request) {
             customer_name,
             customer_phone,
             is_paid,
+            payment_type,
+            total_price: final_total,
           },
           bonus_earned: can_earn_bonus ? bonus_earned : 0,
+          bonus_redeemed,
+          bonus_balance,
         });
       }
     } catch (e) {
       const message = e instanceof Error ? e.message : 'не удалось создать заказ';
-      // если auth admin недоступен — уйдём в demo ниже
       if (!message.includes('гостя точки') && !/auth/i.test(message)) {
         return NextResponse.json({ error: message }, { status: 500 });
       }
@@ -300,22 +373,35 @@ export async function POST(request: Request) {
     is_paid,
   });
 
-  let demo_bonus_earned = 0;
-  if (customer_phone) {
+  if (redeem_bonus) {
+    await update_demo_order(order.id, {
+      total_price: 0,
+      payment_type: 'bonus',
+      is_paid: true,
+    });
+    order.total_price = 0;
+    order.payment_type = 'bonus';
+    order.is_paid = true;
+  } else if (customer_phone) {
     const { get_demo_bonus, upsert_demo_bonus } = await import('@/lib/demo-bonus-server');
     const { FREE_DRINK_BONUS_THRESHOLD } = await import('@/lib/cart-summary');
     const existing = await get_demo_bonus(customer_phone);
-    const earned = calc_order_bonus(total_price);
-    demo_bonus_earned = earned;
-    await upsert_demo_bonus({
+    const earned = calc_order_bonus(final_total);
+    bonus_earned = earned;
+    const next = await upsert_demo_bonus({
       phone: customer_phone,
       name: customer_name,
-      // новый демо-гость сразу с порогом, чтобы можно было проверить списание на кассе
       bonus_balance: (existing?.bonus_balance ?? FREE_DRINK_BONUS_THRESHOLD) + earned,
     });
+    bonus_balance = next.bonus_balance;
   }
 
-  return NextResponse.json({ order, bonus_earned: demo_bonus_earned });
+  return NextResponse.json({
+    order,
+    bonus_earned,
+    bonus_redeemed,
+    bonus_balance,
+  });
 }
 
 export async function PATCH(request: Request) {

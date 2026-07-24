@@ -124,6 +124,7 @@ export default function pos_panel({
   const [busy, set_busy] = useState(false);
   const [error, set_error] = useState<string | null>(null);
   const [paid_now, set_paid_now] = useState(false);
+  const [pay_with_bonus, set_pay_with_bonus] = useState(false);
   const [confirm_open, set_confirm_open] = useState(false);
   const [selected, set_selected] = useState<menu_item | null>(null);
   const [sheet_open, set_sheet_open] = useState(false);
@@ -343,6 +344,15 @@ export default function pos_panel({
       return;
     }
 
+    const can_bonus =
+      Boolean(phone) &&
+      customer != null &&
+      customer.bonus_balance >= FREE_DRINK_BONUS_THRESHOLD;
+    if (pay_with_bonus && !can_bonus) {
+      set_error('нельзя списать тапикоины: нужен гость с балансом ≥ 50 т.');
+      return;
+    }
+
     set_busy(true);
     set_error(null);
     try {
@@ -360,8 +370,9 @@ export default function pos_panel({
           customer_phone: phone,
           customer_name: customer?.name || undefined,
           pickup_minutes: 10,
-          is_paid: paid_now,
-          payment_type: 'cash',
+          is_paid: paid_now || pay_with_bonus,
+          payment_type: pay_with_bonus ? 'bonus' : 'cash',
+          redeem_bonus: pay_with_bonus,
         }),
       });
       if (!res.ok) {
@@ -370,11 +381,16 @@ export default function pos_panel({
       }
       const created = (await res.json()) as {
         order?: { id: string; total_price: number; items?: order_item[] };
+        bonus_balance?: number;
       };
       const order = created.order;
+      if (typeof created.bonus_balance === 'number' && customer) {
+        set_customer({ ...customer, bonus_balance: created.bonus_balance });
+      }
 
-      if (paid_now && order) {
-        const total = Number(order.total_price) || cart.reduce((s, l) => s + l.price * l.quantity, 0);
+      if (paid_now && !pay_with_bonus && order) {
+        const order_total =
+          Number(order.total_price) || cart.reduce((s, l) => s + l.price * l.quantity, 0);
         const items_summary =
           (order.items || cart)
             .map((i) => `${i.name} ×${i.quantity}`)
@@ -388,11 +404,34 @@ export default function pos_panel({
             order_id: order.id,
             seller_id,
             seller_name,
-            order_total: total,
+            order_total,
             payment_method: 'cash',
-            amount_received: total,
+            amount_received: order_total,
             change_given: 0,
             items_summary,
+            shift_date: shift_date || undefined,
+            spot_id,
+            spot_address,
+            shift_id,
+          }),
+        });
+      }
+
+      if (pay_with_bonus && order) {
+        await fetch('/api/cash', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          credentials: 'same-origin',
+          body: JSON.stringify({
+            id: `cash-${Date.now()}`,
+            order_id: order.id,
+            seller_id,
+            seller_name,
+            order_total: 0,
+            payment_method: 'bonus',
+            amount_received: null,
+            change_given: null,
+            items_summary: cart.map((l) => `${l.name} ×${l.quantity}`).join('; '),
             shift_date: shift_date || undefined,
             spot_id,
             spot_address,
@@ -405,6 +444,7 @@ export default function pos_panel({
       set_phone_draft('');
       set_customer(null);
       set_paid_now(false);
+      set_pay_with_bonus(false);
       set_confirm_open(false);
       set_step('categories');
       set_category('');
@@ -476,14 +516,29 @@ export default function pos_panel({
 
           <div className="rounded-2xl bg-white border border-neutral-200 px-4 py-3 flex justify-between items-center">
             <span className="text-sm text-neutral-500">итого</span>
-            <span className="text-xl font-bold tabular-nums text-neutral-900">{total} ₽</span>
+            <span className="text-xl font-bold tabular-nums text-neutral-900">
+              {pay_with_bonus ? '0 ₽' : `${total} ₽`}
+            </span>
           </div>
 
           {customer && customer.bonus_balance >= FREE_DRINK_BONUS_THRESHOLD ? (
-            <p className="rounded-xl bg-accent/10 px-3 py-2 text-xs font-semibold text-accent">
-              у гостя {customer.bonus_balance} т. — можно списать {FREE_DRINK_BONUS_THRESHOLD} т. за
-              напиток бесплатно
-            </p>
+            <label className="flex items-start gap-3 rounded-xl border border-accent/30 bg-accent/10 px-3 py-3">
+              <input
+                type="checkbox"
+                checked={pay_with_bonus}
+                onChange={(e) => {
+                  set_pay_with_bonus(e.target.checked);
+                  if (e.target.checked) set_paid_now(true);
+                }}
+                className="mt-0.5 rounded"
+              />
+              <span className="min-w-0 text-xs font-semibold leading-snug text-accent">
+                списать {FREE_DRINK_BONUS_THRESHOLD} т. · напиток бесплатно
+                <span className="mt-0.5 block font-medium text-neutral-600">
+                  у гостя {customer.bonus_balance} т.
+                </span>
+              </span>
+            </label>
           ) : total >= 10 ? (
             <p className="text-xs text-neutral-500">
               начислим{' '}
@@ -524,11 +579,15 @@ export default function pos_panel({
           <label className="flex items-center gap-2 text-sm text-neutral-700">
             <input
               type="checkbox"
-              checked={paid_now}
+              checked={paid_now || pay_with_bonus}
+              disabled={pay_with_bonus}
               onChange={(e) => set_paid_now(e.target.checked)}
               className="rounded"
             />
             уже оплачен
+            {pay_with_bonus ? (
+              <span className="text-xs text-accent">· тапикоинами</span>
+            ) : null}
           </label>
 
           {error ? <p className="text-sm text-neutral-700">{error}</p> : null}

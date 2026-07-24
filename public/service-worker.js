@@ -1,6 +1,6 @@
 /* eslint-disable no-restricted-globals */
 
-const cache_name = 'yoboba-v7';
+const cache_name = 'yoboba-v8';
 const static_assets = [
   '/',
   '/login',

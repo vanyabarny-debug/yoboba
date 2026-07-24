@@ -1,7 +1,8 @@
 import { NextResponse } from 'next/server';
 import { create_server_client } from '@/lib/supabase/server';
 import { create_service_client } from '@/lib/supabase/service';
-import { calc_order_bonus } from '@/lib/cart-summary';
+import { calc_order_bonus, FREE_DRINK_BONUS_THRESHOLD } from '@/lib/cart-summary';
+import { redeem_bonus_points } from '@/lib/bonus-server';
 import { normalize_phone } from '@/lib/phone';
 import { allocate_daily_order_number } from '@/lib/order-number';
 import { is_pickup_feasible } from '@/lib/kitchen-queue';
@@ -10,7 +11,9 @@ import type { order_item } from '@/lib/types';
 
 export async function GET() {
   const supabase = await create_server_client();
-  const { data: { user } } = await supabase.auth.getUser();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
 
   if (!user) {
     return NextResponse.json({ error: 'не авторизован' }, { status: 401 });
@@ -31,7 +34,9 @@ export async function GET() {
 
 export async function POST(request: Request) {
   const supabase = await create_server_client();
-  const { data: { user } } = await supabase.auth.getUser();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
 
   if (!user) {
     return NextResponse.json({ error: 'не авторизован' }, { status: 401 });
@@ -42,6 +47,7 @@ export async function POST(request: Request) {
   const total_price = Number(body.total_price);
   const payment_type = (body.payment_type as string) || 'cash';
   const pickup_time = body.pickup_time as string | undefined;
+  const redeem_bonus = Boolean(body.redeem_bonus);
 
   if (!items?.length || Number.isNaN(total_price) || !pickup_time) {
     return NextResponse.json({ error: 'неверные данные заказа' }, { status: 400 });
@@ -103,6 +109,31 @@ export async function POST(request: Request) {
     );
   }
 
+  let redeemed = 0;
+  let bonus_balance_after = Number(profile?.bonus_balance) || 0;
+  let final_total = total_price;
+  let final_payment = payment_type;
+  let is_paid = false;
+
+  if (redeem_bonus) {
+    const result = await redeem_bonus_points({
+      user_id: user.id,
+      phone: profile_phone,
+      amount: FREE_DRINK_BONUS_THRESHOLD,
+    });
+    if (!result.ok) {
+      return NextResponse.json(
+        { error: result.error, bonus_balance: result.bonus_balance },
+        { status: result.status }
+      );
+    }
+    redeemed = result.redeemed;
+    bonus_balance_after = result.bonus_balance;
+    final_total = 0;
+    final_payment = 'bonus';
+    is_paid = true;
+  }
+
   let daily_number: { order_day: string; order_number: number };
   try {
     daily_number = await allocate_daily_order_number(admin);
@@ -114,11 +145,11 @@ export async function POST(request: Request) {
   const order_payload = {
     user_id: user.id,
     items,
-    total_price,
-    payment_type,
+    total_price: final_total,
+    payment_type: final_payment,
     pickup_time,
     status: 'new' as const,
-    is_paid: false,
+    is_paid,
     customer_name,
     customer_phone: profile_phone,
     order_number: daily_number.order_number,
@@ -127,15 +158,14 @@ export async function POST(request: Request) {
 
   let { data, error } = await supabase.from('orders').insert(order_payload).select().single();
 
-  // если колонки is_paid / customer_* ещё не добавлены в Supabase — пишем без них
-  if (error && /is_paid|customer_name|customer_phone/i.test(error.message)) {
+  if (error && /is_paid|customer_name|customer_phone|payment_type/i.test(error.message)) {
     const retry = await supabase
       .from('orders')
       .insert({
         user_id: user.id,
         items,
-        total_price,
-        payment_type,
+        total_price: final_total,
+        payment_type: final_payment === 'bonus' ? 'online' : final_payment,
         pickup_time,
         status: 'new',
         order_number: daily_number.order_number,
@@ -143,24 +173,41 @@ export async function POST(request: Request) {
       })
       .select()
       .single();
-    data = retry.data;
+    data = retry.data
+      ? { ...retry.data, is_paid, customer_name, customer_phone: profile_phone, payment_type: final_payment }
+      : retry.data;
     error = retry.error;
   }
 
   if (error || !data) {
-    return NextResponse.json({ error: error?.message || 'не удалось создать заказ' }, { status: 500 });
+    return NextResponse.json(
+      { error: error?.message || 'не удалось создать заказ' },
+      { status: 500 }
+    );
   }
 
   await supabase.from('cart_items').delete().eq('user_id', user.id);
 
-  const earned = calc_order_bonus(total_price);
-  if (earned > 0 && !user.is_anonymous) {
-    const current = profile?.bonus_balance ?? 0;
-    await admin
-      .from('profiles')
-      .update({ bonus_balance: current + earned, updated_at: new Date().toISOString() })
-      .eq('id', user.id);
+  let earned = 0;
+  if (!redeem_bonus && final_total > 0 && !user.is_anonymous) {
+    earned = calc_order_bonus(final_total);
+    if (earned > 0) {
+      const current = bonus_balance_after;
+      bonus_balance_after = current + earned;
+      await admin
+        .from('profiles')
+        .update({
+          bonus_balance: bonus_balance_after,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', user.id);
+    }
   }
 
-  return NextResponse.json({ order: data, bonus_earned: earned });
+  return NextResponse.json({
+    order: { ...data, is_paid, payment_type: final_payment, total_price: final_total },
+    bonus_earned: earned,
+    bonus_redeemed: redeemed,
+    bonus_balance: bonus_balance_after,
+  });
 }

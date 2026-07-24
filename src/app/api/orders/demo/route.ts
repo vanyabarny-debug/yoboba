@@ -6,7 +6,10 @@ import {
   get_demo_orders,
   update_demo_order,
 } from '@/lib/demo-orders-server';
-import type { order, order_item } from '@/lib/types';
+import { FREE_DRINK_BONUS_THRESHOLD } from '@/lib/cart-summary';
+import { ensure_demo_bonus_row, redeem_bonus_points } from '@/lib/bonus-server';
+import { normalize_phone } from '@/lib/phone';
+import type { order_item } from '@/lib/types';
 
 async function is_staff() {
   const store = await cookies();
@@ -40,17 +43,83 @@ export async function POST(request: Request) {
   }
 
   const pickup_time = body.pickup_time as string | undefined;
+  const phone = normalize_phone(body.customer_phone);
+  const redeem_bonus = Boolean(body.redeem_bonus);
+  let bonus_redeemed = 0;
+  let bonus_balance: number | null = null;
+  let is_paid = Boolean(body.is_paid);
+
+  if (redeem_bonus) {
+    if (!phone) {
+      return NextResponse.json(
+        { error: 'нужен телефон, чтобы списать тапикоины' },
+        { status: 400 }
+      );
+    }
+    await ensure_demo_bonus_row({
+      phone,
+      name: body.customer_name,
+      seed:
+        typeof body.client_bonus === 'number'
+          ? Math.max(0, Math.floor(body.client_bonus))
+          : FREE_DRINK_BONUS_THRESHOLD,
+    });
+    // если в сторе меньше, чем у клиента в профиле — подтянуть
+    if (typeof body.client_bonus === 'number') {
+      const { get_demo_bonus, upsert_demo_bonus } = await import('@/lib/demo-bonus-server');
+      const row = await get_demo_bonus(phone);
+      const client_bal = Math.max(0, Math.floor(body.client_bonus));
+      if (row && row.bonus_balance < client_bal) {
+        await upsert_demo_bonus({
+          phone,
+          name: body.customer_name,
+          bonus_balance: client_bal,
+        });
+      }
+    }
+    const result = await redeem_bonus_points({
+      phone,
+      amount: FREE_DRINK_BONUS_THRESHOLD,
+    });
+    if (!result.ok) {
+      return NextResponse.json(
+        { error: result.error, bonus_balance: result.bonus_balance },
+        { status: result.status }
+      );
+    }
+    bonus_redeemed = result.redeemed;
+    bonus_balance = result.bonus_balance;
+    is_paid = true;
+  }
+
   const order = await create_fake_order_from_items(
     items,
     body.pickup_minutes ?? 12,
     pickup_time,
     {
       name: body.customer_name,
-      phone: body.customer_phone,
-      is_paid: false,
+      phone: phone || undefined,
+      is_paid,
     }
   );
-  return NextResponse.json({ order });
+
+  if (redeem_bonus) {
+    const { update_demo_order } = await import('@/lib/demo-orders-server');
+    await update_demo_order(order.id, {
+      total_price: 0,
+      payment_type: 'bonus',
+      is_paid: true,
+    });
+    order.total_price = 0;
+    order.payment_type = 'bonus';
+    order.is_paid = true;
+  }
+
+  return NextResponse.json({
+    order,
+    bonus_redeemed,
+    bonus_balance,
+  });
 }
 
 export async function PATCH(request: Request) {

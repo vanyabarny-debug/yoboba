@@ -63,9 +63,11 @@ import { normalize_phone } from '@/lib/phone';
 import { get_topping_portion_price_value } from '@/lib/product-details';
 import {
   get_demo_user,
+  set_demo_user,
   clear_session,
   type demo_user,
 } from '@/lib/demo-auth';
+import { FREE_DRINK_BONUS_THRESHOLD } from '@/lib/cart-summary';
 import { get_location, is_city_served, resolve_spot, set_location, get_selected_spot, type user_location } from '@/lib/location';
 import { subscribe_spot_store } from '@/lib/spot-store';
 import type { store_spot } from '@/lib/types';
@@ -237,6 +239,7 @@ export default function home_client({
   const [user_id, set_user_id] = useState<string | null>(null);
   const [is_anonymous, set_is_anonymous] = useState(false);
   const [bonus, set_bonus] = useState(0);
+  const [redeem_bonus, set_redeem_bonus] = useState(false);
   const [city, set_city] = useState('москва');
   const [selected_spot, set_selected_spot] = useState<store_spot | null>(null);
   const [location_open, set_location_open] = useState(false);
@@ -323,6 +326,7 @@ export default function home_client({
       quantity: l.quantity,
     }));
     const total_price = cart_lines.reduce((s, l) => s + cart_line_unit_price(l) * l.quantity, 0);
+    const want_redeem = redeem_bonus && bonus >= FREE_DRINK_BONUS_THRESHOLD;
 
     if (demo_mode) {
       const res = await fetch('/api/orders/demo', {
@@ -333,13 +337,31 @@ export default function home_client({
           pickup_time,
           customer_name: user?.name || 'гость',
           customer_phone: user?.phone || null,
+          redeem_bonus: want_redeem,
+          client_bonus: bonus,
         }),
       });
-      const body = (await res.json()) as { order?: import('@/lib/types').order; error?: string };
+      const body = (await res.json()) as {
+        order?: import('@/lib/types').order;
+        error?: string;
+        bonus_balance?: number;
+        bonus_redeemed?: number;
+      };
       if (!res.ok) {
         set_order_error(body.error || 'не удалось оформить заказ');
         return;
       }
+      if (typeof body.bonus_balance === 'number') {
+        set_bonus(body.bonus_balance);
+        const u = get_demo_user();
+        if (u) set_demo_user({ ...u, bonus_balance: body.bonus_balance });
+      } else if (want_redeem) {
+        const next = Math.max(0, bonus - FREE_DRINK_BONUS_THRESHOLD);
+        set_bonus(next);
+        const u = get_demo_user();
+        if (u) set_demo_user({ ...u, bonus_balance: next });
+      }
+      set_redeem_bonus(false);
       set_order_error('');
       set_cart_lines([]);
       save_guest_cart([]);
@@ -350,18 +372,25 @@ export default function home_client({
         minute: '2-digit',
       });
       set_order_toast(
-        num ? `заказ № ${num} — заберите в ${label}` : `заказ отправлен — заберите в ${label}`
+        want_redeem
+          ? num
+            ? `заказ № ${num} бесплатно за тапикоины — заберите в ${label}`
+            : `заказ бесплатно за тапикоины — заберите в ${label}`
+          : num
+            ? `заказ № ${num} — заберите в ${label}`
+            : `заказ отправлен — заберите в ${label}`
       );
       window.setTimeout(() => set_order_toast(''), 4500);
       return;
     }
 
-    const { data, error } = await create_order({
+    const { data, error, meta } = await create_order({
       user_id: uid,
       items,
       total_price,
-      payment_type: 'cash',
+      payment_type: want_redeem ? 'bonus' : 'cash',
       pickup_time,
+      redeem_bonus: want_redeem,
     });
 
     if (error) {
@@ -369,6 +398,15 @@ export default function home_client({
       return;
     }
 
+    if (typeof meta?.bonus_balance === 'number') {
+      set_bonus(meta.bonus_balance);
+    } else if (want_redeem) {
+      set_bonus((b) => Math.max(0, b - FREE_DRINK_BONUS_THRESHOLD));
+    } else if (meta?.bonus_earned) {
+      set_bonus((b) => b + meta.bonus_earned);
+    }
+
+    set_redeem_bonus(false);
     set_order_error('');
     set_cart_lines([]);
     set_cart_open(false);
@@ -378,10 +416,16 @@ export default function home_client({
       minute: '2-digit',
     });
     set_order_toast(
-      num ? `заказ № ${num} — заберите в ${label}` : `заказ отправлен — заберите в ${label}`
+      want_redeem
+        ? num
+          ? `заказ № ${num} бесплатно за тапикоины — заберите в ${label}`
+          : `заказ бесплатно за тапикоины — заберите в ${label}`
+        : num
+          ? `заказ № ${num} — заберите в ${label}`
+          : `заказ отправлен — заберите в ${label}`
     );
     window.setTimeout(() => set_order_toast(''), 4500);
-  }, [cart_lines, user_id, demo_mode, user?.name, user?.phone]);
+  }, [cart_lines, user_id, demo_mode, user?.name, user?.phone, redeem_bonus, bonus]);
 
   function needs_checkout_gate() {
     if (demo_mode) return false;
@@ -1221,6 +1265,9 @@ export default function home_client({
         open: cart_open,
         lines: cart_lines,
         all_items: menu,
+        bonus,
+        redeem_bonus,
+        on_redeem_bonus_change: set_redeem_bonus,
         on_close: () => set_cart_open(false),
         on_update_qty: handle_update_qty,
         on_remove: handle_remove,

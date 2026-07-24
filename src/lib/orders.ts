@@ -4,8 +4,9 @@ type create_order_input = {
   user_id: string;
   items: order_item[];
   total_price: number;
-  payment_type: 'cash' | 'card' | 'online';
+  payment_type: 'cash' | 'card' | 'online' | 'bonus';
   pickup_time: string;
+  redeem_bonus?: boolean;
 };
 
 export async function create_order(input: create_order_input) {
@@ -18,15 +19,30 @@ export async function create_order(input: create_order_input) {
       total_price: input.total_price,
       payment_type: input.payment_type,
       pickup_time: input.pickup_time,
+      redeem_bonus: Boolean(input.redeem_bonus),
     }),
   });
 
-  const body = (await res.json()) as { order?: order; error?: string };
+  const body = (await res.json()) as {
+    order?: order;
+    error?: string;
+    bonus_earned?: number;
+    bonus_redeemed?: number;
+    bonus_balance?: number;
+  };
   if (!res.ok) {
-    return { data: null, error: new Error(body.error || 'не удалось создать заказ') };
+    return { data: null, error: new Error(body.error || 'не удалось создать заказ'), meta: body };
   }
 
-  return { data: body.order ?? null, error: null };
+  return {
+    data: body.order ?? null,
+    error: null,
+    meta: {
+      bonus_earned: body.bonus_earned ?? 0,
+      bonus_redeemed: body.bonus_redeemed ?? 0,
+      bonus_balance: body.bonus_balance,
+    },
+  };
 }
 
 export async function fetch_my_orders() {

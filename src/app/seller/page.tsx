@@ -835,6 +835,7 @@ export default function seller_board() {
         credentials: 'same-origin',
         body: JSON.stringify({
           phone: paying.customer_phone,
+          user_id: paying.user_id,
           order_id: paying.id,
         }),
       });

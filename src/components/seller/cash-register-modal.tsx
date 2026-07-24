@@ -79,7 +79,9 @@ export default function cash_register_modal({
 
     let cancelled = false;
     set_bonus_lookup(true);
-    void fetch(`/api/seller/orders?phone=${encodeURIComponent(phone)}`, {
+    const qs = new URLSearchParams({ phone });
+    if (order.user_id) qs.set('user_id', order.user_id);
+    void fetch(`/api/seller/orders?${qs}`, {
       credentials: 'same-origin',
     })
       .then((r) => r.json())

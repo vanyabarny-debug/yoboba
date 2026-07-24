@@ -16,6 +16,7 @@ import {
   format_positions,
   format_price,
   get_upsell_items,
+  FREE_DRINK_BONUS_THRESHOLD,
 } from '@/lib/cart-summary';
 import { get_topping_name, get_topping_portion_price_value } from '@/lib/product-details';
 import { default_store_address } from '@/lib/location';
@@ -47,6 +48,11 @@ type props = {
   open: boolean;
   lines: cart_line[];
   all_items: menu_item[];
+  /** баланс тапикоинов гостя */
+  bonus?: number;
+  /** списать порог за бесплатный заказ */
+  redeem_bonus?: boolean;
+  on_redeem_bonus_change?: (value: boolean) => void;
   on_close: () => void;
   on_update_qty: (line_key: string, quantity: number) => void;
   on_remove: (line_key: string) => void;
@@ -76,6 +82,9 @@ export default function cart_drawer({
   open,
   lines,
   all_items,
+  bonus = 0,
+  redeem_bonus = false,
+  on_redeem_bonus_change,
   on_close,
   on_update_qty,
   on_remove,
@@ -127,7 +136,10 @@ export default function cart_drawer({
 
   const total = lines.reduce((s, l) => s + cart_line_unit_price(l) * l.quantity, 0);
   const count = lines.reduce((s, l) => s + l.quantity, 0);
-  const bonus_points = calc_order_bonus(total);
+  const can_redeem = bonus >= FREE_DRINK_BONUS_THRESHOLD;
+  const redeem_on = redeem_bonus && can_redeem;
+  const pay_total = redeem_on ? 0 : total;
+  const bonus_points = redeem_on ? 0 : calc_order_bonus(total);
   const cart_ids = new Set(lines.map((l) => l.item.id));
   const { items: upsell_items, suggest_snacks } = get_upsell_items(all_items, cart_ids, lines);
 
@@ -331,11 +343,41 @@ export default function cart_drawer({
                   />
                 </div>
                 <div className="px-5 py-4 space-y-2.5 text-[15px]">
+                  {can_redeem && on_redeem_bonus_change ? (
+                    <label className="flex items-start gap-3 rounded-2xl border border-accent/30 bg-accent/10 px-3 py-3">
+                      <input
+                        type="checkbox"
+                        checked={redeem_on}
+                        onChange={(e) => on_redeem_bonus_change(e.target.checked)}
+                        className="mt-0.5 rounded"
+                      />
+                      <span className="min-w-0">
+                        <span className="block font-semibold text-accent">
+                          списать {FREE_DRINK_BONUS_THRESHOLD} т. · напиток бесплатно
+                        </span>
+                        <span className="mt-0.5 block text-xs text-neutral-600">
+                          у вас {bonus} т.
+                          {redeem_on
+                            ? ` · останется ${bonus - FREE_DRINK_BONUS_THRESHOLD} т.`
+                            : ''}
+                        </span>
+                      </span>
+                    </label>
+                  ) : bonus > 0 ? (
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-neutral-500">ваши тапикоины</span>
+                      <span className="font-semibold tabular-nums text-neutral-800">
+                        {bonus} т. · ещё {Math.max(0, FREE_DRINK_BONUS_THRESHOLD - bonus)} до бесплатного
+                      </span>
+                    </div>
+                  ) : null}
                   <div className="flex items-center justify-between">
                     <span className="text-neutral-500">
-                      Начислим тапикоины{tapioca_info()}
+                      {redeem_on ? 'списание тапикоинов' : <>Начислим тапикоины{tapioca_info()}</>}
                     </span>
-                    <span className="font-semibold font-mono tabular-nums text-neutral-900">+{bonus_points}</span>
+                    <span className="font-semibold font-mono tabular-nums text-neutral-900">
+                      {redeem_on ? `−${FREE_DRINK_BONUS_THRESHOLD}` : `+${bonus_points}`}
+                    </span>
                   </div>
                   <div className="flex items-center justify-between gap-3">
                     <span className="text-neutral-500">Где забрать заказ</span>
@@ -345,7 +387,14 @@ export default function cart_drawer({
                   </div>
                   <div className="flex items-center justify-between">
                     <span className="text-neutral-500">{format_positions(count)}</span>
-                    <span className="font-semibold font-mono tabular-nums text-neutral-900">{format_price(total)} ₽</span>
+                    <span className="font-semibold font-mono tabular-nums text-neutral-900">
+                      {format_price(pay_total)} ₽
+                      {redeem_on && total > 0 ? (
+                        <span className="ml-2 text-xs font-medium text-neutral-400 line-through">
+                          {format_price(total)} ₽
+                        </span>
+                      ) : null}
+                    </span>
                   </div>
                 </div>
               </div>
@@ -362,8 +411,14 @@ export default function cart_drawer({
                 onClick={on_checkout}
                 className="inline-flex w-auto max-w-full items-center justify-center rounded-pill bg-accent px-6 py-4 text-base font-semibold text-accent-foreground hover:opacity-95 transition-opacity sm:relative sm:w-full"
               >
-                <span className="sm:hidden">к оформлению на {format_price(total)} ₽</span>
-                <span className="hidden sm:inline">К оформлению заказа</span>
+                <span className="sm:hidden">
+                  {redeem_on
+                    ? `оформить бесплатно · −${FREE_DRINK_BONUS_THRESHOLD} т.`
+                    : `к оформлению на ${format_price(pay_total)} ₽`}
+                </span>
+                <span className="hidden sm:inline">
+                  {redeem_on ? 'Оформить бесплатно за тапикоины' : 'К оформлению заказа'}
+                </span>
                 <svg
                   className="absolute right-5 top-1/2 -translate-y-1/2 hidden sm:block"
                   width="18"
