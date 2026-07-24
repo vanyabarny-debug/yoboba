@@ -1,6 +1,6 @@
 /* eslint-disable no-restricted-globals */
 
-const cache_name = 'yoboba-v8';
+const cache_name = 'yoboba-v9';
 const static_assets = [
   '/',
   '/login',
@@ -96,10 +96,15 @@ self.addEventListener('push', (event) => {
   }
 
   event.waitUntil(
-    self.registration.showNotification(payload.title || 'yoboba', {
+    self.registration.showNotification(payload.title || 'yomoyo', {
       body: payload.body || '',
       icon: '/icons/icon-192.png',
       badge: '/icons/icon-192.png',
+      tag: payload.data?.order_id
+        ? `yoboba-order-${payload.data.order_id}`
+        : payload.tag || 'yoboba',
+      renotify: true,
+      requireInteraction: payload.data?.status === 'ready',
       data: payload.data || {},
     })
   );

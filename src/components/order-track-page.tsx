@@ -63,6 +63,10 @@ function track_client({ id }: { id: string }) {
     set_order(data);
     set_error('');
     set_loading(false);
+    if (data.status === 'new' || data.status === 'preparing' || data.status === 'ready') {
+      const { set_active_order_id } = await import('@/lib/active-order-store');
+      set_active_order_id(data.id);
+    }
   }, [id]);
 
   useEffect(() => {

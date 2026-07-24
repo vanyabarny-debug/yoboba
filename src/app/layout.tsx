@@ -8,6 +8,7 @@ import auth_bootstrap from '@/components/auth-bootstrap';
 import brand_theme from '@/components/brand-theme';
 import pwa_register from '@/components/pwa-register';
 import app_splash from '@/components/app-splash';
+import active_order_widget from '@/components/active-order-widget';
 
 export const metadata: Metadata = {
   title: `${BRAND_NAME} — bubble tea`,
@@ -58,6 +59,7 @@ export default function root_layout({
         {createElement(auth_bootstrap)}
         {createElement(app_splash)}
         {children}
+        {createElement(active_order_widget)}
       </body>
     </html>
   );

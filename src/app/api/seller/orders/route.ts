@@ -464,5 +464,10 @@ export async function PATCH(request: Request) {
     await clear_order_prep(id);
   }
 
+  if (patch.status && data) {
+    const { push_order_status_to_user } = await import('@/lib/push-order-status');
+    void push_order_status_to_user(data as order).catch(() => {});
+  }
+
   return NextResponse.json({ order: data });
 }

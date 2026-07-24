@@ -382,6 +382,8 @@ export default function home_client({
       );
       window.setTimeout(() => set_order_toast(''), 4500);
       if (body.order?.id) {
+        const { set_active_order_id } = await import('@/lib/active-order-store');
+        set_active_order_id(body.order.id);
         router.push(`/orders/${body.order.id}`);
       }
       return;
@@ -429,6 +431,8 @@ export default function home_client({
     );
     window.setTimeout(() => set_order_toast(''), 4500);
     if (data?.id) {
+      const { set_active_order_id } = await import('@/lib/active-order-store');
+      set_active_order_id(data.id);
       router.push(`/orders/${data.id}`);
     }
   }, [cart_lines, user_id, demo_mode, user?.name, user?.phone, redeem_bonus, bonus, router]);
