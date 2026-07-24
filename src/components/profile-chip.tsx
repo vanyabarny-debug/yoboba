@@ -1,7 +1,6 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
-import TapicoinIcon from '@/components/tapicoin-icon';
 import { avatar_emoji_from_id } from '@/lib/avatar-emoji';
 
 type props = {
@@ -39,28 +38,28 @@ export default function profile_chip({
   const emoji =
     avatar_emoji || (user_id ? avatar_emoji_from_id(user_id) : '🧋');
   const name = (user_name || 'профиль').trim() || 'профиль';
+  const bonus_label = bonus > 999 ? '999+' : String(bonus);
 
   return (
     <button
       type="button"
       onClick={() => router.push('/profile')}
-      className="group flex max-w-[11.5rem] items-center gap-2 rounded-2xl bg-white/80 py-1.5 pl-1.5 pr-2 shadow-soft ring-1 ring-black/[0.04] transition-all duration-200 hover:-translate-y-0.5 hover:bg-white active:scale-[0.98] sm:max-w-[14rem]"
+      className="group flex max-w-[10.5rem] items-center gap-2.5 transition-transform duration-200 hover:-translate-y-0.5 active:scale-[0.98] sm:max-w-[13rem]"
       aria-label={`профиль ${name}, ${bonus} тапикоинов`}
     >
-      <span
-        className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#FFF4EC] text-[22px] leading-none ring-1 ring-black/[0.04]"
-        aria-hidden
-      >
-        {emoji}
+      <span className="relative shrink-0">
+        <span
+          className="flex h-11 w-11 items-center justify-center rounded-full bg-accent/15 text-[22px] leading-none ring-2 ring-accent/25 transition group-hover:bg-accent/25 group-hover:ring-accent/40"
+          aria-hidden
+        >
+          {emoji}
+        </span>
+        <span className="absolute -bottom-0.5 -right-1 inline-flex min-w-[1.35rem] items-center justify-center rounded-full bg-[#0039A6] px-1 py-[2px] text-[10px] font-bold leading-none tabular-nums text-white shadow-sm ring-2 ring-page">
+          {bonus_label}
+        </span>
       </span>
-      <span className="min-w-0 flex-1 text-left">
-        <span className="block truncate text-[13px] font-bold leading-tight text-neutral-900">
-          {name}
-        </span>
-        <span className="mt-1 inline-flex max-w-full items-center gap-1 rounded-full bg-[#0039A6] px-2 py-0.5 text-[11px] font-bold tabular-nums text-white">
-          <TapicoinIcon size={12} className="!bg-white !text-[#0039A6]" />
-          <span className="truncate">{bonus}</span>
-        </span>
+      <span className="min-w-0 truncate text-left text-[13px] font-bold leading-tight text-neutral-900 sm:text-sm">
+        {name}
       </span>
     </button>
   );
