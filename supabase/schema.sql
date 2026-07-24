@@ -14,6 +14,7 @@ create table public.profiles (
   id uuid primary key references auth.users (id) on delete cascade,
   phone text unique,
   name text,
+  avatar_emoji text,
   bonus_balance integer not null default 0 check (bonus_balance >= 0),
   role public.user_role not null default 'user',
   created_at timestamptz not null default now(),
@@ -124,12 +125,19 @@ language plpgsql
 security definer
 set search_path = public
 as $$
+declare
+  pool text[] := array[
+    '🧋','🍵','🥤','🍓','🍑','🍒','🥝','🥭','🍋','🍊','🍉','🍇',
+    '🐻','🐼','🦊','🐱','🐰','🐸','🐯','🦄','🍩','🍪','🧁','🍰',
+    '🍦','🌙','⭐','💫','🔥','💚','💙','💜','✨','🌸','🍀','🎯'
+  ];
 begin
-  insert into public.profiles (id, phone, name)
+  insert into public.profiles (id, phone, name, avatar_emoji)
   values (
     new.id,
     new.phone,
-    coalesce(new.raw_user_meta_data->>'name', 'гость')
+    coalesce(new.raw_user_meta_data->>'name', 'гость'),
+    pool[1 + floor(random() * array_length(pool, 1))::int]
   );
   return new;
 end;

@@ -1,10 +1,12 @@
 import type { user_role } from '@/lib/session';
+import { avatar_emoji_from_id, random_avatar_emoji } from '@/lib/avatar-emoji';
 
 export type demo_user = {
   id: string;
   phone: string;
   name: string;
   bonus_balance: number;
+  avatar_emoji: string;
   is_guest: boolean;
   role: user_role;
 };
@@ -19,6 +21,14 @@ export function get_demo_user(): demo_user | null {
   try {
     const user = JSON.parse(raw) as demo_user;
     if (!user.role) user.role = user.is_guest ? 'guest' : 'user';
+    if (!user.avatar_emoji) {
+      user.avatar_emoji = avatar_emoji_from_id(user.id || user.phone || 'guest');
+      try {
+        localStorage.setItem(storage_key, JSON.stringify(user));
+      } catch {
+        /* ignore */
+      }
+    }
     return user;
   } catch {
     return null;
@@ -58,6 +68,7 @@ export function create_demo_user(input: {
     phone: input.phone || '',
     name: input.name,
     bonus_balance: is_guest ? 0 : input.role === 'admin' ? 0 : 150,
+    avatar_emoji: random_avatar_emoji(),
     is_guest,
     role: input.role || (is_guest ? 'guest' : 'user'),
   };

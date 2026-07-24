@@ -42,7 +42,7 @@ export async function GET(request: NextRequest) {
 
   const { data: profile } = await supabase
     .from('profiles')
-    .select('id, phone, name, bonus_balance, role')
+    .select('id, phone, name, bonus_balance, avatar_emoji, role')
     .eq('id', user.id)
     .maybeSingle();
 
@@ -63,6 +63,26 @@ export async function GET(request: NextRequest) {
         .update({ phone: meta_phone, updated_at: new Date().toISOString() })
         .eq('id', user.id);
     }
+  }
+
+  // если эмоджи ещё нет — выдать рандомный один раз
+  if (
+    resolved_profile &&
+    !resolved_profile.avatar_emoji &&
+    process.env.SUPABASE_SERVICE_ROLE_KEY
+  ) {
+    const { random_avatar_emoji } = await import('@/lib/avatar-emoji');
+    const emoji = random_avatar_emoji();
+    const admin = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.SUPABASE_SERVICE_ROLE_KEY
+    );
+    await admin
+      .from('profiles')
+      .update({ avatar_emoji: emoji, updated_at: new Date().toISOString() })
+      .eq('id', user.id)
+      .is('avatar_emoji', null);
+    resolved_profile = { ...resolved_profile, avatar_emoji: emoji };
   }
 
   const res = NextResponse.json({
@@ -122,7 +142,7 @@ export async function PATCH(request: NextRequest) {
     .from('profiles')
     .update(updates)
     .eq('id', user.id)
-    .select('id, phone, name, bonus_balance, role')
+    .select('id, phone, name, bonus_balance, avatar_emoji, role')
     .single();
 
   if (error || !profile) {

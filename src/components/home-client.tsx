@@ -656,6 +656,7 @@ export default function home_client({
             phone: auth.profile.phone || '',
             name: auth.profile.name || 'гость',
             bonus_balance: auth.profile.bonus_balance,
+            avatar_emoji: auth.profile.avatar_emoji || '',
             is_guest: false,
             role: 'user',
           });
@@ -1121,6 +1122,8 @@ export default function home_client({
           city,
           spot_address: selected_spot?.address,
           user_name: is_admin_edit ? 'админ' : user?.role === 'admin' ? null : user?.name,
+          avatar_emoji: is_admin_edit ? '🛠️' : user?.avatar_emoji,
+          user_id: user?.id,
           bonus,
           is_logged_in: is_admin_edit ? false : is_logged_in,
           show_admin: is_staff_admin,

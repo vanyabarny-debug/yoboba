@@ -314,10 +314,18 @@ export async function upsert_vk_supabase_user(input: {
   }
 
   // телефон из VK обновляем при каждом входе (если VK его отдал)
+  const { random_avatar_emoji } = await import('@/lib/avatar-emoji');
+  const { data: existing_profile } = await admin
+    .from('profiles')
+    .select('avatar_emoji')
+    .eq('id', user_id)
+    .maybeSingle();
+
   const profile_row: {
     id: string;
     name: string;
     phone?: string | null;
+    avatar_emoji?: string;
     updated_at: string;
   } = {
     id: user_id,
@@ -326,6 +334,9 @@ export async function upsert_vk_supabase_user(input: {
   };
   if (phone) {
     profile_row.phone = phone;
+  }
+  if (!existing_profile?.avatar_emoji) {
+    profile_row.avatar_emoji = random_avatar_emoji();
   }
 
   await admin.from('profiles').upsert(profile_row, { onConflict: 'id' });

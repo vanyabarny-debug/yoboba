@@ -82,6 +82,7 @@ export default function site_chrome({ children }: props) {
             phone: auth.profile.phone || '',
             name: auth.profile.name || 'гость',
             bonus_balance: auth.profile.bonus_balance,
+            avatar_emoji: auth.profile.avatar_emoji || '',
             is_guest: false,
             role: 'user',
           });
@@ -145,6 +146,8 @@ export default function site_chrome({ children }: props) {
         {createElement(site_header, {
           city,
           user_name: user?.name,
+          avatar_emoji: user?.avatar_emoji,
+          user_id: user?.id,
           bonus,
           is_logged_in,
           show_admin: user?.role === 'admin',

@@ -15,7 +15,12 @@ import { fetch_my_orders } from '@/lib/orders';
 import { format_order_number } from '@/lib/order-number';
 import type { order } from '@/lib/types';
 import { is_supabase_configured } from '@/lib/supabase/config';
-import { get_demo_user, clear_session } from '@/lib/demo-auth';
+import { get_demo_user, clear_session, set_demo_user } from '@/lib/demo-auth';
+import {
+  AVATAR_EMOJI_CHANGE_COST,
+  AVATAR_EMOJI_POOL,
+  avatar_emoji_from_id,
+} from '@/lib/avatar-emoji';
 import {
   add_linked_card,
   get_profile_local,
@@ -153,6 +158,10 @@ export default function profile_page() {
   const [card_last4, set_card_last4] = useState('');
   const [card_error, set_card_error] = useState('');
   const [adding_card, set_adding_card] = useState(false);
+  const [editing_avatar, set_editing_avatar] = useState(false);
+  const [avatar_draft, set_avatar_draft] = useState('');
+  const [saving_avatar, set_saving_avatar] = useState(false);
+  const [avatar_error, set_avatar_error] = useState('');
 
   useEffect(() => {
     let cancelled = false;
@@ -172,6 +181,7 @@ export default function profile_page() {
             phone: u.phone || null,
             name: u.name,
             bonus_balance: u.bonus_balance,
+            avatar_emoji: u.avatar_emoji || avatar_emoji_from_id(u.id),
             role: 'user' as const,
           };
           set_profile(p);
@@ -256,6 +266,19 @@ export default function profile_page() {
     set_name_error('');
 
     try {
+      if (demo_mode) {
+        const u = get_demo_user();
+        if (!u) {
+          set_name_error('не удалось сохранить');
+          return;
+        }
+        const updated = { ...u, name: next };
+        set_demo_user(updated);
+        set_profile({ ...profile, name: next });
+        set_editing_name(false);
+        return;
+      }
+
       const res = await fetch('/api/auth/profile', {
         method: 'PATCH',
         credentials: 'same-origin',
@@ -273,6 +296,81 @@ export default function profile_page() {
       set_name_error('не удалось сохранить');
     } finally {
       set_saving_name(false);
+    }
+  }
+
+  async function handle_change_avatar() {
+    if (!profile || !avatar_draft) return;
+    if (avatar_draft === profile.avatar_emoji) {
+      set_editing_avatar(false);
+      return;
+    }
+    if (profile.bonus_balance < AVATAR_EMOJI_CHANGE_COST) {
+      set_avatar_error(
+        `нужно ${AVATAR_EMOJI_CHANGE_COST} тапикоинов, у вас ${profile.bonus_balance}`
+      );
+      return;
+    }
+
+    set_saving_avatar(true);
+    set_avatar_error('');
+
+    try {
+      if (demo_mode) {
+        const u = get_demo_user();
+        if (!u) {
+          set_avatar_error('не удалось сменить');
+          return;
+        }
+        const next_balance = Math.max(0, u.bonus_balance - AVATAR_EMOJI_CHANGE_COST);
+        const updated = {
+          ...u,
+          avatar_emoji: avatar_draft,
+          bonus_balance: next_balance,
+        };
+        set_demo_user(updated);
+        set_profile({
+          ...profile,
+          avatar_emoji: avatar_draft,
+          bonus_balance: next_balance,
+        });
+        set_editing_avatar(false);
+        return;
+      }
+
+      const res = await fetch('/api/auth/avatar', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ emoji: avatar_draft }),
+      });
+      const body = (await res.json()) as {
+        profile?: profile;
+        error?: string;
+        bonus_balance?: number;
+        avatar_emoji?: string;
+      };
+      if (!res.ok) {
+        set_avatar_error(body.error || 'не удалось сменить');
+        return;
+      }
+      if (body.profile) {
+        set_profile(body.profile);
+      } else {
+        set_profile({
+          ...profile,
+          avatar_emoji: body.avatar_emoji || avatar_draft,
+          bonus_balance:
+            typeof body.bonus_balance === 'number'
+              ? body.bonus_balance
+              : profile.bonus_balance - AVATAR_EMOJI_CHANGE_COST,
+        });
+      }
+      set_editing_avatar(false);
+    } catch {
+      set_avatar_error('не удалось сменить');
+    } finally {
+      set_saving_avatar(false);
     }
   }
 
@@ -331,9 +429,17 @@ export default function profile_page() {
     ) : (
       <div className="page-shell py-6 sm:py-8 pb-[calc(4rem+var(--safe-bottom))] space-y-8 max-w-3xl">
         <div className="flex items-start justify-between gap-4">
-          <h1 className="text-2xl sm:text-3xl font-bold text-neutral-900 leading-tight">
-            личный кабинет
-          </h1>
+          <div className="flex min-w-0 items-center gap-3">
+            <span className="flex h-14 w-14 shrink-0 items-center justify-center rounded-full bg-[#FFF4EC] text-3xl ring-1 ring-black/[0.04]">
+              {profile.avatar_emoji || avatar_emoji_from_id(profile.id)}
+            </span>
+            <div className="min-w-0">
+              <h1 className="text-2xl sm:text-3xl font-bold text-neutral-900 leading-tight truncate">
+                {profile.name || 'личный кабинет'}
+              </h1>
+              <p className="mt-0.5 text-sm text-neutral-500">личный кабинет</p>
+            </div>
+          </div>
           <button
             type="button"
             onClick={handle_logout}
@@ -376,6 +482,94 @@ export default function profile_page() {
         {/* личные данные */}
         <section className="rounded-2xl bg-white p-5 sm:p-6 shadow-soft space-y-4">
           <h2 className="text-lg font-bold text-neutral-900">личные данные</h2>
+
+          <div>
+            <div className="flex items-center justify-between gap-2 mb-1.5">
+              <label className="text-xs text-neutral-500">аватар</label>
+              {!editing_avatar && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    set_avatar_draft(
+                      profile.avatar_emoji || avatar_emoji_from_id(profile.id)
+                    );
+                    set_avatar_error('');
+                    set_editing_avatar(true);
+                  }}
+                  className="text-xs font-semibold text-accent hover:underline"
+                >
+                  сменить за {AVATAR_EMOJI_CHANGE_COST} т.
+                </button>
+              )}
+            </div>
+            {editing_avatar ? (
+              <div className="space-y-3">
+                <p className="text-xs text-neutral-500 leading-relaxed">
+                  выберите новый эмоджи. смена спишет{' '}
+                  <span className="font-semibold text-[#0039A6]">
+                    {AVATAR_EMOJI_CHANGE_COST} тапикоинов
+                  </span>
+                  {profile.bonus_balance < AVATAR_EMOJI_CHANGE_COST
+                    ? ` — сейчас не хватает (у вас ${profile.bonus_balance})`
+                    : ` · у вас ${profile.bonus_balance}`}
+                </p>
+                <div className="grid grid-cols-6 gap-2 sm:grid-cols-9">
+                  {AVATAR_EMOJI_POOL.map((emoji) => {
+                    const selected = avatar_draft === emoji;
+                    return (
+                      <button
+                        key={emoji}
+                        type="button"
+                        onClick={() => set_avatar_draft(emoji)}
+                        className={`flex h-11 w-full items-center justify-center rounded-xl text-2xl transition ${
+                          selected
+                            ? 'bg-accent/15 ring-2 ring-accent'
+                            : 'bg-page hover:bg-neutral-100'
+                        }`}
+                        aria-label={`выбрать ${emoji}`}
+                      >
+                        {emoji}
+                      </button>
+                    );
+                  })}
+                </div>
+                {avatar_error && <p className="text-xs text-red-500">{avatar_error}</p>}
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => set_editing_avatar(false)}
+                    className="flex-1 rounded-pill border border-neutral-200 py-2 text-sm"
+                  >
+                    отмена
+                  </button>
+                  <button
+                    type="button"
+                    disabled={
+                      saving_avatar ||
+                      !avatar_draft ||
+                      avatar_draft === profile.avatar_emoji ||
+                      profile.bonus_balance < AVATAR_EMOJI_CHANGE_COST
+                    }
+                    onClick={() => void handle_change_avatar()}
+                    className="flex-1 rounded-pill bg-accent text-accent-foreground py-2 text-sm font-medium disabled:opacity-60"
+                  >
+                    {saving_avatar
+                      ? 'сохраняем…'
+                      : `сменить (−${AVATAR_EMOJI_CHANGE_COST} т.)`}
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className="flex items-center gap-3 rounded-xl bg-page px-3 py-2.5">
+                <span className="text-3xl leading-none">
+                  {profile.avatar_emoji || avatar_emoji_from_id(profile.id)}
+                </span>
+                <span className="text-sm text-neutral-600">
+                  ваш эмоджи в уголке приложения
+                </span>
+              </div>
+            )}
+          </div>
 
           <div>
             <div className="flex items-center justify-between gap-2 mb-1.5">

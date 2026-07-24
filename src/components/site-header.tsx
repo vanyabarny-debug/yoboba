@@ -3,7 +3,6 @@
 import { createElement, useEffect, useState } from 'react';
 import BrandWordmark from '@/components/brand-wordmark';
 import profile_chip from '@/components/profile-chip';
-import TapicoinIcon from '@/components/tapicoin-icon';
 import edit_pencil from '@/components/admin/edit-pencil';
 import {
   get_brand_name,
@@ -16,6 +15,8 @@ type props = {
   city: string;
   spot_address?: string;
   user_name?: string | null;
+  avatar_emoji?: string | null;
+  user_id?: string | null;
   bonus?: number;
   is_logged_in: boolean;
   show_admin?: boolean;
@@ -33,6 +34,8 @@ export default function site_header({
   city,
   spot_address,
   user_name,
+  avatar_emoji,
+  user_id,
   bonus = 0,
   is_logged_in,
   show_admin = false,
@@ -80,6 +83,8 @@ export default function site_header({
               is_logged_in,
               bonus,
               user_name,
+              avatar_emoji,
+              user_id,
               on_login,
               on_logout,
             })
@@ -147,29 +152,15 @@ export default function site_header({
               меню
             </button>
           )}
-          {is_logged_in ? (
-            <a
-              href="/profile"
-              className="group rounded-pill bg-surface px-4 sm:px-5 py-2.5 text-left hover:bg-[#0039A6] hover:shadow-md hover:-translate-y-0.5 transition-all duration-200 max-w-[14rem]"
-              aria-label="открыть профиль"
-            >
-              <p className="text-sm font-semibold text-neutral-900 truncate group-hover:text-white">
-                {user_name || 'профиль'}
-              </p>
-              <p className="text-[11px] text-neutral-500 leading-tight mt-0.5 inline-flex items-center gap-1 group-hover:text-white/85">
-                <TapicoinIcon size={12} />
-                {bonus} тапикоинов
-              </p>
-            </a>
-          ) : (
-            <button
-              type="button"
-              onClick={on_login}
-              className="inline-flex items-center justify-center text-center rounded-pill bg-surface px-4 sm:px-6 py-2.5 text-sm font-semibold text-neutral-800 hover:bg-menu transition-colors whitespace-nowrap"
-            >
-              войти
-            </button>
-          )}
+          {createElement(profile_chip, {
+            is_logged_in,
+            bonus,
+            user_name,
+            avatar_emoji,
+            user_id,
+            on_login,
+            on_logout,
+          })}
         </div>
       </div>
     </div>
