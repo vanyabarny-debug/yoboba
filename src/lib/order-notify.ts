@@ -3,10 +3,25 @@ import { format_order_number } from '@/lib/order-number';
 import { order_status_ui } from '@/lib/active-order-store';
 import type { order } from '@/lib/types';
 
-/** локальное уведомление со статусом (видно и на экране блокировки как notification) */
+async function get_sw_registration(): Promise<ServiceWorkerRegistration | null> {
+  if (!('serviceWorker' in navigator)) return null;
+  try {
+    const existing = await navigator.serviceWorker.getRegistration();
+    if (existing) return existing;
+    // не ждём вечно ready — на iOS PWA SW может ещё не подняться
+    return await Promise.race([
+      navigator.serviceWorker.ready,
+      new Promise<null>((resolve) => window.setTimeout(() => resolve(null), 1500)),
+    ]);
+  } catch {
+    return null;
+  }
+}
+
+/** локальное уведомление со статусом (на блокировке — как notification, не Dynamic Island) */
 export async function notify_order_status(order: order) {
   if (typeof window === 'undefined') return;
-  if (!('Notification' in window) || !('serviceWorker' in navigator)) return;
+  if (!('Notification' in window)) return;
 
   const ui = order_status_ui[order.status];
   const num = format_order_number(order);
@@ -22,7 +37,6 @@ export async function notify_order_status(order: order) {
     }
     if (Notification.permission !== 'granted') return;
 
-    const reg = await navigator.serviceWorker.ready;
     const options: NotificationOptions & { renotify?: boolean } = {
       body,
       icon: '/icons/icon-192.png',
@@ -32,7 +46,20 @@ export async function notify_order_status(order: order) {
       requireInteraction: order.status === 'ready',
       data: { url: `/orders/${order.id}`, order_id: order.id, status: order.status },
     };
-    await reg.showNotification(title, options);
+
+    const reg = await get_sw_registration();
+    if (reg?.showNotification) {
+      await reg.showNotification(title, options);
+      return;
+    }
+
+    // fallback без SW (Safari / ещё не зарегистрирован)
+    const n = new Notification(title, options);
+    n.onclick = () => {
+      window.focus();
+      window.location.href = `/orders/${order.id}`;
+      n.close();
+    };
   } catch {
     /* ignore */
   }

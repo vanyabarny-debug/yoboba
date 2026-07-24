@@ -284,17 +284,6 @@ body {
   right: calc(1rem + var(--safe-right));
 }
 
-/* виджет активного заказа — над корзиной на телефоне */
-.mobile-order-widget {
-  bottom: calc(5.25rem + var(--safe-bottom));
-}
-
-@media (min-width: 1024px) {
-  .mobile-order-widget {
-    bottom: calc(1.5rem + var(--safe-bottom));
-  }
-}
-
 .mobile-sticky-top {
   top: var(--safe-top);
 }

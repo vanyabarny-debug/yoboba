@@ -18,15 +18,20 @@ export function get_active_order_id(): string | null {
   }
 }
 
+/** пишет id; событие шлём только если значение реально изменилось (иначе виджет уходит в цикл) */
 export function set_active_order_id(id: string | null) {
   if (typeof window === 'undefined') return;
+  const prev = get_active_order_id();
+  const next = id || null;
+  if (prev === next) return;
+
   try {
-    if (!id) localStorage.removeItem(STORAGE_KEY);
-    else localStorage.setItem(STORAGE_KEY, id);
+    if (!next) localStorage.removeItem(STORAGE_KEY);
+    else localStorage.setItem(STORAGE_KEY, next);
   } catch {
     /* ignore */
   }
-  window.dispatchEvent(new CustomEvent(EVENT, { detail: { id } }));
+  window.dispatchEvent(new CustomEvent(EVENT, { detail: { id: next } }));
 }
 
 export function subscribe_active_order_id(cb: (id: string | null) => void) {
