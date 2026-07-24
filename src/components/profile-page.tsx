@@ -153,7 +153,6 @@ export default function profile_page() {
   const [card_last4, set_card_last4] = useState('');
   const [card_error, set_card_error] = useState('');
   const [adding_card, set_adding_card] = useState(false);
-  const [expanded_order, set_expanded_order] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -736,13 +735,13 @@ export default function profile_page() {
           ) : (
             <ul className="divide-y divide-neutral-100">
               {orders.map((o) => {
-                const open = expanded_order === o.id;
+                const live =
+                  o.status === 'new' || o.status === 'preparing' || o.status === 'ready';
                 return (
                   <li key={o.id} className="py-3 first:pt-0 last:pb-0">
-                    <button
-                      type="button"
-                      onClick={() => set_expanded_order(open ? null : o.id)}
-                      className="w-full text-left flex items-start justify-between gap-3"
+                    <Link
+                      href={`/orders/${o.id}`}
+                      className="flex items-start justify-between gap-3 text-left"
                     >
                       <div className="min-w-0">
                         <p className="text-sm font-semibold text-neutral-900">
@@ -751,6 +750,11 @@ export default function profile_page() {
                         <p className="text-xs text-neutral-500 mt-0.5">
                           {format_datetime(o.created_at)} · {status_label[o.status]}
                         </p>
+                        {live ? (
+                          <p className="mt-1 text-xs font-medium text-accent">следить за заказом →</p>
+                        ) : (
+                          <p className="mt-1 text-xs text-neutral-400">открыть заказ →</p>
+                        )}
                       </div>
                       <div className="text-right shrink-0">
                         <p className="text-sm font-semibold tabular-nums">
@@ -760,24 +764,7 @@ export default function profile_page() {
                           {payment_label[o.payment_type]}
                         </p>
                       </div>
-                    </button>
-                    {open && (
-                      <ul className="mt-2 ml-1 space-y-1 border-l-2 border-accent/30 pl-3">
-                        {o.items.map((item, idx) => (
-                          <li
-                            key={`${item.menu_id}-${idx}`}
-                            className="flex justify-between gap-2 text-xs text-neutral-600"
-                          >
-                            <span>
-                              {item.name} × {item.quantity}
-                            </span>
-                            <span className="tabular-nums shrink-0">
-                              {format_price(item.price * item.quantity)} ₽
-                            </span>
-                          </li>
-                        ))}
-                      </ul>
-                    )}
+                    </Link>
                   </li>
                 );
               })}

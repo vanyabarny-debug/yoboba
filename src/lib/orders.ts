@@ -53,3 +53,14 @@ export async function fetch_my_orders() {
   }
   return { data: body.orders || [], error: null };
 }
+
+export async function fetch_order_by_id(id: string) {
+  const res = await fetch(`/api/orders/${encodeURIComponent(id)}`, {
+    credentials: 'same-origin',
+  });
+  const body = (await res.json()) as { order?: order; error?: string };
+  if (!res.ok) {
+    return { data: null, error: new Error(body.error || 'заказ не найден') };
+  }
+  return { data: body.order ?? null, error: null };
+}

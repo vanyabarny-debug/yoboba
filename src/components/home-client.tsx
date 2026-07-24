@@ -381,6 +381,9 @@ export default function home_client({
             : `заказ отправлен — заберите в ${label}`
       );
       window.setTimeout(() => set_order_toast(''), 4500);
+      if (body.order?.id) {
+        router.push(`/orders/${body.order.id}`);
+      }
       return;
     }
 
@@ -425,7 +428,10 @@ export default function home_client({
           : `заказ отправлен — заберите в ${label}`
     );
     window.setTimeout(() => set_order_toast(''), 4500);
-  }, [cart_lines, user_id, demo_mode, user?.name, user?.phone, redeem_bonus, bonus]);
+    if (data?.id) {
+      router.push(`/orders/${data.id}`);
+    }
+  }, [cart_lines, user_id, demo_mode, user?.name, user?.phone, redeem_bonus, bonus, router]);
 
   function needs_checkout_gate() {
     if (demo_mode) return false;
