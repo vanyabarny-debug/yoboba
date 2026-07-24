@@ -565,7 +565,7 @@ export default function profile_page() {
                   {profile.avatar_emoji || avatar_emoji_from_id(profile.id)}
                 </span>
                 <span className="text-sm text-neutral-600">
-                  ваш эмоджи в уголке приложения
+                  ваш эмоджи аватар
                 </span>
               </div>
             )}
