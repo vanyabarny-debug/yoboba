@@ -27,6 +27,7 @@ export default function profile_chip({
 }: props) {
   const router = useRouter();
 
+  // без входа — только кнопка «войти», без аватарки/имени
   if (!is_logged_in) {
     return (
       <button
@@ -41,7 +42,20 @@ export default function profile_chip({
 
   const emoji =
     avatar_emoji || (user_id ? avatar_emoji_from_id(user_id) : '🧋');
-  const name = (user_name || 'профиль').trim() || 'профиль';
+  const name = (user_name || '').trim();
+  // если имя ещё не подтянулось — тоже не рисуем «фейковый» профиль
+  if (!name) {
+    return (
+      <button
+        type="button"
+        onClick={on_login}
+        className="inline-flex items-center justify-center rounded-pill bg-surface px-4 py-2.5 text-sm font-semibold text-neutral-800 hover:bg-menu transition-colors whitespace-nowrap"
+      >
+        войти
+      </button>
+    );
+  }
+
   const bonus_label = bonus > 999 ? '999+' : String(bonus);
 
   return (

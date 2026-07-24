@@ -274,7 +274,13 @@ export default function home_client({
   const is_staff_admin = !admin_edit_mode && user?.role === 'admin';
   const is_logged_in = demo_mode
     ? Boolean(user && user.role === 'user' && !user.is_guest)
-    : Boolean(user_id && !is_anonymous);
+    : Boolean(
+        user_id &&
+          !is_anonymous &&
+          user &&
+          user.role === 'user' &&
+          !user.is_guest
+      );
   const cart_count = cart_lines.reduce((s, l) => s + l.quantity, 0);
   const cart_total = cart_lines.reduce((s, l) => s + cart_line_unit_price(l) * l.quantity, 0);
   const active_promos = promos.filter((p) => p.is_active);

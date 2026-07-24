@@ -178,12 +178,9 @@ export function start_vk_sign_in(return_path = '/') {
     return { error: new Error('vk auth not configured') };
   }
 
-  const next = encodeURIComponent(return_path);
-  // PWA на iOS часто без Referer — передаём живой origin явно
-  const client_origin =
-    typeof window !== 'undefined' ? encodeURIComponent(window.location.origin) : '';
-  const qs = `returnTo=${next}${client_origin ? `&clientOrigin=${client_origin}` : ''}`;
-  window.location.href = `/api/auth/vk?${qs}`;
+  const next = encodeURIComponent(return_path.startsWith('/') ? return_path : '/');
+  // redirect_uri всегда из NEXT_PUBLIC_SITE_URL на сервере — не подмешиваем clientOrigin
+  window.location.assign(`/api/auth/vk?returnTo=${next}`);
   return { error: null };
 }
 

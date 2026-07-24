@@ -32,7 +32,7 @@ function try_parse_origin(raw: string | null | undefined): string | null {
   }
 }
 
-/** origin из заголовков прокси/хоста (реальный домен PWA/сайта) */
+/** origin из заголовков прокси/хоста */
 export function origin_from_request(request: Request): string | null {
   const headers = request.headers;
   const host = headers.get('x-forwarded-host') || headers.get('host');
@@ -42,27 +42,20 @@ export function origin_from_request(request: Request): string | null {
 }
 
 /**
- * публичный origin для VK OAuth.
- * Важно для PWA: берём живой Host (www/apex), а не застрявший localhost из .env.
+ * Origin для VK OAuth / redirect_uri.
+ * Всегда берём NEXT_PUBLIC_SITE_URL на проде — он должен совпадать с кабинетом VK ID.
+ * clientOrigin раньше ломал вход (www vs apex / другой хост).
  */
-export function public_site_origin(request: Request, client_origin?: string | null) {
-  const from_client = try_parse_origin(client_origin);
-  const from_request = origin_from_request(request);
+export function public_site_origin(request: Request, _client_origin?: string | null) {
   const configured = try_parse_origin(process.env.NEXT_PUBLIC_SITE_URL);
-
-  // клиентский origin (из PWA window.location) — самый точный, если не localhost
-  if (from_client && !is_local_host(new URL(from_client).hostname)) {
-    return from_client;
-  }
-
-  if (from_request) return from_request;
-
   if (configured && !is_local_host(new URL(configured).hostname)) {
     return configured;
   }
 
-  // последний шанс — даже localhost (dev)
-  return from_client || configured || new URL(request.url).origin.replace(/\/$/, '');
+  const from_request = origin_from_request(request);
+  if (from_request) return from_request;
+
+  return configured || new URL(request.url).origin.replace(/\/$/, '');
 }
 
 export function vk_redirect_uri(origin: string) {
@@ -77,6 +70,11 @@ export function vk_authorize_origin(origin: string) {
   } catch {
     return origin.replace(/\/$/, '');
   }
+}
+
+export function vk_cookies_secure() {
+  const site = process.env.NEXT_PUBLIC_SITE_URL || '';
+  return site.startsWith('https://') || process.env.NODE_ENV === 'production';
 }
 
 export function vk_auth_email(vk_user_id: string) {
