@@ -1,6 +1,6 @@
 /* eslint-disable no-restricted-globals */
 
-const cache_name = 'yoboba-v6';
+const cache_name = 'yoboba-v7';
 const static_assets = [
   '/',
   '/login',
@@ -14,9 +14,7 @@ self.addEventListener('install', (event) => {
   event.waitUntil(
     caches.open(cache_name).then((cache) => cache.addAll(static_assets))
   );
-  const host = self.location.hostname;
-  const is_local = host === 'localhost' || host === '127.0.0.1';
-  if (!is_local) self.skipWaiting();
+  self.skipWaiting();
 });
 
 self.addEventListener('activate', (event) => {
@@ -44,6 +42,28 @@ self.addEventListener('fetch', (event) => {
   // картинки меню — только сеть, без залипшего кеша 404
   if (url.pathname.startsWith('/images/menu/')) {
     event.respondWith(fetch(request));
+    return;
+  }
+
+  // HTML / JS / CSS — сначала сеть, иначе старый бандл держит чёрные кнопки задач
+  const is_nav = request.mode === 'navigate';
+  const is_asset =
+    url.pathname.startsWith('/_next/') ||
+    url.pathname.endsWith('.js') ||
+    url.pathname.endsWith('.css');
+
+  if (is_nav || is_asset) {
+    event.respondWith(
+      fetch(request)
+        .then((response) => {
+          if (response.ok && url.origin === self.location.origin) {
+            const clone = response.clone();
+            caches.open(cache_name).then((cache) => cache.put(request, clone));
+          }
+          return response;
+        })
+        .catch(() => caches.match(request).then((cached) => cached || Response.error()))
+    );
     return;
   }
 

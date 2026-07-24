@@ -50,7 +50,7 @@ function info_button({
         e.stopPropagation();
         on_toggle();
       }}
-      className="absolute right-1.5 top-1.5 z-20 flex h-7 w-7 items-center justify-center rounded-full bg-white/70 text-[11px] font-bold leading-none backdrop-blur-sm active:scale-95"
+      className="absolute right-1.5 top-1.5 z-20 flex h-7 w-7 items-center justify-center rounded-full bg-white/80 text-[11px] font-bold leading-none backdrop-blur-sm active:scale-95"
       style={{ color }}
       aria-label={open ? 'скрыть детали' : 'детали задачи'}
       aria-pressed={open}
@@ -67,15 +67,17 @@ function format_stopwatch_ms(ms: number) {
   return `${m}:${s.toString().padStart(2, '0')}`;
 }
 
-/** круг как у заказа: белая заливка + толстое цветное кольцо */
+/** круг задачи: светлая заливка плитки + цветное кольцо (не чёрный) */
 function task_ring_shell({
   children,
+  fill,
   ring,
   track,
   progress = 1,
   on_click,
 }: {
   children: ReactNode;
+  fill: string;
   ring: string;
   track: string;
   progress?: number;
@@ -94,13 +96,14 @@ function task_ring_shell({
       type={on_click ? 'button' : undefined}
       onClick={on_click}
       className="relative block h-full w-full max-h-full max-w-full rounded-full transition active:scale-[0.97]"
+      style={{ backgroundColor: fill }}
     >
       <svg viewBox={`0 0 ${size} ${size}`} className="-rotate-90 h-full w-full" aria-hidden>
         <circle
           cx={size / 2}
           cy={size / 2}
           r={r}
-          fill="#ffffff"
+          fill={fill}
           stroke={track}
           strokeWidth={stroke}
         />
@@ -123,13 +126,15 @@ function task_ring_shell({
   );
 }
 
-/** пауза: две команды в том же кольце, разделитель толщиной кольца */
+/** пауза: две команды, то же кольцо и заливка */
 function pause_split({
+  fill,
   ring,
   track,
   on_continue,
   on_complete,
 }: {
+  fill: string;
   ring: string;
   track: string;
   on_continue: () => void;
@@ -140,13 +145,16 @@ function pause_split({
   const r = (size - stroke) / 2;
 
   return (
-    <div className="relative block h-full w-full max-h-full max-w-full rounded-full">
+    <div
+      className="relative block h-full w-full max-h-full max-w-full rounded-full"
+      style={{ backgroundColor: fill }}
+    >
       <svg viewBox={`0 0 ${size} ${size}`} className="h-full w-full" aria-hidden>
         <circle
           cx={size / 2}
           cy={size / 2}
           r={r}
-          fill="#ffffff"
+          fill={fill}
           stroke={track}
           strokeWidth={stroke}
         />
@@ -158,7 +166,6 @@ function pause_split({
           stroke={ring}
           strokeWidth={stroke}
         />
-        {/* разделитель той же толщины и цвета, что кольцо */}
         <line
           x1={size / 2}
           y1={stroke * 1.15}
@@ -175,6 +182,7 @@ function pause_split({
           onClick={on_continue}
           className="flex w-1/2 items-center justify-center px-1.5 active:bg-black/[0.04]"
           aria-label="продолжить"
+          style={{ backgroundColor: fill }}
         >
           <span
             className="text-center text-[clamp(0.58rem,3.2cqw,0.82rem)] font-bold leading-tight"
@@ -188,6 +196,7 @@ function pause_split({
           onClick={on_complete}
           className="flex w-1/2 items-center justify-center px-1.5 active:bg-black/[0.04]"
           aria-label="выполнено"
+          style={{ backgroundColor: fill }}
         >
           <span
             className="text-center text-[clamp(0.58rem,3.2cqw,0.82rem)] font-bold leading-tight"
@@ -210,12 +219,14 @@ export default function shift_task_card({ task, mode, on_advance }: props) {
   const expected_ms = Math.max(1, task.expected_minutes) * 60_000;
   const elapsed = live_elapsed_ms(task, now);
   const progress = Math.min(1, elapsed / expected_ms);
+  /** всегда явные цвета — без чёрных tone из circular_timer */
   const timer_colors = {
     fill: '#ffffff',
     ring: color.fg,
     text: color.fg,
     track: color.border,
   };
+  const circle_fill = '#ffffff';
 
   useEffect(() => {
     if (task.phase !== 'running') return;
@@ -237,7 +248,6 @@ export default function shift_task_card({ task, mode, on_advance }: props) {
     set_exiting(true);
     set_fading(false);
     play_task_done_chime();
-    // сначала даём разглядеть «готово», потом плавно уводим карточку
     window.setTimeout(() => set_fading(true), 2400);
     window.setTimeout(() => {
       on_advance(task.id, 'complete');
@@ -277,7 +287,7 @@ export default function shift_task_card({ task, mode, on_advance }: props) {
             {createElement(circular_timer, {
               progress: 1,
               label: task.title,
-              tone: 'done',
+              tone: 'handout',
               colors: timer_colors,
               fill: true,
               disabled: true,
@@ -293,6 +303,7 @@ export default function shift_task_card({ task, mode, on_advance }: props) {
 
   if (exiting) {
     circle = createElement(task_ring_shell, {
+      fill: circle_fill,
       ring: color.fg,
       track: color.border,
       progress: 1,
@@ -309,6 +320,7 @@ export default function shift_task_card({ task, mode, on_advance }: props) {
     });
   } else if (task.phase === 'stopped') {
     circle = createElement(pause_split, {
+      fill: circle_fill,
       ring: color.fg,
       track: color.border,
       on_continue: () => go('continue'),
@@ -316,6 +328,7 @@ export default function shift_task_card({ task, mode, on_advance }: props) {
     });
   } else if (task.phase === 'icon') {
     circle = createElement(task_ring_shell, {
+      fill: circle_fill,
       ring: color.fg,
       track: color.border,
       progress: 1,
@@ -329,7 +342,7 @@ export default function shift_task_card({ task, mode, on_advance }: props) {
     circle = createElement(circular_timer, {
       progress: 1,
       label: task.title,
-      tone: 'idle',
+      tone: 'handout',
       colors: timer_colors,
       fill: true,
       hero: false,
@@ -337,9 +350,9 @@ export default function shift_task_card({ task, mode, on_advance }: props) {
     });
   } else if (task.phase === 'armed') {
     circle = createElement(circular_timer, {
-      progress: 0,
+      progress: 1,
       label: 'начать',
-      tone: 'idle',
+      tone: 'handout',
       colors: timer_colors,
       fill: true,
       on_click: () => go(),
@@ -350,7 +363,7 @@ export default function shift_task_card({ task, mode, on_advance }: props) {
       label: format_stopwatch_ms(elapsed),
       sublabel: 'пауза',
       active: true,
-      tone: 'cooking',
+      tone: 'handout',
       colors: timer_colors,
       fill: true,
       hero: true,
