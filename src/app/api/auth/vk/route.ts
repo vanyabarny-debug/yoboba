@@ -7,6 +7,7 @@ import {
 import {
   is_vk_auth_configured,
   public_site_origin,
+  vk_authorize_origin,
   vk_authorize_url,
   vk_default_scope,
   vk_redirect_uri,
@@ -22,7 +23,8 @@ const cookie_opts = {
 
 export async function GET(request: Request) {
   const url = new URL(request.url);
-  const origin = public_site_origin(request);
+  const client_origin = url.searchParams.get('clientOrigin');
+  const origin = public_site_origin(request, client_origin);
   const return_to = url.searchParams.get('returnTo') || '/';
   const safe_return = return_to.startsWith('/') ? return_to : '/';
 
@@ -43,12 +45,17 @@ export async function GET(request: Request) {
     auth_url.searchParams.set('scope', vk_default_scope);
     auth_url.searchParams.set('state', state);
     auth_url.searchParams.set('code_challenge', challenge);
-    auth_url.searchParams.set('code_challenge_method', 'S256');
+    // VK ID SDK шлёт s256 в нижнем регистре
+    auth_url.searchParams.set('code_challenge_method', 's256');
+    // без referrer (частый кейс iOS PWA) VK требует явный origin = базовый домен
+    auth_url.searchParams.set('origin', vk_authorize_origin(origin));
 
     const res = NextResponse.redirect(auth_url.toString());
     res.cookies.set('vk_oauth_state', state, cookie_opts);
     res.cookies.set('vk_code_verifier', verifier, cookie_opts);
     res.cookies.set('vk_return_to', safe_return, cookie_opts);
+    // тот же redirect_uri обязателен при обмене кода
+    res.cookies.set('vk_redirect_uri', redirect_uri, cookie_opts);
     return res;
   } catch (err) {
     const message = err instanceof Error ? err.message : 'vk_init_failed';

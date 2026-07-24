@@ -11,24 +11,72 @@ export function is_vk_auth_configured() {
   );
 }
 
-export function vk_redirect_uri(origin?: string) {
-  const base = process.env.NEXT_PUBLIC_SITE_URL || origin || '';
-  return `${base.replace(/\/$/, '')}/auth/vk/callback`;
+function is_local_host(hostname: string) {
+  const h = hostname.toLowerCase();
+  return (
+    h === 'localhost' ||
+    h === '127.0.0.1' ||
+    h === '0.0.0.0' ||
+    h.endsWith('.local')
+  );
 }
 
-/** публичный origin сайта (не 0.0.0.0 из Docker HOSTNAME) */
-export function public_site_origin(request: Request) {
-  const configured = process.env.NEXT_PUBLIC_SITE_URL?.replace(/\/$/, '');
-  if (configured) return configured;
+function try_parse_origin(raw: string | null | undefined): string | null {
+  if (!raw) return null;
+  try {
+    const u = new URL(raw);
+    if (u.protocol !== 'http:' && u.protocol !== 'https:') return null;
+    return `${u.protocol}//${u.host}`.replace(/\/$/, '');
+  } catch {
+    return null;
+  }
+}
 
+/** origin из заголовков прокси/хоста (реальный домен PWA/сайта) */
+export function origin_from_request(request: Request): string | null {
   const headers = request.headers;
   const host = headers.get('x-forwarded-host') || headers.get('host');
-  if (host && !host.startsWith('0.0.0.0') && !host.startsWith('127.0.0.1')) {
-    const proto = headers.get('x-forwarded-proto') || 'https';
-    return `${proto}://${host}`;
+  if (!host || is_local_host(host.split(':')[0] || host)) return null;
+  const proto = headers.get('x-forwarded-proto') || 'https';
+  return `${proto}://${host}`.replace(/\/$/, '');
+}
+
+/**
+ * публичный origin для VK OAuth.
+ * Важно для PWA: берём живой Host (www/apex), а не застрявший localhost из .env.
+ */
+export function public_site_origin(request: Request, client_origin?: string | null) {
+  const from_client = try_parse_origin(client_origin);
+  const from_request = origin_from_request(request);
+  const configured = try_parse_origin(process.env.NEXT_PUBLIC_SITE_URL);
+
+  // клиентский origin (из PWA window.location) — самый точный, если не localhost
+  if (from_client && !is_local_host(new URL(from_client).hostname)) {
+    return from_client;
   }
 
-  return new URL(request.url).origin;
+  if (from_request) return from_request;
+
+  if (configured && !is_local_host(new URL(configured).hostname)) {
+    return configured;
+  }
+
+  // последний шанс — даже localhost (dev)
+  return from_client || configured || new URL(request.url).origin.replace(/\/$/, '');
+}
+
+export function vk_redirect_uri(origin: string) {
+  return `${origin.replace(/\/$/, '')}/auth/vk/callback`;
+}
+
+/** как в VK ID SDK: protocol + hostname без path */
+export function vk_authorize_origin(origin: string) {
+  try {
+    const u = new URL(origin);
+    return `${u.protocol}//${u.hostname}`;
+  } catch {
+    return origin.replace(/\/$/, '');
+  }
 }
 
 export function vk_auth_email(vk_user_id: string) {

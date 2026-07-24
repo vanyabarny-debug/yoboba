@@ -14,6 +14,7 @@ function clear_vk_cookies(response: NextResponse) {
   response.cookies.set('vk_oauth_state', '', { maxAge: 0, path: '/' });
   response.cookies.set('vk_code_verifier', '', { maxAge: 0, path: '/' });
   response.cookies.set('vk_return_to', '', { maxAge: 0, path: '/' });
+  response.cookies.set('vk_redirect_uri', '', { maxAge: 0, path: '/' });
   return response;
 }
 
@@ -76,6 +77,8 @@ export async function GET(request: Request) {
     const expected_state = get_cookie(request, 'vk_oauth_state');
     const code_verifier = get_cookie(request, 'vk_code_verifier');
     const return_to = get_cookie(request, 'vk_return_to') || '/';
+    const saved_redirect = get_cookie(request, 'vk_redirect_uri');
+    const redirect_uri = saved_redirect || `${origin}/auth/vk/callback`;
 
     if (vk_error) {
       const res = NextResponse.redirect(
@@ -101,13 +104,13 @@ export async function GET(request: Request) {
       return clear_vk_cookies(res);
     }
 
-    console.log('[vk/callback] exchange code');
+    console.log('[vk/callback] exchange code', { redirect_uri });
     const tokens = await exchange_vk_code({
       code,
       device_id,
       code_verifier,
       state,
-      origin,
+      redirect_uri,
     });
 
     console.log('[vk/callback] fetch user');

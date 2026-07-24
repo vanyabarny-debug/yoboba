@@ -179,7 +179,11 @@ export function start_vk_sign_in(return_path = '/') {
   }
 
   const next = encodeURIComponent(return_path);
-  window.location.href = `/api/auth/vk?returnTo=${next}`;
+  // PWA на iOS часто без Referer — передаём живой origin явно
+  const client_origin =
+    typeof window !== 'undefined' ? encodeURIComponent(window.location.origin) : '';
+  const qs = `returnTo=${next}${client_origin ? `&clientOrigin=${client_origin}` : ''}`;
+  window.location.href = `/api/auth/vk?${qs}`;
   return { error: null };
 }
 

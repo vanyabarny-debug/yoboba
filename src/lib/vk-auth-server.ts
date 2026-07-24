@@ -64,6 +64,9 @@ export async function exchange_vk_code(input: {
   device_id: string;
   code_verifier: string;
   state: string;
+  /** точный redirect_uri из authorize (обязательно совпадение) */
+  redirect_uri?: string;
+  /** @deprecated используй redirect_uri */
   origin?: string;
 }) {
   const client_id = process.env.NEXT_PUBLIC_VK_CLIENT_ID;
@@ -71,13 +74,17 @@ export async function exchange_vk_code(input: {
     throw new Error('VK client_id не настроен');
   }
 
+  const redirect_uri =
+    input.redirect_uri ||
+    (input.origin ? vk_redirect_uri(input.origin) : vk_redirect_uri(process.env.NEXT_PUBLIC_SITE_URL || ''));
+
   // VK ID web + PKCE: client_secret в обмене кода не нужен
   // (если передать неверный secret — часто приходит «client_id is invalid»)
   const body = new URLSearchParams({
     grant_type: 'authorization_code',
     code: input.code,
     client_id,
-    redirect_uri: vk_redirect_uri(input.origin),
+    redirect_uri,
     code_verifier: input.code_verifier,
     device_id: input.device_id,
     state: input.state,

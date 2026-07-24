@@ -32,10 +32,26 @@ export default function login_client() {
           ? 'сессия vk устарела — попробуйте ещё раз'
           : auth_error === 'auth_callback_failed'
             ? 'не удалось подтвердить вход — попробуйте снова'
-            : decodeURIComponent(auth_error).replace(/\+/g, ' ')
+            : auth_error === 'access_denied'
+              ? 'вход через vk отменён'
+              : decodeURIComponent(auth_error).replace(/\+/g, ' ')
       );
     }
   }, [params]);
+
+  useEffect(() => {
+    function unlock() {
+      set_loading(false);
+    }
+    function on_page_show(e: PageTransitionEvent) {
+      if (e.persisted) unlock();
+    }
+    window.addEventListener('pageshow', on_page_show);
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible') unlock();
+    });
+    return () => window.removeEventListener('pageshow', on_page_show);
+  }, []);
 
   async function handle_demo_login(e: React.FormEvent) {
     e.preventDefault();
