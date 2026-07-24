@@ -67,7 +67,7 @@ function format_stopwatch_ms(ms: number) {
   return `${m}:${s.toString().padStart(2, '0')}`;
 }
 
-/** круг задачи: светлая заливка плитки + цветное кольцо (не чёрный) */
+/** круг как у заказа: белая заливка + цветное кольцо */
 function task_ring_shell({
   children,
   fill,
@@ -126,17 +126,22 @@ function task_ring_shell({
   );
 }
 
-/** пауза: две команды, то же кольцо и заливка */
+/**
+ * пауза: две половины с разным фоном и тонким зазором,
+ * без толстой «палки» поверх кольца
+ */
 function pause_split({
   fill,
   ring,
   track,
+  soft,
   on_continue,
   on_complete,
 }: {
   fill: string;
   ring: string;
   track: string;
+  soft: string;
   on_continue: () => void;
   on_complete: () => void;
 }) {
@@ -166,46 +171,60 @@ function pause_split({
           stroke={ring}
           strokeWidth={stroke}
         />
-        <line
-          x1={size / 2}
-          y1={stroke * 1.15}
-          x2={size / 2}
-          y2={size - stroke * 1.15}
-          stroke={ring}
-          strokeWidth={stroke}
-          strokeLinecap="round"
-        />
       </svg>
-      <div className="absolute inset-[9%] flex overflow-hidden rounded-full">
+
+      <div className="absolute inset-[10%] flex overflow-hidden rounded-full">
         <button
           type="button"
           onClick={on_continue}
-          className="flex w-1/2 items-center justify-center px-1.5 active:bg-black/[0.04]"
+          className="flex w-1/2 flex-col items-center justify-center gap-0.5 px-1.5 active:brightness-95"
           aria-label="продолжить"
           style={{ backgroundColor: fill }}
         >
+          <span className="text-[clamp(0.85rem,5cqw,1.15rem)] font-bold leading-none" style={{ color: ring }}>
+            ▶
+          </span>
           <span
-            className="text-center text-[clamp(0.58rem,3.2cqw,0.82rem)] font-bold leading-tight"
+            className="text-center text-[clamp(0.52rem,2.8cqw,0.72rem)] font-semibold leading-tight"
             style={{ color: ring }}
           >
             продолжить
           </span>
         </button>
+
+        {/* тонкий мягкий шов вместо толстой полосы */}
+        <div
+          className="w-px shrink-0 self-stretch my-[12%]"
+          style={{ backgroundColor: track }}
+          aria-hidden
+        />
+
         <button
           type="button"
           onClick={on_complete}
-          className="flex w-1/2 items-center justify-center px-1.5 active:bg-black/[0.04]"
+          className="flex w-1/2 flex-col items-center justify-center gap-0.5 px-1.5 active:brightness-95"
           aria-label="выполнено"
-          style={{ backgroundColor: fill }}
+          style={{ backgroundColor: soft }}
         >
+          <span className="text-[clamp(0.9rem,5.2cqw,1.2rem)] font-bold leading-none" style={{ color: ring }}>
+            ✓
+          </span>
           <span
-            className="text-center text-[clamp(0.58rem,3.2cqw,0.82rem)] font-bold leading-tight"
+            className="text-center text-[clamp(0.52rem,2.8cqw,0.72rem)] font-semibold leading-tight"
             style={{ color: ring }}
           >
             выполнено
           </span>
         </button>
       </div>
+    </div>
+  );
+}
+
+function circle_wrap({ children }: { children: ReactNode }) {
+  return (
+    <div className="flex min-h-0 flex-1 flex-col items-center justify-center px-2 pb-2 pt-3">
+      <div className="aspect-square h-[min(100%,78%)] max-w-full">{children}</div>
     </div>
   );
 }
@@ -219,7 +238,6 @@ export default function shift_task_card({ task, mode, on_advance }: props) {
   const expected_ms = Math.max(1, task.expected_minutes) * 60_000;
   const elapsed = live_elapsed_ms(task, now);
   const progress = Math.min(1, elapsed / expected_ms);
-  /** всегда явные цвета — без чёрных tone из circular_timer */
   const timer_colors = {
     fill: '#ffffff',
     ring: color.fg,
@@ -282,19 +300,17 @@ export default function shift_task_card({ task, mode, on_advance }: props) {
             </p>
           </div>
         ) : null}
-        <div className="flex min-h-0 flex-1 items-center justify-center p-2 pt-3">
-          <div className="aspect-square h-[min(100%,92%)] max-w-full">
-            {createElement(circular_timer, {
-              progress: 1,
-              label: task.title,
-              tone: 'handout',
-              colors: timer_colors,
-              fill: true,
-              disabled: true,
-              on_click: () => {},
-            })}
-          </div>
-        </div>
+        {createElement(circle_wrap, {
+          children: createElement(circular_timer, {
+            progress: 1,
+            label: task.title,
+            tone: 'handout',
+            colors: timer_colors,
+            fill: true,
+            disabled: true,
+            on_click: () => {},
+          }),
+        })}
       </article>
     );
   }
@@ -323,6 +339,7 @@ export default function shift_task_card({ task, mode, on_advance }: props) {
       fill: circle_fill,
       ring: color.fg,
       track: color.border,
+      soft: color.bg,
       on_continue: () => go('continue'),
       on_complete: complete_with_anim,
     });
@@ -406,9 +423,7 @@ export default function shift_task_card({ task, mode, on_advance }: props) {
         </div>
       ) : null}
 
-      <div className="flex min-h-0 flex-1 items-center justify-center p-2 pt-3">
-        <div className="aspect-square h-[min(100%,92%)] max-w-full">{circle}</div>
-      </div>
+      {createElement(circle_wrap, { children: circle })}
     </article>
   );
 }
