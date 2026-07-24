@@ -45,7 +45,7 @@ export async function GET(request: Request) {
     auth_url.searchParams.set('scope', vk_default_scope);
     auth_url.searchParams.set('state', state);
     auth_url.searchParams.set('code_challenge', challenge);
-    auth_url.searchParams.set('code_challenge_method', 's256');
+    auth_url.searchParams.set('code_challenge_method', 'S256');
     // PWA без Referer — явный origin из SITE_URL (как в кабинете VK)
     auth_url.searchParams.set('origin', vk_authorize_origin(origin));
 

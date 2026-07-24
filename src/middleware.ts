@@ -23,10 +23,33 @@ function copy_cookies(from: NextResponse, to: NextResponse) {
   });
 }
 
+function canonical_host_redirect(request: NextRequest): NextResponse | null {
+  const configured = process.env.NEXT_PUBLIC_SITE_URL;
+  if (!configured) return null;
+  try {
+    const site = new URL(configured);
+    if (site.hostname === 'localhost' || site.hostname === '127.0.0.1') return null;
+    const host = request.headers.get('x-forwarded-host') || request.headers.get('host');
+    if (!host) return null;
+    const hostname = host.split(':')[0]?.toLowerCase();
+    if (!hostname || hostname === site.hostname.toLowerCase()) return null;
+    // www.yomoyo.su → yomoyo.su (и любые лишние хосты → канон), иначе VK cookies/origin ломаются
+    const url = request.nextUrl.clone();
+    url.protocol = site.protocol;
+    url.host = site.host;
+    return NextResponse.redirect(url, 308);
+  } catch {
+    return null;
+  }
+}
+
 export async function middleware(request: NextRequest) {
   const path = request.nextUrl.pathname;
   const code = request.nextUrl.searchParams.get('code');
   const token_hash = request.nextUrl.searchParams.get('token_hash');
+
+  const host_redirect = canonical_host_redirect(request);
+  if (host_redirect) return host_redirect;
 
   // email/magiclink → /auth/callback; VK OAuth держит свой PKCE в cookies
   // на /auth/vk/callback — не перехватывать, иначе Supabase ищет чужой verifier
