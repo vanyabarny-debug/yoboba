@@ -15,6 +15,7 @@ create table public.profiles (
   phone text unique,
   name text,
   avatar_emoji text,
+  avatar_bg text,
   bonus_balance integer not null default 0 check (bonus_balance >= 0),
   role public.user_role not null default 'user',
   created_at timestamptz not null default now(),

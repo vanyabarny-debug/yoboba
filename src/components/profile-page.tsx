@@ -17,10 +17,13 @@ import type { order } from '@/lib/types';
 import { is_supabase_configured } from '@/lib/supabase/config';
 import { get_demo_user, clear_session, set_demo_user } from '@/lib/demo-auth';
 import {
+  AVATAR_BG_POOL,
   AVATAR_EMOJI_CHANGE_COST,
   AVATAR_EMOJI_POOL,
   avatar_emoji_from_id,
+  normalize_avatar_bg,
 } from '@/lib/avatar-emoji';
+import avatar_circle from '@/components/avatar-circle';
 import {
   add_linked_card,
   get_profile_local,
@@ -160,6 +163,7 @@ export default function profile_page() {
   const [adding_card, set_adding_card] = useState(false);
   const [editing_avatar, set_editing_avatar] = useState(false);
   const [avatar_draft, set_avatar_draft] = useState('');
+  const [avatar_bg_draft, set_avatar_bg_draft] = useState<string | null>(null);
   const [saving_avatar, set_saving_avatar] = useState(false);
   const [avatar_error, set_avatar_error] = useState('');
 
@@ -182,6 +186,7 @@ export default function profile_page() {
             name: u.name,
             bonus_balance: u.bonus_balance,
             avatar_emoji: u.avatar_emoji || avatar_emoji_from_id(u.id),
+            avatar_bg: u.avatar_bg ?? null,
             role: 'user' as const,
           };
           set_profile(p);
@@ -301,13 +306,19 @@ export default function profile_page() {
 
   async function handle_change_avatar() {
     if (!profile || !avatar_draft) return;
-    if (avatar_draft === profile.avatar_emoji) {
+    const current_emoji = profile.avatar_emoji || avatar_emoji_from_id(profile.id);
+    const current_bg = normalize_avatar_bg(profile.avatar_bg);
+    const next_bg = normalize_avatar_bg(avatar_bg_draft);
+    const emoji_changed = avatar_draft !== current_emoji;
+    const bg_changed = current_bg !== next_bg;
+
+    if (!emoji_changed && !bg_changed) {
       set_editing_avatar(false);
       return;
     }
-    if (profile.bonus_balance < AVATAR_EMOJI_CHANGE_COST) {
+    if (emoji_changed && profile.bonus_balance < AVATAR_EMOJI_CHANGE_COST) {
       set_avatar_error(
-        `нужно ${AVATAR_EMOJI_CHANGE_COST} тапикоинов, у вас ${profile.bonus_balance}`
+        `нужно ${AVATAR_EMOJI_CHANGE_COST} тапикоинов на смену эмоджи, у вас ${profile.bonus_balance}`
       );
       return;
     }
@@ -322,16 +333,20 @@ export default function profile_page() {
           set_avatar_error('не удалось сменить');
           return;
         }
-        const next_balance = Math.max(0, u.bonus_balance - AVATAR_EMOJI_CHANGE_COST);
+        const next_balance = emoji_changed
+          ? Math.max(0, u.bonus_balance - AVATAR_EMOJI_CHANGE_COST)
+          : u.bonus_balance;
         const updated = {
           ...u,
           avatar_emoji: avatar_draft,
+          avatar_bg: next_bg,
           bonus_balance: next_balance,
         };
         set_demo_user(updated);
         set_profile({
           ...profile,
           avatar_emoji: avatar_draft,
+          avatar_bg: next_bg,
           bonus_balance: next_balance,
         });
         set_editing_avatar(false);
@@ -342,13 +357,14 @@ export default function profile_page() {
         method: 'POST',
         credentials: 'same-origin',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ emoji: avatar_draft }),
+        body: JSON.stringify({ emoji: avatar_draft, bg: next_bg }),
       });
       const body = (await res.json()) as {
         profile?: profile;
         error?: string;
         bonus_balance?: number;
         avatar_emoji?: string;
+        avatar_bg?: string | null;
       };
       if (!res.ok) {
         set_avatar_error(body.error || 'не удалось сменить');
@@ -360,10 +376,13 @@ export default function profile_page() {
         set_profile({
           ...profile,
           avatar_emoji: body.avatar_emoji || avatar_draft,
+          avatar_bg: body.avatar_bg !== undefined ? body.avatar_bg : next_bg,
           bonus_balance:
             typeof body.bonus_balance === 'number'
               ? body.bonus_balance
-              : profile.bonus_balance - AVATAR_EMOJI_CHANGE_COST,
+              : emoji_changed
+                ? profile.bonus_balance - AVATAR_EMOJI_CHANGE_COST
+                : profile.bonus_balance,
         });
       }
       set_editing_avatar(false);
@@ -430,9 +449,12 @@ export default function profile_page() {
       <div className="page-shell py-6 sm:py-8 pb-[calc(4rem+var(--safe-bottom))] space-y-8 max-w-3xl">
         <div className="flex items-start justify-between gap-4">
           <div className="flex min-w-0 items-center gap-3">
-            <span className="flex h-14 w-14 shrink-0 items-center justify-center rounded-full bg-[#FFF4EC] text-3xl ring-1 ring-black/[0.04]">
-              {profile.avatar_emoji || avatar_emoji_from_id(profile.id)}
-            </span>
+            {createElement(avatar_circle, {
+              emoji: profile.avatar_emoji,
+              bg: profile.avatar_bg,
+              user_id: profile.id,
+              size: 'md',
+            })}
             <div className="min-w-0">
               <h1 className="text-2xl sm:text-3xl font-bold text-neutral-900 leading-tight truncate">
                 {profile.name || 'личный кабинет'}
@@ -493,46 +515,81 @@ export default function profile_page() {
                     set_avatar_draft(
                       profile.avatar_emoji || avatar_emoji_from_id(profile.id)
                     );
+                    set_avatar_bg_draft(normalize_avatar_bg(profile.avatar_bg));
                     set_avatar_error('');
                     set_editing_avatar(true);
                   }}
                   className="text-xs font-semibold text-accent hover:underline"
                 >
-                  сменить за {AVATAR_EMOJI_CHANGE_COST} т.
+                  изменить
                 </button>
               )}
             </div>
             {editing_avatar ? (
-              <div className="space-y-3">
-                <p className="text-xs text-neutral-500 leading-relaxed">
-                  выберите новый эмоджи. смена спишет{' '}
-                  <span className="font-semibold text-[#0039A6]">
-                    {AVATAR_EMOJI_CHANGE_COST} тапикоинов
-                  </span>
-                  {profile.bonus_balance < AVATAR_EMOJI_CHANGE_COST
-                    ? ` — сейчас не хватает (у вас ${profile.bonus_balance})`
-                    : ` · у вас ${profile.bonus_balance}`}
-                </p>
-                <div className="grid grid-cols-6 gap-2 sm:grid-cols-9">
-                  {AVATAR_EMOJI_POOL.map((emoji) => {
-                    const selected = avatar_draft === emoji;
-                    return (
-                      <button
-                        key={emoji}
-                        type="button"
-                        onClick={() => set_avatar_draft(emoji)}
-                        className={`flex h-11 w-full items-center justify-center rounded-xl text-2xl transition ${
-                          selected
-                            ? 'bg-accent/15 ring-2 ring-accent'
-                            : 'bg-page hover:bg-neutral-100'
-                        }`}
-                        aria-label={`выбрать ${emoji}`}
-                      >
-                        {emoji}
-                      </button>
-                    );
+              <div className="space-y-4">
+                <div className="flex items-center gap-3">
+                  {createElement(avatar_circle, {
+                    emoji: avatar_draft,
+                    bg: avatar_bg_draft,
+                    user_id: profile.id,
+                    size: 'lg',
                   })}
+                  <p className="text-xs text-neutral-500 leading-relaxed">
+                    эмоджи — {AVATAR_EMOJI_CHANGE_COST} т., цвет фона бесплатно.
+                    {profile.bonus_balance < AVATAR_EMOJI_CHANGE_COST
+                      ? ` у вас ${profile.bonus_balance} т.`
+                      : ` · баланс ${profile.bonus_balance} т.`}
+                  </p>
                 </div>
+
+                <div>
+                  <p className="mb-2 text-xs font-semibold text-neutral-600">эмоджи</p>
+                  <div className="grid grid-cols-6 gap-2 sm:grid-cols-9">
+                    {AVATAR_EMOJI_POOL.map((emoji) => {
+                      const selected = avatar_draft === emoji;
+                      return (
+                        <button
+                          key={emoji}
+                          type="button"
+                          onClick={() => set_avatar_draft(emoji)}
+                          className={`flex h-11 w-full items-center justify-center rounded-xl text-2xl transition ${
+                            selected
+                              ? 'bg-accent/15 ring-2 ring-accent'
+                              : 'bg-page hover:bg-neutral-100'
+                          }`}
+                          aria-label={`выбрать ${emoji}`}
+                        >
+                          {emoji}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                <div>
+                  <p className="mb-2 text-xs font-semibold text-neutral-600">цвет фона</p>
+                  <div className="flex flex-wrap gap-2">
+                    {AVATAR_BG_POOL.map((swatch) => {
+                      const value = swatch.color;
+                      const selected =
+                        normalize_avatar_bg(avatar_bg_draft) === value;
+                      return (
+                        <button
+                          key={swatch.id}
+                          type="button"
+                          onClick={() => set_avatar_bg_draft(value)}
+                          title={swatch.label}
+                          className={`h-9 w-9 rounded-full ring-2 transition ${
+                            selected ? 'ring-accent scale-110' : 'ring-black/10 hover:ring-black/20'
+                          } ${swatch.color ? '' : 'bg-accent/15'}`}
+                          style={swatch.color ? { backgroundColor: swatch.color } : undefined}
+                          aria-label={swatch.label}
+                        />
+                      );
+                    })}
+                  </div>
+                </div>
+
                 {avatar_error && <p className="text-xs text-red-500">{avatar_error}</p>}
                 <div className="flex gap-2">
                   <button
@@ -547,26 +604,35 @@ export default function profile_page() {
                     disabled={
                       saving_avatar ||
                       !avatar_draft ||
-                      avatar_draft === profile.avatar_emoji ||
-                      profile.bonus_balance < AVATAR_EMOJI_CHANGE_COST
+                      (avatar_draft ===
+                        (profile.avatar_emoji || avatar_emoji_from_id(profile.id)) &&
+                        normalize_avatar_bg(avatar_bg_draft) ===
+                          normalize_avatar_bg(profile.avatar_bg)) ||
+                      (avatar_draft !==
+                        (profile.avatar_emoji || avatar_emoji_from_id(profile.id)) &&
+                        profile.bonus_balance < AVATAR_EMOJI_CHANGE_COST)
                     }
                     onClick={() => void handle_change_avatar()}
                     className="flex-1 rounded-pill bg-accent text-accent-foreground py-2 text-sm font-medium disabled:opacity-60"
                   >
                     {saving_avatar
                       ? 'сохраняем…'
-                      : `сменить (−${AVATAR_EMOJI_CHANGE_COST} т.)`}
+                      : avatar_draft !==
+                          (profile.avatar_emoji || avatar_emoji_from_id(profile.id))
+                        ? `сохранить (−${AVATAR_EMOJI_CHANGE_COST} т.)`
+                        : 'сохранить цвет'}
                   </button>
                 </div>
               </div>
             ) : (
               <div className="flex items-center gap-3 rounded-xl bg-page px-3 py-2.5">
-                <span className="text-3xl leading-none">
-                  {profile.avatar_emoji || avatar_emoji_from_id(profile.id)}
-                </span>
-                <span className="text-sm text-neutral-600">
-                  ваш эмоджи аватар
-                </span>
+                {createElement(avatar_circle, {
+                  emoji: profile.avatar_emoji,
+                  bg: profile.avatar_bg,
+                  user_id: profile.id,
+                  size: 'sm',
+                })}
+                <span className="text-sm text-neutral-600">ваш эмоджи аватар</span>
               </div>
             )}
           </div>

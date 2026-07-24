@@ -42,7 +42,7 @@ export async function GET(request: NextRequest) {
 
   const { data: profile } = await supabase
     .from('profiles')
-    .select('id, phone, name, bonus_balance, avatar_emoji, role')
+    .select('id, phone, name, bonus_balance, avatar_emoji, avatar_bg, role')
     .eq('id', user.id)
     .maybeSingle();
 
@@ -142,7 +142,7 @@ export async function PATCH(request: NextRequest) {
     .from('profiles')
     .update(updates)
     .eq('id', user.id)
-    .select('id, phone, name, bonus_balance, avatar_emoji, role')
+    .select('id, phone, name, bonus_balance, avatar_emoji, avatar_bg, role')
     .single();
 
   if (error || !profile) {

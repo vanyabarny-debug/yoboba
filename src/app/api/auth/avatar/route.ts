@@ -3,7 +3,9 @@ import { createServerClient } from '@supabase/ssr';
 import { createClient } from '@supabase/supabase-js';
 import {
   AVATAR_EMOJI_CHANGE_COST,
+  is_avatar_bg,
   is_avatar_emoji,
+  normalize_avatar_bg,
   random_avatar_emoji,
 } from '@/lib/avatar-emoji';
 import { is_supabase_configured } from '@/lib/supabase/config';
@@ -33,14 +35,33 @@ function make_supabase(request: NextRequest, cookie_response: NextResponse) {
   );
 }
 
-/** смена аватарки за тапикоины (клиент демо — только валидация; баланс крутится на клиенте) */
+const profile_select =
+  'id, phone, name, bonus_balance, avatar_emoji, avatar_bg, role';
+
+/** смена эмоджи (за т.) и/или цвета фона (бесплатно) */
 export async function POST(request: NextRequest) {
   let cookie_response = NextResponse.next();
-  const body = (await request.json().catch(() => ({}))) as { emoji?: string; demo?: boolean };
+  const body = (await request.json().catch(() => ({}))) as {
+    emoji?: string;
+    bg?: string | null;
+    demo?: boolean;
+  };
   const emoji = typeof body.emoji === 'string' ? body.emoji.trim() : '';
+  const has_bg = Object.prototype.hasOwnProperty.call(body, 'bg');
+  const next_bg = has_bg ? normalize_avatar_bg(body.bg) : undefined;
 
-  if (!is_avatar_emoji(emoji)) {
+  if (emoji && !is_avatar_emoji(emoji)) {
     const res = NextResponse.json({ error: 'такой эмоджи нельзя' }, { status: 400 });
+    merge_cookies(cookie_response, res);
+    return res;
+  }
+  if (has_bg && !is_avatar_bg(body.bg)) {
+    const res = NextResponse.json({ error: 'такой цвет нельзя' }, { status: 400 });
+    merge_cookies(cookie_response, res);
+    return res;
+  }
+  if (!emoji && !has_bg) {
+    const res = NextResponse.json({ error: 'нечего обновлять' }, { status: 400 });
     merge_cookies(cookie_response, res);
     return res;
   }
@@ -49,8 +70,9 @@ export async function POST(request: NextRequest) {
     const res = NextResponse.json({
       ok: true,
       demo: true,
-      avatar_emoji: emoji,
-      cost: AVATAR_EMOJI_CHANGE_COST,
+      avatar_emoji: emoji || undefined,
+      avatar_bg: has_bg ? next_bg : undefined,
+      cost: emoji ? AVATAR_EMOJI_CHANGE_COST : 0,
     });
     merge_cookies(cookie_response, res);
     return res;
@@ -80,7 +102,7 @@ export async function POST(request: NextRequest) {
 
   const { data: profile, error: read_err } = await admin
     .from('profiles')
-    .select('id, phone, name, bonus_balance, avatar_emoji, role')
+    .select(profile_select)
     .eq('id', user.id)
     .maybeSingle();
 
@@ -93,39 +115,55 @@ export async function POST(request: NextRequest) {
     return res;
   }
 
-  if (profile.avatar_emoji === emoji) {
+  const emoji_changed = Boolean(emoji) && emoji !== profile.avatar_emoji;
+  const bg_changed =
+    has_bg && normalize_avatar_bg(profile.avatar_bg) !== next_bg;
+
+  if (!emoji_changed && !bg_changed) {
     const res = NextResponse.json({
       profile,
       cost: 0,
-      avatar_emoji: emoji,
+      avatar_emoji: profile.avatar_emoji,
+      avatar_bg: profile.avatar_bg ?? null,
     });
     merge_cookies(cookie_response, res);
     return res;
   }
 
-  const current = Number(profile.bonus_balance) || 0;
-  if (current < AVATAR_EMOJI_CHANGE_COST) {
-    const res = NextResponse.json(
-      {
-        error: `нужно ${AVATAR_EMOJI_CHANGE_COST} тапикоинов, у вас ${current}`,
-        bonus_balance: current,
-      },
-      { status: 400 }
-    );
-    merge_cookies(cookie_response, res);
-    return res;
+  let next_balance = Number(profile.bonus_balance) || 0;
+  let cost = 0;
+  if (emoji_changed) {
+    if (next_balance < AVATAR_EMOJI_CHANGE_COST) {
+      const res = NextResponse.json(
+        {
+          error: `нужно ${AVATAR_EMOJI_CHANGE_COST} тапикоинов, у вас ${next_balance}`,
+          bonus_balance: next_balance,
+        },
+        { status: 400 }
+      );
+      merge_cookies(cookie_response, res);
+      return res;
+    }
+    next_balance -= AVATAR_EMOJI_CHANGE_COST;
+    cost = AVATAR_EMOJI_CHANGE_COST;
   }
 
-  const next_balance = current - AVATAR_EMOJI_CHANGE_COST;
+  const updates: Record<string, unknown> = {
+    updated_at: new Date().toISOString(),
+  };
+  if (emoji_changed) {
+    updates.avatar_emoji = emoji;
+    updates.bonus_balance = next_balance;
+  }
+  if (bg_changed) {
+    updates.avatar_bg = next_bg;
+  }
+
   const { data: updated, error: upd_err } = await admin
     .from('profiles')
-    .update({
-      avatar_emoji: emoji,
-      bonus_balance: next_balance,
-      updated_at: new Date().toISOString(),
-    })
+    .update(updates)
     .eq('id', user.id)
-    .select('id, phone, name, bonus_balance, avatar_emoji, role')
+    .select(profile_select)
     .single();
 
   if (upd_err || !updated) {
@@ -139,9 +177,10 @@ export async function POST(request: NextRequest) {
 
   const res = NextResponse.json({
     profile: updated,
-    cost: AVATAR_EMOJI_CHANGE_COST,
-    avatar_emoji: emoji,
-    bonus_balance: next_balance,
+    cost,
+    avatar_emoji: updated.avatar_emoji,
+    avatar_bg: updated.avatar_bg ?? null,
+    bonus_balance: updated.bonus_balance,
   });
   merge_cookies(cookie_response, res);
   return res;

@@ -11,6 +11,7 @@ export type profile = {
   name: string | null;
   bonus_balance: number;
   avatar_emoji: string | null;
+  avatar_bg: string | null;
   role: user_role;
 };
 
@@ -224,7 +225,7 @@ export async function get_profile(): Promise<profile | null> {
 
   const { data } = await supabase
     .from('profiles')
-    .select('id, phone, name, bonus_balance, avatar_emoji, role')
+    .select('id, phone, name, bonus_balance, avatar_emoji, avatar_bg, role')
     .eq('id', user.id)
     .single();
 

@@ -7,6 +7,7 @@ export type demo_user = {
   name: string;
   bonus_balance: number;
   avatar_emoji: string;
+  avatar_bg: string | null;
   is_guest: boolean;
   role: user_role;
 };
@@ -29,6 +30,7 @@ export function get_demo_user(): demo_user | null {
         /* ignore */
       }
     }
+    if (user.avatar_bg === undefined) user.avatar_bg = null;
     return user;
   } catch {
     return null;
@@ -69,6 +71,7 @@ export function create_demo_user(input: {
     name: input.name,
     bonus_balance: is_guest ? 0 : input.role === 'admin' ? 0 : 150,
     avatar_emoji: random_avatar_emoji(),
+    avatar_bg: null,
     is_guest,
     role: input.role || (is_guest ? 'guest' : 'user'),
   };

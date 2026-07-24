@@ -1,6 +1,8 @@
 'use client';
 
+import { createElement } from 'react';
 import { useRouter } from 'next/navigation';
+import avatar_circle from '@/components/avatar-circle';
 import { avatar_emoji_from_id } from '@/lib/avatar-emoji';
 
 type props = {
@@ -8,6 +10,7 @@ type props = {
   bonus?: number;
   user_name?: string | null;
   avatar_emoji?: string | null;
+  avatar_bg?: string | null;
   user_id?: string | null;
   on_login?: () => void;
   on_logout?: () => void;
@@ -18,6 +21,7 @@ export default function profile_chip({
   bonus = 0,
   user_name,
   avatar_emoji,
+  avatar_bg,
   user_id,
   on_login,
 }: props) {
@@ -48,12 +52,13 @@ export default function profile_chip({
       aria-label={`профиль ${name}, ${bonus} тапикоинов`}
     >
       <span className="relative shrink-0">
-        <span
-          className="flex h-11 w-11 items-center justify-center rounded-full bg-accent/15 text-[22px] leading-none ring-2 ring-accent/25 transition group-hover:bg-accent/25 group-hover:ring-accent/40"
-          aria-hidden
-        >
-          {emoji}
-        </span>
+        {createElement(avatar_circle, {
+          emoji,
+          bg: avatar_bg,
+          user_id,
+          size: 'sm',
+          className: 'transition group-hover:brightness-95',
+        })}
         <span className="absolute -bottom-0.5 -right-1 inline-flex min-w-[1.35rem] items-center justify-center rounded-full bg-[#0039A6] px-1 py-[2px] text-[10px] font-bold leading-none tabular-nums text-white shadow-sm ring-2 ring-page">
           {bonus_label}
         </span>
