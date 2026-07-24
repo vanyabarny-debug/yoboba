@@ -27,6 +27,21 @@ export type prep_state = {
   finished_at?: number | null;
 };
 
+function order_is_paid(o: order) {
+  return (
+    Boolean(o.is_paid) ||
+    o.payment_type === 'bonus' ||
+    (o.payment_type === 'online' && Number(o.total_price) === 0)
+  );
+}
+
+function payment_under_label(o: order) {
+  if (o.payment_type === 'bonus' || (o.payment_type === 'online' && Number(o.total_price) === 0)) {
+    return 'оплачен тапикоинами · выдайте';
+  }
+  return 'оплачен · к выдаче';
+}
+
 type mode = 'work' | 'ready' | 'done';
 
 type props = {
@@ -97,7 +112,7 @@ export default function order_prep_card({
   const [show_info, set_show_info] = useState(false);
   const warned_sec = useRef<number | null>(null);
   const alarmed_for = useRef<string | null>(null);
-  const paid = Boolean(o.is_paid);
+  const paid = order_is_paid(o);
   const phone = (o.customer_phone || '').trim();
   const tint = color_for_id(o.id);
   const order_no = format_order_number(o);
@@ -243,7 +258,7 @@ export default function order_prep_card({
       ? current.name
       : mode === 'ready' && all_done
         ? paid
-          ? 'к выдаче'
+          ? payment_under_label(o)
           : 'к оплате'
         : null;
 
@@ -289,7 +304,12 @@ export default function order_prep_card({
               {phone ? format_phone_display(phone) : 'без телефона'}
             </p>
             <p className="mt-1 text-[10px] opacity-70">
-              выдача {pickup_label(o.pickup_time)} · {paid ? 'оплачен' : 'не оплачен'}
+              выдача {pickup_label(o.pickup_time)} ·{' '}
+              {paid
+                ? o.payment_type === 'bonus' || Number(o.total_price) === 0
+                  ? 'оплачен тапикоинами'
+                  : 'оплачен'
+                : 'не оплачен'}
             </p>
             <ul className="mt-2.5 space-y-1">
               {drinks.map((d) => {

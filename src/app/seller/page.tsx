@@ -96,8 +96,22 @@ function mark_order_paid_local(id: string, day: string) {
 
 function with_sticky_paid(list: order[], day: string): order[] {
   const paid = load_paid_ids(day);
-  if (!paid.size) return list;
-  return list.map((o) => (paid.has(o.id) || o.is_paid ? { ...o, is_paid: true } : o));
+  return list.map((o) => {
+    const already =
+      Boolean(o.is_paid) ||
+      paid.has(o.id) ||
+      o.payment_type === 'bonus' ||
+      (o.payment_type === 'online' && Number(o.total_price) === 0);
+    return already ? { ...o, is_paid: true } : o;
+  });
+}
+
+function order_is_paid(o: order) {
+  return (
+    Boolean(o.is_paid) ||
+    o.payment_type === 'bonus' ||
+    (o.payment_type === 'online' && Number(o.total_price) === 0)
+  );
 }
 
 function load_handed(day: string): order[] {
@@ -971,7 +985,7 @@ export default function seller_board() {
   }
 
   function on_final_action(o: order) {
-    if (!o.is_paid) {
+    if (!order_is_paid(o)) {
       set_paying(o);
       return;
     }

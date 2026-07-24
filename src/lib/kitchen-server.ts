@@ -40,7 +40,13 @@ export async function load_active_orders(): Promise<order[]> {
   for (const o of await get_demo_orders(true)) {
     if (!seen.has(o.id)) {
       seen.add(o.id);
-      merged.push(o);
+      merged.push({
+        ...o,
+        is_paid:
+          Boolean(o.is_paid) ||
+          o.payment_type === 'bonus' ||
+          (o.payment_type === 'online' && Number(o.total_price) === 0),
+      });
     }
   }
 
@@ -70,9 +76,13 @@ export async function load_active_orders(): Promise<order[]> {
       if (seen.has(o.id)) continue;
       seen.add(o.id);
       const profile = profile_map.get(o.user_id);
+      const is_paid =
+        Boolean(o.is_paid) ||
+        o.payment_type === 'bonus' ||
+        (o.payment_type === 'online' && Number(o.total_price) === 0);
       merged.push({
         ...o,
-        is_paid: Boolean(o.is_paid),
+        is_paid,
         customer_name: (o.customer_name || profile?.name || '').trim() || 'гость',
         customer_phone: o.customer_phone || profile?.phone || null,
       });
