@@ -127,8 +127,7 @@ function task_ring_shell({
 }
 
 /**
- * пауза: две половины с разным фоном и тонким зазором,
- * без толстой «палки» поверх кольца
+ * пауза: верх / низ — больше места для текста, ровный шов по центру
  */
 function pause_split({
   fill,
@@ -173,28 +172,24 @@ function pause_split({
         />
       </svg>
 
-      <div className="absolute inset-[10%] flex overflow-hidden rounded-full">
+      <div className="absolute inset-[14%] flex flex-col overflow-hidden rounded-full">
         <button
           type="button"
           onClick={on_continue}
-          className="flex w-1/2 flex-col items-center justify-center gap-0.5 px-1.5 active:brightness-95"
+          className="flex h-1/2 w-full items-center justify-center px-2 active:brightness-95"
           aria-label="продолжить"
           style={{ backgroundColor: fill }}
         >
-          <span className="text-[clamp(0.85rem,5cqw,1.15rem)] font-bold leading-none" style={{ color: ring }}>
-            ▶
-          </span>
           <span
-            className="text-center text-[clamp(0.52rem,2.8cqw,0.72rem)] font-semibold leading-tight"
+            className="text-center text-[clamp(0.62rem,3.6cqw,0.88rem)] font-bold leading-none tracking-tight"
             style={{ color: ring }}
           >
-            продолжить
+            ещё
           </span>
         </button>
 
-        {/* тонкий мягкий шов вместо толстой полосы */}
         <div
-          className="w-px shrink-0 self-stretch my-[12%]"
+          className="mx-[20%] h-px shrink-0"
           style={{ backgroundColor: track }}
           aria-hidden
         />
@@ -202,18 +197,15 @@ function pause_split({
         <button
           type="button"
           onClick={on_complete}
-          className="flex w-1/2 flex-col items-center justify-center gap-0.5 px-1.5 active:brightness-95"
+          className="flex h-1/2 w-full items-center justify-center px-2 active:brightness-95"
           aria-label="выполнено"
           style={{ backgroundColor: soft }}
         >
-          <span className="text-[clamp(0.9rem,5.2cqw,1.2rem)] font-bold leading-none" style={{ color: ring }}>
-            ✓
-          </span>
           <span
-            className="text-center text-[clamp(0.52rem,2.8cqw,0.72rem)] font-semibold leading-tight"
+            className="text-center text-[clamp(0.62rem,3.6cqw,0.88rem)] font-bold leading-none tracking-tight"
             style={{ color: ring }}
           >
-            выполнено
+            готово
           </span>
         </button>
       </div>
@@ -221,10 +213,24 @@ function pause_split({
   );
 }
 
-function circle_wrap({ children }: { children: ReactNode }) {
+/** тот же каркас, что у заказа: круг 78% + слот подписи снизу */
+function circle_wrap({
+  children,
+  under,
+}: {
+  children: ReactNode;
+  under?: string | null;
+}) {
   return (
     <div className="flex min-h-0 flex-1 flex-col items-center justify-center px-2 pb-2 pt-3">
       <div className="aspect-square h-[min(100%,78%)] max-w-full">{children}</div>
+      <p
+        className={`mt-1.5 max-w-[92%] truncate text-center text-[clamp(0.65rem,2.8cqw,0.82rem)] font-semibold leading-snug opacity-90 ${
+          under ? '' : 'invisible'
+        }`}
+      >
+        {under || '·'}
+      </p>
     </div>
   );
 }
@@ -301,9 +307,10 @@ export default function shift_task_card({ task, mode, on_advance }: props) {
           </div>
         ) : null}
         {createElement(circle_wrap, {
+          under: task.title,
           children: createElement(circular_timer, {
             progress: 1,
-            label: task.title,
+            label: '✓',
             tone: 'handout',
             colors: timer_colors,
             fill: true,
@@ -423,7 +430,7 @@ export default function shift_task_card({ task, mode, on_advance }: props) {
         </div>
       ) : null}
 
-      {createElement(circle_wrap, { children: circle })}
+      {createElement(circle_wrap, { under: task.title, children: circle })}
     </article>
   );
 }
