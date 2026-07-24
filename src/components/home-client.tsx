@@ -384,6 +384,13 @@ export default function home_client({
       if (body.order?.id) {
         const { set_active_order_id } = await import('@/lib/active-order-store');
         set_active_order_id(body.order.id);
+        void (async () => {
+          const { ensure_order_notify_permission, notify_order_status } = await import(
+            '@/lib/order-notify'
+          );
+          const ok = await ensure_order_notify_permission();
+          if (ok && body.order) await notify_order_status(body.order);
+        })();
         router.push(`/orders/${body.order.id}`);
       }
       return;
@@ -433,6 +440,21 @@ export default function home_client({
     if (data?.id) {
       const { set_active_order_id } = await import('@/lib/active-order-store');
       set_active_order_id(data.id);
+      void (async () => {
+        const { ensure_order_notify_permission, notify_order_status } = await import(
+          '@/lib/order-notify'
+        );
+        const { subscribe_to_push } = await import('@/components/pwa-register');
+        const ok = await ensure_order_notify_permission();
+        if (ok) {
+          try {
+            await subscribe_to_push(uid);
+          } catch {
+            /* ignore */
+          }
+          await notify_order_status(data);
+        }
+      })();
       router.push(`/orders/${data.id}`);
     }
   }, [cart_lines, user_id, demo_mode, user?.name, user?.phone, redeem_bonus, bonus, router]);

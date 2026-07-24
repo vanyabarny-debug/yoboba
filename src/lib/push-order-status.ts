@@ -1,8 +1,6 @@
 import webpush from 'web-push';
 import { createClient } from '@supabase/supabase-js';
-import { BRAND_NAME } from '@/lib/brand';
-import { format_order_number } from '@/lib/order-number';
-import { order_status_ui } from '@/lib/active-order-store';
+import { build_order_status_push } from '@/lib/order-push-copy';
 import { is_supabase_configured } from '@/lib/supabase/config';
 import type { order } from '@/lib/types';
 
@@ -13,7 +11,7 @@ function service_client() {
   );
 }
 
-/** push клиенту при смене статуса — появляется на экране блокировки */
+/** push клиенту при смене статуса — приходит даже если PWA закрыта */
 export async function push_order_status_to_user(order: order) {
   if (!is_supabase_configured() || !order.user_id) return;
   if (!process.env.SUPABASE_SERVICE_ROLE_KEY) return;
@@ -33,15 +31,15 @@ export async function push_order_status_to_user(order: order) {
 
   if (!subs?.length) return;
 
-  const ui = order_status_ui[order.status];
-  const num = format_order_number(order);
+  const copy = build_order_status_push(order);
   const payload = JSON.stringify({
-    title: `${BRAND_NAME} · № ${num}`,
-    body:
-      order.status === 'ready'
-        ? 'заказ готов — можно забирать!'
-        : `${ui.title}: ${ui.hint}`,
-    data: { url: `/orders/${order.id}`, order_id: order.id, status: order.status },
+    title: copy.title,
+    body: copy.body,
+    tag: copy.tag,
+    renotify: copy.renotify,
+    requireInteraction: copy.requireInteraction,
+    vibrate: copy.vibrate,
+    data: copy.data,
   });
 
   for (const sub of subs) {

@@ -1,6 +1,6 @@
 /* eslint-disable no-restricted-globals */
 
-const cache_name = 'yoboba-v9';
+const cache_name = 'yoboba-v10';
 const static_assets = [
   '/',
   '/login',
@@ -85,26 +85,42 @@ self.addEventListener('fetch', (event) => {
 });
 
 self.addEventListener('push', (event) => {
-  let payload = { title: 'yoboba', body: 'новое уведомление' };
+  let payload = {
+    title: 'yomoyo',
+    body: 'обновление по заказу',
+    tag: 'yoboba',
+    renotify: true,
+    requireInteraction: false,
+    vibrate: [100, 50, 100],
+    data: {},
+  };
 
   if (event.data) {
     try {
-      payload = event.data.json();
+      payload = { ...payload, ...event.data.json() };
     } catch {
       payload.body = event.data.text();
     }
   }
+
+  const status = payload.data && payload.data.status;
+  const actions =
+    status === 'ready'
+      ? [{ action: 'open', title: 'забрать' }]
+      : status === 'preparing' || status === 'new'
+        ? [{ action: 'open', title: 'следить' }]
+        : [{ action: 'open', title: 'открыть' }];
 
   event.waitUntil(
     self.registration.showNotification(payload.title || 'yomoyo', {
       body: payload.body || '',
       icon: '/icons/icon-192.png',
       badge: '/icons/icon-192.png',
-      tag: payload.data?.order_id
-        ? `yoboba-order-${payload.data.order_id}`
-        : payload.tag || 'yoboba',
-      renotify: true,
-      requireInteraction: payload.data?.status === 'ready',
+      tag: payload.tag || (payload.data?.order_id ? `yoboba-order-${payload.data.order_id}` : 'yoboba'),
+      renotify: payload.renotify !== false,
+      requireInteraction: Boolean(payload.requireInteraction) || status === 'ready',
+      vibrate: payload.vibrate || [100, 50, 100],
+      actions,
       data: payload.data || {},
     })
   );
@@ -117,8 +133,10 @@ self.addEventListener('notificationclick', (event) => {
   event.waitUntil(
     clients.matchAll({ type: 'window', includeUncontrolled: true }).then((list) => {
       for (const client of list) {
-        if (client.url.includes(target) && 'focus' in client) {
-          return client.focus();
+        if ('focus' in client) {
+          if (client.url.includes(target) || new URL(client.url).pathname === target) {
+            return client.focus();
+          }
         }
       }
       if (clients.openWindow) {
