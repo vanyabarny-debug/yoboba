@@ -1,6 +1,6 @@
 /* eslint-disable no-restricted-globals */
 
-const cache_name = 'yoboba-v10';
+const cache_name = 'yoboba-v11';
 const static_assets = [
   '/',
   '/login',
@@ -116,6 +116,8 @@ self.addEventListener('push', (event) => {
       body: payload.body || '',
       icon: '/icons/icon-192.png',
       badge: '/icons/icon-192.png',
+      // крупная картинка в шторке (Android Chrome) — бренд по центру внимания
+      image: '/icons/icon-512.png',
       tag: payload.tag || (payload.data?.order_id ? `yoboba-order-${payload.data.order_id}` : 'yoboba'),
       renotify: payload.renotify !== false,
       requireInteraction: Boolean(payload.requireInteraction) || status === 'ready',

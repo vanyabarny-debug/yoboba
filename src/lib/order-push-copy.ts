@@ -3,6 +3,7 @@ import { format_order_number } from '@/lib/order-number';
 import type { order } from '@/lib/types';
 
 export type order_push_payload = {
+  /** в шторке уведомлений сверху — бренд */
   title: string;
   body: string;
   tag: string;
@@ -27,13 +28,16 @@ function pickup_hm(iso: string) {
   }
 }
 
-/** красивые тексты пуша по статусу заказа */
-export function build_order_status_push(order: Pick<order, 'id' | 'status' | 'pickup_time' | 'order_number' | 'order_day' | 'created_at'>): order_push_payload {
+/** красивые пуши: title = бренд (центр внимания в шторке), body = статус */
+export function build_order_status_push(
+  order: Pick<order, 'id' | 'status' | 'pickup_time' | 'order_number' | 'order_day' | 'created_at'>
+): order_push_payload {
   const num = format_order_number(order);
   const when = pickup_hm(order.pickup_time);
   const url = `/orders/${order.id}`;
 
   const base = {
+    title: BRAND_NAME,
     tag: `yoboba-order-${order.id}`,
     renotify: true,
     data: { url, order_id: order.id, status: order.status },
@@ -43,52 +47,46 @@ export function build_order_status_push(order: Pick<order, 'id' | 'status' | 'pi
     case 'new':
       return {
         ...base,
-        title: `${BRAND_NAME} · заказ № ${num}`,
         body: when
-          ? `принят ✓  ·  заберёте в ${when}`
-          : 'принят ✓  ·  заказ уже на точке',
+          ? `заказ № ${num} принят\nзаберёте в ${when}`
+          : `заказ № ${num} принят\nуже на точке`,
         requireInteraction: false,
         vibrate: [80, 40, 80],
       };
     case 'preparing':
       return {
         ...base,
-        title: `готовим № ${num}`,
         body: when
-          ? `бариста за работой  ·  к ${when}`
-          : 'бариста уже взбивает ваш напиток',
+          ? `готовим № ${num}\nбариста за работой · к ${when}`
+          : `готовим № ${num}\nбариста уже взбивает напиток`,
         requireInteraction: false,
         vibrate: [100, 50, 100, 50, 100],
       };
     case 'ready':
       return {
         ...base,
-        title: `готово · № ${num}`,
-        body: 'можно забирать на кассе — ждём вас',
+        body: `готово · № ${num}\nможно забирать на кассе`,
         requireInteraction: true,
         vibrate: [200, 80, 200, 80, 400],
       };
     case 'completed':
       return {
         ...base,
-        title: `выдан · № ${num}`,
-        body: `приятного! спасибо, что выбрали ${BRAND_NAME}`,
+        body: `№ ${num} выдан\nприятного! ждём снова`,
         requireInteraction: false,
         vibrate: [60],
       };
     case 'cancelled':
       return {
         ...base,
-        title: `заказ № ${num} отменён`,
-        body: 'если что-то пошло не так — напишите нам',
+        body: `заказ № ${num} отменён\nесли что — напишите нам`,
         requireInteraction: false,
         vibrate: [40, 40, 40],
       };
     default:
       return {
         ...base,
-        title: `${BRAND_NAME} · № ${num}`,
-        body: 'обновление по заказу',
+        body: `заказ № ${num}\nобновление статуса`,
         requireInteraction: false,
         vibrate: [80],
       };
