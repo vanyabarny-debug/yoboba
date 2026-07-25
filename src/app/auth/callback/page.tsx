@@ -14,46 +14,40 @@ function AuthCallbackInner() {
     async function finish_login() {
       const supabase = create_client();
       const code = params.get('code');
+      const access_token = params.get('access_token');
+      const refresh_token = params.get('refresh_token');
       const token_hash = params.get('token_hash');
-      const type = params.get('type') || 'magiclink';
+      const type = params.get('type') || 'email';
       const safe_next = sanitize_auth_return_path(
         params.get('next') || params.get('returnTo')
       );
 
-      if (token_hash) {
-        // 1) сервер ставит httpOnly cookies — иначе /api/auth/profile не видит сессию
-        const res = await fetch('/api/auth/verify-otp', {
-          method: 'POST',
-          credentials: 'same-origin',
-          headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ token_hash, type }),
+      // VK: сервер уже обменял magiclink → сразу ставим сессию
+      if (access_token && refresh_token) {
+        const { error } = await supabase.auth.setSession({
+          access_token,
+          refresh_token,
         });
-        const body = (await res.json().catch(() => ({}))) as {
-          ok?: boolean;
-          error?: string;
-          session?: { access_token: string; refresh_token: string };
-        };
-
-        if (res.ok && body.session?.access_token && body.session.refresh_token) {
-          await supabase.auth.setSession({
-            access_token: body.session.access_token,
-            refresh_token: body.session.refresh_token,
-          });
-          window.location.assign(safe_next);
+        if (error) {
+          router.replace(`/login?error=${encodeURIComponent(error.message)}`);
           return;
         }
+        window.location.replace(safe_next);
+        return;
+      }
 
-        // 2) fallback: клиентский verify (как раньше)
+      if (token_hash) {
         const { data, error } = await supabase.auth.verifyOtp({
           token_hash,
           type: type as 'email' | 'magiclink' | 'signup' | 'invite' | 'recovery' | 'email_change',
         });
         if (error || !data.session) {
-          const msg = body.error || error?.message || 'auth_callback_failed';
-          router.replace(`/login?error=${encodeURIComponent(msg)}`);
+          router.replace(
+            `/login?error=${encodeURIComponent(error?.message || 'auth_callback_failed')}`
+          );
           return;
         }
-        window.location.assign(safe_next);
+        window.location.replace(safe_next);
         return;
       }
 
@@ -71,7 +65,7 @@ function AuthCallbackInner() {
             return;
           }
         }
-        window.location.assign(safe_next);
+        window.location.replace(safe_next);
         return;
       }
 

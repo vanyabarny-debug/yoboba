@@ -257,7 +257,10 @@ async function merge_cart(from_id: string, to_id: string) {
 
 function display_name(info: vk_user_info) {
   const parts = [info.first_name, info.last_name].filter(Boolean);
-  return parts.join(' ').trim() || 'гость';
+  const joined = parts.join(' ').trim();
+  if (joined) return joined;
+  // не «гость» — иначе путается с гостевой сессией в шапке
+  return `id${info.user_id}`;
 }
 
 function normalize_phone(raw?: string | null) {
@@ -371,7 +374,7 @@ export async function upsert_vk_supabase_user(input: {
     throw new Error(link_error?.message || 'не удалось создать сессию');
   }
 
-  // убеждаемся, что профиль реально есть (иначе шапка остаётся на «войти»)
+  // убеждаемся, что профиль реально есть
   const { data: profile_check } = await admin
     .from('profiles')
     .select('id, name')
@@ -396,9 +399,25 @@ export async function upsert_vk_supabase_user(input: {
       .eq('id', user_id);
   }
 
+  // гасим magiclink сразу на сервере — в URL hashed_token часто портится / «expires»
+  const anon = createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+  );
+  // как в /api/auth/guest: generateLink(magiclink) + verifyOtp(type: email)
+  const { data: verified, error: verify_error } = await anon.auth.verifyOtp({
+    token_hash: link.properties.hashed_token,
+    type: 'email',
+  });
+
+  if (verify_error || !verified.session) {
+    throw new Error(verify_error?.message || 'не удалось создать сессию');
+  }
+
   return {
     user_id,
     email,
-    token_hash: link.properties.hashed_token,
+    access_token: verified.session.access_token,
+    refresh_token: verified.session.refresh_token,
   };
 }

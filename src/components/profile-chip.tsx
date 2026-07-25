@@ -5,6 +5,13 @@ import { useRouter } from 'next/navigation';
 import avatar_circle from '@/components/avatar-circle';
 import { avatar_emoji_from_id } from '@/lib/avatar-emoji';
 
+const PLACEHOLDER_NAMES = new Set(['', 'профиль', 'аккаунт']);
+
+function is_real_display_name(raw: string | null | undefined) {
+  const name = (raw || '').trim().toLowerCase();
+  return Boolean(name) && !PLACEHOLDER_NAMES.has(name);
+}
+
 type props = {
   is_logged_in: boolean;
   bonus?: number;
@@ -15,6 +22,18 @@ type props = {
   on_login?: () => void;
   on_logout?: () => void;
 };
+
+function login_button(on_login?: () => void) {
+  return (
+    <button
+      type="button"
+      onClick={on_login}
+      className="inline-flex items-center justify-center rounded-pill bg-surface px-4 py-2.5 text-sm font-semibold text-neutral-800 whitespace-nowrap transition-all duration-200 hover:bg-neutral-300 hover:scale-[1.03] hover:shadow-sm active:scale-[0.97]"
+    >
+      войти
+    </button>
+  );
+}
 
 export default function profile_chip({
   is_logged_in,
@@ -27,35 +46,14 @@ export default function profile_chip({
 }: props) {
   const router = useRouter();
 
-  // без входа — только кнопка «войти», без аватарки/имени/«профиль»
-  if (!is_logged_in) {
-    return (
-      <button
-        type="button"
-        onClick={on_login}
-        className="inline-flex items-center justify-center rounded-pill bg-surface px-4 py-2.5 text-sm font-semibold text-neutral-800 hover:bg-menu transition-colors whitespace-nowrap"
-      >
-        войти
-      </button>
-    );
+  // без настоящего входа — только «войти», без аватарки и подписей
+  if (!is_logged_in || !is_real_display_name(user_name)) {
+    return login_button(on_login);
   }
 
   const emoji =
     avatar_emoji || (user_id ? avatar_emoji_from_id(user_id) : '🧋');
   const name = (user_name || '').trim();
-  // пустое или старая заглушка «профиль» — ещё не настоящий вход
-  if (!name || name === 'профиль') {
-    return (
-      <button
-        type="button"
-        onClick={on_login}
-        className="inline-flex items-center justify-center rounded-pill bg-surface px-4 py-2.5 text-sm font-semibold text-neutral-800 hover:bg-menu transition-colors whitespace-nowrap"
-      >
-        войти
-      </button>
-    );
-  }
-
   const bonus_label = bonus > 999 ? '999+' : String(bonus);
 
   return (

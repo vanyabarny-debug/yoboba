@@ -123,11 +123,10 @@ export async function GET(request: Request) {
       anonymous_user_id: null,
     });
 
-    // сессию ставим в браузере через уже рабочий /auth/callback (как у email),
-    // иначе Set-Cookie с сервера за nginx часто не доходит
+    // токены уже получены на сервере — клиент только setSession (без verifyOtp/magiclink)
     const finish = new URL('/auth/callback', origin);
-    finish.searchParams.set('token_hash', session.token_hash);
-    finish.searchParams.set('type', 'magiclink');
+    finish.searchParams.set('access_token', session.access_token);
+    finish.searchParams.set('refresh_token', session.refresh_token);
     finish.searchParams.set('next', return_to);
 
     console.log('[vk/callback] redirect to client auth callback', { next: return_to });

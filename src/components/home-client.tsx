@@ -677,20 +677,29 @@ export default function home_client({
     async function load_user() {
       const auth = await get_auth_state();
 
-      if (auth.is_permanent && auth.user_id) {
+      if (auth.is_permanent && auth.user_id && auth.profile) {
+        const name = (auth.profile.name || '').trim();
+        // без реального имени из профиля не считаем вход завершённым для UI
+        if (!name || name === 'аккаунт' || name === 'профиль') {
+          set_user_id(null);
+          set_is_anonymous(false);
+          set_user(null);
+          set_bonus(0);
+          set_cart_lines(load_guest_cart());
+          return;
+        }
+
         set_user_id(auth.user_id);
         set_is_anonymous(false);
-
-        const name = (auth.profile?.name || '').trim();
-        set_bonus(auth.profile?.bonus_balance || 0);
+        set_bonus(auth.profile.bonus_balance || 0);
         set_user({
-          id: auth.profile?.id || auth.user_id,
-          phone: auth.profile?.phone || '',
-          name: name || 'аккаунт',
-          bonus_balance: auth.profile?.bonus_balance || 0,
-          avatar_emoji: auth.profile?.avatar_emoji || '',
-          avatar_bg: auth.profile?.avatar_bg ?? null,
-          is_guest: auth.is_guest,
+          id: auth.profile.id,
+          phone: auth.profile.phone || '',
+          name,
+          bonus_balance: auth.profile.bonus_balance || 0,
+          avatar_emoji: auth.profile.avatar_emoji || '',
+          avatar_bg: auth.profile.avatar_bg ?? null,
+          is_guest: false,
           role: 'user',
         });
 
