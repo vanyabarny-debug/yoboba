@@ -290,6 +290,7 @@ export async function upsert_vk_supabase_user(input: {
   const metadata = {
     vk_id,
     provider: 'vk',
+    is_guest: false,
     full_name: name,
     first_name: input.vk_user.first_name || null,
     last_name: input.vk_user.last_name || null,
@@ -368,6 +369,31 @@ export async function upsert_vk_supabase_user(input: {
 
   if (link_error || !link.properties?.hashed_token) {
     throw new Error(link_error?.message || 'не удалось создать сессию');
+  }
+
+  // убеждаемся, что профиль реально есть (иначе шапка остаётся на «войти»)
+  const { data: profile_check } = await admin
+    .from('profiles')
+    .select('id, name')
+    .eq('id', user_id)
+    .maybeSingle();
+
+  if (!profile_check) {
+    await admin.from('profiles').upsert(
+      {
+        id: user_id,
+        name,
+        phone: phone || null,
+        avatar_emoji: random_avatar_emoji(),
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: 'id' }
+    );
+  } else if (!profile_check.name) {
+    await admin
+      .from('profiles')
+      .update({ name, updated_at: new Date().toISOString() })
+      .eq('id', user_id);
   }
 
   return {

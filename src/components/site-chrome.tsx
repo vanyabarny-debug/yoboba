@@ -76,19 +76,19 @@ export default function site_chrome({ children }: props) {
       }
 
       get_auth_state().then((auth) => {
-        if (auth.is_permanent && auth.profile) {
-          const name = (auth.profile.name || '').trim();
+        if (auth.is_permanent && auth.user_id) {
+          const name = (auth.profile?.name || '').trim();
           set_user({
-            id: auth.profile.id,
-            phone: auth.profile.phone || '',
-            name,
-            bonus_balance: auth.profile.bonus_balance,
-            avatar_emoji: auth.profile.avatar_emoji || '',
-            avatar_bg: auth.profile.avatar_bg ?? null,
+            id: auth.profile?.id || auth.user_id,
+            phone: auth.profile?.phone || '',
+            name: name || 'аккаунт',
+            bonus_balance: auth.profile?.bonus_balance || 0,
+            avatar_emoji: auth.profile?.avatar_emoji || '',
+            avatar_bg: auth.profile?.avatar_bg ?? null,
             is_guest: auth.is_guest,
             role: 'user',
           });
-          set_bonus(auth.profile.bonus_balance);
+          set_bonus(auth.profile?.bonus_balance || 0);
         } else {
           set_user(null);
           set_bonus(0);

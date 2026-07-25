@@ -681,19 +681,18 @@ export default function home_client({
         set_user_id(auth.user_id);
         set_is_anonymous(false);
 
-        if (auth.profile) {
-          set_bonus(auth.profile.bonus_balance);
-          set_user({
-            id: auth.profile.id,
-            phone: auth.profile.phone || '',
-            name: (auth.profile.name || '').trim(),
-            bonus_balance: auth.profile.bonus_balance,
-            avatar_emoji: auth.profile.avatar_emoji || '',
-            avatar_bg: auth.profile.avatar_bg ?? null,
-            is_guest: auth.is_guest,
-            role: 'user',
-          });
-        }
+        const name = (auth.profile?.name || '').trim();
+        set_bonus(auth.profile?.bonus_balance || 0);
+        set_user({
+          id: auth.profile?.id || auth.user_id,
+          phone: auth.profile?.phone || '',
+          name: name || 'аккаунт',
+          bonus_balance: auth.profile?.bonus_balance || 0,
+          avatar_emoji: auth.profile?.avatar_emoji || '',
+          avatar_bg: auth.profile?.avatar_bg ?? null,
+          is_guest: auth.is_guest,
+          role: 'user',
+        });
 
         await sync_guest_cart_to_server(auth.user_id);
         await load_prod_cart(auth.user_id);

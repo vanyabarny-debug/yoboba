@@ -127,7 +127,7 @@ export async function GET(request: Request) {
     // иначе Set-Cookie с сервера за nginx часто не доходит
     const finish = new URL('/auth/callback', origin);
     finish.searchParams.set('token_hash', session.token_hash);
-    finish.searchParams.set('type', 'email');
+    finish.searchParams.set('type', 'magiclink');
     finish.searchParams.set('next', return_to);
 
     console.log('[vk/callback] redirect to client auth callback', { next: return_to });

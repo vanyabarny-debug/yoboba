@@ -85,13 +85,28 @@ export async function GET(request: NextRequest) {
     resolved_profile = { ...resolved_profile, avatar_emoji: emoji };
   }
 
+  const meta = user.user_metadata as
+    | { is_guest?: boolean; full_name?: string; first_name?: string; last_name?: string }
+    | undefined;
+  const meta_name =
+    (typeof meta?.full_name === 'string' && meta.full_name.trim()) ||
+    [meta?.first_name, meta?.last_name]
+      .filter((v): v is string => typeof v === 'string' && Boolean(v.trim()))
+      .join(' ')
+      .trim() ||
+    null;
+
+  if (resolved_profile && !resolved_profile.name && meta_name) {
+    resolved_profile = { ...resolved_profile, name: meta_name };
+  }
+
   const res = NextResponse.json({
     user: {
       id: user.id,
       is_anonymous: user.is_anonymous === true,
       is_guest:
         user.is_anonymous === true ||
-        (user.user_metadata as { is_guest?: boolean } | undefined)?.is_guest === true ||
+        meta?.is_guest === true ||
         (user.email || '').toLowerCase().endsWith('@guest.yoboba.auth'),
     },
     profile: resolved_profile || null,
