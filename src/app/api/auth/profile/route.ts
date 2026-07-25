@@ -89,6 +89,10 @@ export async function GET(request: NextRequest) {
     user: {
       id: user.id,
       is_anonymous: user.is_anonymous === true,
+      is_guest:
+        user.is_anonymous === true ||
+        (user.user_metadata as { is_guest?: boolean } | undefined)?.is_guest === true ||
+        (user.email || '').toLowerCase().endsWith('@guest.yoboba.auth'),
     },
     profile: resolved_profile || null,
   });

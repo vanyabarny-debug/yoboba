@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { sanitize_auth_return_path } from '@/lib/auth-return';
 import {
   create_code_challenge,
   create_code_verifier,
@@ -17,8 +18,7 @@ import {
 export async function GET(request: Request) {
   const url = new URL(request.url);
   const origin = public_site_origin(request);
-  const return_to = url.searchParams.get('returnTo') || '/';
-  const safe_return = return_to.startsWith('/') ? return_to : '/';
+  const safe_return = sanitize_auth_return_path(url.searchParams.get('returnTo'));
 
   const cookie_opts = {
     httpOnly: true,

@@ -27,7 +27,7 @@ export default function profile_chip({
 }: props) {
   const router = useRouter();
 
-  // без входа — только кнопка «войти», без аватарки/имени
+  // без входа — только кнопка «войти», без аватарки/имени/«профиль»
   if (!is_logged_in) {
     return (
       <button
@@ -43,8 +43,8 @@ export default function profile_chip({
   const emoji =
     avatar_emoji || (user_id ? avatar_emoji_from_id(user_id) : '🧋');
   const name = (user_name || '').trim();
-  // если имя ещё не подтянулось — тоже не рисуем «фейковый» профиль
-  if (!name) {
+  // пустое или старая заглушка «профиль» — ещё не настоящий вход
+  if (!name || name === 'профиль') {
     return (
       <button
         type="button"

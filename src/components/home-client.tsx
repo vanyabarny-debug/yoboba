@@ -686,11 +686,11 @@ export default function home_client({
           set_user({
             id: auth.profile.id,
             phone: auth.profile.phone || '',
-            name: auth.profile.name || 'гость',
+            name: (auth.profile.name || '').trim(),
             bonus_balance: auth.profile.bonus_balance,
             avatar_emoji: auth.profile.avatar_emoji || '',
             avatar_bg: auth.profile.avatar_bg ?? null,
-            is_guest: false,
+            is_guest: auth.is_guest,
             role: 'user',
           });
         }

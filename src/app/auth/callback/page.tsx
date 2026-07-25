@@ -2,7 +2,21 @@
 
 import { Suspense, useEffect, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
+import { sanitize_auth_return_path } from '@/lib/auth-return';
 import { create_client } from '@/lib/supabase/client';
+
+function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function wait_for_user(supabase: ReturnType<typeof create_client>) {
+  for (let i = 0; i < 8; i++) {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (user && !user.is_anonymous) return user;
+    await sleep(80 + i * 40);
+  }
+  return null;
+}
 
 function AuthCallbackInner() {
   const router = useRouter();
@@ -15,8 +29,9 @@ function AuthCallbackInner() {
       const code = params.get('code');
       const token_hash = params.get('token_hash');
       const type = params.get('type');
-      const next = params.get('next') || params.get('returnTo') || '/';
-      const safe_next = next.startsWith('/') ? next : '/';
+      const safe_next = sanitize_auth_return_path(
+        params.get('next') || params.get('returnTo')
+      );
 
       if (token_hash && type) {
         const { error } = await supabase.auth.verifyOtp({
@@ -25,6 +40,11 @@ function AuthCallbackInner() {
         });
         if (error) {
           router.replace(`/login?error=${encodeURIComponent(error.message)}`);
+          return;
+        }
+        const user = await wait_for_user(supabase);
+        if (!user) {
+          router.replace('/login?error=auth_callback_failed');
           return;
         }
         window.location.assign(safe_next);
@@ -44,6 +64,11 @@ function AuthCallbackInner() {
             router.replace(`/login?error=${encodeURIComponent(error.message)}`);
             return;
           }
+        }
+        const user = await wait_for_user(supabase);
+        if (!user) {
+          router.replace('/login?error=auth_callback_failed');
+          return;
         }
         window.location.assign(safe_next);
         return;

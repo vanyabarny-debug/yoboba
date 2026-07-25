@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { sanitize_auth_return_path } from '@/lib/auth-return';
 import { public_site_origin } from '@/lib/vk-auth-config';
 import {
   exchange_vk_code,
@@ -76,7 +77,7 @@ export async function GET(request: Request) {
     const vk_error = url.searchParams.get('error');
     const expected_state = get_cookie(request, 'vk_oauth_state');
     const code_verifier = get_cookie(request, 'vk_code_verifier');
-    const return_to = get_cookie(request, 'vk_return_to') || '/';
+    const return_to = sanitize_auth_return_path(get_cookie(request, 'vk_return_to'));
     const saved_redirect = get_cookie(request, 'vk_redirect_uri');
     const redirect_uri = saved_redirect || `${origin}/auth/vk/callback`;
 
@@ -124,13 +125,12 @@ export async function GET(request: Request) {
 
     // сессию ставим в браузере через уже рабочий /auth/callback (как у email),
     // иначе Set-Cookie с сервера за nginx часто не доходит
-    const next = return_to.startsWith('/') ? return_to : '/';
     const finish = new URL('/auth/callback', origin);
     finish.searchParams.set('token_hash', session.token_hash);
     finish.searchParams.set('type', 'email');
-    finish.searchParams.set('next', next);
+    finish.searchParams.set('next', return_to);
 
-    console.log('[vk/callback] redirect to client auth callback');
+    console.log('[vk/callback] redirect to client auth callback', { next: return_to });
     const res = NextResponse.redirect(finish);
     return clear_vk_cookies(res);
   } catch (err) {

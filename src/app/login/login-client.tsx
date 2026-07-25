@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { sign_in_with_email, start_vk_sign_in, verify_email_otp } from '@/lib/auth';
+import { sanitize_auth_return_path } from '@/lib/auth-return';
 import { is_supabase_configured } from '@/lib/supabase/config';
 import { create_demo_user, sync_session } from '@/lib/demo-auth';
 import { is_vk_auth_configured } from '@/lib/vk-auth-config';
@@ -13,7 +14,7 @@ type email_step = 'email' | 'sent';
 export default function login_client() {
   const router = useRouter();
   const params = useSearchParams();
-  const return_url = params.get('returnUrl') || '/';
+  const return_url = sanitize_auth_return_path(params.get('returnUrl'));
   const demo = !is_supabase_configured();
   const vk_ready = is_vk_auth_configured();
 

@@ -1,4 +1,5 @@
 import { createBrowserClient } from '@supabase/ssr';
+import { sanitize_auth_return_path } from '@/lib/auth-return';
 import { is_supabase_configured } from '@/lib/supabase/config';
 import { is_vk_auth_configured } from '@/lib/vk-auth-config';
 import type { Session } from '@supabase/supabase-js';
@@ -19,8 +20,20 @@ export type auth_state = {
   user_id: string | null;
   is_anonymous: boolean;
   is_permanent: boolean;
+  is_guest: boolean;
   profile: profile | null;
 };
+
+function is_guest_user(user: {
+  email?: string | null;
+  is_anonymous?: boolean;
+  user_metadata?: Record<string, unknown> | null;
+}) {
+  if (user.is_anonymous === true) return true;
+  if (user.user_metadata?.is_guest === true) return true;
+  const email = (user.email || '').toLowerCase();
+  return email.endsWith('@guest.yoboba.auth');
+}
 
 function get_client() {
   return createBrowserClient(
@@ -94,22 +107,30 @@ export async function ensure_anonymous_session() {
 
 export async function get_auth_state(): Promise<auth_state> {
   if (!is_supabase_configured()) {
-    return { user_id: null, is_anonymous: false, is_permanent: false, profile: null };
+    return {
+      user_id: null,
+      is_anonymous: false,
+      is_permanent: false,
+      is_guest: false,
+      profile: null,
+    };
   }
 
   try {
     const res = await fetch('/api/auth/profile', { credentials: 'same-origin' });
     if (res.ok) {
       const body = (await res.json()) as {
-        user: { id: string; is_anonymous: boolean } | null;
+        user: { id: string; is_anonymous: boolean; is_guest?: boolean } | null;
         profile: profile | null;
       };
 
       if (body.user) {
+        const is_guest = body.user.is_guest === true || body.user.is_anonymous;
         return {
           user_id: body.user.id,
           is_anonymous: body.user.is_anonymous,
-          is_permanent: !body.user.is_anonymous,
+          is_guest,
+          is_permanent: !body.user.is_anonymous && !is_guest,
           profile: body.profile,
         };
       }
@@ -121,16 +142,24 @@ export async function get_auth_state(): Promise<auth_state> {
   const supabase = get_client();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) {
-    return { user_id: null, is_anonymous: false, is_permanent: false, profile: null };
+    return {
+      user_id: null,
+      is_anonymous: false,
+      is_permanent: false,
+      is_guest: false,
+      profile: null,
+    };
   }
 
   const profile = await get_profile();
   const is_anonymous = user.is_anonymous === true;
+  const is_guest = is_guest_user(user);
 
   return {
     user_id: user.id,
     is_anonymous,
-    is_permanent: !is_anonymous,
+    is_guest,
+    is_permanent: !is_anonymous && !is_guest,
     profile,
   };
 }
@@ -145,7 +174,7 @@ function auth_site_origin() {
 export async function sign_in_with_email(email: string, return_path = '/') {
   const supabase = get_client();
   const normalized = email.trim().toLowerCase();
-  const safe_return = return_path.startsWith('/') ? return_path : '/';
+  const safe_return = sanitize_auth_return_path(return_path);
   const origin = auth_site_origin();
   const redirect_to = `${origin}/auth/callback?next=${encodeURIComponent(safe_return)}`;
 
@@ -178,7 +207,7 @@ export function start_vk_sign_in(return_path = '/') {
     return { error: new Error('vk auth not configured') };
   }
 
-  const next = encodeURIComponent(return_path.startsWith('/') ? return_path : '/');
+  const next = encodeURIComponent(sanitize_auth_return_path(return_path));
   // redirect_uri всегда из NEXT_PUBLIC_SITE_URL на сервере — не подмешиваем clientOrigin
   window.location.assign(`/api/auth/vk?returnTo=${next}`);
   return { error: null };

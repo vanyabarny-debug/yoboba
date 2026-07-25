@@ -176,7 +176,7 @@ export default function profile_page() {
       if (demo_mode) {
         const u = get_demo_user();
         if (!u || u.is_guest || u.role !== 'user') {
-          router.replace('/login?returnUrl=/profile');
+          router.replace('/login?returnUrl=/');
           return;
         }
         if (!cancelled) {
@@ -200,9 +200,14 @@ export default function profile_page() {
         return;
       }
 
-      const auth = await get_auth_state();
+      let auth = await get_auth_state();
+      // после VK cookies/сессия иногда чуть запаздывают — не сразу гоняем на /login
+      for (let attempt = 0; attempt < 4 && (!auth.is_permanent || !auth.profile); attempt++) {
+        await new Promise((r) => setTimeout(r, 120 + attempt * 80));
+        auth = await get_auth_state();
+      }
       if (!auth.is_permanent || !auth.profile) {
-        router.replace('/login?returnUrl=/profile');
+        router.replace('/login?returnUrl=/');
         return;
       }
 

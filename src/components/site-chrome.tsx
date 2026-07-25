@@ -77,14 +77,15 @@ export default function site_chrome({ children }: props) {
 
       get_auth_state().then((auth) => {
         if (auth.is_permanent && auth.profile) {
+          const name = (auth.profile.name || '').trim();
           set_user({
             id: auth.profile.id,
             phone: auth.profile.phone || '',
-            name: auth.profile.name || 'гость',
+            name,
             bonus_balance: auth.profile.bonus_balance,
             avatar_emoji: auth.profile.avatar_emoji || '',
             avatar_bg: auth.profile.avatar_bg ?? null,
-            is_guest: false,
+            is_guest: auth.is_guest,
             role: 'user',
           });
           set_bonus(auth.profile.bonus_balance);
@@ -106,8 +107,7 @@ export default function site_chrome({ children }: props) {
   }
 
   function handle_login() {
-    const return_url = pathname || '/';
-    router.push(`/login?returnUrl=${encodeURIComponent(return_url)}`);
+    router.push('/login?returnUrl=/');
   }
 
   async function handle_logout() {
