@@ -31,7 +31,7 @@ export default function login_client() {
       set_error(
         auth_error === 'vk_state_mismatch'
           ? 'сессия vk устарела — попробуйте ещё раз'
-          : auth_error === 'auth_callback_failed'
+          : auth_error === 'auth_callback_failed' || auth_error === 'session_claim_failed'
             ? 'не удалось подтвердить вход — попробуйте снова'
             : auth_error === 'access_denied'
               ? 'вход через vk отменён'

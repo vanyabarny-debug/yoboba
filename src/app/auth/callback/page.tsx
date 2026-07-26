@@ -10,12 +10,12 @@ function sleep(ms: number) {
 }
 
 async function wait_for_permanent_user(supabase: ReturnType<typeof create_client>) {
-  for (let i = 0; i < 10; i++) {
+  for (let i = 0; i < 12; i++) {
     const { data: { user } } = await supabase.auth.getUser();
     if (user && user.is_anonymous !== true) return user;
     const { data: { session } } = await supabase.auth.getSession();
     if (session?.user && session.user.is_anonymous !== true) return session.user;
-    await sleep(50 + i * 40);
+    await sleep(60 + i * 40);
   }
   return null;
 }
@@ -29,8 +29,6 @@ function AuthCallbackInner() {
     async function finish_login() {
       const supabase = create_client();
       const code = params.get('code');
-      const access_token = params.get('access_token');
-      const refresh_token = params.get('refresh_token');
       const token_hash = params.get('token_hash');
       const type = params.get('type') || 'email';
       const sync = params.get('sync') === '1';
@@ -38,7 +36,7 @@ function AuthCallbackInner() {
         params.get('next') || params.get('returnTo')
       );
 
-      // VK handoff: cookies уже выставил /api/auth/claim-session
+      // VK: токены из sessionStorage → setSession в браузере
       if (sync) {
         try {
           const raw = sessionStorage.getItem('yoboba_vk_session');
@@ -48,15 +46,23 @@ function AuthCallbackInner() {
               access_token?: string;
               refresh_token?: string;
             };
-            if (saved.access_token && saved.refresh_token) {
-              await supabase.auth.setSession({
-                access_token: saved.access_token,
-                refresh_token: saved.refresh_token,
-              });
+            if (!saved.access_token || !saved.refresh_token) {
+              router.replace('/login?error=' + encodeURIComponent('сессия пустая'));
+              return;
+            }
+            const { error } = await supabase.auth.setSession({
+              access_token: saved.access_token,
+              refresh_token: saved.refresh_token,
+            });
+            if (error) {
+              router.replace(`/login?error=${encodeURIComponent(error.message)}`);
+              return;
             }
           }
-        } catch {
-          /* cookies всё равно должны быть */
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : 'session_sync_failed';
+          router.replace(`/login?error=${encodeURIComponent(msg)}`);
+          return;
         }
 
         const user = await wait_for_permanent_user(supabase);
@@ -64,37 +70,26 @@ function AuthCallbackInner() {
           router.replace('/login?error=' + encodeURIComponent('сессия не сохранилась'));
           return;
         }
-        window.location.replace(safe_next);
-        return;
-      }
 
-      // fallback: токены в query (старый путь)
-      if (access_token && refresh_token) {
-        const claim = await fetch('/api/auth/claim-session', {
-          method: 'POST',
-          credentials: 'same-origin',
-          headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ access_token, refresh_token }),
-        });
-        if (claim.ok) {
-          const body = (await claim.json()) as {
-            session?: { access_token: string; refresh_token: string };
-          };
-          if (body.session) {
-            await supabase.auth.setSession(body.session);
+        // подтянуть cookies на сервер (не обязательно для UI)
+        try {
+          const { data: { session } } = await supabase.auth.getSession();
+          if (session?.access_token && session.refresh_token) {
+            void fetch('/api/auth/claim-session', {
+              method: 'POST',
+              credentials: 'same-origin',
+              headers: { 'content-type': 'application/json' },
+              body: JSON.stringify({
+                access_token: session.access_token,
+                refresh_token: session.refresh_token,
+              }),
+              keepalive: true,
+            });
           }
-          window.location.replace(safe_next);
-          return;
+        } catch {
+          /* ignore */
         }
 
-        const { error } = await supabase.auth.setSession({
-          access_token,
-          refresh_token,
-        });
-        if (error) {
-          router.replace(`/login?error=${encodeURIComponent(error.message)}`);
-          return;
-        }
         window.location.replace(safe_next);
         return;
       }

@@ -124,7 +124,8 @@ export async function GET(request: Request) {
     });
 
     const next = return_to;
-    // HTML + fetch: cookies ставятся через claim-session (не через 302 Set-Cookie / не через query)
+    // Токены кладём в sessionStorage и сразу на /auth/callback —
+    // fetch /api/auth/claim-session за nginx часто падает → session_claim_failed
     const html = `<!DOCTYPE html>
 <html lang="ru">
 <head>
@@ -135,14 +136,29 @@ export async function GET(request: Request) {
 <body style="margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;background:#f3f3f3;font-family:system-ui,sans-serif;color:#555">
   <p>входим…</p>
   <script>
-  (async () => {
-    const payload = ${JSON.stringify({
+  (function () {
+    var payload = ${JSON.stringify({
       access_token: session.access_token,
       refresh_token: session.refresh_token,
       next,
+      user_id: session.user_id,
     })};
     try {
-      const res = await fetch('/api/auth/claim-session', {
+      sessionStorage.setItem(
+        'yoboba_vk_session',
+        JSON.stringify({
+          access_token: payload.access_token,
+          refresh_token: payload.refresh_token,
+          user_id: payload.user_id,
+        })
+      );
+    } catch (e) {
+      location.replace('/login?error=' + encodeURIComponent('не удалось сохранить сессию'));
+      return;
+    }
+    // best-effort: cookies для SSR, не блокируем вход если упадёт
+    try {
+      fetch('/api/auth/claim-session', {
         method: 'POST',
         credentials: 'same-origin',
         headers: { 'content-type': 'application/json' },
@@ -150,21 +166,10 @@ export async function GET(request: Request) {
           access_token: payload.access_token,
           refresh_token: payload.refresh_token,
         }),
-      });
-      const body = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        location.replace('/login?error=' + encodeURIComponent(body.error || 'session_claim_failed'));
-        return;
-      }
-      try {
-        if (body.session && body.session.access_token && body.session.refresh_token) {
-          sessionStorage.setItem('yoboba_vk_session', JSON.stringify(body.session));
-        }
-      } catch (_) {}
-      location.replace('/auth/callback?sync=1&next=' + encodeURIComponent(payload.next || '/'));
-    } catch (e) {
-      location.replace('/login?error=' + encodeURIComponent('session_claim_failed'));
-    }
+        keepalive: true,
+      }).catch(function () {});
+    } catch (e) {}
+    location.replace('/auth/callback?sync=1&next=' + encodeURIComponent(payload.next || '/'));
   })();
   </script>
 </body>
