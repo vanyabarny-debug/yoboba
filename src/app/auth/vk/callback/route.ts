@@ -123,14 +123,61 @@ export async function GET(request: Request) {
       anonymous_user_id: null,
     });
 
-    // токены уже получены на сервере — клиент только setSession (без verifyOtp/magiclink)
-    const finish = new URL('/auth/callback', origin);
-    finish.searchParams.set('access_token', session.access_token);
-    finish.searchParams.set('refresh_token', session.refresh_token);
-    finish.searchParams.set('next', return_to);
+    const next = return_to;
+    // HTML + fetch: cookies ставятся через claim-session (не через 302 Set-Cookie / не через query)
+    const html = `<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>вход…</title>
+</head>
+<body style="margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;background:#f3f3f3;font-family:system-ui,sans-serif;color:#555">
+  <p>входим…</p>
+  <script>
+  (async () => {
+    const payload = ${JSON.stringify({
+      access_token: session.access_token,
+      refresh_token: session.refresh_token,
+      next,
+    })};
+    try {
+      const res = await fetch('/api/auth/claim-session', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          access_token: payload.access_token,
+          refresh_token: payload.refresh_token,
+        }),
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        location.replace('/login?error=' + encodeURIComponent(body.error || 'session_claim_failed'));
+        return;
+      }
+      try {
+        if (body.session && body.session.access_token && body.session.refresh_token) {
+          sessionStorage.setItem('yoboba_vk_session', JSON.stringify(body.session));
+        }
+      } catch (_) {}
+      location.replace('/auth/callback?sync=1&next=' + encodeURIComponent(payload.next || '/'));
+    } catch (e) {
+      location.replace('/login?error=' + encodeURIComponent('session_claim_failed'));
+    }
+  })();
+  </script>
+</body>
+</html>`;
 
-    console.log('[vk/callback] redirect to client auth callback', { next: return_to });
-    const res = NextResponse.redirect(finish);
+    console.log('[vk/callback] handoff html', { next, user_id: session.user_id });
+    const res = new NextResponse(html, {
+      status: 200,
+      headers: {
+        'content-type': 'text/html; charset=utf-8',
+        'cache-control': 'no-store',
+      },
+    });
     return clear_vk_cookies(res);
   } catch (err) {
     const message = err instanceof Error ? err.message : 'vk_auth_failed';

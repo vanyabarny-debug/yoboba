@@ -313,10 +313,35 @@ export async function upsert_vk_supabase_user(input: {
       ...(phone ? { phone, phone_confirm: true } : {}),
       user_metadata: metadata,
     });
+
     if (error || !data.user) {
-      throw new Error(error?.message || 'не удалось создать пользователя');
+      // уже есть / конфликт телефона — ищем ещё раз или создаём без phone
+      const existing =
+        (await find_user_id_by_email(email)) ||
+        (await find_user_id_by_email(vk_auth_email(vk_id)));
+
+      if (existing) {
+        user_id = existing;
+        await admin.auth.admin.updateUserById(user_id, {
+          user_metadata: metadata,
+          ...(phone ? { phone, phone_confirm: true } : {}),
+        });
+      } else if (phone) {
+        const retry = await admin.auth.admin.createUser({
+          email,
+          email_confirm: true,
+          user_metadata: metadata,
+        });
+        if (retry.error || !retry.data.user) {
+          throw new Error(retry.error?.message || error?.message || 'не удалось создать пользователя');
+        }
+        user_id = retry.data.user.id;
+      } else {
+        throw new Error(error?.message || 'не удалось создать пользователя');
+      }
+    } else {
+      user_id = data.user.id;
     }
-    user_id = data.user.id;
   } else {
     await admin.auth.admin.updateUserById(user_id, {
       user_metadata: metadata,
