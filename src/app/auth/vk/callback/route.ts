@@ -105,6 +105,7 @@ export async function GET(request: Request) {
       return clear_vk_cookies(res);
     }
 
+    // VK ID OAuth 2.1 + PKCE: exchange code → user_info (как в @vkid/sdk Auth.exchangeCode / userInfo)
     console.log('[vk/callback] exchange code', { redirect_uri });
     const tokens = await exchange_vk_code({
       code,
@@ -124,7 +125,7 @@ export async function GET(request: Request) {
     });
 
     const next = return_to;
-    // Короткий email_otp в sessionStorage → клиентский verifyOtp (как у guest).
+    // Как guest: hashed_token → POST /api/auth/vk-session (verifyOtp + Set-Cookie) → setSession в браузере
     const html = `<!DOCTYPE html>
 <html lang="ru">
 <head>
@@ -133,29 +134,44 @@ export async function GET(request: Request) {
   <title>вход…</title>
 </head>
 <body style="margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;background:#f3f3f3;font-family:system-ui,sans-serif;color:#555">
-  <p>входим…</p>
+  <p id="msg">входим…</p>
   <script>
-  (function () {
+  (async function () {
     var payload = ${JSON.stringify({
-      email: session.email,
-      token: session.email_otp,
+      token_hash: session.hashed_token,
       next,
       user_id: session.user_id,
-      name: session.name,
     })};
+    var msg = document.getElementById('msg');
     try {
-      sessionStorage.setItem('yoboba_vk_otp', JSON.stringify(payload));
+      var res = await fetch('/api/auth/vk-session', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ token_hash: payload.token_hash }),
+      });
+      var body = await res.json().catch(function () { return {}; });
+      if (!res.ok || !body.session) {
+        location.replace('/login?error=' + encodeURIComponent(body.error || 'vk_session_failed'));
+        return;
+      }
+      try {
+        sessionStorage.setItem(
+          'yoboba_vk_session',
+          JSON.stringify(body.session)
+        );
+      } catch (e) {}
+      location.replace('/auth/callback?sync=1&next=' + encodeURIComponent(payload.next || '/'));
     } catch (e) {
-      location.replace('/login?error=' + encodeURIComponent('не удалось сохранить сессию'));
-      return;
+      if (msg) msg.textContent = 'ошибка сети, пробуем ещё раз…';
+      location.replace('/login?error=' + encodeURIComponent('vk_session_failed'));
     }
-    location.replace('/auth/callback?vk=1&next=' + encodeURIComponent(payload.next || '/'));
   })();
   </script>
 </body>
 </html>`;
 
-    console.log('[vk/callback] handoff otp', {
+    console.log('[vk/callback] handoff via vk-session', {
       user_id: session.user_id,
       email: session.email,
       next,

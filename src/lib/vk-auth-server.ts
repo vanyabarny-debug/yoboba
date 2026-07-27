@@ -78,11 +78,10 @@ export async function exchange_vk_code(input: {
     input.redirect_uri ||
     (input.origin ? vk_redirect_uri(input.origin) : vk_redirect_uri(process.env.NEXT_PUBLIC_SITE_URL || ''));
 
-  // VK ID web + PKCE: client_secret в обмене кода не нужен
-  // (если передать неверный secret — часто приходит «client_id is invalid»)
-  const body = new URLSearchParams({
+  // Как @vkid/sdk Auth.exchangeCode: query = grant/client/pkce, body = code
+  // client_secret для web + PKCE не нужен
+  const query = new URLSearchParams({
     grant_type: 'authorization_code',
-    code: input.code,
     client_id,
     redirect_uri,
     code_verifier: input.code_verifier,
@@ -92,10 +91,10 @@ export async function exchange_vk_code(input: {
 
   let res: Response;
   try {
-    res = await fetch(vk_token_url, {
+    res = await fetch(`${vk_token_url}?${query}`, {
       method: 'POST',
       headers: { 'content-type': 'application/x-www-form-urlencoded' },
-      body,
+      body: new URLSearchParams({ code: input.code }),
     });
   } catch (err) {
     wrap_fetch_error('id.vk.ru', err);
@@ -136,12 +135,14 @@ export async function fetch_vk_user(
     throw new Error('VK client_id не настроен');
   }
 
+  // Как @vkid/sdk Auth.userInfo: client_id в query, access_token в body
   let res: Response;
   try {
-    res = await fetch(vk_user_info_url, {
+    const query = new URLSearchParams({ client_id });
+    res = await fetch(`${vk_user_info_url}?${query}`, {
       method: 'POST',
       headers: { 'content-type': 'application/x-www-form-urlencoded' },
-      body: new URLSearchParams({ access_token, client_id }),
+      body: new URLSearchParams({ access_token }),
     });
   } catch (err) {
     wrap_fetch_error('id.vk.ru/user_info', err);
@@ -407,14 +408,14 @@ export async function upsert_vk_supabase_user(input: {
       .eq('id', user_id);
   }
 
-  // Короткий OTP для клиента (не JWT и не action_link — их ломал nginx/redirect).
+  // Как /api/auth/guest: hashed_token → verifyOtp на сервере (не JWT в URL).
   const { data: link, error: link_error } = await admin.auth.admin.generateLink({
     type: 'magiclink',
     email,
   });
 
-  const email_otp = link?.properties?.email_otp;
-  if (link_error || !email_otp) {
+  const hashed_token = link?.properties?.hashed_token;
+  if (link_error || !hashed_token) {
     throw new Error(link_error?.message || 'не удалось создать код входа');
   }
 
@@ -422,6 +423,6 @@ export async function upsert_vk_supabase_user(input: {
     user_id,
     email,
     name,
-    email_otp,
+    hashed_token,
   };
 }

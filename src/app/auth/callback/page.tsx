@@ -11,19 +11,6 @@ function read_hash_params() {
   return new URLSearchParams(raw);
 }
 
-async function claim_cookies(access_token: string, refresh_token: string) {
-  try {
-    await fetch('/api/auth/claim-session', {
-      method: 'POST',
-      credentials: 'same-origin',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ access_token, refresh_token }),
-    });
-  } catch {
-    /* browser cookies from setSession/verifyOtp уже есть */
-  }
-}
-
 function AuthCallbackInner() {
   const router = useRouter();
   const params = useSearchParams();
@@ -33,69 +20,55 @@ function AuthCallbackInner() {
     async function finish_login() {
       const supabase = create_client();
       const hash = read_hash_params();
-      const vk = params.get('vk') === '1';
+      const sync = params.get('sync') === '1';
       const safe_next = sanitize_auth_return_path(
         params.get('next') || params.get('returnTo') || hash.get('next')
       );
 
-      // VK: короткий OTP из sessionStorage
-      if (vk) {
+      // VK: сессия уже через /api/auth/vk-session (cookies) + токены в sessionStorage
+      if (sync) {
         try {
-          const raw = sessionStorage.getItem('yoboba_vk_otp');
-          sessionStorage.removeItem('yoboba_vk_otp');
-          if (!raw) {
-            router.replace('/login?error=' + encodeURIComponent('код входа не найден'));
-            return;
+          const raw = sessionStorage.getItem('yoboba_vk_session');
+          if (raw) {
+            sessionStorage.removeItem('yoboba_vk_session');
+            const saved = JSON.parse(raw) as {
+              access_token?: string;
+              refresh_token?: string;
+            };
+            if (saved.access_token && saved.refresh_token) {
+              const { error } = await supabase.auth.setSession({
+                access_token: saved.access_token,
+                refresh_token: saved.refresh_token,
+              });
+              if (error) {
+                router.replace(`/login?error=${encodeURIComponent(error.message)}`);
+                return;
+              }
+            }
           }
-          const saved = JSON.parse(raw) as {
-            email?: string;
-            token?: string;
-            next?: string;
-          };
-          if (!saved.email || !saved.token) {
-            router.replace('/login?error=' + encodeURIComponent('код входа пустой'));
-            return;
-          }
-
-          let verified = await supabase.auth.verifyOtp({
-            email: saved.email,
-            token: saved.token,
-            type: 'magiclink',
-          });
-          if (verified.error || !verified.data.session) {
-            verified = await supabase.auth.verifyOtp({
-              email: saved.email,
-              token: saved.token,
-              type: 'email',
-            });
-          }
-          if (verified.error || !verified.data.session) {
-            router.replace(
-              `/login?error=${encodeURIComponent(
-                verified.error?.message || 'не удалось подтвердить вход'
-              )}`
-            );
-            return;
-          }
-
-          await claim_cookies(
-            verified.data.session.access_token,
-            verified.data.session.refresh_token
-          );
-
-          const next = sanitize_auth_return_path(saved.next || safe_next);
-          window.location.replace(next);
-          return;
         } catch (err) {
-          const msg = err instanceof Error ? err.message : 'vk_otp_failed';
+          const msg = err instanceof Error ? err.message : 'session_sync_failed';
           router.replace(`/login?error=${encodeURIComponent(msg)}`);
           return;
         }
+
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!session?.user || session.user.is_anonymous) {
+          // cookies от vk-session всё равно могут быть — пробуем getUser
+          const { data: { user } } = await supabase.auth.getUser();
+          if (!user || user.is_anonymous) {
+            router.replace('/login?error=' + encodeURIComponent('сессия не сохранилась'));
+            return;
+          }
+        }
+
+        window.location.replace(safe_next);
+        return;
       }
 
       const code = params.get('code') || hash.get('code');
       const token_hash = params.get('token_hash') || hash.get('token_hash');
-      const type = params.get('type') || hash.get('type') || 'magiclink';
+      const type = params.get('type') || hash.get('type') || 'email';
       const access_token = params.get('access_token') || hash.get('access_token');
       const refresh_token = params.get('refresh_token') || hash.get('refresh_token');
 
@@ -108,39 +81,26 @@ function AuthCallbackInner() {
           router.replace(`/login?error=${encodeURIComponent(error.message)}`);
           return;
         }
-        await claim_cookies(access_token, refresh_token);
         window.location.replace(safe_next);
         return;
       }
 
       if (token_hash) {
-        let result = await supabase.auth.verifyOtp({
+        const { error } = await supabase.auth.verifyOtp({
           token_hash,
           type: type as 'email' | 'magiclink' | 'signup' | 'invite' | 'recovery' | 'email_change',
         });
-        if ((result.error || !result.data.session) && type !== 'email') {
-          result = await supabase.auth.verifyOtp({
-            token_hash,
-            type: 'email',
-          });
-        }
-        if (result.error || !result.data.session) {
-          router.replace(
-            `/login?error=${encodeURIComponent(result.error?.message || 'auth_callback_failed')}`
-          );
+        if (error) {
+          router.replace(`/login?error=${encodeURIComponent(error.message)}`);
           return;
         }
-        await claim_cookies(
-          result.data.session.access_token,
-          result.data.session.refresh_token
-        );
         window.location.replace(safe_next);
         return;
       }
 
       if (code) {
-        const { data, error } = await supabase.auth.exchangeCodeForSession(code);
-        if (error || !data.session) {
+        const { error } = await supabase.auth.exchangeCodeForSession(code);
+        if (error) {
           const res = await fetch('/api/auth/exchange', {
             method: 'POST',
             credentials: 'same-origin',
@@ -148,20 +108,10 @@ function AuthCallbackInner() {
             body: JSON.stringify({ code }),
           });
           if (!res.ok) {
-            router.replace(
-              `/login?error=${encodeURIComponent(error?.message || 'exchange failed')}`
-            );
+            router.replace(`/login?error=${encodeURIComponent(error.message)}`);
             return;
           }
-        } else {
-          await claim_cookies(data.session.access_token, data.session.refresh_token);
         }
-        window.location.replace(safe_next);
-        return;
-      }
-
-      const { data: { session } } = await supabase.auth.getSession();
-      if (session?.user && session.user.is_anonymous !== true) {
         window.location.replace(safe_next);
         return;
       }
