@@ -2,9 +2,8 @@ import { createServerClient } from '@supabase/ssr';
 import { NextResponse, type NextRequest } from 'next/server';
 
 /**
- * Ставит supabase-сессию в httpOnly cookies через same-origin fetch.
- * Нужен для VK: токены в query string ломаются/режутся за nginx,
- * а Set-Cookie на 302 с /auth/vk/callback часто не доходит.
+ * Пишет supabase-сессию в cookies по access/refresh токенам.
+ * Вызывается same-origin fetch после VK — надёжнее JWT в query и 302 Set-Cookie.
  */
 export async function POST(request: NextRequest) {
   const body = (await request.json()) as {
@@ -58,6 +57,7 @@ export async function POST(request: NextRequest) {
   const res = NextResponse.json({
     ok: true,
     user_id: data.session.user.id,
+    email: data.session.user.email,
     session: {
       access_token: data.session.access_token,
       refresh_token: data.session.refresh_token,

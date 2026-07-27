@@ -117,72 +117,21 @@ export async function GET(request: Request) {
     console.log('[vk/callback] fetch user');
     const vk_user = await fetch_vk_user(tokens.access_token, tokens.id_token);
 
+    const redirect_to = `${origin}/auth/callback?next=${encodeURIComponent(return_to)}`;
+
     console.log('[vk/callback] upsert supabase user', { vk_id: vk_user.user_id });
     const session = await upsert_vk_supabase_user({
       vk_user,
       anonymous_user_id: null,
+      redirect_to,
     });
 
-    const next = return_to;
-    // Токены кладём в sessionStorage и сразу на /auth/callback —
-    // fetch /api/auth/claim-session за nginx часто падает → session_claim_failed
-    const html = `<!DOCTYPE html>
-<html lang="ru">
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>вход…</title>
-</head>
-<body style="margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;background:#f3f3f3;font-family:system-ui,sans-serif;color:#555">
-  <p>входим…</p>
-  <script>
-  (function () {
-    var payload = ${JSON.stringify({
-      access_token: session.access_token,
-      refresh_token: session.refresh_token,
-      next,
+    // Отдаём пользователя в Supabase Auth — он сам поставит сессию и вернёт на /auth/callback
+    console.log('[vk/callback] redirect to supabase action_link', {
       user_id: session.user_id,
-    })};
-    try {
-      sessionStorage.setItem(
-        'yoboba_vk_session',
-        JSON.stringify({
-          access_token: payload.access_token,
-          refresh_token: payload.refresh_token,
-          user_id: payload.user_id,
-        })
-      );
-    } catch (e) {
-      location.replace('/login?error=' + encodeURIComponent('не удалось сохранить сессию'));
-      return;
-    }
-    // best-effort: cookies для SSR, не блокируем вход если упадёт
-    try {
-      fetch('/api/auth/claim-session', {
-        method: 'POST',
-        credentials: 'same-origin',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({
-          access_token: payload.access_token,
-          refresh_token: payload.refresh_token,
-        }),
-        keepalive: true,
-      }).catch(function () {});
-    } catch (e) {}
-    location.replace('/auth/callback?sync=1&next=' + encodeURIComponent(payload.next || '/'));
-  })();
-  </script>
-</body>
-</html>`;
-
-    console.log('[vk/callback] handoff html', { next, user_id: session.user_id });
-    const res = new NextResponse(html, {
-      status: 200,
-      headers: {
-        'content-type': 'text/html; charset=utf-8',
-        'cache-control': 'no-store',
-      },
+      next: return_to,
     });
+    const res = NextResponse.redirect(session.action_link);
     return clear_vk_cookies(res);
   } catch (err) {
     const message = err instanceof Error ? err.message : 'vk_auth_failed';

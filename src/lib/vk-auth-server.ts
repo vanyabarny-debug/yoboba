@@ -278,6 +278,8 @@ function normalize_phone(raw?: string | null) {
 export async function upsert_vk_supabase_user(input: {
   vk_user: vk_user_info;
   anonymous_user_id?: string | null;
+  /** куда Supabase вернёт пользователя после confirm magiclink */
+  redirect_to: string;
 }) {
   const admin = service_client();
   const vk_id = input.vk_user.user_id;
@@ -285,7 +287,6 @@ export async function upsert_vk_supabase_user(input: {
   const name = display_name(input.vk_user);
 
   let user_id = await find_user_id_by_email(email);
-  // если пользователь ранее логинился через synthetic vk-email — тоже найдём
   if (!user_id && email !== vk_auth_email(vk_id)) {
     user_id = await find_user_id_by_email(vk_auth_email(vk_id));
   }
@@ -315,7 +316,6 @@ export async function upsert_vk_supabase_user(input: {
     });
 
     if (error || !data.user) {
-      // уже есть / конфликт телефона — ищем ещё раз или создаём без phone
       const existing =
         (await find_user_id_by_email(email)) ||
         (await find_user_id_by_email(vk_auth_email(vk_id)));
@@ -349,7 +349,6 @@ export async function upsert_vk_supabase_user(input: {
     });
   }
 
-  // телефон из VK обновляем при каждом входе (если VK его отдал)
   const { random_avatar_emoji } = await import('@/lib/avatar-emoji');
   const { data: existing_profile } = await admin
     .from('profiles')
@@ -368,16 +367,13 @@ export async function upsert_vk_supabase_user(input: {
     name,
     updated_at: new Date().toISOString(),
   };
-  if (phone) {
-    profile_row.phone = phone;
-  }
+  if (phone) profile_row.phone = phone;
   if (!existing_profile?.avatar_emoji) {
     profile_row.avatar_emoji = random_avatar_emoji();
   }
 
   await admin.from('profiles').upsert(profile_row, { onConflict: 'id' });
 
-  // если телефон пришёл — дополнительно force-update (upsert может не трогать null→value в некоторых кейсах)
   if (phone) {
     await admin
       .from('profiles')
@@ -386,20 +382,9 @@ export async function upsert_vk_supabase_user(input: {
   }
 
   if (input.anonymous_user_id && input.anonymous_user_id !== user_id) {
-    // только мержим корзину — удаление anon не блокирует вход (иначе nginx 502)
     await merge_cart(input.anonymous_user_id, user_id).catch(() => {});
   }
 
-  const { data: link, error: link_error } = await admin.auth.admin.generateLink({
-    type: 'magiclink',
-    email,
-  });
-
-  if (link_error || !link.properties?.hashed_token) {
-    throw new Error(link_error?.message || 'не удалось создать сессию');
-  }
-
-  // убеждаемся, что профиль реально есть
   const { data: profile_check } = await admin
     .from('profiles')
     .select('id, name')
@@ -424,25 +409,24 @@ export async function upsert_vk_supabase_user(input: {
       .eq('id', user_id);
   }
 
-  // гасим magiclink сразу на сервере — в URL hashed_token часто портится / «expires»
-  const anon = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-  );
-  // как в /api/auth/guest: generateLink(magiclink) + verifyOtp(type: email)
-  const { data: verified, error: verify_error } = await anon.auth.verifyOtp({
-    token_hash: link.properties.hashed_token,
-    type: 'email',
+  // Сессию ставит сам Supabase через action_link (как email magiclink).
+  // Не verifyOtp на сервере и не тащим JWT в URL — это ломало вход.
+  const { data: link, error: link_error } = await admin.auth.admin.generateLink({
+    type: 'magiclink',
+    email,
+    options: {
+      redirectTo: input.redirect_to,
+    },
   });
 
-  if (verify_error || !verified.session) {
-    throw new Error(verify_error?.message || 'не удалось создать сессию');
+  if (link_error || !link.properties?.action_link) {
+    throw new Error(link_error?.message || 'не удалось создать ссылку входа');
   }
 
   return {
     user_id,
     email,
-    access_token: verified.session.access_token,
-    refresh_token: verified.session.refresh_token,
+    name,
+    action_link: link.properties.action_link,
   };
 }
