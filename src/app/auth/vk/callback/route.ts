@@ -117,21 +117,56 @@ export async function GET(request: Request) {
     console.log('[vk/callback] fetch user');
     const vk_user = await fetch_vk_user(tokens.access_token, tokens.id_token);
 
-    const redirect_to = `${origin}/auth/callback?next=${encodeURIComponent(return_to)}`;
-
     console.log('[vk/callback] upsert supabase user', { vk_id: vk_user.user_id });
     const session = await upsert_vk_supabase_user({
       vk_user,
       anonymous_user_id: null,
-      redirect_to,
     });
 
-    // Отдаём пользователя в Supabase Auth — он сам поставит сессию и вернёт на /auth/callback
-    console.log('[vk/callback] redirect to supabase action_link', {
+    const next = return_to;
+    // Короткий email_otp в sessionStorage → клиентский verifyOtp (как у guest).
+    const html = `<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>вход…</title>
+</head>
+<body style="margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;background:#f3f3f3;font-family:system-ui,sans-serif;color:#555">
+  <p>входим…</p>
+  <script>
+  (function () {
+    var payload = ${JSON.stringify({
+      email: session.email,
+      token: session.email_otp,
+      next,
       user_id: session.user_id,
-      next: return_to,
+      name: session.name,
+    })};
+    try {
+      sessionStorage.setItem('yoboba_vk_otp', JSON.stringify(payload));
+    } catch (e) {
+      location.replace('/login?error=' + encodeURIComponent('не удалось сохранить сессию'));
+      return;
+    }
+    location.replace('/auth/callback?vk=1&next=' + encodeURIComponent(payload.next || '/'));
+  })();
+  </script>
+</body>
+</html>`;
+
+    console.log('[vk/callback] handoff otp', {
+      user_id: session.user_id,
+      email: session.email,
+      next,
     });
-    const res = NextResponse.redirect(session.action_link);
+    const res = new NextResponse(html, {
+      status: 200,
+      headers: {
+        'content-type': 'text/html; charset=utf-8',
+        'cache-control': 'no-store',
+      },
+    });
     return clear_vk_cookies(res);
   } catch (err) {
     const message = err instanceof Error ? err.message : 'vk_auth_failed';

@@ -278,8 +278,6 @@ function normalize_phone(raw?: string | null) {
 export async function upsert_vk_supabase_user(input: {
   vk_user: vk_user_info;
   anonymous_user_id?: string | null;
-  /** куда Supabase вернёт пользователя после confirm magiclink */
-  redirect_to: string;
 }) {
   const admin = service_client();
   const vk_id = input.vk_user.user_id;
@@ -409,24 +407,21 @@ export async function upsert_vk_supabase_user(input: {
       .eq('id', user_id);
   }
 
-  // Сессию ставит сам Supabase через action_link (как email magiclink).
-  // Не verifyOtp на сервере и не тащим JWT в URL — это ломало вход.
+  // Короткий OTP для клиента (не JWT и не action_link — их ломал nginx/redirect).
   const { data: link, error: link_error } = await admin.auth.admin.generateLink({
     type: 'magiclink',
     email,
-    options: {
-      redirectTo: input.redirect_to,
-    },
   });
 
-  if (link_error || !link.properties?.action_link) {
-    throw new Error(link_error?.message || 'не удалось создать ссылку входа');
+  const email_otp = link?.properties?.email_otp;
+  if (link_error || !email_otp) {
+    throw new Error(link_error?.message || 'не удалось создать код входа');
   }
 
   return {
     user_id,
     email,
     name,
-    action_link: link.properties.action_link,
+    email_otp,
   };
 }
