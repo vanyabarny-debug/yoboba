@@ -28,6 +28,8 @@ export type promo_banner = {
   category?: string | null;
   /** подпись кнопки перехода в сторис (по умолчанию «перейти») */
   cta_label?: string;
+  /** текст уже на картинке — не дублировать в карточке/сторис */
+  title_in_image?: boolean;
   is_active: boolean;
 };
 

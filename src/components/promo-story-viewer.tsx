@@ -150,13 +150,13 @@ export default function promo_story_viewer({
   return (
     <div className="fixed inset-0 z-[100] bg-black/95 backdrop-blur-sm flex items-center justify-center">
       <div className="relative w-full h-full max-w-[460px] mx-auto overflow-hidden bg-black min-[500px]:rounded-2xl">
+        {/* целиком без обрезки — contain */}
         <img
           src={current.image_url}
           alt=""
-          className="absolute inset-0 w-full h-full object-cover select-none"
+          className="absolute inset-0 h-full w-full select-none object-contain object-center"
           draggable={false}
         />
-        <div className="absolute inset-0 bg-gradient-to-b from-black/40 via-transparent to-black/70" />
 
         {/* полоски прогресса */}
         <div className="absolute top-0 inset-x-0 z-30 flex gap-1 px-3 pt-3">
@@ -179,9 +179,13 @@ export default function promo_story_viewer({
 
         {/* шапка: заголовок + закрыть */}
         <div className="absolute top-0 inset-x-0 z-30 flex items-start justify-between gap-3 px-4 pt-7">
-          <p className="text-white text-[15px] font-semibold leading-tight drop-shadow-[0_1px_3px_rgba(0,0,0,0.5)] pt-1">
-            {current.title}
-          </p>
+          {!current.title_in_image ? (
+            <p className="text-white text-[15px] font-semibold leading-tight pt-1">
+              {current.title}
+            </p>
+          ) : (
+            <span className="pt-1" />
+          )}
           <button
             type="button"
             onClick={on_close}
@@ -215,9 +219,9 @@ export default function promo_story_viewer({
         </div>
 
         {/* нижняя часть: подзаголовок + кнопка перехода */}
-        <div className="absolute bottom-0 inset-x-0 z-30 px-4 pb-[calc(1.25rem+var(--safe-bottom,0px))] pt-10">
+        <div className="absolute bottom-0 inset-x-0 z-30 px-4 pb-[calc(1.25rem+var(--safe-bottom,0px))] pt-6">
           {current.subtitle && (
-            <p className="text-white/90 text-sm mb-3 max-w-[90%] drop-shadow-[0_1px_3px_rgba(0,0,0,0.5)]">
+            <p className="text-white/90 text-sm mb-3 max-w-[90%]">
               {current.subtitle}
             </p>
           )}

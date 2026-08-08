@@ -5,16 +5,23 @@ import type { promo_banner } from '@/lib/types';
 import { admin_sheet } from '@/components/admin/admin-sheet';
 import { image_upload_button } from '@/components/admin/image-file-picker';
 import { classify_promo_link, allowed_platform_labels } from '@/lib/promo-link';
+import { PROMO_SIZE_HINT } from '@/lib/promo-format';
+import { get_page_by_slug, type site_page } from '@/lib/site-content-store';
 
 type props = {
   promo: promo_banner | null;
   categories: string[];
   on_close: () => void;
-  on_save: (promo: promo_banner) => void;
+  on_save: (promo: promo_banner, page?: site_page) => void;
   on_delete?: (id: string) => void;
 };
 
 type target_kind = 'section' | 'link';
+
+function slug_from_href(href: string) {
+  if (!href.startsWith('/') || href.startsWith('//')) return '';
+  return href.replace(/^\//, '').split('?')[0] || '';
+}
 
 function initial_kind(promo: promo_banner | null): target_kind {
   if (promo?.link_url && promo.link_url !== '/') return 'link';
@@ -24,10 +31,13 @@ function initial_kind(promo: promo_banner | null): target_kind {
 export default function promo_edit_sheet({ promo, categories, on_close, on_save, on_delete }: props) {
   const [draft, set_draft] = useState<promo_banner | null>(promo);
   const [kind, set_kind] = useState<target_kind>(initial_kind(promo));
+  const [draft_page, set_draft_page] = useState<site_page | null>(null);
 
   useEffect(() => {
     set_draft(promo);
     set_kind(initial_kind(promo));
+    const slug = promo?.link_url ? slug_from_href(promo.link_url) : '';
+    set_draft_page(slug ? get_page_by_slug(slug) ?? null : null);
   }, [promo]);
 
   const link_check = useMemo(
@@ -74,16 +84,25 @@ export default function promo_edit_sheet({ promo, categories, on_close, on_save,
             };
           }
 
-          on_save(payload);
+          const page_to_save =
+            kind === 'link' && draft_page
+              ? {
+                  ...draft_page,
+                  title: draft_page.title.trim() || payload.title,
+                  body: draft_page.body,
+                }
+              : undefined;
+
+          on_save(payload, page_to_save);
           on_close();
         }}
         className="space-y-3"
       >
         {draft.image_url ? (
-          <img src={draft.image_url} alt="" className="w-full h-40 rounded-xl object-cover bg-surface" />
+          <img src={draft.image_url} alt="" className="mx-auto w-28 aspect-[9/16] rounded-xl object-contain bg-surface" />
         ) : (
-          <div className="w-full h-40 rounded-xl bg-surface flex items-center justify-center text-sm text-neutral-400">
-            фото не выбрано
+          <div className="mx-auto w-28 aspect-[9/16] rounded-xl bg-surface flex items-center justify-center text-sm text-neutral-400">
+            фото
           </div>
         )}
         {createElement(image_upload_button, {
@@ -91,6 +110,10 @@ export default function promo_edit_sheet({ promo, categories, on_close, on_save,
           label: draft.image_url ? 'заменить фото' : 'выбрать фото',
           className: 'w-full',
         })}
+        <p className="text-xs text-neutral-500">
+          размер картинки: <span className="font-medium text-neutral-700">{PROMO_SIZE_HINT}</span>.
+          важные элементы — не ближе ~120px к верхнему и нижнему краю (там прогресс и кнопка в сторис).
+        </p>
         <input
           value={draft.title}
           onChange={(e) => set_draft({ ...draft, title: e.target.value })}
@@ -102,6 +125,12 @@ export default function promo_edit_sheet({ promo, categories, on_close, on_save,
           value={draft.subtitle || ''}
           onChange={(e) => set_draft({ ...draft, subtitle: e.target.value })}
           placeholder="подзаголовок"
+          className="w-full rounded-xl border border-surface px-3 py-2 text-sm"
+        />
+        <input
+          value={draft.badge || ''}
+          onChange={(e) => set_draft({ ...draft, badge: e.target.value })}
+          placeholder="бейдж (до 01.09…)"
           className="w-full rounded-xl border border-surface px-3 py-2 text-sm"
         />
 
@@ -118,7 +147,10 @@ export default function promo_edit_sheet({ promo, categories, on_close, on_save,
           <div className="flex gap-2">
             <button
               type="button"
-              onClick={() => set_kind('section')}
+              onClick={() => {
+                set_kind('section');
+                set_draft_page(null);
+              }}
               className={`flex-1 rounded-pill py-2 text-sm ${
                 kind === 'section'
                   ? 'bg-accent text-accent-foreground'
@@ -157,8 +189,13 @@ export default function promo_edit_sheet({ promo, categories, on_close, on_save,
             <div className="space-y-1">
               <input
                 value={draft.link_url || ''}
-                onChange={(e) => set_draft({ ...draft, link_url: e.target.value })}
-                placeholder="https://t.me/yomoyo"
+                onChange={(e) => {
+                  const link_url = e.target.value;
+                  set_draft({ ...draft, link_url });
+                  const slug = slug_from_href(link_url);
+                  set_draft_page(slug ? get_page_by_slug(slug) ?? null : null);
+                }}
+                placeholder="/akciya-pervye-100"
                 className={`w-full rounded-xl border px-3 py-2 text-sm ${
                   link_invalid ? 'border-accent' : 'border-surface'
                 }`}
@@ -167,12 +204,42 @@ export default function promo_edit_sheet({ promo, categories, on_close, on_save,
                 <p className="text-xs text-accent">{link_check.ok ? '' : link_check.reason}</p>
               ) : (
                 <p className="text-xs text-neutral-400">
-                  внутренние ссылки (/rabota) или: {allowed_platform_labels.join(', ')}
+                  внутренние ссылки (/akciya-pervye-100) или: {allowed_platform_labels.join(', ')}
                 </p>
               )}
             </div>
           )}
         </div>
+
+        {kind === 'link' && draft_page && (
+          <div className="rounded-xl border border-surface bg-surface/40 p-3 space-y-2">
+            <p className="text-xs font-medium text-neutral-500">
+              реклама и наполнение страницы акции
+            </p>
+            <input
+              value={draft_page.title}
+              onChange={(e) => set_draft_page({ ...draft_page, title: e.target.value })}
+              placeholder="заголовок страницы"
+              className="w-full rounded-xl border border-surface px-3 py-2 text-sm bg-white"
+            />
+            <textarea
+              value={draft_page.body}
+              onChange={(e) => set_draft_page({ ...draft_page, body: e.target.value })}
+              rows={16}
+              placeholder={`лид-текст акции…
+
+## условия
+текст раздела
+
+1. пункт
+описание пункта`}
+              className="w-full rounded-xl border border-surface px-3 py-2 text-sm bg-white resize-y font-mono leading-relaxed"
+            />
+            <p className="text-[11px] text-neutral-400">
+              разделы через ## , пункты через 1. заголовок + текст с новой строки
+            </p>
+          </div>
+        )}
 
         <label className="flex items-center gap-2 text-sm">
           <input

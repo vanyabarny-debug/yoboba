@@ -1350,8 +1350,9 @@ export default function home_client({
         promo: editing_promo,
         categories,
         on_close: () => set_editing_promo(null),
-        on_save: (promo) => {
+        on_save: (promo, page) => {
           upsert_promo({ ...promo, id: promo.id || new_promo_id() });
+          if (page) upsert_page(page);
         },
         on_delete: delete_promo,
       })}

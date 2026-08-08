@@ -3,7 +3,7 @@ import { DEFAULT_PREP_MINUTES } from '@/lib/kitchen-queue';
 import type { heading_style } from '@/lib/heading-style';
 import { default_category_heading_styles } from '@/lib/heading-style';
 
-export const store_version = 17;
+export const store_version = 18;
 
 export const default_categories = [
   'классические бабл ти',
@@ -218,6 +218,15 @@ export const default_menu_items: menu_item[] = [
   item('gb-3', 'yuzu spark', 320, 'газированные бабл ти', img['gb-3'], [], { text: 'новинка', color: 'pink' }),
   item('gb-4', 'cola bubble', 305, 'газированные бабл ти', img['gb-4']),
   item('gb-5', 'виноград spark', 315, 'газированные бабл ти', img['gb-5']),
+  item(
+    'gb-6',
+    'subzero',
+    340,
+    'газированные бабл ти',
+    '/images/promos/promo16.png?v=7',
+    [],
+    { text: 'месяца', color: 'orange' }
+  ),
   item('tn-1', 'бабл тоник бузина', 290, 'бабл тоники', img['tn-1']),
   item('tn-2', 'бабл тоник лайм', 280, 'бабл тоники', img['tn-2']),
   item('tn-3', 'имбирный тоник', 295, 'бабл тоники', img['tn-3']),

@@ -193,34 +193,35 @@ export default function promo_banners({
         )}
 
         <div className="page-shell overflow-visible">
-          <div ref={scroll_ref} className="overflow-x-auto stories-scroll min-w-0 py-1.5">
+          <div ref={scroll_ref} className="overflow-x-auto stories-scroll min-w-0">
             <div ref={track_ref} className="flex w-max shrink-0 gap-2">
               {active.map((promo) => (
                 <div
                   key={promo.id}
-                  className={`relative flex-shrink-0 w-[168px] sm:w-[220px] h-[228px] sm:h-[260px] rounded-card overflow-hidden isolate ${
+                  className={`relative flex-shrink-0 w-[152px] sm:w-[180px] aspect-[9/16] rounded-card overflow-hidden isolate ${
                     edit_mode && !promo.is_active ? 'opacity-45' : ''
                   }`}
                 >
                   <button
                     type="button"
                     onClick={() => (edit_mode ? on_edit_promo?.(promo) : on_promo_click(promo))}
-                    className={`relative w-full h-full text-left hover:brightness-[1.03] transition-[filter,opacity] ${
+                    className={`relative block size-full bg-neutral-900 text-left hover:brightness-[1.03] transition-[filter,opacity] ${
                       !edit_mode && viewed_ids?.has(promo.id) ? 'opacity-50 saturate-[0.7]' : ''
                     }`}
+                    style={{
+                      backgroundImage: `url("${promo.image_url}")`,
+                      backgroundSize: 'contain',
+                      backgroundPosition: 'center',
+                      backgroundRepeat: 'no-repeat',
+                    }}
                   >
-                    <img
-                      src={promo.image_url}
-                      alt=""
-                      className="absolute inset-0 w-full h-full object-cover"
-                      loading="lazy"
-                      decoding="async"
-                    />
-                    <div className="absolute inset-x-0 bottom-0 p-4 sm:p-5">
-                      <p className="font-bold text-white text-[15px] sm:text-[17px] leading-snug drop-shadow-[0_1px_2px_rgba(0,0,0,0.25)]">
-                        {promo.title}
-                      </p>
-                    </div>
+                    {!promo.title_in_image && (
+                      <div className="absolute inset-x-0 bottom-0 p-4 sm:p-5">
+                        <p className="font-bold text-white text-[15px] sm:text-[17px] leading-snug drop-shadow-[0_1px_2px_rgba(0,0,0,0.25)]">
+                          {promo.title}
+                        </p>
+                      </div>
+                    )}
                   </button>
                   {edit_mode &&
                     on_edit_promo &&
@@ -235,7 +236,7 @@ export default function promo_banners({
                 <button
                   type="button"
                   onClick={on_add_promo}
-                  className="flex-shrink-0 w-[168px] sm:w-[220px] h-[228px] sm:h-[260px] rounded-card border border-dashed border-surface bg-white text-sm text-neutral-500"
+                  className="flex-shrink-0 w-[152px] sm:w-[180px] aspect-[9/16] rounded-card border border-dashed border-surface bg-white text-sm text-neutral-500"
                 >
                   + акция
                 </button>
