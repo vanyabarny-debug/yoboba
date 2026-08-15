@@ -20,10 +20,13 @@ export type vk_user_info = {
 };
 
 function service_client() {
-  return createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!
-  );
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!key) {
+    throw new Error('SUPABASE_SERVICE_ROLE_KEY missing');
+  }
+  return createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, key, {
+    auth: { persistSession: false, autoRefreshToken: false },
+  });
 }
 
 function wrap_fetch_error(target: string, err: unknown): never {
@@ -78,38 +81,51 @@ export async function exchange_vk_code(input: {
     input.redirect_uri ||
     (input.origin ? vk_redirect_uri(input.origin) : vk_redirect_uri(process.env.NEXT_PUBLIC_SITE_URL || ''));
 
-  // Как @vkid/sdk Auth.exchangeCode: query = grant/client/pkce, body = code
-  // client_secret для web + PKCE не нужен
-  const query = new URLSearchParams({
+  // Официально без SDK: ВСЕ поля только в body, не в query
+  // https://id.vk.com/about/business/go/docs/ru/vkid/latest/vk-id/connection/start-integration/auth-without-sdk/auth-without-sdk-web
+  const body = new URLSearchParams({
     grant_type: 'authorization_code',
     client_id,
-    redirect_uri,
+    code: input.code,
     code_verifier: input.code_verifier,
     device_id: input.device_id,
+    redirect_uri,
     state: input.state,
   });
 
+  const service_token =
+    process.env.VK_SERVICE_TOKEN?.trim() || process.env.VK_CLIENT_SECRET?.trim() || '';
+  if (service_token) {
+    body.set('service_token', service_token);
+  }
+
   let res: Response;
   try {
-    res = await fetch(`${vk_token_url}?${query}`, {
+    res = await fetch(vk_token_url, {
       method: 'POST',
       headers: { 'content-type': 'application/x-www-form-urlencoded' },
-      body: new URLSearchParams({ code: input.code }),
+      body,
     });
   } catch (err) {
     wrap_fetch_error('id.vk.ru', err);
   }
 
-  const json = (await res.json()) as {
+  const raw = await res.text();
+  let json: {
     access_token?: string;
     id_token?: string;
     scope?: string;
     error?: string;
     error_description?: string;
-  };
+  } = {};
+  try {
+    json = JSON.parse(raw) as typeof json;
+  } catch {
+    throw new Error(`vk token exchange failed (${res.status})`);
+  }
 
   if (!res.ok || !json.access_token) {
-    throw new Error(json.error_description || json.error || 'vk token exchange failed');
+    throw new Error(json.error_description || json.error || `vk token exchange failed (${res.status})`);
   }
 
   const granted_scope = json.scope || '';
@@ -135,14 +151,13 @@ export async function fetch_vk_user(
     throw new Error('VK client_id не настроен');
   }
 
-  // Как @vkid/sdk Auth.userInfo: client_id в query, access_token в body
+  // Официально: POST form, access_token + client_id в body
   let res: Response;
   try {
-    const query = new URLSearchParams({ client_id });
-    res = await fetch(`${vk_user_info_url}?${query}`, {
+    res = await fetch(vk_user_info_url, {
       method: 'POST',
       headers: { 'content-type': 'application/x-www-form-urlencoded' },
-      body: new URLSearchParams({ access_token }),
+      body: new URLSearchParams({ access_token, client_id }),
     });
   } catch (err) {
     wrap_fetch_error('id.vk.ru/user_info', err);
@@ -408,21 +423,38 @@ export async function upsert_vk_supabase_user(input: {
       .eq('id', user_id);
   }
 
-  // Как /api/auth/guest: hashed_token → verifyOtp на сервере (не JWT в URL).
-  const { data: link, error: link_error } = await admin.auth.admin.generateLink({
-    type: 'magiclink',
-    email,
-  });
-
-  const hashed_token = link?.properties?.hashed_token;
-  if (link_error || !hashed_token) {
-    throw new Error(link_error?.message || 'не удалось создать код входа');
-  }
-
   return {
     user_id,
     email,
     name,
-    hashed_token,
   };
+}
+
+/**
+ * Сессия после VK: тот же путь, что гостевой вход.
+ * admin.generateLink(magiclink) → verifyOtp({ token_hash, type: 'email' }) на cookie-клиенте.
+ */
+export async function mint_vk_supabase_otp(email: string) {
+  const admin = service_client();
+  let last_error = 'supabase: generateLink не вернул otp';
+
+  for (let attempt = 0; attempt < 4; attempt++) {
+    const { data: link, error } = await admin.auth.admin.generateLink({
+      type: 'magiclink',
+      email,
+    });
+
+    const email_otp = link?.properties?.email_otp?.trim() || '';
+    const hashed_token = link?.properties?.hashed_token?.trim() || '';
+
+    if (!error && (email_otp || hashed_token)) {
+      return { email, email_otp, hashed_token };
+    }
+
+    last_error = error?.message || last_error;
+    if (!/bad_jwt|invalid jwt/i.test(last_error) || attempt === 3) break;
+    await new Promise((resolve) => setTimeout(resolve, 120 * (attempt + 1)));
+  }
+
+  throw new Error(`supabase generateLink: ${last_error}`);
 }

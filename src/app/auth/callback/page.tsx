@@ -20,51 +20,9 @@ function AuthCallbackInner() {
     async function finish_login() {
       const supabase = create_client();
       const hash = read_hash_params();
-      const sync = params.get('sync') === '1';
       const safe_next = sanitize_auth_return_path(
         params.get('next') || params.get('returnTo') || hash.get('next')
       );
-
-      // VK: сессия уже через /api/auth/vk-session (cookies) + токены в sessionStorage
-      if (sync) {
-        try {
-          const raw = sessionStorage.getItem('yoboba_vk_session');
-          if (raw) {
-            sessionStorage.removeItem('yoboba_vk_session');
-            const saved = JSON.parse(raw) as {
-              access_token?: string;
-              refresh_token?: string;
-            };
-            if (saved.access_token && saved.refresh_token) {
-              const { error } = await supabase.auth.setSession({
-                access_token: saved.access_token,
-                refresh_token: saved.refresh_token,
-              });
-              if (error) {
-                router.replace(`/login?error=${encodeURIComponent(error.message)}`);
-                return;
-              }
-            }
-          }
-        } catch (err) {
-          const msg = err instanceof Error ? err.message : 'session_sync_failed';
-          router.replace(`/login?error=${encodeURIComponent(msg)}`);
-          return;
-        }
-
-        const { data: { session } } = await supabase.auth.getSession();
-        if (!session?.user || session.user.is_anonymous) {
-          // cookies от vk-session всё равно могут быть — пробуем getUser
-          const { data: { user } } = await supabase.auth.getUser();
-          if (!user || user.is_anonymous) {
-            router.replace('/login?error=' + encodeURIComponent('сессия не сохранилась'));
-            return;
-          }
-        }
-
-        window.location.replace(safe_next);
-        return;
-      }
 
       const code = params.get('code') || hash.get('code');
       const token_hash = params.get('token_hash') || hash.get('token_hash');

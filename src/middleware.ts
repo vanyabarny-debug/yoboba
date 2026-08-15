@@ -61,6 +61,10 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(url);
   }
 
+  if (is_vk_oauth) {
+    return NextResponse.next({ request });
+  }
+
   // yoSquad PWA: start_url = /?app=squad (корень), иначе iOS показывает адресную строку
   // при переходе с /admin/login → /seller
   if (path === '/' && request.nextUrl.searchParams.get('app') === 'squad') {
