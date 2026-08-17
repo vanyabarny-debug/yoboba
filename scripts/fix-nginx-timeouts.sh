@@ -16,7 +16,8 @@ if [ -z "$CONF" ]; then
 fi
 
 echo "using $CONF"
-cp "$CONF" "$CONF.bak.$(date +%s)"
+mkdir -p /root/nginx-bak
+cp "$CONF" "/root/nginx-bak/$(basename "$CONF").bak.$(date +%s)"
 
 set_or_insert() {
   key="$1"
