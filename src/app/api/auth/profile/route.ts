@@ -1,6 +1,7 @@
 import { createServerClient } from '@supabase/ssr';
 import { createClient } from '@supabase/supabase-js';
 import { NextResponse, type NextRequest } from 'next/server';
+import type { profile as user_profile } from '@/lib/auth';
 import { normalize_phone } from '@/lib/phone';
 
 function merge_cookies(from: NextResponse, to: NextResponse) {
@@ -51,7 +52,7 @@ export async function GET(request: NextRequest) {
   const meta_phone = normalize_phone(
     (user.user_metadata as { phone?: string } | undefined)?.phone
   );
-  let resolved_profile = profile;
+  let resolved_profile = profile as user_profile | null;
 
   if (profile && !profile.phone && meta_phone) {
     resolved_profile = { ...profile, phone: meta_phone };

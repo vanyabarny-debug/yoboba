@@ -1,6 +1,6 @@
 'use client';
 
-import { Suspense, type MouseEvent } from 'react';
+import { createElement, Suspense, type MouseEvent } from 'react';
 import Link from 'next/link';
 import site_chrome from '@/components/site-chrome';
 
@@ -89,10 +89,13 @@ type props = {
 };
 
 export default function akciya_100_page({ hero_src }: props) {
-  return (
-    <Suspense fallback={<div className="min-h-screen bg-page" />}>
-      <site_chrome>
-        <article className="page-shell py-6 sm:py-10 pb-20">
+  return createElement(
+    Suspense,
+    { fallback: <div className="min-h-screen bg-page" /> },
+    createElement(
+      site_chrome,
+      null,
+      <article className="page-shell py-6 sm:py-10 pb-20">
           <Link
             href="/akcii"
             className="inline-flex text-sm font-medium text-neutral-500 hover:text-neutral-800"
@@ -197,30 +200,23 @@ export default function akciya_100_page({ hero_src }: props) {
             </ul>
           </section>
 
-          <section className="mt-12 max-w-2xl rounded-[24px] bg-white px-5 py-6 sm:px-7 sm:py-7 border border-neutral-100">
-            <p className="text-[16px] font-medium leading-relaxed text-neutral-800">
-              участие только через запись в сообществе. без репоста в вк напиток
-              по этой акции не выдаём.
+          <footer className="mt-16 max-w-2xl border-t border-neutral-200/80 pt-6 pb-4">
+            <p className="text-[12px] font-semibold text-neutral-500">
+              организатор и правила
             </p>
-            {vk_link({
-              href: VK_POST,
-              className:
-                'mt-5 inline-flex rounded-pill bg-accent px-6 py-3 text-sm font-semibold text-accent-foreground',
-              children: 'открыть пост в vk',
-            })}
-            <p className="mt-5 text-[14px] font-medium leading-relaxed text-neutral-500">
-              не знаешь, что такое бабл-ти? загляни в сообщество — там коротко
-              рассказали.
+            <p className="mt-3 text-[12px] leading-relaxed text-neutral-500">
+              организатор акции — yomoyo. подробности об организаторе, правилах
+              проведения, количестве бесплатных напитков и времени проведения
+              акции опубликованы на этой странице.
             </p>
-            {vk_link({
-              href: VK_COMMUNITY,
-              className:
-                'mt-3 inline-flex text-sm font-semibold text-accent underline underline-offset-2',
-              children: 'открыть сообщество vk',
-            })}
-          </section>
+            <p className="mt-2 text-[12px] leading-relaxed text-neutral-500">
+              акция проводится до 01.09.2026. участие означает согласие с
+              условиями выше. количество бесплатных напитков ограничено: 100 шт.
+              yomoyo вправе завершить акцию досрочно при исчерпании лимита или
+              по техническим причинам.
+            </p>
+          </footer>
         </article>
-      </site_chrome>
-    </Suspense>
+    )
   );
 }
