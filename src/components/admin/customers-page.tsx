@@ -1,7 +1,8 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { createElement, useEffect, useMemo, useState } from 'react';
 import AdminShell from '@/components/admin/admin-shell';
+import avatar_circle from '@/components/avatar-circle';
 import { format_phone_display } from '@/lib/phone';
 
 type customer_order = {
@@ -22,6 +23,7 @@ type customer_row = {
   bonus_balance: number;
   created_at: string | null;
   avatar_emoji: string | null;
+  avatar_url: string | null;
   orders_count: number;
   spent: number;
   last_order_at: string | null;
@@ -186,8 +188,13 @@ export default function customers_page() {
                   onClick={() => set_open_id(open ? null : c.id)}
                   className="flex w-full items-start gap-3 px-4 py-3 text-left"
                 >
-                  <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-page text-lg">
-                    {c.avatar_emoji || '🧋'}
+                  <span className="shrink-0">
+                    {createElement(avatar_circle, {
+                      emoji: c.avatar_emoji,
+                      image_url: c.avatar_url,
+                      user_id: c.id.startsWith('guest:') ? null : c.id,
+                      size: 'sm',
+                    })}
                   </span>
                   <span className="min-w-0 flex-1">
                     <span className="flex flex-wrap items-baseline gap-x-2">
@@ -196,7 +203,7 @@ export default function customers_page() {
                         {c.via}
                       </span>
                     </span>
-                    <span className="mt-0.5 block text-sm text-neutral-500">
+                    <span className="mt-0.5 block text-sm font-medium text-neutral-700 tabular-nums">
                       {format_phone_display(c.phone)}
                     </span>
                     <span className="mt-1 block text-xs text-neutral-400">

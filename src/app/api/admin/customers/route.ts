@@ -40,6 +40,7 @@ type customer_row = {
   bonus_balance: number;
   created_at: string | null;
   avatar_emoji: string | null;
+  avatar_url: string | null;
   orders_count: number;
   spent: number;
   last_order_at: string | null;
@@ -47,9 +48,11 @@ type customer_row = {
   orders: customer_order[];
 };
 
-type auth_flags = {
+type auth_info = {
   is_vk: boolean;
   phone: string | null;
+  avatar_url: string | null;
+  name: string | null;
 };
 
 function missing_column_from_error(message: string) {
@@ -118,6 +121,7 @@ function empty_customer(input: {
   bonus_balance?: number | null;
   created_at?: string | null;
   avatar_emoji?: string | null;
+  avatar_url?: string | null;
 }): customer_row {
   return {
     id: input.id,
@@ -128,6 +132,7 @@ function empty_customer(input: {
     bonus_balance: Number(input.bonus_balance) || 0,
     created_at: input.created_at || null,
     avatar_emoji: input.avatar_emoji || null,
+    avatar_url: input.avatar_url?.trim() || null,
     orders_count: 0,
     spent: 0,
     last_order_at: null,
@@ -142,14 +147,42 @@ function via_label(has_vk: boolean, phone: string | null): customer_row['via'] {
   return 'телефон';
 }
 
-function is_identified(phone: string | null, auth?: auth_flags) {
+function is_identified(phone: string | null, auth?: auth_info) {
   if (normalize_phone(phone) || auth?.phone) return true;
   return Boolean(auth?.is_vk);
 }
 
-async function fetch_auth_flags() {
+function name_from_meta(meta: Record<string, unknown>) {
+  const full = typeof meta.full_name === 'string' ? meta.full_name.trim() : '';
+  if (full) return full;
+  const parts = [meta.first_name, meta.last_name]
+    .filter((v): v is string => typeof v === 'string' && Boolean(v.trim()))
+    .map((v) => v.trim());
+  return parts.length ? parts.join(' ') : null;
+}
+
+function phone_from_auth(user_phone: string | undefined | null, meta: Record<string, unknown>) {
+  const candidates = [
+    user_phone,
+    meta.phone,
+    meta.verified_phone,
+    meta.phone_number,
+  ];
+  for (const raw of candidates) {
+    const phone = normalize_phone(typeof raw === 'string' ? raw : null);
+    if (phone) return phone;
+  }
+  return null;
+}
+
+function avatar_from_meta(meta: Record<string, unknown>) {
+  const raw = typeof meta.avatar_url === 'string' ? meta.avatar_url.trim() : '';
+  return raw || null;
+}
+
+async function fetch_auth_info() {
   const admin = create_service_client();
-  const map = new Map<string, auth_flags>();
+  const map = new Map<string, auth_info>();
   const per_page = 1000;
   for (let page = 1; page <= 50; page += 1) {
     const { data, error } = await admin.auth.admin.listUsers({ page, perPage: per_page });
@@ -158,18 +191,33 @@ async function fetch_auth_flags() {
     for (const user of users) {
       const meta = (user.user_metadata || {}) as Record<string, unknown>;
       const email = (user.email || '').toLowerCase();
-      const meta_phone = typeof meta.phone === 'string' ? meta.phone : null;
+      const is_vk =
+        meta.provider === 'vk' ||
+        Boolean(meta.vk_id) ||
+        (email.startsWith('vk') && email.endsWith('@auth.yoboba'));
+      const phone = phone_from_auth(user.phone, meta);
       map.set(user.id, {
-        is_vk:
-          meta.provider === 'vk' ||
-          Boolean(meta.vk_id) ||
-          (email.startsWith('vk') && email.endsWith('@auth.yoboba')),
-        phone: normalize_phone(user.phone) || normalize_phone(meta_phone),
+        is_vk,
+        phone,
+        avatar_url: avatar_from_meta(meta),
+        name: name_from_meta(meta),
       });
     }
     if (users.length < per_page) break;
   }
   return map;
+}
+
+function merge_auth(customer: customer_row, auth?: auth_info) {
+  if (!auth) return;
+  const phone = normalize_phone(customer.phone) || auth.phone;
+  if (phone) customer.phone = phone;
+  if (!customer.avatar_url && auth.avatar_url) customer.avatar_url = auth.avatar_url;
+  const auth_name = (auth.name || '').trim();
+  if ((customer.name === 'гость' || !customer.name.trim()) && auth_name) {
+    customer.name = auth_name;
+  }
+  customer.via = via_label(auth.is_vk, customer.phone);
 }
 
 function attach_order(customer: customer_row, o: order) {
@@ -218,10 +266,10 @@ export async function GET() {
     if (phone) by_phone.set(phone, row);
   }
 
-  let auth_by_id = new Map<string, auth_flags>();
+  let auth_by_id = new Map<string, auth_info>();
   try {
     if (is_supabase_configured()) {
-      auth_by_id = await fetch_auth_flags();
+      auth_by_id = await fetch_auth_info();
       let profiles: profile_row[] = [];
       try {
         profiles = await fetch_all_rows<profile_row>(
@@ -243,13 +291,28 @@ export async function GET() {
         remember(
           empty_customer({
             id: p.id,
-            name: p.name,
+            name: p.name || auth?.name,
             phone,
             role: p.role,
             via: via_label(Boolean(auth?.is_vk), phone),
             bonus_balance: p.bonus_balance,
             created_at: p.created_at,
             avatar_emoji: p.avatar_emoji,
+            avatar_url: auth?.avatar_url,
+          })
+        );
+      }
+
+      for (const [id, auth] of auth_by_id) {
+        if (by_id.has(id)) continue;
+        if (!is_identified(auth.phone, auth)) continue;
+        remember(
+          empty_customer({
+            id,
+            name: auth.name,
+            phone: auth.phone,
+            via: via_label(auth.is_vk, auth.phone),
+            avatar_url: auth.avatar_url,
           })
         );
       }
@@ -317,7 +380,10 @@ export async function GET() {
   const customers = [...by_id.values()].filter((c) =>
     is_identified(c.phone, auth_by_id.get(c.id))
   );
-  for (const c of customers) finalize(c);
+  for (const c of customers) {
+    merge_auth(c, auth_by_id.get(c.id));
+    finalize(c);
+  }
   customers.sort((a, b) => {
     if (a.last_order_at && b.last_order_at) return a.last_order_at < b.last_order_at ? 1 : -1;
     if (a.last_order_at) return -1;
