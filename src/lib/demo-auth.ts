@@ -8,6 +8,7 @@ export type demo_user = {
   bonus_balance: number;
   avatar_emoji: string;
   avatar_bg: string | null;
+  avatar_url?: string | null;
   is_guest: boolean;
   role: user_role;
 };

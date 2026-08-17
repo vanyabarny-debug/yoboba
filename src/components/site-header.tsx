@@ -17,6 +17,7 @@ type props = {
   user_name?: string | null;
   avatar_emoji?: string | null;
   avatar_bg?: string | null;
+  avatar_url?: string | null;
   user_id?: string | null;
   bonus?: number;
   is_logged_in: boolean;
@@ -37,6 +38,7 @@ export default function site_header({
   user_name,
   avatar_emoji,
   avatar_bg,
+  avatar_url,
   user_id,
   bonus = 0,
   is_logged_in,
@@ -87,6 +89,7 @@ export default function site_header({
               user_name,
               avatar_emoji,
               avatar_bg,
+              avatar_url,
               user_id,
               on_login,
               on_logout,
@@ -161,6 +164,7 @@ export default function site_header({
             user_name,
             avatar_emoji,
             avatar_bg,
+            avatar_url,
             user_id,
             on_login,
             on_logout,

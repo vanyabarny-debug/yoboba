@@ -468,6 +468,7 @@ export default function profile_page() {
             {createElement(avatar_circle, {
               emoji: profile.avatar_emoji,
               bg: profile.avatar_bg,
+              image_url: profile.avatar_url,
               user_id: profile.id,
               size: 'md',
             })}
@@ -547,6 +548,7 @@ export default function profile_page() {
                   {createElement(avatar_circle, {
                     emoji: avatar_draft,
                     bg: avatar_bg_draft,
+                    image_url: profile.avatar_url,
                     user_id: profile.id,
                     size: 'lg',
                   })}
@@ -645,6 +647,7 @@ export default function profile_page() {
                 {createElement(avatar_circle, {
                   emoji: profile.avatar_emoji,
                   bg: profile.avatar_bg,
+                  image_url: profile.avatar_url,
                   user_id: profile.id,
                   size: 'sm',
                 })}

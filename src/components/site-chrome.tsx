@@ -89,6 +89,7 @@ export default function site_chrome({ children }: props) {
             bonus_balance: auth.profile?.bonus_balance || 0,
             avatar_emoji: auth.profile?.avatar_emoji || '',
             avatar_bg: auth.profile?.avatar_bg ?? null,
+            avatar_url: auth.profile?.avatar_url || null,
             is_guest: false,
             role: 'user',
           });
@@ -153,6 +154,7 @@ export default function site_chrome({ children }: props) {
           user_name: user?.name,
           avatar_emoji: user?.avatar_emoji,
           avatar_bg: user?.avatar_bg,
+          avatar_url: user?.avatar_url,
           user_id: user?.id,
           bonus,
           is_logged_in,

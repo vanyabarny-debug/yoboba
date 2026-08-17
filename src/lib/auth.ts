@@ -13,6 +13,7 @@ export type profile = {
   bonus_balance: number;
   avatar_emoji: string | null;
   avatar_bg: string | null;
+  avatar_url?: string | null;
   role: user_role;
 };
 
@@ -122,6 +123,10 @@ function hydrate_profile(
     '';
   const meta_phone =
     typeof meta.phone === 'string' && meta.phone.trim() ? meta.phone.trim() : '';
+  const meta_avatar =
+    typeof meta.avatar_url === 'string' && meta.avatar_url.trim()
+      ? meta.avatar_url.trim()
+      : '';
 
   const name = (row?.name || '').trim() || meta_name || null;
   const phone = row?.phone || meta_phone || null;
@@ -133,6 +138,7 @@ function hydrate_profile(
     bonus_balance: row?.bonus_balance || 0,
     avatar_emoji: row?.avatar_emoji || null,
     avatar_bg: row?.avatar_bg ?? null,
+    avatar_url: row?.avatar_url || meta_avatar || null,
     role: row?.role || 'user',
   };
 }

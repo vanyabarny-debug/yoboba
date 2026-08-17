@@ -18,6 +18,7 @@ type props = {
   user_name?: string | null;
   avatar_emoji?: string | null;
   avatar_bg?: string | null;
+  avatar_url?: string | null;
   user_id?: string | null;
   on_login?: () => void;
   on_logout?: () => void;
@@ -41,6 +42,7 @@ export default function profile_chip({
   user_name,
   avatar_emoji,
   avatar_bg,
+  avatar_url,
   user_id,
   on_login,
 }: props) {
@@ -67,6 +69,7 @@ export default function profile_chip({
         {createElement(avatar_circle, {
           emoji,
           bg: avatar_bg,
+          image_url: avatar_url,
           user_id,
           size: 'sm',
           className: 'transition group-hover:brightness-95',

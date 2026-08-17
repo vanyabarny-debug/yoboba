@@ -694,6 +694,7 @@ export default function home_client({
           bonus_balance: auth.profile?.bonus_balance || 0,
           avatar_emoji: auth.profile?.avatar_emoji || '',
           avatar_bg: auth.profile?.avatar_bg ?? null,
+          avatar_url: auth.profile?.avatar_url || null,
           is_guest: false,
           role: 'user',
         });
@@ -1160,6 +1161,7 @@ export default function home_client({
           user_name: is_admin_edit ? 'админ' : user?.role === 'admin' ? null : user?.name,
           avatar_emoji: is_admin_edit ? '🛠️' : user?.avatar_emoji,
           avatar_bg: is_admin_edit ? null : user?.avatar_bg,
+          avatar_url: is_admin_edit ? null : user?.avatar_url,
           user_id: user?.id,
           bonus,
           is_logged_in: is_admin_edit ? false : is_logged_in,

@@ -88,7 +88,13 @@ export async function GET(request: NextRequest) {
   }
 
   const meta = user.user_metadata as
-    | { is_guest?: boolean; full_name?: string; first_name?: string; last_name?: string }
+    | {
+        is_guest?: boolean;
+        full_name?: string;
+        first_name?: string;
+        last_name?: string;
+        avatar_url?: string | null;
+      }
     | undefined;
   const meta_name =
     (typeof meta?.full_name === 'string' && meta.full_name.trim()) ||
@@ -100,6 +106,13 @@ export async function GET(request: NextRequest) {
 
   if (resolved_profile && !resolved_profile.name && meta_name) {
     resolved_profile = { ...resolved_profile, name: meta_name };
+  }
+  const meta_avatar =
+    typeof meta?.avatar_url === 'string' && meta.avatar_url.trim()
+      ? meta.avatar_url.trim()
+      : '';
+  if (resolved_profile && meta_avatar) {
+    resolved_profile = { ...resolved_profile, avatar_url: meta_avatar };
   }
 
   const res = NextResponse.json({
