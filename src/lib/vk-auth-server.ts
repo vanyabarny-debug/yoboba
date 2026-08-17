@@ -93,8 +93,7 @@ export async function exchange_vk_code(input: {
     state: input.state,
   });
 
-  const service_token =
-    process.env.VK_SERVICE_TOKEN?.trim() || process.env.VK_CLIENT_SECRET?.trim() || '';
+  const service_token = process.env.VK_SERVICE_TOKEN?.trim() || '';
   if (service_token) {
     body.set('service_token', service_token);
   }
@@ -105,6 +104,7 @@ export async function exchange_vk_code(input: {
       method: 'POST',
       headers: { 'content-type': 'application/x-www-form-urlencoded' },
       body,
+      signal: AbortSignal.timeout(15000),
     });
   } catch (err) {
     wrap_fetch_error('id.vk.ru', err);
@@ -158,6 +158,7 @@ export async function fetch_vk_user(
       method: 'POST',
       headers: { 'content-type': 'application/x-www-form-urlencoded' },
       body: new URLSearchParams({ access_token, client_id }),
+      signal: AbortSignal.timeout(15000),
     });
   } catch (err) {
     wrap_fetch_error('id.vk.ru/user_info', err);

@@ -1,5 +1,4 @@
 import { createServerClient } from '@supabase/ssr';
-import { cookies } from 'next/headers';
 import { NextResponse, type NextRequest } from 'next/server';
 import { sanitize_auth_return_path } from '@/lib/auth-return';
 import { public_site_origin } from '@/lib/vk-auth-config';
@@ -124,7 +123,6 @@ export async function GET(request: NextRequest) {
       anonymous_user_id: null,
     });
 
-    const cookie_store = await cookies();
     const cookie_bag: {
       name: string;
       value: string;
@@ -143,11 +141,6 @@ export async function GET(request: NextRequest) {
             cookie_bag.length = 0;
             cookies_to_set.forEach(({ name, value, options }) => {
               cookie_bag.push({ name, value, options });
-              try {
-                cookie_store.set(name, value, options);
-              } catch {
-                /* redirect response ниже всё равно получит Set-Cookie */
-              }
             });
           },
         },
