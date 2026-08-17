@@ -1,8 +1,8 @@
 import { createServerClient } from '@supabase/ssr';
 import { createClient } from '@supabase/supabase-js';
 import { NextResponse, type NextRequest } from 'next/server';
-import type { profile as user_profile } from '@/lib/auth';
 import { normalize_phone } from '@/lib/phone';
+import { read_profile, update_profile_row } from '@/lib/profile-row';
 
 function merge_cookies(from: NextResponse, to: NextResponse) {
   from.cookies.getAll().forEach((cookie) => {
@@ -43,16 +43,12 @@ export async function GET(request: NextRequest) {
     return res;
   }
 
-  const { data: profile } = await supabase
-    .from('profiles')
-    .select('id, phone, name, bonus_balance, avatar_emoji, avatar_bg, role')
-    .eq('id', user.id)
-    .maybeSingle();
+  const { data: profile } = await read_profile(supabase, user.id);
 
   const meta_phone = normalize_phone(
     (user.user_metadata as { phone?: string } | undefined)?.phone
   );
-  let resolved_profile = profile as user_profile | null;
+  let resolved_profile = profile;
 
   if (profile && !profile.phone && meta_phone) {
     resolved_profile = { ...profile, phone: meta_phone };
@@ -173,20 +169,22 @@ export async function PATCH(request: NextRequest) {
     return res;
   }
 
-  const { data: profile, error } = await supabase
-    .from('profiles')
-    .update(updates)
-    .eq('id', user.id)
-    .select('id, phone, name, bonus_balance, avatar_emoji, avatar_bg, role')
-    .single();
+  const { data: profile, error } = await update_profile_row(
+    supabase,
+    user.id,
+    updates
+  );
 
   if (error || !profile) {
-    const duplicate = error?.code === '23505' || error?.message?.includes('unique');
+    const duplicate =
+      error?.code === '23505' ||
+      error?.message?.includes('unique') ||
+      error?.message?.includes('duplicate');
     const res = NextResponse.json(
       {
         error: duplicate
           ? 'этот номер уже привязан к другому аккаунту'
-          : error?.message || 'не удалось обновить профиль',
+          : 'не удалось обновить профиль',
       },
       { status: duplicate ? 409 : 500 }
     );

@@ -7,6 +7,11 @@ import { clear_session } from '@/lib/demo-auth';
 export const admin_tabs = [
   { href: '/admin', label: 'аналитика', match: (p: string) => p === '/admin' },
   { href: '/admin/shifts', label: 'смены', match: (p: string) => p.startsWith('/admin/shifts') },
+  {
+    href: '/admin/customers',
+    label: 'клиенты',
+    match: (p: string) => p.startsWith('/admin/customers'),
+  },
   { href: '/admin/menu', label: 'редактирование', match: (p: string) => p.startsWith('/admin/menu') },
   {
     href: '/admin/personnel',

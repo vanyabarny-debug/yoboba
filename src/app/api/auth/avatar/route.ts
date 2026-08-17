@@ -9,6 +9,7 @@ import {
   random_avatar_emoji,
 } from '@/lib/avatar-emoji';
 import { is_supabase_configured } from '@/lib/supabase/config';
+import { read_profile, update_profile_row } from '@/lib/profile-row';
 
 function merge_cookies(from: NextResponse, to: NextResponse) {
   from.cookies.getAll().forEach((cookie) => {
@@ -34,9 +35,6 @@ function make_supabase(request: NextRequest, cookie_response: NextResponse) {
     }
   );
 }
-
-const profile_select =
-  'id, phone, name, bonus_balance, avatar_emoji, avatar_bg, role';
 
 /** смена эмоджи (за т.) и/или цвета фона (бесплатно) */
 export async function POST(request: NextRequest) {
@@ -100,11 +98,10 @@ export async function POST(request: NextRequest) {
     process.env.SUPABASE_SERVICE_ROLE_KEY
   );
 
-  const { data: profile, error: read_err } = await admin
-    .from('profiles')
-    .select(profile_select)
-    .eq('id', user.id)
-    .maybeSingle();
+  const { data: profile, error: read_err, missing_avatar_bg } = await read_profile(
+    admin,
+    user.id
+  );
 
   if (read_err || !profile) {
     const res = NextResponse.json(
@@ -155,16 +152,15 @@ export async function POST(request: NextRequest) {
     updates.avatar_emoji = emoji;
     updates.bonus_balance = next_balance;
   }
-  if (bg_changed) {
+  if (bg_changed && !missing_avatar_bg) {
     updates.avatar_bg = next_bg;
   }
 
-  const { data: updated, error: upd_err } = await admin
-    .from('profiles')
-    .update(updates)
-    .eq('id', user.id)
-    .select(profile_select)
-    .single();
+  const { data: updated, error: upd_err } = await update_profile_row(
+    admin,
+    user.id,
+    updates
+  );
 
   if (upd_err || !updated) {
     const res = NextResponse.json(

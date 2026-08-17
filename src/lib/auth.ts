@@ -2,6 +2,7 @@ import { createBrowserClient } from '@supabase/ssr';
 import { sanitize_auth_return_path } from '@/lib/auth-return';
 import { is_supabase_configured } from '@/lib/supabase/config';
 import { is_vk_auth_configured } from '@/lib/vk-auth-config';
+import { read_profile } from '@/lib/profile-row';
 import type { Session } from '@supabase/supabase-js';
 
 export type user_role = 'user' | 'barista' | 'admin';
@@ -331,12 +332,7 @@ export async function get_profile(): Promise<profile | null> {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return null;
 
-  const { data } = await supabase
-    .from('profiles')
-    .select('id, phone, name, bonus_balance, avatar_emoji, avatar_bg, role')
-    .eq('id', user.id)
-    .single();
-
+  const { data } = await read_profile(supabase, user.id);
   return data;
 }
 
