@@ -1,5 +1,6 @@
 #!/bin/sh
-# Увеличивает таймауты nginx для длинного VK callback.
+# Таймауты + буфер заголовков: иначе 302 с supabase-cookies даёт 502
+# (upstream sent too big header), хотя Node уже написал session ok.
 # Запуск: bash scripts/fix-nginx-timeouts.sh
 set -e
 
@@ -15,18 +16,26 @@ if [ -z "$CONF" ]; then
 fi
 
 echo "using $CONF"
+cp "$CONF" "$CONF.bak.$(date +%s)"
 
-# если уже есть — обновим значения, иначе вставим в location /
-if grep -q 'proxy_read_timeout' "$CONF"; then
-  sed -i 's/proxy_read_timeout.*/proxy_read_timeout 120s;/' "$CONF"
-  sed -i 's/proxy_connect_timeout.*/proxy_connect_timeout 30s;/' "$CONF" || true
-  sed -i 's/proxy_send_timeout.*/proxy_send_timeout 120s;/' "$CONF" || true
-else
-  # вставим после proxy_pass
-  sed -i '/proxy_pass/a\        proxy_connect_timeout 30s;\n        proxy_send_timeout 120s;\n        proxy_read_timeout 120s;' "$CONF"
-fi
+set_or_insert() {
+  key="$1"
+  value="$2"
+  if grep -q "$key" "$CONF"; then
+    sed -i "s|$key.*|$value|" "$CONF"
+  else
+    sed -i "/proxy_pass/a\\        $value" "$CONF"
+  fi
+}
+
+set_or_insert 'proxy_connect_timeout' 'proxy_connect_timeout 30s;'
+set_or_insert 'proxy_send_timeout' 'proxy_send_timeout 120s;'
+set_or_insert 'proxy_read_timeout' 'proxy_read_timeout 120s;'
+set_or_insert 'proxy_buffer_size' 'proxy_buffer_size 32k;'
+set_or_insert 'proxy_buffers' 'proxy_buffers 8 32k;'
+set_or_insert 'proxy_busy_buffers_size' 'proxy_busy_buffers_size 64k;'
 
 nginx -t
 systemctl reload nginx
-echo "nginx timeouts updated"
-grep -n 'proxy_.*timeout\|proxy_pass\|server_name' "$CONF" | head -20
+echo "nginx updated"
+grep -n 'proxy_.*timeout\|proxy_buffer\|proxy_pass\|server_name' "$CONF" | head -30

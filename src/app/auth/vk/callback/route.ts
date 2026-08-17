@@ -5,7 +5,7 @@ import { public_site_origin } from '@/lib/vk-auth-config';
 import {
   exchange_vk_code,
   fetch_vk_user,
-  mint_vk_supabase_otp,
+  issue_vk_one_time_password,
   upsert_vk_supabase_user,
 } from '@/lib/vk-auth-server';
 
@@ -148,20 +148,14 @@ export async function GET(request: NextRequest) {
     );
 
     console.log('[vk/callback] mint session');
-    const otp = await mint_vk_supabase_otp(account.email);
-    const verified = otp.hashed_token
-      ? await supabase.auth.verifyOtp({
-          token_hash: otp.hashed_token,
-          type: 'email',
-        })
-      : await supabase.auth.verifyOtp({
-          email: otp.email,
-          token: otp.email_otp,
-          type: 'email',
-        });
+    const password = await issue_vk_one_time_password(account.user_id);
+    const verified = await supabase.auth.signInWithPassword({
+      email: account.email,
+      password,
+    });
 
     if (verified.error || !verified.data.session?.user) {
-      throw new Error(`supabase verifyOtp: ${verified.error?.message || 'нет сессии'}`);
+      throw new Error(`supabase signIn: ${verified.error?.message || 'нет сессии'}`);
     }
 
     if (!cookie_bag.length) {
@@ -171,7 +165,7 @@ export async function GET(request: NextRequest) {
     const next = new URL(return_to, origin);
     const res = NextResponse.redirect(next);
     res.headers.set('cache-control', 'no-store');
-    clear_vk_cookies(res);
+    // не чистим vk_* здесь: лишние Set-Cookie раздувают заголовок → nginx 502
     cookie_bag.forEach(({ name, value, options }) => {
       res.cookies.set(name, value, options);
     });

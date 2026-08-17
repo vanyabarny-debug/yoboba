@@ -1,3 +1,4 @@
+import { randomBytes } from 'node:crypto';
 import { NextResponse } from 'next/server';
 import { create_server_client } from '@/lib/supabase/server';
 import { create_service_client } from '@/lib/supabase/service';
@@ -34,9 +35,11 @@ export async function POST() {
 
   const admin = create_service_client();
   const email = guest_email();
+  const password = `guest.${randomBytes(24).toString('base64url')}`;
 
   const { data: created, error: create_error } = await admin.auth.admin.createUser({
     email,
+    password,
     email_confirm: true,
     user_metadata: { is_guest: true, name: 'гость' },
   });
@@ -50,21 +53,9 @@ export async function POST() {
 
   await ensure_profile(created.user.id);
 
-  const { data: link, error: link_error } = await admin.auth.admin.generateLink({
-    type: 'magiclink',
+  const { data: verified, error: verify_error } = await supabase.auth.signInWithPassword({
     email,
-  });
-
-  if (link_error || !link.properties?.hashed_token) {
-    return NextResponse.json(
-      { error: link_error?.message || 'не удалось выдать сессию' },
-      { status: 500 }
-    );
-  }
-
-  const { data: verified, error: verify_error } = await supabase.auth.verifyOtp({
-    token_hash: link.properties.hashed_token,
-    type: 'email',
+    password,
   });
 
   if (verify_error || !verified.session) {

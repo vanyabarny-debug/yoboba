@@ -1,3 +1,4 @@
+import { randomBytes } from 'node:crypto';
 import { createClient } from '@supabase/supabase-js';
 import {
   vk_auth_email,
@@ -432,30 +433,25 @@ export async function upsert_vk_supabase_user(input: {
 }
 
 /**
- * Сессия после VK: тот же путь, что гостевой вход.
- * admin.generateLink(magiclink) → verifyOtp({ token_hash, type: 'email' }) на cookie-клиенте.
+ * Сессия после VK без писем: одноразовый пароль + signInWithPassword.
+ * generateLink(magiclink) слал почту на vk*@auth.yoboba и давал bounces в Supabase.
  */
-export async function mint_vk_supabase_otp(email: string) {
+export async function issue_vk_one_time_password(user_id: string) {
   const admin = service_client();
-  let last_error = 'supabase: generateLink не вернул otp';
+  const password = `vk.${user_id}.${randomBytes(24).toString('base64url')}`;
+  let last_error = 'не удалось выдать сессию';
 
   for (let attempt = 0; attempt < 4; attempt++) {
-    const { data: link, error } = await admin.auth.admin.generateLink({
-      type: 'magiclink',
-      email,
+    const { error } = await admin.auth.admin.updateUserById(user_id, {
+      password,
+      email_confirm: true,
+      ban_duration: 'none',
     });
-
-    const email_otp = link?.properties?.email_otp?.trim() || '';
-    const hashed_token = link?.properties?.hashed_token?.trim() || '';
-
-    if (!error && (email_otp || hashed_token)) {
-      return { email, email_otp, hashed_token };
-    }
-
-    last_error = error?.message || last_error;
+    if (!error) return password;
+    last_error = error.message;
     if (!/bad_jwt|invalid jwt/i.test(last_error) || attempt === 3) break;
     await new Promise((resolve) => setTimeout(resolve, 120 * (attempt + 1)));
   }
 
-  throw new Error(`supabase generateLink: ${last_error}`);
+  throw new Error(`supabase updateUser: ${last_error}`);
 }
