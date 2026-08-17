@@ -21,12 +21,26 @@ export async function GET() {
 
   const { data, error } = await supabase
     .from('orders')
-    .select('*')
+    .select('id, user_id, items, total_price, status, payment_type, pickup_time, created_at, order_number, order_day')
     .eq('user_id', user.id)
     .order('created_at', { ascending: false });
 
+  if (error && /does not exist/i.test(error.message)) {
+    const fallback = await supabase
+      .from('orders')
+      .select('id, user_id, items, total_price, status, payment_type, pickup_time, created_at')
+      .eq('user_id', user.id)
+      .order('created_at', { ascending: false });
+    if (fallback.error) {
+      console.error('orders GET', fallback.error.message);
+      return NextResponse.json({ error: 'не удалось загрузить заказы' }, { status: 500 });
+    }
+    return NextResponse.json({ orders: fallback.data || [] });
+  }
+
   if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    console.error('orders GET', error.message);
+    return NextResponse.json({ error: 'не удалось загрузить заказы' }, { status: 500 });
   }
 
   return NextResponse.json({ orders: data || [] });

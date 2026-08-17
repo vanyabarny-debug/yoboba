@@ -46,6 +46,11 @@ type customer_row = {
   orders: customer_order[];
 };
 
+function missing_column_from_error(message: string) {
+  const match = message.match(/column \w+\.([a-z0-9_]+) does not exist/i);
+  return match?.[1] ?? null;
+}
+
 async function fetch_all_rows<T>(
   table: 'profiles' | 'orders',
   columns: string
@@ -58,7 +63,20 @@ async function fetch_all_rows<T>(
       .from(table)
       .select(columns)
       .range(from, from + page - 1);
-    if (error) throw new Error(error.message);
+    if (error) {
+      const missing = missing_column_from_error(error.message);
+      if (missing) {
+        const next = columns
+          .split(',')
+          .map((part) => part.trim())
+          .filter((part) => part && part !== missing)
+          .join(', ');
+        if (next && next !== columns) {
+          return fetch_all_rows<T>(table, next);
+        }
+      }
+      throw new Error(error.message);
+    }
     const chunk = (data as T[]) || [];
     rows.push(...chunk);
     if (chunk.length < page) break;
@@ -187,8 +205,9 @@ export async function GET() {
       }
     }
   } catch (err) {
+    console.error('admin customers profiles', err);
     return NextResponse.json(
-      { error: err instanceof Error ? err.message : 'не удалось загрузить клиентов' },
+      { error: 'не удалось загрузить клиентов' },
       { status: 500 }
     );
   }
@@ -200,7 +219,7 @@ export async function GET() {
     try {
       const rows = await fetch_all_rows<order>(
         'orders',
-        'id, user_id, items, total_price, status, payment_type, created_at, customer_name, customer_phone'
+        'id, user_id, items, total_price, status, payment_type, created_at'
       );
       for (const o of rows) {
         if (!o?.id || seen.has(o.id)) continue;
@@ -208,8 +227,9 @@ export async function GET() {
         orders.push(o);
       }
     } catch (err) {
+      console.error('admin customers orders', err);
       return NextResponse.json(
-        { error: err instanceof Error ? err.message : 'не удалось загрузить заказы' },
+        { error: 'не удалось загрузить заказы' },
         { status: 500 }
       );
     }
