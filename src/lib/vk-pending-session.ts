@@ -22,19 +22,21 @@ export async function save_pending_vk_session(input: {
   return id;
 }
 
-export async function take_pending_vk_session(id: string) {
+export async function read_pending_vk_session(id: string) {
   if (!/^[a-f0-9]{32}$/.test(id)) return null;
   const path = join(pending_dir, `${id}.json`);
   try {
     const raw = await readFile(path, 'utf8');
-    await unlink(path).catch(() => {});
     const data = JSON.parse(raw) as {
       access_token?: string;
       refresh_token?: string;
       exp?: number;
     };
     if (!data.access_token || !data.refresh_token) return null;
-    if (typeof data.exp === 'number' && data.exp < Date.now()) return null;
+    if (typeof data.exp === 'number' && data.exp < Date.now()) {
+      await unlink(path).catch(() => {});
+      return null;
+    }
     return {
       access_token: data.access_token,
       refresh_token: data.refresh_token,
@@ -42,4 +44,11 @@ export async function take_pending_vk_session(id: string) {
   } catch {
     return null;
   }
+}
+
+export async function take_pending_vk_session(id: string) {
+  const session = await read_pending_vk_session(id);
+  if (!session) return null;
+  await unlink(join(pending_dir, `${id}.json`)).catch(() => {});
+  return session;
 }

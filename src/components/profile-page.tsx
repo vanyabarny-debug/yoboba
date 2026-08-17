@@ -201,21 +201,32 @@ export default function profile_page() {
       }
 
       let auth = await get_auth_state();
-      // после VK cookies/сессия иногда чуть запаздывают — не сразу гоняем на /login
-      for (let attempt = 0; attempt < 4 && (!auth.is_permanent || !auth.profile); attempt++) {
-        await new Promise((r) => setTimeout(r, 120 + attempt * 80));
+      for (let attempt = 0; attempt < 6 && !auth.is_permanent; attempt++) {
+        await new Promise((r) => setTimeout(r, 150 + attempt * 80));
         auth = await get_auth_state();
       }
-      if (!auth.is_permanent || !auth.profile) {
-        router.replace('/login?returnUrl=/');
+      if (!auth.is_permanent || !auth.user_id) {
+        router.replace('/login?returnUrl=/profile');
         return;
       }
 
+      const resolved =
+        auth.profile ||
+        ({
+          id: auth.user_id,
+          phone: null,
+          name: null,
+          bonus_balance: 0,
+          avatar_emoji: null,
+          avatar_bg: null,
+          role: 'user' as const,
+        } satisfies profile);
+
       if (cancelled) return;
-      set_profile(auth.profile);
-      set_name_draft(auth.profile.name || '');
-      let loc = get_profile_local(auth.profile.id);
-      loc = await seed_local_from_vk(auth.profile.id, loc);
+      set_profile(resolved);
+      set_name_draft(resolved.name || '');
+      let loc = get_profile_local(resolved.id);
+      loc = await seed_local_from_vk(resolved.id, loc);
       if (cancelled) return;
       set_local(loc);
       set_email_draft(loc.email);

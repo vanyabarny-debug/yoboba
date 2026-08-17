@@ -9,7 +9,7 @@ function merge_cookies(from: NextResponse, to: NextResponse) {
   });
 }
 
-function make_supabase(request: NextRequest, cookie_response: NextResponse) {
+function make_supabase(request: NextRequest, cookie_response: NextResponse, write_cookies: boolean) {
   return createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
@@ -19,6 +19,7 @@ function make_supabase(request: NextRequest, cookie_response: NextResponse) {
           return request.cookies.getAll();
         },
         setAll(cookies_to_set) {
+          if (!write_cookies) return;
           cookies_to_set.forEach(({ name, value, options }) => {
             cookie_response.cookies.set(name, value, options);
           });
@@ -30,7 +31,8 @@ function make_supabase(request: NextRequest, cookie_response: NextResponse) {
 
 export async function GET(request: NextRequest) {
   let cookie_response = NextResponse.next();
-  const supabase = make_supabase(request, cookie_response);
+  // не пишем JWT обратно в Set-Cookie — nginx режет слишком большой заголовок
+  const supabase = make_supabase(request, cookie_response, false);
 
   const { data: { user } } = await supabase.auth.getUser();
 
@@ -117,7 +119,7 @@ export async function GET(request: NextRequest) {
 
 export async function PATCH(request: NextRequest) {
   let cookie_response = NextResponse.next();
-  const supabase = make_supabase(request, cookie_response);
+  const supabase = make_supabase(request, cookie_response, true);
 
   const { data: { user } } = await supabase.auth.getUser();
   if (!user || user.is_anonymous) {

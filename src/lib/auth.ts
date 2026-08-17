@@ -105,23 +105,62 @@ export async function ensure_anonymous_session() {
   return { user: null, error };
 }
 
+function hydrate_profile(
+  user: {
+    id: string;
+    user_metadata?: Record<string, unknown> | null;
+  },
+  row: profile | null
+): profile {
+  const meta = user.user_metadata || {};
+  const meta_name =
+    (typeof meta.full_name === 'string' && meta.full_name.trim()) ||
+    [meta.first_name, meta.last_name]
+      .filter((v): v is string => typeof v === 'string' && Boolean(v.trim()))
+      .join(' ')
+      .trim() ||
+    '';
+  const meta_phone =
+    typeof meta.phone === 'string' && meta.phone.trim() ? meta.phone.trim() : '';
+
+  const name = (row?.name || '').trim() || meta_name || null;
+  const phone = row?.phone || meta_phone || null;
+
+  return {
+    id: row?.id || user.id,
+    phone,
+    name,
+    bonus_balance: row?.bonus_balance || 0,
+    avatar_emoji: row?.avatar_emoji || null,
+    avatar_bg: row?.avatar_bg ?? null,
+    role: row?.role || 'user',
+  };
+}
+
+let finish_vk_once: Promise<void> | null = null;
+
 async function finish_vk_browser_session() {
-  try {
-    const res = await fetch('/api/auth/finish-vk', {
-      method: 'POST',
-      credentials: 'same-origin',
-    });
-    if (!res.ok) return;
-    const body = (await res.json()) as {
-      ok?: boolean;
-      session?: Session | null;
-    };
-    if (body.ok && body.session) {
-      await apply_session(body.session);
-    }
-  } catch {
-    /* нет pending vk-сессии */
+  if (!finish_vk_once) {
+    finish_vk_once = (async () => {
+      try {
+        const res = await fetch('/api/auth/finish-vk', {
+          method: 'POST',
+          credentials: 'same-origin',
+        });
+        if (!res.ok) return;
+        const body = (await res.json()) as {
+          ok?: boolean;
+          session?: Session | null;
+        };
+        if (body.ok && body.session) {
+          await apply_session(body.session);
+        }
+      } catch {
+        /* нет pending vk-сессии */
+      }
+    })();
   }
+  await finish_vk_once;
 }
 
 export async function get_auth_state(): Promise<auth_state> {
@@ -136,6 +175,20 @@ export async function get_auth_state(): Promise<auth_state> {
   }
 
   await finish_vk_browser_session();
+
+  const supabase = get_client();
+  const { data: { user: browser_user } } = await supabase.auth.getUser();
+
+  if (browser_user && !browser_user.is_anonymous && !is_guest_user(browser_user)) {
+    const row = await get_profile();
+    return {
+      user_id: browser_user.id,
+      is_anonymous: false,
+      is_guest: false,
+      is_permanent: true,
+      profile: hydrate_profile(browser_user, row),
+    };
+  }
 
   try {
     const res = await fetch('/api/auth/profile', { credentials: 'same-origin' });
@@ -157,12 +210,10 @@ export async function get_auth_state(): Promise<auth_state> {
       }
     }
   } catch {
-    /* fallback to browser client */
+    /* нет серверной сессии */
   }
 
-  const supabase = get_client();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) {
+  if (!browser_user) {
     return {
       user_id: null,
       is_anonymous: false,
@@ -172,12 +223,12 @@ export async function get_auth_state(): Promise<auth_state> {
     };
   }
 
-  const profile = await get_profile();
-  const is_anonymous = user.is_anonymous === true;
-  const is_guest = is_guest_user(user);
+  const profile = hydrate_profile(browser_user, await get_profile());
+  const is_anonymous = browser_user.is_anonymous === true;
+  const is_guest = is_guest_user(browser_user);
 
   return {
-    user_id: user.id,
+    user_id: browser_user.id,
     is_anonymous,
     is_guest,
     is_permanent: !is_anonymous && !is_guest,
