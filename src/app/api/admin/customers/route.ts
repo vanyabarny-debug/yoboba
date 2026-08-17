@@ -36,6 +36,7 @@ type customer_row = {
   name: string;
   phone: string | null;
   role: string;
+  via: 'vk' | 'телефон' | 'vk и телефон';
   bonus_balance: number;
   created_at: string | null;
   avatar_emoji: string | null;
@@ -44,6 +45,11 @@ type customer_row = {
   last_order_at: string | null;
   top_items: { name: string; quantity: number }[];
   orders: customer_order[];
+};
+
+type auth_flags = {
+  is_vk: boolean;
+  phone: string | null;
 };
 
 function missing_column_from_error(message: string) {
@@ -108,6 +114,7 @@ function empty_customer(input: {
   name?: string | null;
   phone?: string | null;
   role?: string | null;
+  via?: customer_row['via'];
   bonus_balance?: number | null;
   created_at?: string | null;
   avatar_emoji?: string | null;
@@ -117,6 +124,7 @@ function empty_customer(input: {
     name: (input.name || '').trim() || 'гость',
     phone: normalize_phone(input.phone) || input.phone || null,
     role: input.role || 'user',
+    via: input.via || 'телефон',
     bonus_balance: Number(input.bonus_balance) || 0,
     created_at: input.created_at || null,
     avatar_emoji: input.avatar_emoji || null,
@@ -126,6 +134,42 @@ function empty_customer(input: {
     top_items: [],
     orders: [],
   };
+}
+
+function via_label(has_vk: boolean, phone: string | null): customer_row['via'] {
+  if (has_vk && phone) return 'vk и телефон';
+  if (has_vk) return 'vk';
+  return 'телефон';
+}
+
+function is_identified(phone: string | null, auth?: auth_flags) {
+  if (normalize_phone(phone) || auth?.phone) return true;
+  return Boolean(auth?.is_vk);
+}
+
+async function fetch_auth_flags() {
+  const admin = create_service_client();
+  const map = new Map<string, auth_flags>();
+  const per_page = 1000;
+  for (let page = 1; page <= 50; page += 1) {
+    const { data, error } = await admin.auth.admin.listUsers({ page, perPage: per_page });
+    if (error) throw error;
+    const users = data.users || [];
+    for (const user of users) {
+      const meta = (user.user_metadata || {}) as Record<string, unknown>;
+      const email = (user.email || '').toLowerCase();
+      const meta_phone = typeof meta.phone === 'string' ? meta.phone : null;
+      map.set(user.id, {
+        is_vk:
+          meta.provider === 'vk' ||
+          Boolean(meta.vk_id) ||
+          (email.startsWith('vk') && email.endsWith('@auth.yoboba')),
+        phone: normalize_phone(user.phone) || normalize_phone(meta_phone),
+      });
+    }
+    if (users.length < per_page) break;
+  }
+  return map;
 }
 
 function attach_order(customer: customer_row, o: order) {
@@ -174,8 +218,10 @@ export async function GET() {
     if (phone) by_phone.set(phone, row);
   }
 
+  let auth_by_id = new Map<string, auth_flags>();
   try {
     if (is_supabase_configured()) {
+      auth_by_id = await fetch_auth_flags();
       let profiles: profile_row[] = [];
       try {
         profiles = await fetch_all_rows<profile_row>(
@@ -191,12 +237,16 @@ export async function GET() {
         );
       }
       for (const p of profiles) {
+        const auth = auth_by_id.get(p.id);
+        const phone = normalize_phone(p.phone) || auth?.phone || null;
+        if (!is_identified(phone, auth)) continue;
         remember(
           empty_customer({
             id: p.id,
             name: p.name,
-            phone: p.phone,
+            phone,
             role: p.role,
+            via: via_label(Boolean(auth?.is_vk), phone),
             bonus_balance: p.bonus_balance,
             created_at: p.created_at,
             avatar_emoji: p.avatar_emoji,
@@ -251,17 +301,22 @@ export async function GET() {
       continue;
     }
 
+    if (!phone) continue;
+
     const guest = empty_customer({
-      id: o.user_id || `guest:${phone || o.id}`,
+      id: o.user_id || `guest:${phone}`,
       name: o.customer_name,
-      phone: o.customer_phone,
+      phone,
       role: 'user',
+      via: 'телефон',
     });
     attach_order(guest, o);
     remember(guest);
   }
 
-  const customers = [...by_id.values()];
+  const customers = [...by_id.values()].filter((c) =>
+    is_identified(c.phone, auth_by_id.get(c.id))
+  );
   for (const c of customers) finalize(c);
   customers.sort((a, b) => {
     if (a.last_order_at && b.last_order_at) return a.last_order_at < b.last_order_at ? 1 : -1;

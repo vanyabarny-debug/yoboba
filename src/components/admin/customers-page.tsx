@@ -18,6 +18,7 @@ type customer_row = {
   name: string;
   phone: string | null;
   role: string;
+  via: 'vk' | 'телефон' | 'vk и телефон';
   bonus_balance: number;
   created_at: string | null;
   avatar_emoji: string | null;
@@ -47,14 +48,6 @@ const payment_label: Record<customer_order['payment_type'], string> = {
   card: 'картой',
   online: 'онлайн',
   bonus: 'тапикоинами',
-};
-
-const role_label: Record<string, string> = {
-  user: 'клиент',
-  admin: 'админ',
-  barista: 'бариста',
-  seller: 'кассир',
-  guest: 'гость',
 };
 
 function format_when(iso: string | null) {
@@ -106,7 +99,7 @@ export default function customers_page() {
     return list.filter((c) => {
       if (only_buyers && c.orders_count === 0) return false;
       if (!q) return true;
-      const hay = [c.name, c.phone, format_phone_display(c.phone), c.role]
+      const hay = [c.name, c.phone, format_phone_display(c.phone), c.via, c.role]
         .filter(Boolean)
         .join(' ')
         .toLowerCase();
@@ -120,7 +113,7 @@ export default function customers_page() {
         <div>
           <h2 className="text-lg font-semibold text-neutral-900">клиенты</h2>
           <p className="text-sm text-neutral-500">
-            все аккаунты и что каждый заказывал
+            кто вошёл через vk или указал телефон — и что заказывал
           </p>
         </div>
 
@@ -200,7 +193,7 @@ export default function customers_page() {
                     <span className="flex flex-wrap items-baseline gap-x-2">
                       <span className="font-semibold text-neutral-900">{c.name}</span>
                       <span className="text-xs text-neutral-400">
-                        {role_label[c.role] || c.role}
+                        {c.via}
                       </span>
                     </span>
                     <span className="mt-0.5 block text-sm text-neutral-500">
