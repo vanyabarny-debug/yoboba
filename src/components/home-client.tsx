@@ -677,28 +677,23 @@ export default function home_client({
     async function load_user() {
       const auth = await get_auth_state();
 
-      if (auth.is_permanent && auth.user_id && auth.profile) {
-        const name = (auth.profile.name || '').trim();
-        // без реального имени из профиля не считаем вход завершённым для UI
-        if (!name || name === 'аккаунт' || name === 'профиль') {
-          set_user_id(null);
-          set_is_anonymous(false);
-          set_user(null);
-          set_bonus(0);
-          set_cart_lines(load_guest_cart());
-          return;
-        }
+      if (auth.is_permanent && auth.user_id) {
+        const name = (auth.profile?.name || '').trim();
+        const shown =
+          name && name !== 'аккаунт' && name !== 'профиль'
+            ? name
+            : `id${auth.user_id.slice(0, 6)}`;
 
         set_user_id(auth.user_id);
         set_is_anonymous(false);
-        set_bonus(auth.profile.bonus_balance || 0);
+        set_bonus(auth.profile?.bonus_balance || 0);
         set_user({
-          id: auth.profile.id,
-          phone: auth.profile.phone || '',
-          name,
-          bonus_balance: auth.profile.bonus_balance || 0,
-          avatar_emoji: auth.profile.avatar_emoji || '',
-          avatar_bg: auth.profile.avatar_bg ?? null,
+          id: auth.profile?.id || auth.user_id,
+          phone: auth.profile?.phone || '',
+          name: shown,
+          bonus_balance: auth.profile?.bonus_balance || 0,
+          avatar_emoji: auth.profile?.avatar_emoji || '',
+          avatar_bg: auth.profile?.avatar_bg ?? null,
           is_guest: false,
           role: 'user',
         });
@@ -1180,22 +1175,19 @@ export default function home_client({
         })}
       </div>
 
-      {active_category === null && (
-        <div className="hidden min-[1024px]:block">
-          {createElement(promo_banners, is_admin_edit ? {
-            promos,
-            on_promo_click: () => {},
-            edit_mode: true,
-            on_edit_promo: set_editing_promo,
-            on_add_promo: () =>
-              set_editing_promo({ id: '', title: 'новая акция', image_url: '', is_active: true }),
-          } : {
-            promos,
-            on_promo_click: handle_promo_click,
-            viewed_ids: viewed_promos,
-          })}
-        </div>
-      )}
+      {active_category === null &&
+        createElement(promo_banners, is_admin_edit ? {
+          promos,
+          on_promo_click: () => {},
+          edit_mode: true,
+          on_edit_promo: set_editing_promo,
+          on_add_promo: () =>
+            set_editing_promo({ id: '', title: 'новая акция', image_url: '', is_active: true }),
+        } : {
+          promos,
+          on_promo_click: handle_promo_click,
+          viewed_ids: viewed_promos,
+        })}
 
       <section className="menu-sheet">
         <div ref={nav_ref} className="menu-sheet-head">
