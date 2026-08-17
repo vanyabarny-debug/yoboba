@@ -4,6 +4,7 @@ import { createElement, Suspense, useEffect, useState } from 'react';
 import Link from 'next/link';
 import site_chrome from '@/components/site-chrome';
 import {
+  get_default_page_by_slug,
   get_page_by_slug,
   subscribe_site_content_store,
   type site_page,
@@ -53,6 +54,26 @@ function parse_body(body: string): { intro: string[]; sections: section[] } {
   return { intro, sections };
 }
 
+function linkify(text: string) {
+  const parts = text.split(/(https?:\/\/[^\s]+)/g);
+  return parts.map((part, index) => {
+    if (/^https?:\/\//.test(part)) {
+      return (
+        <a
+          key={`${part}-${index}`}
+          href={part}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="underline underline-offset-2 text-accent break-all"
+        >
+          {part}
+        </a>
+      );
+    }
+    return <span key={`${part.slice(0, 24)}-${index}`}>{part}</span>;
+  });
+}
+
 export default function akciya_promo_page({
   slug,
   hero_src,
@@ -60,8 +81,9 @@ export default function akciya_promo_page({
   primary_cta = { href: '/', label: 'в меню' },
   hero_bg = '#0141C7',
 }: props) {
+  // дефолты из кода — одинаковые на сервере и клиенте (без localStorage)
   const [page, set_page] = useState<site_page | null>(
-    () => get_page_by_slug(slug) ?? null
+    () => get_default_page_by_slug(slug) ?? null
   );
 
   useEffect(() => {
@@ -87,6 +109,7 @@ export default function akciya_promo_page({
   }
 
   const { intro, sections } = parse_body(page.body);
+  const primary_external = /^https?:\/\//.test(primary_cta.href);
 
   return createElement(
     Suspense,
@@ -115,12 +138,15 @@ export default function akciya_promo_page({
           </h1>
           <div className="mt-6 max-w-3xl space-y-4 text-[16px] font-medium leading-relaxed text-neutral-800">
             {intro.map((paragraph) => (
-              <p key={paragraph.slice(0, 40)}>{paragraph}</p>
+              <p key={paragraph.slice(0, 40)}>{linkify(paragraph)}</p>
             ))}
           </div>
           <div className="mt-7 flex flex-wrap gap-3">
             <Link
               href={primary_cta.href}
+              {...(primary_external
+                ? { target: '_blank', rel: 'noopener noreferrer' }
+                : {})}
               className="rounded-pill bg-accent px-5 py-2.5 text-sm font-medium text-accent-foreground"
             >
               {primary_cta.label}
@@ -142,7 +168,7 @@ export default function akciya_promo_page({
             {section.prose.length > 0 && (
               <div className="mt-4 max-w-3xl space-y-4 text-[16px] font-medium leading-relaxed text-neutral-800">
                 {section.prose.map((paragraph) => (
-                  <p key={paragraph.slice(0, 40)}>{paragraph}</p>
+                  <p key={paragraph.slice(0, 40)}>{linkify(paragraph)}</p>
                 ))}
               </div>
             )}
@@ -169,7 +195,7 @@ export default function akciya_promo_page({
                       </h3>
                       {card.body ? (
                         <p className="mt-3 text-[15px] font-medium leading-relaxed text-neutral-800">
-                          {card.body}
+                          {linkify(card.body)}
                         </p>
                       ) : null}
                     </article>

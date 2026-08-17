@@ -11,6 +11,8 @@ type props = {
   on_edit_promo?: (promo: promo_banner) => void;
   on_add_promo?: () => void;
   viewed_ids?: Set<string>;
+  /** home: кружки на мобилке, карточки на пк; cards: карточки везде (страница «все акции») */
+  layout?: 'home' | 'cards';
 };
 
 // пауза между автолистаниями (по одной карточке)
@@ -23,8 +25,12 @@ export default function promo_banners({
   on_edit_promo,
   on_add_promo,
   viewed_ids,
+  layout = 'home',
 }: props) {
   const active = edit_mode ? promos : promos.filter((p) => p.is_active);
+  const show_stories = layout === 'home';
+  const show_cards = layout === 'cards';
+
   const scroll_ref = useRef<HTMLDivElement>(null);
   const track_ref = useRef<HTMLDivElement>(null);
   const wrap_ref = useRef<HTMLDivElement>(null);
@@ -50,6 +56,8 @@ export default function promo_banners({
   }, []);
 
   useLayoutEffect(() => {
+    if (!show_cards) return;
+
     update_arrows();
     const el = scroll_ref.current;
     const track = track_ref.current;
@@ -84,7 +92,7 @@ export default function promo_banners({
       document.fonts?.removeEventListener?.('loadingdone', update_arrows);
       ro.disconnect();
     };
-  }, [active.length, update_arrows]);
+  }, [active.length, show_cards, update_arrows]);
 
   function first_visible_index(cards: HTMLElement[], container: HTMLDivElement) {
     const cr = container.getBoundingClientRect();
@@ -123,9 +131,8 @@ export default function promo_banners({
     scroll_to_card(el, cards[next]);
   }, []);
 
-  // автолистание по одной карточке с зацикливанием (стоп при наведении)
   useEffect(() => {
-    if (active.length <= 3) return;
+    if (!show_cards || active.length <= 3) return;
 
     const el = scroll_ref.current;
     const wrap = wrap_ref.current;
@@ -145,7 +152,6 @@ export default function promo_banners({
       if (paused) return;
       const max = el.scrollWidth - el.clientWidth;
       if (el.scrollLeft >= max - 4) {
-        // дошли до конца — плавно возвращаемся в начало
         el.scrollTo({ left: 0, behavior: 'smooth' });
       } else {
         scroll_cards(1);
@@ -157,7 +163,7 @@ export default function promo_banners({
       wrap?.removeEventListener('mouseenter', on_enter);
       wrap?.removeEventListener('mouseleave', on_leave);
     };
-  }, [active.length, scroll_cards]);
+  }, [active.length, show_cards, scroll_cards]);
 
   if (!active.length && !edit_mode) return null;
   if (!active.length && edit_mode) {
@@ -177,8 +183,83 @@ export default function promo_banners({
   }
 
   return (
-    <section id="promos" className="mb-6 sm:mb-8 bg-page overflow-visible">
-      <div ref={wrap_ref} className="relative mx-auto w-full overflow-visible">
+    <section id="promos" className="mb-4 min-[1024px]:mb-6 sm:mb-8 bg-page overflow-visible">
+      {/* мобилка главной: кружки-сторис */}
+      {show_stories && (
+        <div className="min-[1024px]:hidden w-full min-w-0">
+          <div className="promo-stories-scroll stories-scroll">
+            <div className="flex w-max gap-3 py-4 pl-[var(--page-gutter)]">
+              {active.map((promo) => {
+                const viewed = !edit_mode && viewed_ids?.has(promo.id);
+                return (
+                  <div
+                    key={promo.id}
+                    className={`relative flex-shrink-0 ${
+                      edit_mode && !promo.is_active ? 'opacity-45' : ''
+                    }`}
+                  >
+                    <button
+                      type="button"
+                      onClick={() =>
+                        edit_mode ? on_edit_promo?.(promo) : on_promo_click(promo)
+                      }
+                      className="flex w-[136px] flex-col items-center gap-2 text-center"
+                    >
+                      <span
+                        className={`block size-[128px] overflow-hidden rounded-full bg-neutral-200 ${
+                          viewed
+                            ? 'opacity-65 shadow-[0_0_0_3px_#f4f5f6,0_0_0_5px_#d4d4d4]'
+                            : 'shadow-[0_0_0_3px_#f4f5f6,0_0_0_7px_#ff6b6b]'
+                        }`}
+                      >
+                        <img
+                          src={promo.image_url}
+                          alt=""
+                          className="size-full object-cover"
+                        />
+                      </span>
+                      <span className="w-full px-0.5 text-sm font-extrabold leading-snug text-neutral-900">
+                        {promo.title}
+                      </span>
+                    </button>
+                    {edit_mode &&
+                      on_edit_promo &&
+                      createElement(edit_pencil, {
+                        label: `править «${promo.title}»`,
+                        onClick: () => on_edit_promo(promo),
+                        className: 'absolute -top-1 -right-1 z-20',
+                      })}
+                  </div>
+                );
+              })}
+              {edit_mode && on_add_promo && (
+                <button
+                  type="button"
+                  onClick={on_add_promo}
+                  className="flex w-[136px] flex-shrink-0 flex-col items-center gap-2 text-center"
+                >
+                  <span className="flex size-[128px] items-center justify-center rounded-full border-2 border-dashed border-surface bg-white text-2xl text-neutral-400">
+                    +
+                  </span>
+                  <span className="w-full text-sm font-extrabold text-neutral-500">
+                    акция
+                  </span>
+                </button>
+              )}
+              {/* хвостик, чтобы последний кружок можно было доскроллить; обрезка в покое — по правому краю экрана */}
+              <div className="w-[var(--page-gutter)] flex-shrink-0" aria-hidden />
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* карточки: пк на главной, везде на «все акции» */}
+      <div
+        ref={wrap_ref}
+        className={`relative mx-auto w-full overflow-visible ${
+          show_cards ? 'block' : 'hidden min-[1024px]:block'
+        }`}
+      >
         {can_left && (
           <button
             type="button"

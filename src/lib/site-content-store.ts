@@ -6,7 +6,7 @@ export type product_addon = {
   tint: string;
 };
 
-export const site_content_version = 11;
+export const site_content_version = 16;
 
 export type category_nutrition = {
   kcal: number;
@@ -206,37 +206,32 @@ kanji: 模様
   },
   {
     slug: 'akciya-pervye-100',
-    title: 'первые 100 бабл ти бесплатно',
-    body: `открываем сезон так, как умеем только мы: первые 100 бабл ти — бесплатно. без мелкого шрифта в голове, но с честными правилами ниже.
+    title: 'бесплатно нальём самым быстрым',
+    body: `сто первых гостей получают напиток бесплатно. чтобы участвовать — зайди в пост вк и сделай три шага.
 
-забери свой стакан, пока акция жива — до 01.09.2026 или пока не закончатся бесплатные напитки.
+## три шага
 
-## что разыгрываем
+1. подпишись
+на наше сообщество вконтакте
 
-1. бесплатный бабл ти
-классический молочный бабл ти с тапиокой. объём и базовый рецепт — как в меню «классические бабл ти».
+2. поставь лайк
+записи с акцией
 
-2. лимит акции
-бесплатных напитков — 100 штук. когда лимит выбран, акция автоматически завершается, даже если дата ещё не подошла.
+3. сделай репост
+себе на стену и в историю
 
-## как получить
+## правила
 
-1. приходи в точку yomoyo
-покажи эту страницу бариста или скажи, что участвуешь в акции «первые 100».
+1. 1 репост = 1 напиток = 1 рука
+один репост — один напиток
 
-2. забери напиток
-один гость — один бесплатный напиток в рамках акции. доп. топпинги и апсайз оплачиваются отдельно по меню.
+2. напиток выбрать нельзя
+на кассе скажут, какой именно идёт в подарок
 
-3. успей до конца
-акция действует до 01.09.2026 включительно и только пока есть свободные бесплатные напитки из лимита 100.
+3. всего 100 бесплатных напитков
+кто успел к открытию — тот и забрал
 
-## организатор и правила
-
-организатор акции — yomoyo. подробности об организаторе, правилах проведения, количестве бесплатных напитков и времени проведения акции опубликованы на этой странице.
-
-акция проводится до 01.09.2026. участие означает согласие с условиями выше. количество бесплатных напитков ограничено: 100 шт. yomoyo вправе завершить акцию досрочно при исчерпании лимита или по техническим причинам.
-
-по вопросам акции пишите на hello@yomoyo.ru или уточняйте у бариста в точке.`,
+участие только через запись: https://vk.ru/wall-240740999_1`,
   },
   {
     slug: 'akciya-studentam',
@@ -352,6 +347,15 @@ function emit_update() {
   }
 }
 
+function is_code_owned_page(slug: string) {
+  return (
+    slug === 'o-nas' ||
+    slug === 'akcii' ||
+    slug.startsWith('akciya-') ||
+    slug === 'napitok-mesyaca-subzero'
+  );
+}
+
 export function get_default_site_content(): site_content_store {
   return {
     version: site_content_version,
@@ -369,53 +373,58 @@ export function get_default_site_content(): site_content_store {
 export function get_site_content_store(): site_content_store {
   if (typeof window === 'undefined') return get_default_site_content();
   const raw = localStorage.getItem(storage_key);
+  const seed = get_default_site_content();
   if (!raw) {
-    const seed = get_default_site_content();
     localStorage.setItem(storage_key, JSON.stringify(seed));
     return seed;
   }
   try {
     const parsed = JSON.parse(raw) as site_content_store;
-    if (!parsed.version || parsed.version < site_content_version) {
-      const seed = get_default_site_content();
-      const seed_pages = seed.pages.map((seed_page) => {
-        const existing = (parsed.pages ?? []).find((p) => p.slug === seed_page.slug);
-        if (!existing || seed_page.slug === 'o-nas') return seed_page;
-        const mentions_old =
-          /баблтишн/i.test(existing.title) || /баблтишн/i.test(existing.body);
-        if (!mentions_old) return existing;
-        return {
-          ...existing,
-          title: /баблтишн/i.test(existing.title) ? seed_page.title : existing.title,
-          body: /баблтишн/i.test(existing.body) ? seed_page.body : existing.body,
-        };
-      });
-      const top_bar_links = seed.top_bar_links.map((seed_link) => {
-        const existing = (parsed.top_bar_links ?? []).find((l) => l.id === seed_link.id);
-        if (!existing) return seed_link;
-        if (/баблтишн/i.test(existing.label)) {
-          return { ...existing, label: seed_link.label };
-        }
-        return existing;
-      });
-      const merged = {
-        ...seed,
-        ...parsed,
-        version: site_content_version,
-        pages: seed_pages,
-        top_bar_links,
-        topping_portion_price: parsed.topping_portion_price ?? 60,
-        category_nutrition: {
-          ...default_category_nutrition,
-          ...parsed.category_nutrition,
-        },
+    const needs_upgrade = !parsed.version || parsed.version < site_content_version;
+    const seed_pages = seed.pages.map((seed_page) => {
+      const existing = (parsed.pages ?? []).find((p) => p.slug === seed_page.slug);
+      if (!existing || is_code_owned_page(seed_page.slug)) return seed_page;
+      if (!needs_upgrade) return existing;
+      const mentions_old =
+        /баблтишн/i.test(existing.title) || /баблтишн/i.test(existing.body);
+      if (!mentions_old) return existing;
+      return {
+        ...existing,
+        title: /баблтишн/i.test(existing.title) ? seed_page.title : existing.title,
+        body: /баблтишн/i.test(existing.body) ? seed_page.body : existing.body,
       };
+    });
+    const extra_pages = (parsed.pages ?? []).filter(
+      (page) => !seed.pages.some((seed_page) => seed_page.slug === page.slug)
+    );
+    const top_bar_links = seed.top_bar_links.map((seed_link) => {
+      const existing = (parsed.top_bar_links ?? []).find((l) => l.id === seed_link.id);
+      if (!existing) return seed_link;
+      if (/баблтишн/i.test(existing.label)) {
+        return { ...existing, label: seed_link.label };
+      }
+      return existing;
+    });
+    const merged = {
+      ...seed,
+      ...parsed,
+      version: site_content_version,
+      pages: [...seed_pages, ...extra_pages],
+      top_bar_links,
+      topping_portion_price: parsed.topping_portion_price ?? 60,
+      category_nutrition: {
+        ...default_category_nutrition,
+        ...parsed.category_nutrition,
+      },
+    };
+    if (
+      needs_upgrade ||
+      JSON.stringify(parsed.pages) !== JSON.stringify(merged.pages)
+    ) {
       localStorage.setItem(storage_key, JSON.stringify(merged));
-      return merged;
     }
-    return parsed;
+    return merged;
   } catch {
-    const seed = get_default_site_content();
     localStorage.setItem(storage_key, JSON.stringify(seed));
     return seed;
   }
@@ -440,7 +449,15 @@ export function subscribe_site_content_store(cb: () => void) {
 }
 
 export function get_page_by_slug(slug: string): site_page | undefined {
+  if (is_code_owned_page(slug)) {
+    return get_default_page_by_slug(slug);
+  }
   return get_site_content_store().pages.find((p) => p.slug === slug);
+}
+
+/** только дефолты из кода — безопасно для SSR / первого рендера без localStorage */
+export function get_default_page_by_slug(slug: string): site_page | undefined {
+  return get_default_site_content().pages.find((p) => p.slug === slug);
 }
 
 export function upsert_page(page: site_page) {

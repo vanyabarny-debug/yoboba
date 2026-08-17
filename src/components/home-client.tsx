@@ -573,15 +573,13 @@ export default function home_client({
   }, [demo_mode]);
 
   useEffect(() => {
-    if (!demo_mode) return;
-
     function reload_promos() {
       set_promos(get_promo_store().promos);
     }
 
     reload_promos();
     return subscribe_promo_store(reload_promos);
-  }, [demo_mode]);
+  }, []);
 
   useEffect(() => {
     function reload_viewed() {

@@ -1,6 +1,6 @@
 import type { promo_banner } from '@/lib/types';
 
-export const promo_store_version = 22;
+export const promo_store_version = 26;
 
 const storage_key = 'yoboba_promo_store';
 const update_event = 'yoboba-promo-update';
@@ -8,12 +8,12 @@ const update_event = 'yoboba-promo-update';
 export const default_promos: promo_banner[] = [
   {
     id: 'promo-13',
-    title: 'первые 100 бабл ти бесплатно',
-    subtitle: 'подробности и правила — на странице акции',
-    badge: 'до 01.09',
+    title: 'бесплатно нальём самым быстрым',
+    subtitle: '100 напитков · подписка, лайк, репост',
+    badge: '100 шт',
     image_url: '/images/promos/promo13.png?v=7',
     link_url: '/akciya-pervye-100',
-    cta_label: 'условия акции',
+    cta_label: 'условия',
     title_in_image: true,
     is_active: true,
   },
@@ -69,24 +69,34 @@ export function get_default_promo_store(): promo_store {
   };
 }
 
+function merge_with_code_defaults(parsed: promo_store): promo_store {
+  const default_ids = new Set(default_promos.map((p) => p.id));
+  const custom = (parsed.promos ?? []).filter((p) => !default_ids.has(p.id));
+  return {
+    version: promo_store_version,
+    promos: [...default_promos.map((p) => ({ ...p })), ...custom],
+  };
+}
+
 export function get_promo_store(): promo_store {
   if (typeof window === 'undefined') return get_default_promo_store();
   const raw = localStorage.getItem(storage_key);
+  const seed = get_default_promo_store();
   if (!raw) {
-    const seed = get_default_promo_store();
     localStorage.setItem(storage_key, JSON.stringify(seed));
     return seed;
   }
   try {
     const parsed = JSON.parse(raw) as promo_store;
-    if (!parsed.version || parsed.version < promo_store_version) {
-      const seed = get_default_promo_store();
-      localStorage.setItem(storage_key, JSON.stringify(seed));
-      return seed;
+    const merged = merge_with_code_defaults(parsed);
+    if (
+      parsed.version !== merged.version ||
+      JSON.stringify(parsed.promos) !== JSON.stringify(merged.promos)
+    ) {
+      localStorage.setItem(storage_key, JSON.stringify(merged));
     }
-    return parsed;
+    return merged;
   } catch {
-    const seed = get_default_promo_store();
     localStorage.setItem(storage_key, JSON.stringify(seed));
     return seed;
   }

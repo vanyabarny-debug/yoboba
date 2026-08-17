@@ -3,6 +3,7 @@
 import { createElement, Suspense, useEffect, useState, type ReactNode } from 'react';
 import site_chrome from '@/components/site-chrome';
 import {
+  get_default_page_by_slug,
   get_page_by_slug,
   subscribe_site_content_store,
   type site_page,
@@ -60,7 +61,7 @@ function with_chrome(content: ReactNode) {
 
 export default function site_content_page({ slug, children }: props) {
   const [page, set_page] = useState<site_page | null>(
-    () => get_page_by_slug(slug) ?? null
+    () => get_default_page_by_slug(slug) ?? null
   );
 
   useEffect(() => {

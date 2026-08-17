@@ -10,4 +10,10 @@ export const PROMO_ASPECT_CLASS = 'aspect-[9/16]';
 export const PROMO_CARD_W_MOBILE = 152;
 export const PROMO_CARD_W_DESKTOP = 180;
 
-export const PROMO_SIZE_HINT = `${PROMO_IMAGE_WIDTH}×${PROMO_IMAGE_HEIGHT} px · 9:16 (как сторис)`;
+/**
+ * Картинка — только визуал на весь кадр 9:16.
+ * Заголовок/описание/кнопка в сторис показываются отдельным белым блоком под фото —
+ * не рисуй CTA и длинный текст внизу картинки.
+ */
+export const PROMO_SIZE_HINT =
+  `${PROMO_IMAGE_WIDTH}×${PROMO_IMAGE_HEIGHT} px · 9:16 · только картинка, текст и кнопка — в белом блоке под ней`;

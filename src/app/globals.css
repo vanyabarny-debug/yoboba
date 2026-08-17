@@ -178,6 +178,17 @@ body::-webkit-scrollbar {
 #promos {
   position: relative;
   z-index: 1;
+  overflow: visible;
+}
+
+.promo-stories-scroll {
+  width: 100%;
+  min-width: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  overscroll-behavior-x: contain;
+  touch-action: pan-x;
+  -webkit-overflow-scrolling: touch;
 }
 
 .sticky-ad-slide {

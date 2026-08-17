@@ -59,6 +59,7 @@ export default function akcii_page() {
         key: 'promos',
         promos,
         on_promo_click: handle_promo_click,
+        layout: 'cards',
       }),
       story_index !== null &&
         createElement(promo_story_viewer, {

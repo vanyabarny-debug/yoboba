@@ -1,9 +1,7 @@
 /* eslint-disable no-restricted-globals */
 
-const cache_name = 'yoboba-v11';
+const cache_name = 'yoboba-v12';
 const static_assets = [
-  '/',
-  '/login',
   '/manifest.json',
   '/icons/icon-192.png',
   '/icons/icon-512.png',
@@ -39,20 +37,27 @@ self.addEventListener('fetch', (event) => {
 
   if (url.pathname.startsWith('/api/')) return;
 
-  // картинки меню — только сеть, без залипшего кеша 404
-  if (url.pathname.startsWith('/images/menu/')) {
-    event.respondWith(fetch(request));
+  // HTML страниц не кешируем — иначе акции и сторис залипают на месяцы
+  if (request.mode === 'navigate') {
+    event.respondWith(fetch(request, { cache: 'no-store' }));
     return;
   }
 
-  // HTML / JS / CSS — сначала сеть, иначе старый бандл держит чёрные кнопки задач
-  const is_nav = request.mode === 'navigate';
+  // картинки меню и акций — только сеть, без залипшего кеша
+  if (
+    url.pathname.startsWith('/images/menu/') ||
+    url.pathname.startsWith('/images/promos/')
+  ) {
+    event.respondWith(fetch(request, { cache: 'no-store' }));
+    return;
+  }
+
   const is_asset =
     url.pathname.startsWith('/_next/') ||
     url.pathname.endsWith('.js') ||
     url.pathname.endsWith('.css');
 
-  if (is_nav || is_asset) {
+  if (is_asset) {
     event.respondWith(
       fetch(request)
         .then((response) => {
@@ -68,19 +73,15 @@ self.addEventListener('fetch', (event) => {
   }
 
   event.respondWith(
-    caches.match(request).then((cached) => {
-      const network = fetch(request)
-        .then((response) => {
-          if (response.ok && url.origin === self.location.origin) {
-            const clone = response.clone();
-            caches.open(cache_name).then((cache) => cache.put(request, clone));
-          }
-          return response;
-        })
-        .catch(() => cached);
-
-      return cached || network;
-    })
+    fetch(request)
+      .then((response) => {
+        if (response.ok && url.origin === self.location.origin) {
+          const clone = response.clone();
+          caches.open(cache_name).then((cache) => cache.put(request, clone));
+        }
+        return response;
+      })
+      .catch(() => caches.match(request).then((cached) => cached || Response.error()))
   );
 });
 
