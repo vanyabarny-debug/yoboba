@@ -1,13 +1,14 @@
 import { createServerClient } from '@supabase/ssr';
 import { NextResponse, type NextRequest } from 'next/server';
 import { sanitize_auth_return_path } from '@/lib/auth-return';
-import { public_site_origin } from '@/lib/vk-auth-config';
+import { public_site_origin, vk_cookies_secure } from '@/lib/vk-auth-config';
 import {
   exchange_vk_code,
   fetch_vk_user,
   issue_vk_one_time_password,
   upsert_vk_supabase_user,
 } from '@/lib/vk-auth-server';
+import { save_pending_vk_session } from '@/lib/vk-pending-session';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -158,23 +159,28 @@ export async function GET(request: NextRequest) {
       throw new Error(`supabase signIn: ${verified.error?.message || 'нет сессии'}`);
     }
 
-    if (!cookie_bag.length) {
-      throw new Error('supabase: сессия не записалась в cookies');
-    }
+    const pending_id = await save_pending_vk_session({
+      access_token: verified.data.session.access_token,
+      refresh_token: verified.data.session.refresh_token,
+    });
 
     const next = new URL(return_to, origin);
+    next.searchParams.set('vk', '1');
     const res = NextResponse.redirect(next);
     res.headers.set('cache-control', 'no-store');
-    // не чистим vk_* здесь: лишние Set-Cookie раздувают заголовок → nginx 502
-    cookie_bag.forEach(({ name, value, options }) => {
-      res.cookies.set(name, value, options);
+    res.cookies.set('vk_pending', pending_id, {
+      httpOnly: true,
+      sameSite: 'lax',
+      secure: vk_cookies_secure(),
+      maxAge: 120,
+      path: '/',
     });
 
     console.log('[vk/callback] session ok', {
       user_id: verified.data.session.user.id,
       email: account.email,
       next: return_to,
-      cookies: cookie_bag.length,
+      pending: true,
     });
 
     return res;

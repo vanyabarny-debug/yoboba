@@ -105,6 +105,25 @@ export async function ensure_anonymous_session() {
   return { user: null, error };
 }
 
+async function finish_vk_browser_session() {
+  try {
+    const res = await fetch('/api/auth/finish-vk', {
+      method: 'POST',
+      credentials: 'same-origin',
+    });
+    if (!res.ok) return;
+    const body = (await res.json()) as {
+      ok?: boolean;
+      session?: Session | null;
+    };
+    if (body.ok && body.session) {
+      await apply_session(body.session);
+    }
+  } catch {
+    /* нет pending vk-сессии */
+  }
+}
+
 export async function get_auth_state(): Promise<auth_state> {
   if (!is_supabase_configured()) {
     return {
@@ -115,6 +134,8 @@ export async function get_auth_state(): Promise<auth_state> {
       profile: null,
     };
   }
+
+  await finish_vk_browser_session();
 
   try {
     const res = await fetch('/api/auth/profile', { credentials: 'same-origin' });
