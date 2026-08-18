@@ -211,3 +211,37 @@ export async function PATCH(request: NextRequest) {
   merge_cookies(cookie_response, res);
   return res;
 }
+
+export async function DELETE(request: NextRequest) {
+  let cookie_response = NextResponse.next();
+  const supabase = make_supabase(request, cookie_response, true);
+
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user || user.is_anonymous) {
+    const res = NextResponse.json({ error: 'не авторизован' }, { status: 401 });
+    merge_cookies(cookie_response, res);
+    return res;
+  }
+
+  if (process.env.SUPABASE_SERVICE_ROLE_KEY) {
+    const admin = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.SUPABASE_SERVICE_ROLE_KEY
+    );
+    await admin
+      .from('profiles')
+      .update({
+        name: null,
+        phone: null,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', user.id);
+  }
+
+  await supabase.auth.signOut();
+  const res = NextResponse.json({ ok: true });
+  merge_cookies(cookie_response, res);
+  return res;
+}

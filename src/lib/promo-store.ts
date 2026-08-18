@@ -1,6 +1,6 @@
 import type { promo_banner } from '@/lib/types';
 
-export const promo_store_version = 26;
+export const promo_store_version = 27;
 
 const storage_key = 'yoboba_promo_store';
 const update_event = 'yoboba-promo-update';
@@ -54,6 +54,8 @@ export const default_promos: promo_banner[] = [
 type promo_store = {
   version: number;
   promos: promo_banner[];
+  /** дефолтные id, которые админ уже удалил — не поднимать снова из кода */
+  removed_ids?: string[];
 };
 
 function emit_update() {
@@ -62,19 +64,37 @@ function emit_update() {
   }
 }
 
+function default_promo_ids() {
+  return new Set(default_promos.map((p) => p.id));
+}
+
 export function get_default_promo_store(): promo_store {
   return {
     version: promo_store_version,
     promos: default_promos.map((p) => ({ ...p })),
+    removed_ids: [],
   };
 }
 
 function merge_with_code_defaults(parsed: promo_store): promo_store {
-  const default_ids = new Set(default_promos.map((p) => p.id));
-  const custom = (parsed.promos ?? []).filter((p) => !default_ids.has(p.id));
+  const removed = new Set(
+    (parsed.removed_ids ?? []).filter((id) => typeof id === 'string' && id)
+  );
+  const saved = (parsed.promos ?? []).filter(
+    (promo) => promo?.id && !removed.has(promo.id)
+  );
+  const saved_ids = new Set(saved.map((promo) => promo.id));
+
+  const next = [...saved];
+  for (const def of default_promos) {
+    if (removed.has(def.id) || saved_ids.has(def.id)) continue;
+    next.push({ ...def });
+  }
+
   return {
     version: promo_store_version,
-    promos: [...default_promos.map((p) => ({ ...p })), ...custom],
+    promos: next,
+    removed_ids: [...removed],
   };
 }
 
@@ -125,12 +145,18 @@ export function upsert_promo(data: promo_banner) {
   const idx = store.promos.findIndex((p) => p.id === data.id);
   if (idx >= 0) store.promos[idx] = data;
   else store.promos.push(data);
+  if (store.removed_ids?.includes(data.id)) {
+    store.removed_ids = store.removed_ids.filter((id) => id !== data.id);
+  }
   save_promo_store(store);
 }
 
 export function delete_promo(id: string) {
   const store = get_promo_store();
   store.promos = store.promos.filter((p) => p.id !== id);
+  if (default_promo_ids().has(id)) {
+    store.removed_ids = [...new Set([...(store.removed_ids ?? []), id])];
+  }
   save_promo_store(store);
 }
 

@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { createElement, Suspense, useEffect, useState } from 'react';
+import { createElement, Suspense, useEffect, useState, type ReactNode } from 'react';
 import { useRouter } from 'next/navigation';
 import site_chrome from '@/components/site-chrome';
 import TapicoinIcon from '@/components/tapicoin-icon';
@@ -26,6 +26,8 @@ import {
 import avatar_circle from '@/components/avatar-circle';
 import {
   add_linked_card,
+  clear_profile_local,
+  format_card_expiry_input,
   get_profile_local,
   remove_linked_card,
   save_profile_local,
@@ -114,13 +116,112 @@ function format_datetime(iso: string) {
   try {
     return new Date(iso).toLocaleString('ru-RU', {
       day: 'numeric',
-      month: 'short',
+      month: 'long',
       hour: '2-digit',
       minute: '2-digit',
     });
   } catch {
     return iso;
   }
+}
+
+const field_box =
+  'w-full min-h-[52px] rounded-[12px] bg-[#f0f0f0] px-4 py-[13px] text-[16px] sm:text-[17px] font-medium text-neutral-900';
+const field_input =
+  'w-full min-h-[52px] rounded-[12px] bg-[#f0f0f0] px-4 py-[13px] text-[16px] sm:text-[17px] font-medium text-neutral-900 outline-none focus:ring-2 focus:ring-accent/30';
+const change_btn = 'shrink-0 text-[15px] font-medium text-accent hover:opacity-80';
+const section_title =
+  'text-[28px] sm:text-[32px] font-bold leading-[1.15] tracking-tight text-neutral-900';
+const edit_actions = 'flex gap-2 pt-1';
+const edit_cancel =
+  'flex-1 rounded-pill border border-neutral-200 bg-white py-2.5 text-sm text-neutral-600 hover:bg-neutral-50';
+const edit_save =
+  'flex-1 rounded-pill bg-accent text-accent-foreground py-2.5 text-sm font-medium disabled:opacity-60';
+
+function change_link({
+  children,
+  onClick,
+}: {
+  children: string;
+  onClick: () => void;
+}) {
+  return (
+    <button type="button" onClick={onClick} className={change_btn}>
+      {children}
+    </button>
+  );
+}
+
+function field_label({
+  label,
+  action,
+}: {
+  label: string;
+  action?: ReactNode;
+}) {
+  return (
+    <div className="mb-2 flex items-center justify-between gap-3">
+      <span className="text-[15px] text-neutral-400">{label}</span>
+      {action}
+    </div>
+  );
+}
+
+function banner_heart() {
+  return (
+    <svg
+      viewBox="0 0 88 80"
+      className="h-[88px] w-[96px] drop-shadow-[0_8px_16px_rgba(120,0,40,0.28)]"
+      aria-hidden
+    >
+      <defs>
+        <linearGradient id="profile-heart" x1="18%" y1="0%" x2="80%" y2="100%">
+          <stop offset="0%" stopColor="#ffe1ea" />
+          <stop offset="45%" stopColor="#ff8aa8" />
+          <stop offset="100%" stopColor="#ff3d6e" />
+        </linearGradient>
+      </defs>
+      <path
+        fill="url(#profile-heart)"
+        d="M44 76C18 58 2 42 2 24 2 11.5 12 2 24.5 2 32.5 2 39 6.5 44 14 49 6.5 55.5 2 63.5 2 76 2 86 11.5 86 24c0 18-16 34-42 52z"
+      />
+      <path
+        fill="rgba(255,255,255,0.45)"
+        d="M24 16c-6 2-10 8-10 15 0 1.2.1 2.3.4 3.4C16.5 24 24 18 34 16c-3-2-6.5-2.2-10 0z"
+      />
+    </svg>
+  );
+}
+
+function card_brand_mark({ brand }: { brand: string }) {
+  const key = brand.toLowerCase();
+  if (key.includes('visa')) {
+    return (
+      <span className="inline-flex h-7 w-11 items-center justify-center rounded-[4px] bg-[#1a1f71] text-[10px] font-black tracking-wide text-white">
+        VISA
+      </span>
+    );
+  }
+  if (key.includes('master') || key === 'mc') {
+    return (
+      <span className="relative inline-flex h-7 w-11 items-center justify-center rounded-[4px] bg-[#1b1b1b]">
+        <span className="absolute left-[9px] h-4 w-4 rounded-full bg-[#eb001b]" />
+        <span className="absolute right-[9px] h-4 w-4 rounded-full bg-[#f79e1b]" />
+      </span>
+    );
+  }
+  if (key.includes('мир') || key.includes('mir')) {
+    return (
+      <span className="inline-flex h-7 w-11 items-center justify-center rounded-[4px] bg-white ring-1 ring-black/10">
+        <span className="text-[9px] font-black tracking-wide text-[#0d4ea6]">МИР</span>
+      </span>
+    );
+  }
+  return (
+    <span className="inline-flex h-7 max-w-[4.5rem] items-center justify-center truncate rounded-[4px] bg-neutral-200 px-1.5 text-[10px] font-bold text-neutral-600">
+      {brand}
+    </span>
+  );
 }
 
 function format_birthday(iso: string) {
@@ -159,8 +260,10 @@ export default function profile_page() {
   const [birthday_draft, set_birthday_draft] = useState('');
   const [card_brand, set_card_brand] = useState('МИР');
   const [card_last4, set_card_last4] = useState('');
+  const [card_expires, set_card_expires] = useState('');
   const [card_error, set_card_error] = useState('');
   const [adding_card, set_adding_card] = useState(false);
+  const [deleting_profile, set_deleting_profile] = useState(false);
   const [editing_avatar, set_editing_avatar] = useState(false);
   const [avatar_draft, set_avatar_draft] = useState('');
   const [avatar_bg_draft, set_avatar_bg_draft] = useState<string | null>(null);
@@ -433,9 +536,11 @@ export default function profile_page() {
       const next = add_linked_card(profile.id, {
         brand: card_brand,
         last4: card_last4,
+        expires: card_expires,
       });
       set_local(next);
       set_card_last4('');
+      set_card_expires('');
       set_adding_card(false);
     } catch (e) {
       set_card_error(e instanceof Error ? e.message : 'не удалось добавить');
@@ -456,95 +561,98 @@ export default function profile_page() {
     router.push('/');
   }
 
+  async function handle_delete_profile() {
+    if (
+      !confirm(
+        'удалить профиль? данные на этом устройстве сотрутся, вы выйдете из аккаунта'
+      )
+    ) {
+      return;
+    }
+
+    set_deleting_profile(true);
+    try {
+      if (profile) clear_profile_local(profile.id);
+      if (demo_mode) {
+        await clear_session();
+      } else {
+        await fetch('/api/auth/profile', {
+          method: 'DELETE',
+          credentials: 'same-origin',
+        });
+        await sign_out();
+      }
+      router.push('/');
+    } finally {
+      set_deleting_profile(false);
+    }
+  }
+
+  const left_to_drink = Math.max(
+    0,
+    FREE_DRINK_BONUS_THRESHOLD - (profile?.bonus_balance || 0)
+  );
+  const tapicoin_progress = Math.min(
+    100,
+    ((profile?.bonus_balance || 0) / FREE_DRINK_BONUS_THRESHOLD) * 100
+  );
+
   const content =
     loading || !profile || !local ? (
       <div className="page-shell py-12">
-        <p className="text-neutral-500">загрузка профиля…</p>
+        <p className="text-neutral-400">загрузка профиля…</p>
       </div>
     ) : (
-      <div className="page-shell py-6 sm:py-8 pb-[calc(4rem+var(--safe-bottom))] space-y-8 max-w-3xl">
-        <div className="flex items-start justify-between gap-4">
-          <div className="flex min-w-0 items-center gap-3">
-            {createElement(avatar_circle, {
-              emoji: profile.avatar_emoji,
-              bg: profile.avatar_bg,
-              image_url: profile.avatar_url,
-              user_id: profile.id,
-              size: 'md',
-            })}
-            <div className="min-w-0">
-              <h1 className="text-2xl sm:text-3xl font-bold text-neutral-900 leading-tight truncate">
-                {profile.name || 'личный кабинет'}
-              </h1>
-              <p className="mt-0.5 text-sm text-neutral-500">личный кабинет</p>
-            </div>
-          </div>
-          <button
-            type="button"
-            onClick={handle_logout}
-            className="shrink-0 rounded-pill border border-neutral-200 bg-white px-4 py-2 text-sm font-medium text-neutral-700 hover:bg-neutral-50"
-          >
-            выйти
-          </button>
-        </div>
-
-        {/* тапикоины */}
-        <section className="rounded-2xl bg-white p-5 sm:p-6 shadow-soft">
-          <div className="flex items-center justify-between gap-4">
-            <div>
-              <p className="text-sm text-neutral-500 mb-1 inline-flex items-center gap-1.5">
-                <TapicoinIcon size={16} />
-                ваши тапикоины
-              </p>
-              <p className="text-3xl sm:text-4xl font-bold text-[#0039A6] tabular-nums inline-flex items-center gap-2">
-                <TapicoinIcon size={28} />
-                {profile.bonus_balance}
-              </p>
-            </div>
-            <div className="text-right text-sm text-neutral-500 max-w-[12rem] leading-snug">
+      <div className="page-shell overflow-x-hidden py-8 sm:py-10 pb-[calc(5rem+var(--safe-bottom))]">
+        <div className="w-full min-w-0 max-w-3xl space-y-10 sm:space-y-12">
+        <section className="relative overflow-hidden rounded-[20px] bg-[linear-gradient(100deg,#ff2d6a_0%,#ff4d7d_42%,#ff6b6b_100%)] px-5 py-5 sm:px-7 sm:py-6 text-white">
+          <div className="relative z-10 max-w-[70%] pr-2">
+            <p className="text-[15px] sm:text-base font-medium leading-snug">
+              ваши тапикоины
+            </p>
+            <p className="mt-2 inline-flex items-center gap-2 text-[34px] sm:text-[40px] font-bold leading-none tabular-nums">
+              <TapicoinIcon size={28} className="bg-white/20" />
+              {profile.bonus_balance}
+            </p>
+            <p className="mt-3 text-sm sm:text-[15px] leading-snug text-white/90">
               до бесплатного напитка:{' '}
-              <span className="font-semibold text-neutral-800">
-                {Math.max(0, FREE_DRINK_BONUS_THRESHOLD - profile.bonus_balance)}
-              </span>
+              <span className="font-semibold">{left_to_drink}</span>
+            </p>
+            <div className="mt-4 h-1.5 overflow-hidden rounded-full bg-white/25">
+              <div
+                className="h-full rounded-full bg-white transition-all"
+                style={{ width: `${tapicoin_progress}%` }}
+              />
             </div>
           </div>
-          <div className="mt-4 h-2 rounded-full bg-neutral-100 overflow-hidden">
-            <div
-              className="h-full rounded-full bg-[#0039A6] transition-all"
-              style={{
-                width: `${Math.min(100, (profile.bonus_balance / FREE_DRINK_BONUS_THRESHOLD) * 100)}%`,
-              }}
-            />
+          <div className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 sm:right-6">
+            {banner_heart()}
           </div>
         </section>
 
-        {/* личные данные */}
-        <section className="rounded-2xl bg-white p-5 sm:p-6 shadow-soft space-y-4">
-          <h2 className="text-lg font-bold text-neutral-900">личные данные</h2>
+        <section className="space-y-5">
+          <h1 className={section_title}>личные данные</h1>
 
           <div>
-            <div className="flex items-center justify-between gap-2 mb-1.5">
-              <label className="text-xs text-neutral-500">аватар</label>
-              {!editing_avatar && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    set_avatar_draft(
-                      profile.avatar_emoji || avatar_emoji_from_id(profile.id)
-                    );
-                    set_avatar_bg_draft(normalize_avatar_bg(profile.avatar_bg));
-                    set_avatar_error('');
-                    set_editing_avatar(true);
-                  }}
-                  className="text-xs font-semibold text-accent hover:underline"
-                >
-                  изменить
-                </button>
-              )}
-            </div>
+            {field_label({
+              label: 'аватар',
+              action: !editing_avatar
+                ? change_link({
+                    children: 'изменить',
+                    onClick: () => {
+                      set_avatar_draft(
+                        profile.avatar_emoji || avatar_emoji_from_id(profile.id)
+                      );
+                      set_avatar_bg_draft(normalize_avatar_bg(profile.avatar_bg));
+                      set_avatar_error('');
+                      set_editing_avatar(true);
+                    },
+                  })
+                : null,
+            })}
             {editing_avatar ? (
               <div className="space-y-4">
-                <div className="flex items-center gap-3">
+                <div className={`${field_box} flex items-center gap-3`}>
                   {createElement(avatar_circle, {
                     emoji: avatar_draft,
                     bg: avatar_bg_draft,
@@ -552,7 +660,7 @@ export default function profile_page() {
                     user_id: profile.id,
                     size: 'lg',
                   })}
-                  <p className="text-xs text-neutral-500 leading-relaxed">
+                  <p className="text-[13px] font-normal text-neutral-500 leading-relaxed">
                     эмоджи — {AVATAR_EMOJI_CHANGE_COST} т., цвет фона бесплатно.
                     {profile.bonus_balance < AVATAR_EMOJI_CHANGE_COST
                       ? ` у вас ${profile.bonus_balance} т.`
@@ -561,7 +669,7 @@ export default function profile_page() {
                 </div>
 
                 <div>
-                  <p className="mb-2 text-xs font-semibold text-neutral-600">эмоджи</p>
+                  <p className="mb-2 text-[13px] text-neutral-400">эмоджи</p>
                   <div className="grid grid-cols-6 gap-2 sm:grid-cols-9">
                     {AVATAR_EMOJI_POOL.map((emoji) => {
                       const selected = avatar_draft === emoji;
@@ -570,10 +678,10 @@ export default function profile_page() {
                           key={emoji}
                           type="button"
                           onClick={() => set_avatar_draft(emoji)}
-                          className={`flex h-11 w-full items-center justify-center rounded-xl text-2xl transition ${
+                          className={`flex h-11 w-full items-center justify-center rounded-[12px] text-2xl transition ${
                             selected
                               ? 'bg-accent/15 ring-2 ring-accent'
-                              : 'bg-page hover:bg-neutral-100'
+                              : 'bg-[#f0f0f0] hover:bg-neutral-200'
                           }`}
                           aria-label={`выбрать ${emoji}`}
                         >
@@ -585,7 +693,7 @@ export default function profile_page() {
                 </div>
 
                 <div>
-                  <p className="mb-2 text-xs font-semibold text-neutral-600">цвет фона</p>
+                  <p className="mb-2 text-[13px] text-neutral-400">цвет фона</p>
                   <div className="flex flex-wrap gap-2">
                     {AVATAR_BG_POOL.map((swatch) => {
                       const value = swatch.color;
@@ -609,11 +717,11 @@ export default function profile_page() {
                 </div>
 
                 {avatar_error && <p className="text-xs text-red-500">{avatar_error}</p>}
-                <div className="flex gap-2">
+                <div className={edit_actions}>
                   <button
                     type="button"
                     onClick={() => set_editing_avatar(false)}
-                    className="flex-1 rounded-pill border border-neutral-200 py-2 text-sm"
+                    className={edit_cancel}
                   >
                     отмена
                   </button>
@@ -631,7 +739,7 @@ export default function profile_page() {
                         profile.bonus_balance < AVATAR_EMOJI_CHANGE_COST)
                     }
                     onClick={() => void handle_change_avatar()}
-                    className="flex-1 rounded-pill bg-accent text-accent-foreground py-2 text-sm font-medium disabled:opacity-60"
+                    className={edit_save}
                   >
                     {saving_avatar
                       ? 'сохраняем…'
@@ -643,7 +751,7 @@ export default function profile_page() {
                 </div>
               </div>
             ) : (
-              <div className="flex items-center gap-3 rounded-xl bg-page px-3 py-2.5">
+              <div className={`${field_box} flex items-center gap-3`}>
                 {createElement(avatar_circle, {
                   emoji: profile.avatar_emoji,
                   bg: profile.avatar_bg,
@@ -651,42 +759,41 @@ export default function profile_page() {
                   user_id: profile.id,
                   size: 'sm',
                 })}
-                <span className="text-sm text-neutral-600">ваш эмоджи аватар</span>
+                <span className="text-[16px] sm:text-[17px] font-medium text-neutral-900">
+                  ваш эмоджи аватар
+                </span>
               </div>
             )}
           </div>
 
           <div>
-            <div className="flex items-center justify-between gap-2 mb-1.5">
-              <label className="text-xs text-neutral-500">имя</label>
-              {!editing_name && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    set_name_draft(profile.name || '');
-                    set_editing_name(true);
-                    set_name_error('');
-                  }}
-                  className="text-xs font-semibold text-accent hover:underline"
-                >
-                  изменить
-                </button>
-              )}
-            </div>
+            {field_label({
+              label: 'имя',
+              action: !editing_name
+                ? change_link({
+                    children: 'изменить',
+                    onClick: () => {
+                      set_name_draft(profile.name || '');
+                      set_editing_name(true);
+                      set_name_error('');
+                    },
+                  })
+                : null,
+            })}
             {editing_name ? (
               <div className="space-y-2">
                 <input
                   value={name_draft}
                   onChange={(e) => set_name_draft(e.target.value)}
-                  className="w-full rounded-xl border border-neutral-200 bg-page px-3 py-2.5 text-sm"
+                  className={field_input}
                   autoFocus
                 />
                 {name_error && <p className="text-xs text-red-500">{name_error}</p>}
-                <div className="flex gap-2">
+                <div className={edit_actions}>
                   <button
                     type="button"
                     onClick={() => set_editing_name(false)}
-                    className="flex-1 rounded-pill border border-neutral-200 py-2 text-sm"
+                    className={edit_cancel}
                   >
                     отмена
                   </button>
@@ -694,58 +801,55 @@ export default function profile_page() {
                     type="button"
                     disabled={saving_name}
                     onClick={handle_save_name}
-                    className="flex-1 rounded-pill bg-accent text-accent-foreground py-2 text-sm font-medium disabled:opacity-60"
+                    className={edit_save}
                   >
                     {saving_name ? 'сохраняем…' : 'сохранить'}
                   </button>
                 </div>
               </div>
             ) : (
-              <p className="rounded-xl bg-page px-3 py-2.5 text-sm font-medium text-neutral-900">
-                {profile.name || 'гость'}
-              </p>
+              <p className={field_box}>{profile.name || 'гость'}</p>
             )}
           </div>
 
           <div>
-            <div className="flex items-center justify-between gap-2 mb-1.5">
-              <label className="text-xs text-neutral-500">телефон</label>
-              {!editing_phone && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    const digits = (profile.phone || '').replace(/\D/g, '');
-                    const local = digits.startsWith('7') ? digits.slice(1) : digits;
-                    set_phone_draft(format_phone_input(local));
-                    set_editing_phone(true);
-                    set_phone_error('');
-                  }}
-                  className="text-xs font-semibold text-accent hover:underline"
-                >
-                  {profile.phone ? 'изменить' : 'указать'}
-                </button>
-              )}
-            </div>
+            {field_label({
+              label: 'телефон',
+              action: !editing_phone
+                ? change_link({
+                    children: profile.phone ? 'изменить' : 'указать',
+                    onClick: () => {
+                      const digits = (profile.phone || '').replace(/\D/g, '');
+                      const local = digits.startsWith('7') ? digits.slice(1) : digits;
+                      set_phone_draft(format_phone_input(local));
+                      set_editing_phone(true);
+                      set_phone_error('');
+                    },
+                  })
+                : null,
+            })}
             {editing_phone ? (
               <div className="space-y-2">
-                <div className="flex items-center rounded-xl border border-neutral-200 bg-page px-3 py-2.5">
-                  <span className="text-sm font-medium text-neutral-500 pr-2">+7</span>
+                <div className={`${field_box} flex items-center`}>
+                  <span className="pr-2 text-[16px] sm:text-[17px] font-medium text-neutral-400">
+                    +7
+                  </span>
                   <input
                     type="tel"
                     inputMode="numeric"
                     value={phone_draft}
                     onChange={(e) => set_phone_draft(format_phone_input(e.target.value))}
                     placeholder="916 000-00-00"
-                    className="flex-1 bg-transparent text-sm font-medium text-neutral-900 outline-none"
+                    className="min-w-0 flex-1 bg-transparent text-[16px] sm:text-[17px] font-medium text-neutral-900 outline-none"
                     autoFocus
                   />
                 </div>
                 {phone_error && <p className="text-xs text-red-500">{phone_error}</p>}
-                <div className="flex gap-2">
+                <div className={edit_actions}>
                   <button
                     type="button"
                     onClick={() => set_editing_phone(false)}
-                    className="flex-1 rounded-pill border border-neutral-200 py-2 text-sm"
+                    className={edit_cancel}
                   >
                     отмена
                   </button>
@@ -753,86 +857,76 @@ export default function profile_page() {
                     type="button"
                     disabled={saving_phone}
                     onClick={handle_save_phone}
-                    className="flex-1 rounded-pill bg-accent text-accent-foreground py-2 text-sm font-medium disabled:opacity-60"
+                    className={edit_save}
                   >
                     {saving_phone ? 'сохраняем…' : 'сохранить'}
                   </button>
                 </div>
               </div>
             ) : (
-              <p className="rounded-xl bg-page px-3 py-2.5 text-sm font-medium text-neutral-900">
-                {format_phone_display(profile.phone)}
-              </p>
+              <p className={field_box}>{format_phone_display(profile.phone)}</p>
             )}
-            <p className="mt-1.5 text-xs text-neutral-400">
+            <p className="mt-2 text-[13px] font-normal text-neutral-400">
               нужен для заказа — спросим перед оформлением, если не указан
             </p>
           </div>
 
           <div>
-            <div className="flex items-center justify-between gap-2 mb-1.5">
-              <label className="text-xs text-neutral-500">дата рождения</label>
-              {!editing_birthday && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    set_birthday_draft(local.birthday);
-                    set_editing_birthday(true);
-                  }}
-                  className="text-xs font-semibold text-accent hover:underline"
-                >
-                  изменить
-                </button>
-              )}
-            </div>
+            {field_label({
+              label: 'дата рождения',
+              action: !editing_birthday
+                ? change_link({
+                    children: 'изменить',
+                    onClick: () => {
+                      set_birthday_draft(local.birthday);
+                      set_editing_birthday(true);
+                    },
+                  })
+                : null,
+            })}
             {editing_birthday ? (
               <div className="space-y-2">
                 <input
                   type="date"
                   value={birthday_draft}
                   onChange={(e) => set_birthday_draft(e.target.value)}
-                  className="w-full rounded-xl border border-neutral-200 bg-page px-3 py-2.5 text-sm"
+                  className={field_input}
                 />
-                <div className="flex gap-2">
+                <div className={edit_actions}>
                   <button
                     type="button"
                     onClick={() => set_editing_birthday(false)}
-                    className="flex-1 rounded-pill border border-neutral-200 py-2 text-sm"
+                    className={edit_cancel}
                   >
                     отмена
                   </button>
                   <button
                     type="button"
                     onClick={handle_save_birthday}
-                    className="flex-1 rounded-pill bg-accent text-accent-foreground py-2 text-sm font-medium"
+                    className={edit_save}
                   >
                     сохранить
                   </button>
                 </div>
               </div>
             ) : (
-              <p className="rounded-xl bg-page px-3 py-2.5 text-sm font-medium text-neutral-900">
-                {format_birthday(local.birthday)}
-              </p>
+              <p className={field_box}>{format_birthday(local.birthday)}</p>
             )}
           </div>
 
           <div>
-            <div className="flex items-center justify-between gap-2 mb-1.5">
-              <label className="text-xs text-neutral-500">почта</label>
-              {!editing_email && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    set_email_draft(local.email);
-                    set_editing_email(true);
-                  }}
-                  className="text-xs font-semibold text-accent hover:underline"
-                >
-                  изменить
-                </button>
-              )}
-            </div>
+            {field_label({
+              label: 'почта',
+              action: !editing_email
+                ? change_link({
+                    children: 'изменить',
+                    onClick: () => {
+                      set_email_draft(local.email);
+                      set_editing_email(true);
+                    },
+                  })
+                : null,
+            })}
             {editing_email ? (
               <div className="space-y-2">
                 <input
@@ -840,75 +934,104 @@ export default function profile_page() {
                   value={email_draft}
                   onChange={(e) => set_email_draft(e.target.value)}
                   placeholder="you@mail.ru"
-                  className="w-full rounded-xl border border-neutral-200 bg-page px-3 py-2.5 text-sm"
+                  className={field_input}
                   autoFocus
                 />
-                <div className="flex gap-2">
+                <div className={edit_actions}>
                   <button
                     type="button"
                     onClick={() => set_editing_email(false)}
-                    className="flex-1 rounded-pill border border-neutral-200 py-2 text-sm"
+                    className={edit_cancel}
                   >
                     отмена
                   </button>
                   <button
                     type="button"
                     onClick={handle_save_email}
-                    className="flex-1 rounded-pill bg-accent text-accent-foreground py-2 text-sm font-medium"
+                    className={edit_save}
                   >
                     сохранить
                   </button>
                 </div>
               </div>
             ) : (
-              <p className="rounded-xl bg-page px-3 py-2.5 text-sm font-medium text-neutral-900">
-                {local.email || 'не указана'}
-              </p>
+              <p className={field_box}>{local.email || 'не указана'}</p>
             )}
           </div>
         </section>
 
-        {/* подписки */}
-        <section className="rounded-2xl bg-white p-5 sm:p-6 shadow-soft">
-          <h2 className="text-lg font-bold text-neutral-900 mb-3">подписки</h2>
-          <label className="flex items-start gap-3 cursor-pointer">
-            <input
-              type="checkbox"
-              checked={local.marketing_opt_in}
-              onChange={handle_toggle_marketing}
-              className="mt-1 h-4 w-4 rounded border-neutral-300 accent-[#0039A6]"
-            />
-            <span className="text-sm text-neutral-700 leading-snug">
-              получать акции и предложения в push, SMS и на почту
+        <section className="space-y-4">
+          <h2 className={section_title}>подписки</h2>
+          <button
+            type="button"
+            role="checkbox"
+            aria-checked={local.marketing_opt_in}
+            onClick={handle_toggle_marketing}
+            className="flex w-full items-start gap-3 text-left"
+          >
+            <span
+              className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-[4px] border-2 transition ${
+                local.marketing_opt_in
+                  ? 'border-accent bg-accent text-white'
+                  : 'border-neutral-300 bg-white'
+              }`}
+              aria-hidden
+            >
+              {local.marketing_opt_in ? (
+                <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+                  <path
+                    d="M2.5 6.2L4.8 8.6L9.5 3.4"
+                    stroke="currentColor"
+                    strokeWidth="1.8"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                </svg>
+              ) : null}
             </span>
-          </label>
+            <span>
+              <span className="block text-[16px] sm:text-[17px] font-medium text-neutral-900">
+                email-рассылка
+              </span>
+              <span className="mt-1 block text-[13px] font-normal leading-snug text-neutral-400">
+                получать акции и предложения в push, SMS и на почту
+              </span>
+            </span>
+          </button>
         </section>
 
-        {/* привязанные карты — только localStorage */}
-        <section className="rounded-2xl bg-white p-5 sm:p-6 shadow-soft space-y-4">
+        <section className="space-y-4">
           <div>
-            <h2 className="text-lg font-bold text-neutral-900">привязанные карты</h2>
-            <p className="text-xs text-neutral-400 mt-1">
+            <h2 className={section_title}>привязанные карты</h2>
+            <p className="mt-2 text-[13px] font-normal text-neutral-400">
               хранятся только на этом устройстве, не на сервере
             </p>
           </div>
 
           {local.cards.length === 0 ? (
-            <p className="text-sm text-neutral-500">карт пока нет</p>
+            <p className="text-[15px] text-neutral-400">карт пока нет</p>
           ) : (
             <ul className="space-y-2">
               {local.cards.map((card) => (
                 <li
                   key={card.id}
-                  className="flex items-center justify-between gap-3 rounded-xl bg-page px-3 py-2.5"
+                  className={`${field_box} flex items-center justify-between gap-3`}
                 >
-                  <span className="text-sm font-medium text-neutral-900">
-                    {card.brand} ···· {card.last4}
+                  <span className="flex min-w-0 items-center gap-3">
+                    {card_brand_mark({ brand: card.brand })}
+                    <span className="truncate tabular-nums">
+                      ···· {card.last4}
+                      {card.expires ? (
+                        <span className="ml-3 font-normal text-neutral-400">
+                          {card.expires}
+                        </span>
+                      ) : null}
+                    </span>
                   </span>
                   <button
                     type="button"
                     onClick={() => handle_remove_card(card.id)}
-                    className="text-xs font-semibold text-accent hover:underline"
+                    className={change_btn}
                   >
                     удалить
                   </button>
@@ -918,12 +1041,12 @@ export default function profile_page() {
           )}
 
           {adding_card ? (
-            <div className="space-y-2 rounded-xl border border-neutral-200 p-3">
-              <div className="grid grid-cols-2 gap-2">
+            <div className="space-y-2">
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
                 <select
                   value={card_brand}
                   onChange={(e) => set_card_brand(e.target.value)}
-                  className="rounded-xl border border-neutral-200 bg-page px-3 py-2.5 text-sm"
+                  className={field_input}
                 >
                   <option value="МИР">МИР</option>
                   <option value="Visa">Visa</option>
@@ -932,29 +1055,36 @@ export default function profile_page() {
                 </select>
                 <input
                   value={card_last4}
-                  onChange={(e) => set_card_last4(e.target.value.replace(/\D/g, '').slice(0, 4))}
+                  onChange={(e) =>
+                    set_card_last4(e.target.value.replace(/\D/g, '').slice(0, 4))
+                  }
                   placeholder="4 цифры"
                   inputMode="numeric"
-                  className="rounded-xl border border-neutral-200 bg-page px-3 py-2.5 text-sm"
+                  className={field_input}
+                />
+                <input
+                  value={card_expires}
+                  onChange={(e) =>
+                    set_card_expires(format_card_expiry_input(e.target.value))
+                  }
+                  placeholder="мм/гг"
+                  inputMode="numeric"
+                  className={field_input}
                 />
               </div>
               {card_error && <p className="text-xs text-red-500">{card_error}</p>}
-              <div className="flex gap-2">
+              <div className={edit_actions}>
                 <button
                   type="button"
                   onClick={() => {
                     set_adding_card(false);
                     set_card_error('');
                   }}
-                  className="flex-1 rounded-pill border border-neutral-200 py-2 text-sm"
+                  className={edit_cancel}
                 >
                   отмена
                 </button>
-                <button
-                  type="button"
-                  onClick={handle_add_card}
-                  className="flex-1 rounded-pill bg-accent text-accent-foreground py-2 text-sm font-medium"
-                >
+                <button type="button" onClick={handle_add_card} className={edit_save}>
                   сохранить
                 </button>
               </div>
@@ -963,22 +1093,24 @@ export default function profile_page() {
             <button
               type="button"
               onClick={() => set_adding_card(true)}
-              className="text-sm font-semibold text-accent hover:underline"
+              className="text-[15px] font-medium text-accent hover:opacity-80"
             >
               + привязать карту
             </button>
           )}
         </section>
 
-        {/* условия */}
-        <section className="rounded-2xl bg-white p-5 sm:p-6 shadow-soft space-y-3">
-          <h2 className="text-lg font-bold text-neutral-900 inline-flex items-center gap-2">
-            <TapicoinIcon size={18} />
+        <section className="space-y-4">
+          <h2 className={`${section_title} inline-flex items-center gap-2`}>
+            <TapicoinIcon size={22} />
             условия получения тапикоинов
           </h2>
-          <ul className="space-y-2.5">
+          <ul className="space-y-3">
             {bonus_earning_rules.map((rule) => (
-              <li key={rule} className="flex gap-3 text-sm text-neutral-700 leading-snug">
+              <li
+                key={rule}
+                className="flex gap-3 text-[15px] font-normal leading-snug text-neutral-600"
+              >
                 <span className="mt-0.5 shrink-0">
                   <TapicoinIcon size={14} />
                 </span>
@@ -988,22 +1120,16 @@ export default function profile_page() {
           </ul>
         </section>
 
-        {/* заказы */}
-        <section className="rounded-2xl bg-white p-5 sm:p-6 shadow-soft space-y-4">
-          <div className="flex items-end justify-between gap-3">
-            <h2 className="text-lg font-bold text-neutral-900">история заказов</h2>
-            <p className="text-xs text-neutral-500">
-              {orders.length === 0
-                ? 'пока пусто'
-                : `${orders.length} ${orders.length === 1 ? 'заказ' : orders.length < 5 ? 'заказа' : 'заказов'}`}
-            </p>
-          </div>
+        <section className="space-y-5">
+          <h2 className={section_title}>история заказов</h2>
 
           {orders_error && <p className="text-sm text-red-500">{orders_error}</p>}
 
           {orders.length === 0 && !orders_error ? (
-            <div className="rounded-xl bg-page px-4 py-8 text-center">
-              <p className="text-sm text-neutral-500 mb-3">вы ещё ничего не заказывали</p>
+            <div>
+              <p className="text-[15px] text-neutral-400 mb-4">
+                вы ещё ничего не заказывали
+              </p>
               <Link
                 href="/"
                 className="inline-flex rounded-pill bg-accent text-accent-foreground px-5 py-2.5 text-sm font-medium"
@@ -1012,44 +1138,87 @@ export default function profile_page() {
               </Link>
             </div>
           ) : (
-            <ul className="divide-y divide-neutral-100">
-              {orders.map((o) => {
-                const live =
-                  o.status === 'new' || o.status === 'preparing' || o.status === 'ready';
-                return (
-                  <li key={o.id} className="py-3 first:pt-0 last:pb-0">
-                    <Link
-                      href={`/orders/${o.id}`}
-                      className="flex items-start justify-between gap-3 text-left"
-                    >
-                      <div className="min-w-0">
-                        <p className="text-sm font-semibold text-neutral-900">
-                          № {format_order_number(o)}
-                        </p>
-                        <p className="text-xs text-neutral-500 mt-0.5">
-                          {format_datetime(o.created_at)} · {status_label[o.status]}
-                        </p>
-                        {live ? (
-                          <p className="mt-1 text-xs font-medium text-accent">следить за заказом →</p>
-                        ) : (
-                          <p className="mt-1 text-xs text-neutral-400">открыть заказ →</p>
-                        )}
-                      </div>
-                      <div className="text-right shrink-0">
-                        <p className="text-sm font-semibold tabular-nums">
-                          {format_price(o.total_price)} ₽
-                        </p>
-                        <p className="text-xs text-neutral-400 mt-0.5">
-                          {payment_label[o.payment_type]}
-                        </p>
-                      </div>
-                    </Link>
-                  </li>
-                );
-              })}
-            </ul>
+            <div className="min-w-0 overflow-x-auto">
+              <table className="w-full text-left">
+                <thead>
+                  <tr className="text-[13px] font-normal text-neutral-400">
+                    <th className="pb-3 pr-4 font-normal">№</th>
+                    <th className="pb-3 pr-4 font-normal">дата и время</th>
+                    <th className="pb-3 pr-4 font-normal">сумма</th>
+                    <th className="pb-3 font-normal">статус</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {orders.map((o) => {
+                    const live =
+                      o.status === 'new' ||
+                      o.status === 'preparing' ||
+                      o.status === 'ready';
+                    const composition = o.items
+                      .map((item) => item.name)
+                      .filter(Boolean)
+                      .join(', ');
+                    return (
+                      <tr key={o.id} className="border-t border-neutral-100">
+                        <td className="py-3.5 pr-4 align-top">
+                          <Link
+                            href={`/orders/${o.id}`}
+                            className="text-[15px] font-medium tabular-nums text-neutral-900"
+                          >
+                            {format_order_number(o)}
+                          </Link>
+                        </td>
+                        <td className="py-3.5 pr-4 align-top text-[15px] font-normal text-neutral-600">
+                          {format_datetime(o.created_at)}
+                        </td>
+                        <td className="py-3.5 pr-4 align-top">
+                          <p className="text-[15px] font-medium tabular-nums text-neutral-900">
+                            {format_price(o.total_price)} ₽
+                          </p>
+                          <p className="mt-0.5 max-w-[16rem] truncate text-[13px] font-normal text-neutral-400">
+                            {composition || payment_label[o.payment_type]}
+                          </p>
+                        </td>
+                        <td className="py-3.5 align-top">
+                          <Link
+                            href={`/orders/${o.id}`}
+                            className={`text-[15px] font-medium ${
+                              o.status === 'cancelled'
+                                ? 'text-neutral-400'
+                                : 'text-accent'
+                            }`}
+                          >
+                            {status_label[o.status]}
+                            {live ? ' →' : ''}
+                          </Link>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
           )}
         </section>
+
+        <div className="flex items-center justify-between gap-4 pt-2">
+          <button
+            type="button"
+            onClick={() => void handle_logout()}
+            className="text-[16px] sm:text-[17px] font-medium text-neutral-500 hover:text-neutral-800"
+          >
+            выйти
+          </button>
+          <button
+            type="button"
+            disabled={deleting_profile}
+            onClick={() => void handle_delete_profile()}
+            className="text-[16px] sm:text-[17px] font-medium text-neutral-300 hover:text-red-400 disabled:opacity-60"
+          >
+            {deleting_profile ? 'удаляем…' : 'удалить профиль'}
+          </button>
+        </div>
+        </div>
       </div>
     );
 
