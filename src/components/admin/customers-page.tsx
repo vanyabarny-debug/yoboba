@@ -24,6 +24,7 @@ type customer_row = {
   created_at: string | null;
   avatar_emoji: string | null;
   avatar_url: string | null;
+  vk_url: string | null;
   orders_count: number;
   spent: number;
   last_order_at: string | null;
@@ -189,19 +190,60 @@ export default function customers_page() {
                   className="flex w-full items-start gap-3 px-4 py-3 text-left"
                 >
                   <span className="shrink-0">
-                    {createElement(avatar_circle, {
-                      emoji: c.avatar_emoji,
-                      image_url: c.avatar_url,
-                      user_id: c.id.startsWith('guest:') ? null : c.id,
-                      size: 'sm',
-                    })}
+                    {c.vk_url ? (
+                      <a
+                        href={c.vk_url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        title="открыть в vk"
+                        onClick={(e) => e.stopPropagation()}
+                        className="block"
+                      >
+                        {createElement(avatar_circle, {
+                          emoji: c.avatar_emoji,
+                          image_url: c.avatar_url,
+                          user_id: c.id.startsWith('guest:') ? null : c.id,
+                          size: 'sm',
+                        })}
+                      </a>
+                    ) : (
+                      createElement(avatar_circle, {
+                        emoji: c.avatar_emoji,
+                        image_url: c.avatar_url,
+                        user_id: c.id.startsWith('guest:') ? null : c.id,
+                        size: 'sm',
+                      })
+                    )}
                   </span>
                   <span className="min-w-0 flex-1">
                     <span className="flex flex-wrap items-baseline gap-x-2">
-                      <span className="font-semibold text-neutral-900">{c.name}</span>
+                      {c.vk_url ? (
+                        <a
+                          href={c.vk_url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          onClick={(e) => e.stopPropagation()}
+                          className="font-semibold text-neutral-900 hover:text-accent hover:underline"
+                        >
+                          {c.name}
+                        </a>
+                      ) : (
+                        <span className="font-semibold text-neutral-900">{c.name}</span>
+                      )}
                       <span className="text-xs text-neutral-400">
                         {c.via}
                       </span>
+                      {c.vk_url && (
+                        <a
+                          href={c.vk_url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          onClick={(e) => e.stopPropagation()}
+                          className="text-xs font-medium text-accent hover:underline"
+                        >
+                          открыть vk
+                        </a>
+                      )}
                     </span>
                     <span className="mt-0.5 block text-sm font-medium text-neutral-700 tabular-nums">
                       {format_phone_display(c.phone)}

@@ -41,6 +41,7 @@ type customer_row = {
   created_at: string | null;
   avatar_emoji: string | null;
   avatar_url: string | null;
+  vk_url: string | null;
   orders_count: number;
   spent: number;
   last_order_at: string | null;
@@ -53,6 +54,7 @@ type auth_info = {
   phone: string | null;
   avatar_url: string | null;
   name: string | null;
+  vk_url: string | null;
 };
 
 function missing_column_from_error(message: string) {
@@ -122,6 +124,7 @@ function empty_customer(input: {
   created_at?: string | null;
   avatar_emoji?: string | null;
   avatar_url?: string | null;
+  vk_url?: string | null;
 }): customer_row {
   return {
     id: input.id,
@@ -133,6 +136,7 @@ function empty_customer(input: {
     created_at: input.created_at || null,
     avatar_emoji: input.avatar_emoji || null,
     avatar_url: input.avatar_url?.trim() || null,
+    vk_url: input.vk_url?.trim() || null,
     orders_count: 0,
     spent: 0,
     last_order_at: null,
@@ -180,6 +184,18 @@ function avatar_from_meta(meta: Record<string, unknown>) {
   return raw || null;
 }
 
+function vk_id_from_auth(meta: Record<string, unknown>, email: string) {
+  const raw = meta.vk_id;
+  if (typeof raw === 'number' && Number.isFinite(raw) && raw > 0) return String(Math.trunc(raw));
+  if (typeof raw === 'string' && /^\d+$/.test(raw.trim())) return raw.trim();
+  const from_email = email.match(/^vk(\d+)@auth\.yoboba$/);
+  return from_email?.[1] || null;
+}
+
+function vk_profile_url(vk_id: string | null) {
+  return vk_id ? `https://vk.ru/id${vk_id}` : null;
+}
+
 async function fetch_auth_info() {
   const admin = create_service_client();
   const map = new Map<string, auth_info>();
@@ -196,11 +212,13 @@ async function fetch_auth_info() {
         Boolean(meta.vk_id) ||
         (email.startsWith('vk') && email.endsWith('@auth.yoboba'));
       const phone = phone_from_auth(user.phone, meta);
+      const vk_id = vk_id_from_auth(meta, email);
       map.set(user.id, {
-        is_vk,
+        is_vk: is_vk || Boolean(vk_id),
         phone,
         avatar_url: avatar_from_meta(meta),
         name: name_from_meta(meta),
+        vk_url: vk_profile_url(vk_id),
       });
     }
     if (users.length < per_page) break;
@@ -213,6 +231,7 @@ function merge_auth(customer: customer_row, auth?: auth_info) {
   const phone = normalize_phone(customer.phone) || auth.phone;
   if (phone) customer.phone = phone;
   if (!customer.avatar_url && auth.avatar_url) customer.avatar_url = auth.avatar_url;
+  if (!customer.vk_url && auth.vk_url) customer.vk_url = auth.vk_url;
   const auth_name = (auth.name || '').trim();
   if ((customer.name === 'гость' || !customer.name.trim()) && auth_name) {
     customer.name = auth_name;
@@ -299,6 +318,7 @@ export async function GET() {
             created_at: p.created_at,
             avatar_emoji: p.avatar_emoji,
             avatar_url: auth?.avatar_url,
+            vk_url: auth?.vk_url,
           })
         );
       }
@@ -313,6 +333,7 @@ export async function GET() {
             phone: auth.phone,
             via: via_label(auth.is_vk, auth.phone),
             avatar_url: auth.avatar_url,
+            vk_url: auth.vk_url,
           })
         );
       }
