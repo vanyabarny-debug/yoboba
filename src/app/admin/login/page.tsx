@@ -147,13 +147,6 @@ export default function admin_login_page() {
       <div className="flex-1 flex items-center justify-center p-4">
         <div className="w-full max-w-sm">
           <div className="text-center mb-8">
-            <img
-              src="/icons/yosquad-192.png"
-              alt="yoSquad"
-              width={72}
-              height={72}
-              className="mx-auto mb-4 rounded-2xl shadow-sm"
-            />
             <h1
               className="text-2xl font-bold tracking-tight text-accent"
               style={{ fontFamily: 'Fredoka, system-ui, sans-serif' }}

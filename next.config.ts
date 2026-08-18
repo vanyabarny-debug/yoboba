@@ -10,6 +10,8 @@ const no_store = [
 const next_config: NextConfig = {
   // сборка в минимальный Node-сервер (.next/standalone/server.js) для Docker/VPS
   output: 'standalone',
+  // иначе 127.0.0.1 режет /_next/* и страница крутится на сплэше
+  allowedDevOrigins: ['127.0.0.1', 'localhost'],
   headers: async () => [
     {
       source: '/service-worker.js',

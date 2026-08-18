@@ -17,6 +17,7 @@ import {
 import { subscribe_site_content_store } from '@/lib/site-content-store';
 import { DRAWER_CLOSE_BTN_CLASS, DRAWER_INLINE_CLOSE_BTN_CLASS } from '@/lib/drawer-ui';
 import { use_sheet_swipe } from '@/lib/use-sheet-swipe';
+import { item_has_toppings, item_has_volumes } from '@/lib/cart-summary';
 
 type props = {
   item: menu_item | null;
@@ -108,6 +109,8 @@ export default function product_drawer({
   const show_back_arrow = can_go_back || return_to_cart;
   const show_recommendations = !can_go_back && !return_to_cart && !edit_mode;
   const is_cart_edit = edit_mode || return_to_cart;
+  const show_volumes = active_item ? item_has_volumes(active_item) : false;
+  const show_toppings = active_item ? item_has_toppings(active_item) : false;
 
   function apply_card_state(state: card_state) {
     set_qty(state.qty);
@@ -229,14 +232,16 @@ export default function product_drawer({
 
   const volume_ml = volumes.find((v) => v.id === volume)?.ml ?? 450;
   const topping_max = Math.max(4, Math.round(volume_ml / 60));
+  const topping_used = show_toppings ? topping : 0;
+  const volume_used = show_volumes ? volume : '450';
 
   const topping_price = get_topping_portion_price_value();
 
   const unit_price = useMemo(() => {
     if (!active_item) return 0;
-    const volume_add = volumes.find((v) => v.id === volume)?.add ?? 0;
-    return Math.max(0, active_item.price + volume_add + topping * topping_price);
-  }, [active_item, volume, topping, topping_price, meta_tick]);
+    const volume_add = volumes.find((v) => v.id === volume_used)?.add ?? 0;
+    return Math.max(0, active_item.price + volume_add + topping_used * topping_price);
+  }, [active_item, volume_used, topping_used, topping_price, meta_tick]);
 
   const total_price = unit_price * qty;
 
@@ -249,8 +254,8 @@ export default function product_drawer({
     [active_item, meta_tick]
   );
   const nutrition = useMemo(
-    () => (active_item ? get_nutrition(active_item, volume_ml, topping) : null),
-    [active_item, volume_ml, topping, meta_tick]
+    () => (active_item ? get_nutrition(active_item, volume_ml, topping_used) : null),
+    [active_item, volume_ml, topping_used, meta_tick]
   );
   const topping_name = active_item ? get_topping_name(active_item) : '';
 
@@ -310,8 +315,8 @@ export default function product_drawer({
     fly_to_cart(image_ref.current);
     try {
       await on_add(active_item, qty, {
-        volume,
-        topping,
+        volume: volume_used,
+        topping: topping_used,
         ...(replace_key ? { replace_key } : {}),
       });
     } finally {
@@ -399,6 +404,7 @@ export default function product_drawer({
                 <h3 className="text-2xl sm:text-[32px] font-bold leading-tight text-neutral-900">
                   {active_item.name}
                 </h3>
+                {show_volumes && (
                 <div className="mt-3 inline-flex rounded-full bg-[#f3f4f6] p-0.5">
                   {volumes.map((option) => {
                     const active = option.id === volume;
@@ -418,6 +424,7 @@ export default function product_drawer({
                     );
                   })}
                 </div>
+                )}
               </div>
 
               <p className="mt-4 text-[15px] leading-relaxed text-neutral-700">{description}</p>
@@ -456,6 +463,7 @@ export default function product_drawer({
                 )}
               </div>
 
+              {show_toppings && (
               <div className="mt-7">
                 <div className="flex items-center justify-between gap-3">
                   <div className="flex min-w-0 items-center gap-1.5">
@@ -505,6 +513,7 @@ export default function product_drawer({
                   </div>
                 </div>
               </div>
+              )}
 
               {show_recommendations && recommendations.length > 0 && (
                 <div className="mt-6">

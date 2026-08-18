@@ -37,6 +37,16 @@ export function is_snack_category(category: string): boolean {
   return snack_categories.has(category);
 }
 
+export function item_has_volumes(item: menu_item): boolean {
+  if (typeof item.has_volumes === 'boolean') return item.has_volumes;
+  return !is_snack_category(item.category);
+}
+
+export function item_has_toppings(item: menu_item): boolean {
+  if (typeof item.has_toppings === 'boolean') return item.has_toppings;
+  return !is_snack_category(item.category);
+}
+
 export function line_volume_label(category: string): string | null {
   if (is_snack_category(category)) return null;
   return '500 мл';

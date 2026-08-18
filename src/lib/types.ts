@@ -46,6 +46,10 @@ export type menu_item = {
   prep_minutes?: number;
   badge_text?: string;
   badge_color?: menu_badge_color;
+  /** выбор 450/650 мл в карточке; по умолчанию да, кроме закусок */
+  has_volumes?: boolean;
+  /** порции топпинга в карточке; по умолчанию да, кроме закусок */
+  has_toppings?: boolean;
 };
 
 export type story = {
