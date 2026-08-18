@@ -17,6 +17,7 @@ import cart_fab from '@/components/cart-fab';
 import top_bar from '@/components/top-bar';
 import promo_banners from '@/components/promo-banners';
 import promo_story_viewer from '@/components/promo-story-viewer';
+import news_ticker from '@/components/news-ticker';
 import promo_edit_sheet from '@/components/admin/promo-edit-sheet';
 import category_nav from '@/components/category-nav';
 import category_edit_sheet from '@/components/admin/category-edit-sheet';
@@ -1187,6 +1188,8 @@ export default function home_client({
           on_promo_click: handle_promo_click,
           viewed_ids: viewed_promos,
         })}
+
+      {createElement(news_ticker)}
 
       <section className="menu-sheet">
         <div ref={nav_ref} className="menu-sheet-head">

@@ -29,8 +29,17 @@ function login_button(on_login?: () => void) {
     <button
       type="button"
       onClick={on_login}
-      className="inline-flex items-center justify-center rounded-pill bg-surface px-4 py-2.5 text-sm font-semibold text-neutral-800 whitespace-nowrap transition-all duration-200 hover:bg-neutral-300 hover:scale-[1.03] hover:shadow-sm active:scale-[0.97]"
+      className="inline-flex items-center justify-center gap-2 rounded-pill bg-surface px-4 py-2.5 text-[15px] sm:text-base font-extrabold text-neutral-800 whitespace-nowrap transition-all duration-200 hover:bg-neutral-300 hover:scale-[1.03] hover:shadow-sm active:scale-[0.97]"
     >
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden>
+        <circle cx="12" cy="8" r="3.35" stroke="currentColor" strokeWidth="2" />
+        <path
+          d="M5.2 19.2c.85-3.15 3.4-4.7 6.8-4.7s5.95 1.55 6.8 4.7"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+        />
+      </svg>
       войти
     </button>
   );

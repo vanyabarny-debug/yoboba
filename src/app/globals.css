@@ -28,6 +28,8 @@
   --brand-font-display-scale: 2;
   --menu-sheet-radius: 32px;
   --site-header-h: 72px;
+  /* колонка как у dodo/farfor: ширина фиксируется, свободное место уходит в поля */
+  --page-max: 1280px;
   --page-gutter: 1.25rem;
   --brand-gradient: linear-gradient(135deg, #f4f5f6 0%, #ffe3e3 100%);
   --highlight-start: #ffffff;
@@ -129,9 +131,60 @@ body::-webkit-scrollbar {
   display: none;
 }
 
+.news-ticker {
+  height: 36px;
+}
+
+.news-ticker-track {
+  display: flex;
+  width: max-content;
+  animation: news-ticker-run 32s linear infinite;
+}
+
+.news-ticker:hover .news-ticker-track {
+  animation-play-state: paused;
+}
+
+.news-ticker-copy {
+  display: flex;
+  align-items: center;
+  margin: 0;
+  padding-inline: 0.75rem;
+  font-size: 13px;
+  font-weight: 800;
+  line-height: 36px;
+  white-space: nowrap;
+}
+
+@media (min-width: 640px) {
+  .news-ticker {
+    height: 40px;
+  }
+  .news-ticker-copy {
+    font-size: 14px;
+    line-height: 40px;
+  }
+}
+
+@keyframes news-ticker-run {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(-50%);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .news-ticker-track {
+    animation: none;
+  }
+}
+
 .page-shell {
   box-sizing: border-box;
   width: 100%;
+  max-width: var(--page-max);
   margin-inline: auto;
   padding-inline: var(--page-gutter);
 }
@@ -141,6 +194,8 @@ body::-webkit-scrollbar {
   z-index: 20;
   isolation: isolate;
   width: 100%;
+  max-width: var(--page-max);
+  margin-inline: auto;
   min-height: 50vh;
 }
 
@@ -198,19 +253,13 @@ body::-webkit-scrollbar {
 @media (min-width: 640px) {
   :root {
     --menu-sheet-radius: 44px;
-    --page-gutter: 4rem;
+    --page-gutter: 1.5rem;
   }
 }
 
 @media (min-width: 1024px) {
   :root {
-    --page-gutter: 7.5rem;
-  }
-}
-
-@media (min-width: 1440px) {
-  :root {
-    --page-gutter: 9rem;
+    --page-gutter: 2rem;
   }
 }
 

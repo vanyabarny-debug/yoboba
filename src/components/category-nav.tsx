@@ -7,6 +7,7 @@ import {
   menu_search_results,
   menu_search_root,
 } from '@/components/menu-search';
+import cart_mark from '@/components/cart-mark';
 import type { menu_item } from '@/lib/types';
 
 type props = {
@@ -314,26 +315,21 @@ export default function category_nav({
           )}
         </div>
 
-        {!edit_mode && on_item_click && items.length > 0 && createElement(menu_search_field)}
+        {!edit_mode && on_item_click && items.length > 0 && (
+          <div className="mr-2.5 sm:mr-4 shrink-0">
+            {createElement(menu_search_field)}
+          </div>
+        )}
 
         {!edit_mode && (
         <button
           type="button"
           onClick={on_cart_click}
           data-cart-target
-          className="hidden min-[1024px]:flex flex-shrink-0 items-center justify-center gap-1.5 sm:gap-2 rounded-pill bg-accent text-accent-foreground pl-3 pr-3.5 sm:px-5 py-2.5 text-sm font-bold shadow-[0_6px_18px_rgba(255,107,107,0.35)] hover:shadow-[0_8px_22px_rgba(255,107,107,0.45)] hover:-translate-y-px transition-all"
+          className="hidden min-[1024px]:flex flex-shrink-0 items-center justify-center gap-2 rounded-pill bg-accent text-accent-foreground pl-3.5 pr-4 sm:px-5 py-2.5 shadow-[0_6px_18px_rgba(255,107,107,0.35)] hover:shadow-[0_8px_22px_rgba(255,107,107,0.45)] hover:-translate-y-px transition-all"
         >
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-            <path
-              d="M6 2L3 6v14a2 2 0 002 2h14a2 2 0 002-2V6l-3-4H6z"
-              stroke="currentColor"
-              strokeWidth="1.8"
-              strokeLinejoin="round"
-            />
-            <path d="M3 6h18" stroke="currentColor" strokeWidth="1.8" />
-            <path d="M16 10a4 4 0 01-8 0" stroke="currentColor" strokeWidth="1.8" />
-          </svg>
-          <span className="text-base sm:text-[17px] font-bold">
+          {createElement(cart_mark, { size: 22 })}
+          <span className="text-[17px] sm:text-lg font-extrabold leading-none">
             {cart_count > 0 ? `${cart_total} ₽` : 'корзина'}
           </span>
         </button>

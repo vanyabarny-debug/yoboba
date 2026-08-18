@@ -39,11 +39,11 @@ type root_props = {
   children: ReactNode;
 };
 
-function SearchIcon({ size = 18 }: { size?: number }) {
+function SearchIcon({ size = 21 }: { size?: number }) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden="true">
-      <circle cx="11" cy="11" r="7" stroke="currentColor" strokeWidth="1.8" />
-      <path d="M20 20l-3.5-3.5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+      <circle cx="11" cy="11" r="7" stroke="currentColor" strokeWidth="2.2" />
+      <path d="M20 20l-3.5-3.5" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" />
     </svg>
   );
 }
@@ -139,10 +139,10 @@ export function menu_search_field() {
 
   return (
     <div
-      className={`relative flex h-9 shrink-0 items-center overflow-hidden rounded-pill transition-[width,background-color] duration-200 ease-out ${
+      className={`relative flex h-10 shrink-0 items-center overflow-hidden rounded-pill transition-[width,background-color] duration-200 ease-out ${
         open
           ? 'w-[min(52vw,11.5rem)] sm:w-52 bg-neutral-300'
-          : 'w-9 cursor-pointer text-neutral-700 hover:text-neutral-900'
+          : 'w-10 cursor-pointer text-neutral-800 hover:text-neutral-950'
       }`}
       onClick={!open ? open_search : undefined}
       onKeyDown={
@@ -156,7 +156,7 @@ export function menu_search_field() {
       tabIndex={!open ? 0 : undefined}
       aria-label={!open ? 'поиск по меню' : undefined}
     >
-      <span className="flex h-9 w-9 shrink-0 items-center justify-center text-neutral-700">
+      <span className="flex h-10 w-10 shrink-0 items-center justify-center text-neutral-800">
         <SearchIcon />
       </span>
 

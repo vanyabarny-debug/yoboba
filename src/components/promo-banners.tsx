@@ -184,7 +184,13 @@ export default function promo_banners({
 
   return (
     <section id="promos" className="mb-4 min-[1024px]:mb-6 sm:mb-8 bg-page overflow-visible">
-      {/* мобилка главной: кружки-сторис */}
+      {layout === 'home' && (
+        <div className="page-shell pt-1 pb-1 sm:pt-2">
+          <h2 className="text-xl sm:text-2xl font-extrabold leading-tight tracking-tight text-neutral-900">
+            а у нас новости
+          </h2>
+        </div>
+      )}
       {show_stories && (
         <div className="min-[1024px]:hidden w-full min-w-0">
           <div className="promo-stories-scroll stories-scroll">
@@ -256,7 +262,7 @@ export default function promo_banners({
       {/* карточки: пк на главной, везде на «все акции» */}
       <div
         ref={wrap_ref}
-        className={`relative mx-auto w-full overflow-visible ${
+        className={`relative mx-auto w-full max-w-[var(--page-max)] overflow-visible ${
           show_cards ? 'block' : 'hidden min-[1024px]:block'
         }`}
       >
