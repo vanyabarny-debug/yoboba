@@ -8,11 +8,15 @@ import { menu_badge_on_card } from '@/components/menu-badge';
 import { menu_item_has_badge } from '@/lib/menu-badge';
 import { fly_to_cart } from '@/lib/fly-to-cart';
 import {
+  configured_unit_price,
+  first_volume_id,
   get_composition,
   get_description,
+  get_item_volumes,
   get_nutrition,
   get_topping_name,
   get_topping_portion_price_value,
+  resolve_volume_id,
 } from '@/lib/product-details';
 import { subscribe_site_content_store } from '@/lib/site-content-store';
 import { DRAWER_CLOSE_BTN_CLASS, DRAWER_INLINE_CLOSE_BTN_CLASS } from '@/lib/drawer-ui';
@@ -27,26 +31,21 @@ type props = {
   on_add: (
     item: menu_item,
     qty: number,
-    options?: { volume: '450' | '650'; topping: number; replace_key?: string }
+    options?: { volume?: string; topping: number; replace_key?: string }
   ) => void | Promise<void>;
   /** правка позиции из корзины */
   edit_mode?: boolean;
   editing_line_key?: string | null;
   initial_qty?: number;
-  initial_volume?: '450' | '650';
+  initial_volume?: string;
   initial_topping?: number;
   return_to_cart?: boolean;
   on_return_to_cart?: () => void;
 };
 
-const volumes = [
-  { id: '450', label: '450 мл', ml: 450, add: 0 },
-  { id: '650', label: '650 мл', ml: 650, add: 50 },
-] as const;
-
 type card_state = {
   qty: number;
-  volume: (typeof volumes)[number]['id'];
+  volume: string;
   topping: number;
   details_open: boolean;
 };
@@ -56,8 +55,8 @@ type history_entry = {
   state: card_state;
 };
 
-function default_card_state(): card_state {
-  return { qty: 1, volume: '450', topping: 0, details_open: false };
+function default_card_state(item?: menu_item | null): card_state {
+  return { qty: 1, volume: first_volume_id(item), topping: 0, details_open: false };
 }
 
 function SectionTitle({ children }: { children: ReactNode }) {
@@ -85,7 +84,7 @@ export default function product_drawer({
 }: props) {
   const [qty, set_qty] = useState(1);
   const image_ref = useRef<HTMLDivElement>(null);
-  const [volume, set_volume] = useState<(typeof volumes)[number]['id']>('450');
+  const [volume, set_volume] = useState('450');
   const [topping, set_topping] = useState(0);
   const [details_open, set_details_open] = useState(false);
   const [nav_item, set_nav_item] = useState<menu_item | null>(null);
@@ -178,12 +177,14 @@ export default function product_drawer({
     if (edit_mode || return_to_cart) {
       apply_card_state({
         qty: Math.max(1, initial_qty),
-        volume: initial_volume,
+        volume: item
+          ? resolve_volume_id(item, initial_volume) ?? first_volume_id(item)
+          : first_volume_id(item),
         topping: Math.max(0, initial_topping),
         details_open: false,
       });
     } else {
-      apply_card_state(default_card_state());
+      apply_card_state(default_card_state(item));
     }
   }, [item?.id, edit_mode, return_to_cart, initial_qty, initial_volume, initial_topping]);
 
@@ -230,17 +231,17 @@ export default function product_drawer({
     load_recs(current);
   }, [active_item?.id, all_items, item, show_recommendations, history]);
 
-  const volume_ml = volumes.find((v) => v.id === volume)?.ml ?? 450;
+  const volume_options = active_item ? get_item_volumes(active_item) : [];
+  const volume_ml = volume_options.find((v) => String(v.ml) === volume)?.ml ?? volume_options[0]?.ml ?? 450;
   const topping_max = Math.max(4, Math.round(volume_ml / 60));
   const topping_used = show_toppings ? topping : 0;
-  const volume_used = show_volumes ? volume : '450';
+  const volume_used = show_volumes ? volume : undefined;
 
   const topping_price = get_topping_portion_price_value();
 
   const unit_price = useMemo(() => {
     if (!active_item) return 0;
-    const volume_add = volumes.find((v) => v.id === volume_used)?.add ?? 0;
-    return Math.max(0, active_item.price + volume_add + topping_used * topping_price);
+    return configured_unit_price(active_item, volume_used, topping_used);
   }, [active_item, volume_used, topping_used, topping_price, meta_tick]);
 
   const total_price = unit_price * qty;
@@ -300,7 +301,7 @@ export default function product_drawer({
         { item: active_item, state: snapshot_card_state() },
       ]);
     }
-    apply_card_state(default_card_state());
+    apply_card_state(default_card_state(rec));
     set_nav_item(rec);
   }
 
@@ -315,7 +316,7 @@ export default function product_drawer({
     fly_to_cart(image_ref.current);
     try {
       await on_add(active_item, qty, {
-        volume: volume_used,
+        ...(volume_used ? { volume: volume_used } : {}),
         topping: topping_used,
         ...(replace_key ? { replace_key } : {}),
       });
@@ -404,22 +405,23 @@ export default function product_drawer({
                 <h3 className="text-2xl sm:text-[32px] font-bold leading-tight text-neutral-900">
                   {active_item.name}
                 </h3>
-                {show_volumes && (
-                <div className="mt-3 inline-flex rounded-full bg-[#f3f4f6] p-0.5">
-                  {volumes.map((option) => {
-                    const active = option.id === volume;
+                {show_volumes && volume_options.length > 0 && (
+                <div className="mt-3 inline-flex max-w-full flex-wrap rounded-full bg-[#f3f4f6] p-0.5">
+                  {volume_options.map((option) => {
+                    const id = String(option.ml);
+                    const active = id === volume;
                     return (
                       <button
-                        key={option.id}
+                        key={id}
                         type="button"
-                        onClick={() => set_volume(option.id)}
+                        onClick={() => set_volume(id)}
                         className={`rounded-full px-3.5 py-1.5 text-sm transition-all ${
                           active
                             ? 'bg-white text-neutral-900 font-semibold shadow-[0_2px_8px_rgba(0,0,0,0.08)]'
                             : 'text-neutral-500 hover:text-neutral-800'
                         }`}
                       >
-                        {option.label}
+                        {option.ml} мл
                       </button>
                     );
                   })}

@@ -1,7 +1,7 @@
 'use client';
 
 import { createElement, useEffect, useMemo, useState } from 'react';
-import type { menu_item } from '@/lib/types';
+import type { menu_item, menu_nutrition } from '@/lib/types';
 import {
   add_category,
   delete_category,
@@ -15,6 +15,21 @@ import AdminShell from '@/components/admin/admin-shell';
 import menu_image from '@/components/menu-image';
 import { product_photo_button } from '@/components/admin/product-photo-picker';
 import { item_has_toppings, item_has_volumes } from '@/lib/cart-summary';
+import {
+  default_drink_volumes,
+  get_composition_text,
+  get_item_nutrition_base,
+  get_item_volumes,
+  get_nutrition,
+  normalize_volumes,
+} from '@/lib/product-details';
+
+const field_class =
+  'mt-1 w-full rounded-xl border border-neutral-200 px-3 py-2.5 text-sm text-neutral-900 outline-none focus:ring-2 focus:ring-neutral-200';
+
+function empty_nutrition(): menu_nutrition {
+  return { kcal: 0, protein: 0, fat: 0, carb: 0 };
+}
 
 function toggle_row({
   label,
@@ -69,9 +84,25 @@ function editor({
 }) {
   const [draft, set_draft] = useState<menu_item>(item);
   const others = items.filter((i) => i.id !== item.id);
+  const volumes = draft.volumes?.length ? draft.volumes : default_drink_volumes;
+  const nutrition = draft.nutrition ?? empty_nutrition();
+  const nutrition_preview = get_nutrition(
+    { ...draft, nutrition, has_volumes: item_has_volumes(draft) },
+    item_has_volumes(draft) ? (volumes[0]?.ml ?? 100) : 100,
+    0
+  );
 
   useEffect(() => {
-    set_draft({ ...item });
+    set_draft({
+      ...item,
+      composition: get_composition_text(item),
+      nutrition: get_item_nutrition_base(item),
+      volumes: item_has_volumes(item)
+        ? get_item_volumes(item)
+        : normalize_volumes(item.volumes).length > 0
+          ? normalize_volumes(item.volumes)
+          : default_drink_volumes.map((v) => ({ ...v })),
+    });
   }, [item]);
 
   function toggle_rec(id: string) {
@@ -111,7 +142,7 @@ function editor({
           <input
             value={draft.name}
             onChange={(e) => set_draft({ ...draft, name: e.target.value })}
-            className="mt-1 w-full rounded-xl border border-neutral-200 px-3 py-2.5 text-sm text-neutral-900 outline-none focus:ring-2 focus:ring-neutral-200"
+            className={field_class}
           />
         </label>
 
@@ -123,7 +154,7 @@ function editor({
               min={0}
               value={draft.price}
               onChange={(e) => set_draft({ ...draft, price: Math.max(0, Number(e.target.value) || 0) })}
-              className="mt-1 w-full rounded-xl border border-neutral-200 px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-neutral-200"
+              className={field_class}
             />
           </label>
           <label className="block text-xs text-neutral-500">
@@ -150,17 +181,136 @@ function editor({
             on_change: (on) => set_draft({ ...draft, is_available: on }),
           })}
           {toggle_row({
-            label: 'объёмы 450 / 650 мл',
-            hint: 'если выключить — гость берёт как есть',
+            label: 'объёмы',
+            hint: 'гость выбирает мл в карточке',
             on: item_has_volumes(draft),
-            on_change: (on) => set_draft({ ...draft, has_volumes: on }),
+            on_change: (on) =>
+              set_draft({
+                ...draft,
+                has_volumes: on,
+                volumes:
+                  on && !(draft.volumes && draft.volumes.length)
+                    ? default_drink_volumes.map((v) => ({ ...v }))
+                    : draft.volumes,
+              }),
           })}
+          {item_has_volumes(draft) && (
+            <div className="space-y-2 rounded-2xl border border-neutral-200 p-3">
+              {volumes.map((row, index) => (
+                <div key={`${row.ml}-${index}`} className="grid grid-cols-[1fr_1fr_auto] gap-2">
+                  <label className="block text-xs text-neutral-500">
+                    мл
+                    <input
+                      type="number"
+                      min={1}
+                      value={row.ml}
+                      onChange={(e) => {
+                        const next = [...volumes];
+                        next[index] = { ...row, ml: Math.max(0, Number(e.target.value) || 0) };
+                        set_draft({ ...draft, volumes: next });
+                      }}
+                      className={field_class}
+                    />
+                  </label>
+                  <label className="block text-xs text-neutral-500">
+                    доплата, ₽
+                    <input
+                      type="number"
+                      min={0}
+                      value={row.add}
+                      onChange={(e) => {
+                        const next = [...volumes];
+                        next[index] = { ...row, add: Math.max(0, Number(e.target.value) || 0) };
+                        set_draft({ ...draft, volumes: next });
+                      }}
+                      className={field_class}
+                    />
+                  </label>
+                  <button
+                    type="button"
+                    aria-label="убрать объём"
+                    onClick={() =>
+                      set_draft({ ...draft, volumes: volumes.filter((_, i) => i !== index) })
+                    }
+                    className="mt-6 h-10 w-10 rounded-xl text-sm text-neutral-400 hover:bg-neutral-50 hover:text-red-500"
+                  >
+                    ×
+                  </button>
+                </div>
+              ))}
+              <button
+                type="button"
+                onClick={() => {
+                  const used = new Set(volumes.map((v) => v.ml));
+                  let ml = 500;
+                  while (used.has(ml)) ml += 50;
+                  set_draft({ ...draft, volumes: [...volumes, { ml, add: 0 }] });
+                }}
+                className="text-sm text-neutral-500 hover:text-neutral-900"
+              >
+                + объём
+              </button>
+            </div>
+          )}
           {toggle_row({
             label: 'топпинг',
             hint: 'добавки порциями в карточке товара',
             on: item_has_toppings(draft),
             on_change: (on) => set_draft({ ...draft, has_toppings: on }),
           })}
+        </div>
+
+        <label className="mt-5 block text-xs text-neutral-500">
+          состав
+          <textarea
+            value={draft.composition ?? ''}
+            onChange={(e) => set_draft({ ...draft, composition: e.target.value })}
+            rows={3}
+            placeholder="чай, молоко, тапиока, сироп, лёд"
+            className={`${field_class} resize-y leading-relaxed`}
+          />
+        </label>
+
+        <div className="mt-5">
+          <p className="text-xs font-medium text-neutral-500">
+            {item_has_volumes(draft) ? 'кбжу на 100 мл' : 'кбжу на порцию'}
+          </p>
+          <div className="mt-2 grid grid-cols-2 gap-2">
+            {(
+              [
+                ['kcal', 'ккал', 1],
+                ['protein', 'белки, г', 0.1],
+                ['fat', 'жиры, г', 0.1],
+                ['carb', 'углеводы, г', 0.1],
+              ] as const
+            ).map(([key, label, step]) => (
+              <label key={key} className="block text-xs text-neutral-500">
+                {label}
+                <input
+                  type="number"
+                  min={0}
+                  step={step}
+                  value={nutrition[key]}
+                  onChange={(e) =>
+                    set_draft({
+                      ...draft,
+                      nutrition: {
+                        ...nutrition,
+                        [key]: Number(e.target.value) || 0,
+                      },
+                    })
+                  }
+                  className={field_class}
+                />
+              </label>
+            ))}
+          </div>
+          {item_has_volumes(draft) && volumes[0] ? (
+            <p className="mt-2 text-xs text-neutral-400">
+              при {volumes[0].ml} мл: {nutrition_preview.kcal} ккал · б {nutrition_preview.protein} · ж{' '}
+              {nutrition_preview.fat} · у {nutrition_preview.carb}
+            </p>
+          ) : null}
         </div>
 
         <div className="mt-5">
@@ -209,6 +359,18 @@ function editor({
                 ...draft,
                 name: draft.name.trim() || 'без названия',
                 price: Math.max(0, Math.round(draft.price)),
+                composition: (draft.composition ?? '').trim(),
+                nutrition: {
+                  kcal: Math.max(0, Math.round(Number(nutrition.kcal) || 0)),
+                  protein: Math.max(0, Number(nutrition.protein) || 0),
+                  fat: Math.max(0, Number(nutrition.fat) || 0),
+                  carb: Math.max(0, Number(nutrition.carb) || 0),
+                },
+                volumes: item_has_volumes(draft)
+                  ? normalize_volumes(volumes).length > 0
+                    ? normalize_volumes(volumes)
+                    : default_drink_volumes.map((v) => ({ ...v }))
+                  : normalize_volumes(draft.volumes),
               })
             }
             className="flex-1 rounded-pill bg-neutral-900 py-3 text-sm font-semibold text-white"
@@ -262,6 +424,9 @@ export default function menu_settings() {
       prep_minutes: 2,
       has_volumes: true,
       has_toppings: true,
+      volumes: default_drink_volumes.map((v) => ({ ...v })),
+      composition: '',
+      nutrition: empty_nutrition(),
     };
     upsert_menu_item(created);
     reload();
@@ -275,7 +440,7 @@ export default function menu_settings() {
           <div>
             <h1 className="text-lg font-semibold text-neutral-900">меню</h1>
             <p className="mt-1 text-sm text-neutral-500">
-              название, фото, объём, топпинг и похожие
+              название, фото, объёмы, состав и кбжу
             </p>
           </div>
           <button
@@ -360,7 +525,9 @@ export default function menu_settings() {
                   <span className="mt-0.5 block text-xs text-neutral-400">
                     {item.category}
                     {!item.is_available ? ' · стоп' : ''}
-                    {!item_has_volumes(item) ? ' · без объёма' : ''}
+                    {item_has_volumes(item)
+                      ? ` · ${get_item_volumes(item).map((v) => v.ml).join('/')} мл`
+                      : ' · без объёма'}
                     {!item_has_toppings(item) ? ' · без топпинга' : ''}
                   </span>
                 </span>

@@ -1,11 +1,11 @@
 import type { menu_item } from '@/lib/types';
+import { get_default_site_content, get_site_content_store } from '@/lib/site-content-store';
 import {
-  get_default_site_content,
-  get_site_content_store,
-  parse_composition,
-  type category_nutrition,
-} from '@/lib/site-content-store';
-import { get_topping_name } from '@/lib/product-details';
+  get_composition_text,
+  get_item_nutrition_base,
+  get_item_volumes,
+  get_topping_name,
+} from '@/lib/product-details';
 
 export type menu_search_result = {
   item: menu_item;
@@ -14,12 +14,29 @@ export type menu_search_result = {
   score: number;
 };
 
-const fallback_nutrition: category_nutrition = {
-  kcal: 55,
-  protein: 1.2,
-  fat: 1.3,
-  carb: 10,
-};
+function nutrition_text(item: menu_item) {
+  const n = get_item_nutrition_base(item);
+  const vols = get_item_volumes(item);
+  const first = vols[0]?.ml ?? 100;
+  const scale = vols.length > 0 ? first / 100 : 1;
+  const scaled = {
+    kcal: Math.round(n.kcal * scale),
+    protein: Math.round(n.protein * scale * 10) / 10,
+    fat: Math.round(n.fat * scale * 10) / 10,
+    carb: Math.round(n.carb * scale * 10) / 10,
+  };
+  return [
+    `${n.kcal} ккал`,
+    `${n.protein} г белка`,
+    `${n.fat} г жира`,
+    `${n.carb} г углеводов`,
+    `${scaled.kcal} ккал ${first} мл`,
+    `${scaled.protein} белок`,
+    `${scaled.carb} углеводы`,
+    'грамм',
+    ...vols.map((v) => `${v.ml} мл`),
+  ].join(' ');
+}
 
 function normalize(text: string) {
   return text.toLowerCase().replace(/ё/g, 'е').trim();
@@ -51,37 +68,9 @@ function store_snapshot() {
   return typeof window === 'undefined' ? get_default_site_content() : get_site_content_store();
 }
 
-function nutrition_text(category: string, store: ReturnType<typeof store_snapshot>) {
-  const n =
-    store.category_nutrition?.[category] ??
-    store_snapshot().category_nutrition?.[category] ??
-    fallback_nutrition;
-  const ml450 = {
-    kcal: Math.round(n.kcal * 4.5),
-    protein: Math.round(n.protein * 4.5 * 10) / 10,
-    fat: Math.round(n.fat * 4.5 * 10) / 10,
-    carb: Math.round(n.carb * 4.5 * 10) / 10,
-  };
-  return [
-    `${n.kcal} ккал`,
-    `${n.protein} г белка`,
-    `${n.fat} г жира`,
-    `${n.carb} г углеводов`,
-    `${ml450.kcal} ккал 450 мл`,
-    `${ml450.protein} белок 450`,
-    `${ml450.carb} углеводы`,
-    'грамм',
-    '450 мл',
-    '650 мл',
-  ].join(' ');
-}
-
 function item_fields(item: menu_item, all_items: menu_item[]) {
   const store = store_snapshot();
-  const composition_raw = store.category_compositions[item.category];
-  const composition = composition_raw
-    ? parse_composition(composition_raw).join(', ')
-    : 'основа, тапиока, лёд';
+  const composition = get_composition_text(item) || 'основа, тапиока, лёд';
   const description =
     store.category_descriptions[item.category] ??
     'готовим после заказа — можно настроить объём, лёд и добавки.';
@@ -96,7 +85,7 @@ function item_fields(item: menu_item, all_items: menu_item[]) {
     { label: 'цена', text: `${item.price} руб ${item.price} ₽`, weight: 40 },
     { label: 'состав', text: `${composition}, ${item.name}`, weight: 60 },
     { label: 'описание', text: description, weight: 50 },
-    { label: 'кбжу', text: nutrition_text(item.category, store), weight: 45 },
+    { label: 'кбжу', text: nutrition_text(item), weight: 45 },
     { label: 'добавка', text: get_topping_name(item), weight: 35 },
     { label: 'рекомендации', text: rec_names, weight: 30 },
   ];

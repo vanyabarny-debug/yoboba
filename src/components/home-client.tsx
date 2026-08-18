@@ -60,7 +60,7 @@ import { get_auth_state, sign_out } from '@/lib/auth';
 import { create_order } from '@/lib/orders';
 import { format_order_number } from '@/lib/order-number';
 import { normalize_phone } from '@/lib/phone';
-import { get_topping_portion_price_value } from '@/lib/product-details';
+import { configured_unit_price, first_volume_id, resolve_volume_id } from '@/lib/product-details';
 import {
   get_demo_user,
   set_demo_user,
@@ -117,9 +117,9 @@ function merge_cart_line(
   lines: cart_line[],
   item: menu_item,
   qty: number,
-  options?: { volume?: '450' | '650'; topping?: number; replace_key?: string }
+  options?: { volume?: string; topping?: number; replace_key?: string }
 ): cart_line[] {
-  const volume = options?.volume ?? '450';
+  const volume = resolve_volume_id(item, options?.volume);
   const topping = options?.topping ?? 0;
   const next_qty = Math.max(1, qty);
 
@@ -169,7 +169,7 @@ function merge_cart_line(
   const same = lines.findIndex(
     (l) =>
       l.item.id === item.id &&
-      (l.volume ?? '450') === volume &&
+      (l.volume ?? '') === (volume ?? '') &&
       (l.topping ?? 0) === topping &&
       !l.item.id.startsWith('topping-')
   );
@@ -230,7 +230,7 @@ export default function home_client({
   const editing_line_key_ref = useRef<string | null>(null);
   const [edit_initial, set_edit_initial] = useState<{
     qty: number;
-    volume: '450' | '650';
+    volume: string;
     topping: number;
   }>({ qty: 1, volume: '450', topping: 0 });
   const [cart_open, set_cart_open] = useState(false);
@@ -628,7 +628,7 @@ export default function home_client({
   function add_to_local_cart(
     item: menu_item,
     qty: number,
-    options?: { volume?: '450' | '650'; topping?: number; replace_key?: string }
+    options?: { volume?: string; topping?: number; replace_key?: string }
   ) {
     set_cart_lines((prev) => merge_cart_line(prev, item, qty, options));
   }
@@ -745,7 +745,7 @@ export default function home_client({
   async function execute_add(
     item: menu_item,
     qty: number,
-    options?: { volume?: '450' | '650'; topping?: number; replace_key?: string }
+    options?: { volume?: string; topping?: number; replace_key?: string }
   ) {
     add_to_local_cart(item, qty, options);
 
@@ -760,11 +760,10 @@ export default function home_client({
       return;
     }
 
-    const volume_add = options?.volume === '650' ? 50 : 0;
     const topping = options?.topping ?? 0;
     const server_item: menu_item = {
       ...item,
-      price: Math.max(0, item.price + volume_add + topping * get_topping_portion_price_value()),
+      price: configured_unit_price(item, options?.volume, topping),
     };
 
     const { error } = await add_to_cart(user_id, server_item, qty);
@@ -778,7 +777,7 @@ export default function home_client({
   async function handle_add(
     item: menu_item,
     qty: number,
-    options?: { volume?: '450' | '650'; topping?: number; replace_key?: string }
+    options?: { volume?: string; topping?: number; replace_key?: string }
   ) {
     // replace_key только явно из drawer при «Изменить» — иначе upsell/quick-add
     // накладывается на редактируемую строку и удваивает qty
@@ -891,7 +890,7 @@ export default function home_client({
           !line_key &&
           !assigned &&
           l.item.id === line.item.id &&
-          (l.volume ?? '450') === (line.volume ?? '450') &&
+          (l.volume ?? '') === (line.volume ?? '') &&
           (l.topping ?? 0) === (line.topping ?? 0)
         ) {
           assigned = true;
@@ -908,7 +907,7 @@ export default function home_client({
     set_editing_line_key(key);
     set_edit_initial({
       qty: line.quantity,
-      volume: line.volume ?? '450',
+      volume: line.volume ?? first_volume_id(line.item),
       topping: line.topping ?? 0,
     });
     set_drawer_open(true);
@@ -920,7 +919,7 @@ export default function home_client({
     set_product_from_cart(false);
     editing_line_key_ref.current = null;
     set_editing_line_key(null);
-    set_edit_initial({ qty: 1, volume: '450', topping: 0 });
+    set_edit_initial({ qty: 1, volume: first_volume_id(item), topping: 0 });
     set_drawer_open(true);
   }
 
@@ -1215,7 +1214,7 @@ export default function home_client({
                 set_product_from_cart(false);
                 editing_line_key_ref.current = null;
                 set_editing_line_key(null);
-                set_edit_initial({ qty: 1, volume: '450', topping: 0 });
+                set_edit_initial({ qty: 1, volume: first_volume_id(item), topping: 0 });
                 set_drawer_open(true);
               },
             })}

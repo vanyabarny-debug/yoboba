@@ -10,7 +10,7 @@ import {
 } from '@/lib/menu-store';
 import { format_phone_input, phone_input_to_e164 } from '@/lib/phone';
 import { category_tile_meta } from '@/lib/category-icons';
-import { get_topping_portion_price_value } from '@/lib/product-details';
+import { configured_unit_price, first_volume_id, resolve_volume_id } from '@/lib/product-details';
 import { tile_grid, board_tile_grid } from '@/lib/seller-tile-grid';
 import { FREE_DRINK_BONUS_THRESHOLD } from '@/lib/cart-summary';
 import { use_page_swipe } from '@/lib/use-page-swipe';
@@ -19,7 +19,7 @@ import menu_image from '@/components/menu-image';
 import seller_product_sheet from '@/components/seller/seller-product-sheet';
 
 type cart_line = order_item & {
-  volume?: '450' | '650';
+  volume?: string;
   topping?: number;
 };
 
@@ -45,7 +45,7 @@ type step = 'categories' | 'products';
 
 function line_label(line: cart_line) {
   const bits = [line.name];
-  if (line.volume === '650') bits.push('650 мл');
+  if (line.volume) bits.push(`${line.volume} мл`);
   if (line.topping && line.topping > 0) bits.push(`топ. ×${line.topping}`);
   return bits.join(' · ');
 }
@@ -224,7 +224,7 @@ export default function pos_panel({
   function open_item(item: menu_item) {
     if (replace_index != null) {
       const qty = cart[replace_index]?.quantity ?? 1;
-      add_configured(item, qty, { volume: '450', topping: 0 });
+      add_configured(item, qty, { volume: resolve_volume_id(item), topping: 0 });
       return;
     }
     set_edit_index(null);
@@ -258,17 +258,13 @@ export default function pos_panel({
   function build_line(
     item: menu_item,
     qty: number,
-    options?: { volume: '450' | '650'; topping: number }
+    options?: { volume?: string; topping: number }
   ): cart_line {
-    const volume = options?.volume ?? '450';
+    const volume = resolve_volume_id(item, options?.volume);
     const topping = options?.topping ?? 0;
-    const volume_add = volume === '650' ? 50 : 0;
-    const unit = Math.max(
-      0,
-      item.price + volume_add + topping * get_topping_portion_price_value()
-    );
+    const unit = configured_unit_price(item, volume, topping);
     const name_bits = [item.name];
-    if (volume === '650') name_bits.push('650мл');
+    if (volume) name_bits.push(`${volume}мл`);
     if (topping > 0) name_bits.push(`+топ.${topping}`);
     return {
       menu_id: item.id,
@@ -283,7 +279,7 @@ export default function pos_panel({
   function add_configured(
     item: menu_item,
     qty: number,
-    options?: { volume: '450' | '650'; topping: number }
+    options?: { volume?: string; topping: number }
   ) {
     const line = build_line(item, qty, options);
 
@@ -316,7 +312,7 @@ export default function pos_panel({
     set_cart((prev) => {
       const key_match = (r: cart_line) =>
         r.menu_id === line.menu_id &&
-        (r.volume ?? '450') === (line.volume ?? '450') &&
+        (r.volume ?? '') === (line.volume ?? '') &&
         (r.topping ?? 0) === (line.topping ?? 0);
       const idx = prev.findIndex(key_match);
       if (idx >= 0) {
@@ -647,12 +643,12 @@ export default function pos_panel({
     mode: sheet_mode,
     initial: editing_line
       ? {
-          volume: editing_line.volume ?? '450',
+          volume: editing_line.volume ?? first_volume_id(selected),
           topping: editing_line.topping ?? 0,
           qty: editing_line.quantity,
         }
       : replace_index != null && cart[replace_index]
-        ? { qty: cart[replace_index].quantity, volume: '450', topping: 0 }
+        ? { qty: cart[replace_index].quantity, volume: first_volume_id(selected), topping: 0 }
         : null,
     on_close: () => {
       set_sheet_open(false);

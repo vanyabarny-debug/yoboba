@@ -18,7 +18,7 @@ import {
   get_upsell_items,
   FREE_DRINK_BONUS_THRESHOLD,
 } from '@/lib/cart-summary';
-import { get_topping_name, get_topping_portion_price_value } from '@/lib/product-details';
+import { configured_unit_price, get_topping_name } from '@/lib/product-details';
 import { default_store_address } from '@/lib/location';
 
 export type cart_line = {
@@ -26,7 +26,7 @@ export type cart_line = {
   quantity: number;
   /** уникальный ключ позиции (чтобы правки не склеивались) */
   key?: string;
-  volume?: '450' | '650';
+  volume?: string;
   /** порций топпинга на 1 шт */
   topping?: number;
 };
@@ -35,9 +35,7 @@ export function cart_line_unit_price(line: cart_line): number {
   if (line.volume == null && (line.topping == null || line.topping === 0)) {
     return line.item.price;
   }
-  const volume_add = line.volume === '650' ? 50 : 0;
-  const topping = line.topping ?? 0;
-  return Math.max(0, line.item.price + volume_add + topping * get_topping_portion_price_value());
+  return configured_unit_price(line.item, line.volume, line.topping ?? 0);
 }
 
 export function cart_line_key(line: cart_line, index: number) {

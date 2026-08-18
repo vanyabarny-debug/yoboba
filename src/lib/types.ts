@@ -35,6 +35,19 @@ export type promo_banner = {
 
 export type menu_badge_color = 'pink' | 'accent' | 'orange' | 'green' | 'purple' | 'dark';
 
+export type menu_volume = {
+  ml: number;
+  /** доплата к базовой цене */
+  add: number;
+};
+
+export type menu_nutrition = {
+  kcal: number;
+  protein: number;
+  fat: number;
+  carb: number;
+};
+
 export type menu_item = {
   id: string;
   name: string;
@@ -46,10 +59,16 @@ export type menu_item = {
   prep_minutes?: number;
   badge_text?: string;
   badge_color?: menu_badge_color;
-  /** выбор 450/650 мл в карточке; по умолчанию да, кроме закусок */
+  /** выбор объёма в карточке; по умолчанию да, кроме закусок */
   has_volumes?: boolean;
   /** порции топпинга в карточке; по умолчанию да, кроме закусок */
   has_toppings?: boolean;
+  /** варианты объёма; если пусто — 450 / 650 */
+  volumes?: menu_volume[];
+  /** состав через запятую; иначе берётся из категории */
+  composition?: string;
+  /** кбжу: на 100 мл, если есть объёмы, иначе на порцию */
+  nutrition?: menu_nutrition;
 };
 
 export type story = {

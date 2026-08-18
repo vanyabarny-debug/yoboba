@@ -4,14 +4,20 @@ import { createElement, useEffect, useMemo, useState } from 'react';
 import type { menu_item } from '@/lib/types';
 import menu_image from '@/components/menu-image';
 import {
+  configured_unit_price,
+  first_volume_id,
   get_composition,
+  get_item_volumes,
   get_nutrition,
   get_topping_name,
   get_topping_portion_price_value,
+  resolve_volume_id,
 } from '@/lib/product-details';
 import {
   calc_order_bonus,
   FREE_DRINK_BONUS_THRESHOLD,
+  item_has_toppings,
+  item_has_volumes,
 } from '@/lib/cart-summary';
 import { create_client } from '@/lib/supabase/client';
 import { is_supabase_configured } from '@/lib/supabase/config';
@@ -23,23 +29,18 @@ type props = {
   /** баланс тапикоинов гостя, если уже найден по телефону */
   customer_bonus?: number | null;
   /** стартовые опции при правке позиции из корзины */
-  initial?: { volume?: '450' | '650'; topping?: number; qty?: number } | null;
+  initial?: { volume?: string; topping?: number; qty?: number } | null;
   /** режим: обычное добавление / правка / выбор замены */
   mode?: 'add' | 'edit' | 'replace';
   on_close: () => void;
   on_add: (
     item: menu_item,
     qty: number,
-    options?: { volume: '450' | '650'; topping: number }
+    options?: { volume?: string; topping: number }
   ) => void;
   /** начать выбор другого блюда вместо текущего */
   on_start_replace?: () => void;
 };
-
-const volumes = [
-  { id: '450' as const, label: '450 мл', add: 0 },
-  { id: '650' as const, label: '650 мл', add: 50 },
-];
 
 /** упрощённая карточка товара для кассира — без покупательского UI */
 export default function seller_product_sheet({
@@ -55,7 +56,7 @@ export default function seller_product_sheet({
 }: props) {
   const [active, set_active] = useState<menu_item | null>(item);
   const [qty, set_qty] = useState(1);
-  const [volume, set_volume] = useState<'450' | '650'>('450');
+  const [volume, set_volume] = useState('450');
   const [topping, set_topping] = useState(0);
   const [details_open, set_details_open] = useState(false);
   const [recs, set_recs] = useState<menu_item[]>([]);
@@ -64,7 +65,7 @@ export default function seller_product_sheet({
     if (!open || !item) return;
     set_active(item);
     set_qty(Math.max(1, initial?.qty ?? 1));
-    set_volume(initial?.volume ?? '450');
+    set_volume(resolve_volume_id(item, initial?.volume) ?? first_volume_id(item));
     set_topping(Math.max(0, initial?.topping ?? 0));
     set_details_open(false);
   }, [open, item, initial?.qty, initial?.volume, initial?.topping]);
@@ -107,11 +108,14 @@ export default function seller_product_sheet({
 
   const topping_price = get_topping_portion_price_value();
   const topping_name = active ? get_topping_name(active) : 'тапиока';
-  const topping_max = 6;
-  const volume_add = volume === '650' ? 50 : 0;
-  const unit = active
-    ? Math.max(0, active.price + volume_add + topping * topping_price)
-    : 0;
+  const show_volumes = active ? item_has_volumes(active) : false;
+  const show_toppings = active ? item_has_toppings(active) : false;
+  const volume_options = active ? get_item_volumes(active) : [];
+  const volume_ml = volume_options.find((v) => String(v.ml) === volume)?.ml ?? volume_options[0]?.ml ?? 450;
+  const topping_max = Math.max(4, Math.round(volume_ml / 60));
+  const topping_used = show_toppings ? topping : 0;
+  const volume_used = show_volumes ? volume : undefined;
+  const unit = active ? configured_unit_price(active, volume_used, topping_used) : 0;
   const line_total = unit * qty;
   const bonus_earn = calc_order_bonus(line_total);
   const can_pay_with_bonus =
@@ -122,22 +126,25 @@ export default function seller_product_sheet({
     [active]
   );
   const nutrition = useMemo(
-    () => (active ? get_nutrition(active, volume === '650' ? 650 : 450, topping) : null),
-    [active, volume, topping]
+    () => (active ? get_nutrition(active, volume_ml, topping_used) : null),
+    [active, volume_ml, topping_used]
   );
 
   if (!open || !active) return null;
 
   function add_current() {
-    on_add(active!, qty, { volume, topping });
+    on_add(active!, qty, { volume: volume_used, topping: topping_used });
     on_close();
   }
 
   function suggest(rec: menu_item) {
-    on_add(rec, 1, { volume: '450', topping: 0 });
+    on_add(rec, 1, {
+      volume: resolve_volume_id(rec),
+      topping: 0,
+    });
     set_active(rec);
     set_qty(1);
-    set_volume('450');
+    set_volume(first_volume_id(rec));
     set_topping(0);
     set_details_open(false);
   }
@@ -198,24 +205,30 @@ export default function seller_product_sheet({
             ) : null}
           </div>
 
+          {show_volumes && volume_options.length > 0 && (
           <div className="grid shrink-0 grid-cols-2 gap-2">
-            {volumes.map((v) => (
-              <button
-                key={v.id}
-                type="button"
-                onClick={() => set_volume(v.id)}
-                className={`rounded-xl border py-2 text-sm font-semibold ${
-                  volume === v.id
-                    ? 'border-neutral-900 bg-neutral-900 text-white'
-                    : 'border-neutral-200 bg-white text-neutral-700'
-                }`}
-              >
-                {v.label}
-                {v.add ? ` · +${v.add}₽` : ''}
-              </button>
-            ))}
+            {volume_options.map((v) => {
+              const id = String(v.ml);
+              return (
+                <button
+                  key={id}
+                  type="button"
+                  onClick={() => set_volume(id)}
+                  className={`rounded-xl border py-2 text-sm font-semibold ${
+                    volume === id
+                      ? 'border-neutral-900 bg-neutral-900 text-white'
+                      : 'border-neutral-200 bg-white text-neutral-700'
+                  }`}
+                >
+                  {v.ml} мл
+                  {v.add ? ` · +${v.add}₽` : ''}
+                </button>
+              );
+            })}
           </div>
+          )}
 
+          {show_toppings && (
           <div className="flex shrink-0 items-center justify-between gap-3">
             <p className="text-sm text-neutral-700">
               {topping_name}{' '}
@@ -239,6 +252,7 @@ export default function seller_product_sheet({
               </button>
             </div>
           </div>
+          )}
 
           <div className="flex shrink-0 items-center justify-between gap-3">
             <p className="text-sm text-neutral-700">количество</p>
