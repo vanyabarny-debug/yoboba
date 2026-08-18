@@ -12,7 +12,7 @@ export const admin_tabs = [
     label: 'клиенты',
     match: (p: string) => p.startsWith('/admin/customers'),
   },
-  { href: '/admin/menu', label: 'редактирование', match: (p: string) => p.startsWith('/admin/menu') },
+  { href: '/admin/menu', label: 'меню', match: (p: string) => p.startsWith('/admin/menu') },
   {
     href: '/admin/personnel',
     label: 'персонал',
@@ -33,14 +33,7 @@ export function AdminHeader({ actions }: { actions?: React.ReactNode }) {
   return (
     <header className="sticky top-0 z-50 border-b border-neutral-200/80 bg-white/95 backdrop-blur">
       <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-x-4 gap-y-2 px-4 py-2.5">
-        <Link href="/admin" className="shrink-0 flex items-center gap-2">
-          <img
-            src="/icons/yosquad-192.png"
-            alt="yoSquad"
-            width={28}
-            height={28}
-            className="rounded-lg"
-          />
+        <Link href="/admin" className="shrink-0 flex items-center">
           <span className="text-sm font-bold tracking-tight text-accent" style={{ fontFamily: 'Fredoka, var(--font-sans), system-ui, sans-serif' }}>
             yoSquad
           </span>

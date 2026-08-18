@@ -1,8 +1,6 @@
 'use client';
 
 import { createElement, useEffect, useState } from 'react';
-import Link from 'next/link';
-import { useRouter } from 'next/navigation';
 import type { menu_item, promo_banner, sidebar_ad_slide } from '@/lib/types';
 import {
   add_category,
@@ -50,12 +48,11 @@ import sidebar_edit_sheet from '@/components/admin/sidebar-edit-sheet';
 import top_bar_edit_sheet from '@/components/admin/top-bar-edit-sheet';
 import category_edit_sheet from '@/components/admin/category-edit-sheet';
 import { admin_sheet } from '@/components/admin/admin-sheet';
-import { clear_session } from '@/lib/demo-auth';
+import AdminShell from '@/components/admin/admin-shell';
 
 const sticky_ad_gap = 10;
 
 export default function menu_manage() {
-  const router = useRouter();
   const [categories, set_categories] = useState<string[]>([]);
   const [items, set_items] = useState<menu_item[]>([]);
   const [promos, set_promos] = useState<promo_banner[]>([]);
@@ -140,46 +137,30 @@ export default function menu_manage() {
     reload_menu();
   }
 
+  function handle_reset_menu() {
+    if (confirm('сбросить меню к дефолту?')) {
+      reset_menu_store();
+      reload_menu();
+    }
+  }
+
   return (
-    <div className="min-h-screen bg-page">
-      <header className="bg-page border-b border-surface sticky top-0 z-30">
-        <div className="max-w-5xl mx-auto px-4 py-3 flex items-center justify-between gap-3">
-          <div>
-            <h1 className="text-lg font-semibold">управление сайтом</h1>
-            <p className="text-xs text-neutral-500">как у гостя — жми карандаши</p>
-          </div>
-          <div className="flex gap-3 text-sm items-center">
-            <Link href="/admin/personnel" className="text-neutral-600 hover:text-accent">
-              персонал
-            </Link>
-            <button
-              type="button"
-              onClick={async () => {
-                await clear_session();
-                router.push('/admin/login');
-              }}
-              className="text-neutral-500"
-            >
-              выйти
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                if (confirm('сбросить меню к дефолту?')) {
-                  reset_menu_store();
-                  reload_menu();
-                }
-              }}
-              className="text-neutral-400"
-            >
-              сброс
-            </button>
-            <Link href="/" className="text-accent">
-              на сайт
-            </Link>
-          </div>
-        </div>
-      </header>
+    <AdminShell
+      wide
+      actions={
+        <button
+          type="button"
+          onClick={handle_reset_menu}
+          className="rounded-pill border border-neutral-200 px-3 py-1.5 text-xs text-neutral-600 hover:bg-neutral-50"
+        >
+          сброс меню
+        </button>
+      }
+    >
+      <div className="mb-4">
+        <h1 className="text-lg font-semibold text-neutral-900">настройка меню</h1>
+        <p className="text-xs text-neutral-500">названия, объём, состав, похожие, топпинги и фото</p>
+      </div>
 
       <div className="bg-page border-b border-surface/70">
         {createElement(top_bar, {
@@ -396,6 +377,6 @@ export default function menu_manage() {
           </form>
         ),
       })}
-    </div>
+    </AdminShell>
   );
 }
