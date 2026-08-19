@@ -1,6 +1,6 @@
 /**
  * Генерация иконок PWA/favicon из фирменного вордмарка «yomoyo».
- * Шрифт — Fredoka 600 (как логотип на сайте), цвет — coral #FF6B6B.
+ * Шрифт — Fredoka 600 (как логотип на сайте): коралловый фон, белый текст.
  * Запуск: node scripts/gen-icons.mjs
  */
 import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
@@ -65,12 +65,12 @@ async function render({ size, pad, bg, fg }) {
 }
 
 const targets = [
-  { file: 'public/icons/icon-192.png', size: 192, pad: 0.06, bg: WHITE, fg: CORAL },
-  { file: 'public/icons/icon-512.png', size: 512, pad: 0.06, bg: WHITE, fg: CORAL },
+  { file: 'public/icons/icon-192.png', size: 192, pad: 0.06, bg: CORAL, fg: WHITE },
+  { file: 'public/icons/icon-512.png', size: 512, pad: 0.06, bg: CORAL, fg: WHITE },
   // maskable: контент в центральной safe-zone (~80% ширины)
-  { file: 'public/icons/icon-maskable-512.png', size: 512, pad: 0.12, bg: WHITE, fg: CORAL },
-  { file: 'src/app/icon.png', size: 512, pad: 0.06, bg: WHITE, fg: CORAL },
-  { file: 'src/app/apple-icon.png', size: 180, pad: 0.07, bg: WHITE, fg: CORAL },
+  { file: 'public/icons/icon-maskable-512.png', size: 512, pad: 0.12, bg: CORAL, fg: WHITE },
+  { file: 'src/app/icon.png', size: 512, pad: 0.06, bg: CORAL, fg: WHITE },
+  { file: 'src/app/apple-icon.png', size: 180, pad: 0.07, bg: CORAL, fg: WHITE },
 ];
 
 for (const t of targets) {

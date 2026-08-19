@@ -1,6 +1,6 @@
 /* eslint-disable no-restricted-globals */
 
-const cache_name = 'yoboba-v12';
+const cache_name = 'yoboba-v13';
 const static_assets = [
   '/manifest.json',
   '/icons/icon-192.png',

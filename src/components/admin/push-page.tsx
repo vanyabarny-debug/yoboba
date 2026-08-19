@@ -2,6 +2,14 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import AdminShell from '@/components/admin/admin-shell';
+import { subscribe_menu_store } from '@/lib/menu-store';
+import { subscribe_promo_store } from '@/lib/promo-store';
+import { subscribe_site_content_store } from '@/lib/site-content-store';
+import {
+  group_guest_site_links,
+  list_guest_site_links,
+  type site_link,
+} from '@/lib/site-pages';
 
 type target = {
   key: string;
@@ -31,7 +39,7 @@ const presets = [
     label: 'подарок',
     title: 'вам подарок',
     body: 'друг отправил напиток — забери его в точке',
-    url: '/profile',
+    url: '/?gift=1',
   },
   {
     id: 'miss',
@@ -49,6 +57,11 @@ const presets = [
   },
 ] as const;
 
+function pick_url(links: site_link[], preferred: string) {
+  if (links.some((link) => link.href === preferred)) return preferred;
+  return links[0]?.href ?? '/';
+}
+
 export default function push_page() {
   const [data, set_data] = useState<payload | null>(null);
   const [error, set_error] = useState('');
@@ -59,8 +72,31 @@ export default function push_page() {
   const [audience, set_audience] = useState<'all' | 'selected'>('all');
   const [picked, set_picked] = useState<Set<string>>(new Set());
   const [preset, set_preset] = useState<string>('');
+  const [page_preset, set_page_preset] = useState<string>('');
   const [sending, set_sending] = useState(false);
   const [result, set_result] = useState('');
+  const [links, set_links] = useState<site_link[]>(() => list_guest_site_links());
+
+  useEffect(() => {
+    function reload() {
+      set_links(list_guest_site_links());
+    }
+    reload();
+    const unsub_content = subscribe_site_content_store(reload);
+    const unsub_promo = subscribe_promo_store(reload);
+    const unsub_menu = subscribe_menu_store(reload);
+    return () => {
+      unsub_content();
+      unsub_promo();
+      unsub_menu();
+    };
+  }, []);
+
+  const grouped_links = useMemo(() => group_guest_site_links(links), [links]);
+
+  useEffect(() => {
+    set_url((current) => pick_url(links, current));
+  }, [links]);
 
   useEffect(() => {
     fetch('/api/push/subscribers', { credentials: 'same-origin' })
@@ -89,9 +125,18 @@ export default function push_page() {
     const item = presets.find((p) => p.id === id);
     if (!item) return;
     set_preset(id);
+    set_page_preset('');
     set_title(item.title);
     set_body(item.body);
-    set_url(item.url);
+    set_url(pick_url(links, item.url));
+  }
+
+  function apply_page(link: site_link) {
+    set_preset('');
+    set_page_preset(link.href);
+    set_title(link.label);
+    set_body(`открой «${link.label}» в приложении yomoyo`);
+    set_url(link.href);
   }
 
   function toggle(key: string) {
@@ -185,21 +230,53 @@ export default function push_page() {
           onSubmit={(e) => void handle_send(e)}
           className="rounded-2xl bg-white border border-neutral-200/80 p-4 shadow-sm space-y-4"
         >
-          <div className="flex flex-wrap gap-2">
-            {presets.map((p) => (
-              <button
-                key={p.id}
-                type="button"
-                onClick={() => apply_preset(p.id)}
-                className={`rounded-lg px-3 py-1.5 text-sm font-medium ${
-                  preset === p.id
-                    ? 'bg-neutral-900 text-white'
-                    : 'bg-neutral-100 text-neutral-700 hover:bg-neutral-200'
-                }`}
-              >
-                {p.label}
-              </button>
-            ))}
+          <div className="space-y-2">
+            <p className="text-xs text-neutral-500">готовые тексты</p>
+            <div className="flex flex-wrap gap-2">
+              {presets.map((p) => (
+                <button
+                  key={p.id}
+                  type="button"
+                  onClick={() => apply_preset(p.id)}
+                  className={`rounded-lg px-3 py-1.5 text-sm font-medium ${
+                    preset === p.id
+                      ? 'bg-neutral-900 text-white'
+                      : 'bg-neutral-100 text-neutral-700 hover:bg-neutral-200'
+                  }`}
+                >
+                  {p.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="space-y-3">
+            <p className="text-xs text-neutral-500">шаблон из страницы сайта</p>
+            <div className="max-h-56 space-y-3 overflow-y-auto">
+              {grouped_links.map((group) => (
+                <div key={group.group} className="space-y-1.5">
+                  <p className="text-[11px] uppercase tracking-wide text-neutral-400">
+                    {group.group}
+                  </p>
+                  <div className="flex flex-wrap gap-2">
+                    {group.items.map((link) => (
+                      <button
+                        key={link.href}
+                        type="button"
+                        onClick={() => apply_page(link)}
+                        className={`rounded-lg px-3 py-1.5 text-sm font-medium ${
+                          page_preset === link.href
+                            ? 'bg-neutral-900 text-white'
+                            : 'bg-neutral-100 text-neutral-700 hover:bg-neutral-200'
+                        }`}
+                      >
+                        {link.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
           </div>
 
           <input
@@ -207,6 +284,7 @@ export default function push_page() {
             value={title}
             onChange={(e) => {
               set_preset('');
+              set_page_preset('');
               set_title(e.target.value);
             }}
             placeholder="заголовок"
@@ -217,6 +295,7 @@ export default function push_page() {
             value={body}
             onChange={(e) => {
               set_preset('');
+              set_page_preset('');
               set_body(e.target.value);
             }}
             placeholder="текст в шторке"
@@ -226,13 +305,26 @@ export default function push_page() {
           />
           <label className="block">
             <span className="text-xs text-neutral-500">куда открыть по нажатию</span>
-            <input
-              type="text"
+            <select
               value={url}
-              onChange={(e) => set_url(e.target.value)}
-              placeholder="/"
-              className="mt-1 w-full rounded-xl border border-neutral-200 px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-highlight"
-            />
+              onChange={(e) => {
+                set_url(e.target.value);
+                set_page_preset((current) =>
+                  current && current !== e.target.value ? '' : current
+                );
+              }}
+              className="mt-1 w-full rounded-xl border border-neutral-200 bg-white px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-highlight"
+            >
+              {grouped_links.map((group) => (
+                <optgroup key={group.group} label={group.group}>
+                  {group.items.map((link) => (
+                    <option key={link.href} value={link.href}>
+                      {link.label}
+                    </option>
+                  ))}
+                </optgroup>
+              ))}
+            </select>
           </label>
 
           <div className="flex flex-wrap gap-3 text-sm">

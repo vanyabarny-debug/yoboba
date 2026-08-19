@@ -9,6 +9,7 @@ import brand_theme from '@/components/brand-theme';
 import pwa_register from '@/components/pwa-register';
 import app_splash from '@/components/app-splash';
 import active_order_widget from '@/components/active-order-widget';
+import notify_permission_gate from '@/components/notify-permission-gate';
 
 export const metadata: Metadata = {
   title: `${BRAND_NAME} — bubble tea`,
@@ -62,6 +63,7 @@ export default function root_layout({
         {createElement(app_splash)}
         {children}
         {createElement(active_order_widget)}
+        {createElement(notify_permission_gate)}
       </body>
     </html>
   );
