@@ -105,12 +105,12 @@ async function kick_service_worker() {
 export default function notify_permission_gate() {
   return (
     <Suspense fallback={null}>
-      <notify_permission_inner />
+      <NotifyPermissionInner />
     </Suspense>
   );
 }
 
-function notify_permission_inner() {
+function NotifyPermissionInner() {
   const pathname = usePathname();
   const [open, set_open] = useState(false);
   const [busy, set_busy] = useState(false);
