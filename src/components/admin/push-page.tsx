@@ -30,7 +30,7 @@ const presets = [
   {
     id: 'promo',
     label: 'акция',
-    title: 'акция в yomoyo',
+    title: 'акция',
     body: 'загляни в приложение — новые вкусы и предложения',
     url: '/akcii',
   },

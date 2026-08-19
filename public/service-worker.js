@@ -1,6 +1,6 @@
 /* eslint-disable no-restricted-globals */
 
-const cache_name = 'yoboba-v13';
+const cache_name = 'yoboba-v14';
 const static_assets = [
   '/manifest.json',
   '/icons/icon-192.png',
@@ -87,7 +87,7 @@ self.addEventListener('fetch', (event) => {
 
 self.addEventListener('push', (event) => {
   let payload = {
-    title: 'yomoyo',
+    title: '',
     body: 'обновление по заказу',
     tag: 'yoboba',
     renotify: true,
@@ -112,13 +112,13 @@ self.addEventListener('push', (event) => {
         ? [{ action: 'open', title: 'следить' }]
         : [{ action: 'open', title: 'открыть' }];
 
+  const title = String(payload.title || '').trim() || String(payload.body || '').trim() || 'уведомление';
+
   event.waitUntil(
-    self.registration.showNotification(payload.title || 'yomoyo', {
+    self.registration.showNotification(title, {
       body: payload.body || '',
       icon: '/icons/icon-192.png',
       badge: '/icons/icon-192.png',
-      // крупная картинка в шторке (Android Chrome) — бренд по центру внимания
-      image: '/icons/icon-512.png',
       tag: payload.tag || (payload.data?.order_id ? `yoboba-order-${payload.data.order_id}` : 'yoboba'),
       renotify: payload.renotify !== false,
       requireInteraction: Boolean(payload.requireInteraction) || status === 'ready',
