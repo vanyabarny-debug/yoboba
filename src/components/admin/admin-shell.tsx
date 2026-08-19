@@ -12,6 +12,11 @@ export const admin_tabs = [
     label: 'клиенты',
     match: (p: string) => p.startsWith('/admin/customers'),
   },
+  {
+    href: '/admin/push',
+    label: 'пуши',
+    match: (p: string) => p.startsWith('/admin/push'),
+  },
   { href: '/admin/menu', label: 'меню', match: (p: string) => p.startsWith('/admin/menu') },
   {
     href: '/admin/edit',

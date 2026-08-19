@@ -40,6 +40,7 @@ import {
   format_phone_input,
   phone_input_to_e164,
 } from '@/lib/phone';
+import { subscribe_to_push } from '@/components/pwa-register';
 
 function parse_vk_birthday(raw?: string | null): string {
   if (!raw) return '';
@@ -549,9 +550,13 @@ export default function profile_page() {
     set_editing_birthday(false);
   }
 
-  function handle_toggle_marketing() {
+  async function handle_toggle_marketing() {
     if (!profile || !local) return;
-    persist_local({ ...local, marketing_opt_in: !local.marketing_opt_in });
+    const next = !local.marketing_opt_in;
+    persist_local({ ...local, marketing_opt_in: next });
+    if (next) {
+      await subscribe_to_push(profile.id);
+    }
   }
 
   function handle_add_card() {
@@ -1071,7 +1076,7 @@ export default function profile_page() {
                 email-рассылка
               </span>
               <span className="mt-1 block text-[13px] font-normal leading-snug text-neutral-400">
-                получать акции и предложения в push, SMS и на почту
+                получать акции в пуш-шторке, SMS и на почту
               </span>
             </span>
           </button>

@@ -1,67 +1,42 @@
-import { createClient } from '@supabase/supabase-js';
-import webpush from 'web-push';
 import { NextResponse } from 'next/server';
-import { create_server_client } from '@/lib/supabase/server';
-
-function get_service_client() {
-  return createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!
-  );
-}
+import { is_admin_request, send_web_push } from '@/lib/push-server';
 
 export async function POST(request: Request) {
-  const supabase_auth = await create_server_client();
-  const { data: { user } } = await supabase_auth.auth.getUser();
-
-  if (!user) {
-    return NextResponse.json({ error: 'не авторизован' }, { status: 401 });
-  }
-
-  const { data: profile } = await supabase_auth
-    .from('profiles')
-    .select('role')
-    .eq('id', user.id)
-    .single();
-
-  if (profile?.role !== 'admin') {
+  if (!(await is_admin_request())) {
     return NextResponse.json({ error: 'доступ запрещён' }, { status: 403 });
   }
 
-  const { title, body } = await request.json();
-  if (!title || !body) {
-    return NextResponse.json({ error: 'нужны title и body' }, { status: 400 });
+  const body = (await request.json().catch(() => ({}))) as {
+    title?: string;
+    body?: string;
+    url?: string;
+    audience?: 'all' | 'selected';
+    keys?: string[];
+  };
+
+  const title = String(body.title || '').trim();
+  const text = String(body.body || '').trim();
+  if (!title || !text) {
+    return NextResponse.json({ error: 'нужны заголовок и текст' }, { status: 400 });
   }
 
-  const public_key = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY;
-  const private_key = process.env.VAPID_PRIVATE_KEY;
-  const subject = process.env.VAPID_SUBJECT;
-
-  if (!public_key || !private_key || !subject) {
-    return NextResponse.json({ error: 'vapid не настроен' }, { status: 500 });
+  const audience = body.audience === 'selected' ? 'selected' : 'all';
+  if (audience === 'selected' && !(body.keys || []).length) {
+    return NextResponse.json({ error: 'выберите, кому отправить' }, { status: 400 });
   }
 
-  webpush.setVapidDetails(subject, public_key, private_key);
+  const url = String(body.url || '/').trim() || '/';
+  const safe_url = url.startsWith('/') && !url.startsWith('//') ? url : '/';
 
-  const supabase = get_service_client();
-  const { data: subs } = await supabase.from('push_subscriptions').select('*');
-
-  let sent = 0;
-  for (const sub of subs || []) {
-    try {
-      await webpush.sendNotification(
-        {
-          endpoint: sub.endpoint,
-          keys: { p256dh: sub.p256dh, auth: sub.auth },
-        },
-        JSON.stringify({ title, body })
-      );
-      sent++;
-    } catch {
-      // удаляем протухшие подписки
-      await supabase.from('push_subscriptions').delete().eq('id', sub.id);
-    }
+  try {
+    const result = await send_web_push({
+      payload: { title, body: text, url: safe_url },
+      audience,
+      keys: body.keys,
+    });
+    return NextResponse.json(result);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'не удалось отправить';
+    return NextResponse.json({ error: message }, { status: 500 });
   }
-
-  return NextResponse.json({ sent, total: subs?.length || 0 });
 }
