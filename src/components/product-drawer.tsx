@@ -41,11 +41,6 @@ type props = {
   initial_topping?: number;
   return_to_cart?: boolean;
   on_return_to_cart?: () => void;
-  on_gift?: (
-    item: menu_item,
-    qty: number,
-    options: { volume?: string; topping: number }
-  ) => void;
 };
 
 type card_state = {
@@ -86,7 +81,6 @@ export default function product_drawer({
   initial_topping = 0,
   return_to_cart = false,
   on_return_to_cart,
-  on_gift,
 }: props) {
   const [qty, set_qty] = useState(1);
   const image_ref = useRef<HTMLDivElement>(null);
@@ -339,14 +333,6 @@ export default function product_drawer({
     }
 
     finish_view();
-  }
-
-  function handle_gift() {
-    if (!active_item || !on_gift || is_cart_edit) return;
-    on_gift(active_item, qty, {
-      ...(volume_used ? { volume: volume_used } : {}),
-      topping: topping_used,
-    });
   }
 
   if ((!sheet_visible && !open) || !resolved_item || !active_item || !nutrition) return null;
@@ -607,15 +593,6 @@ export default function product_drawer({
                     </span>
                   </button>
                 </div>
-                {on_gift && !is_cart_edit ? (
-                  <button
-                    type="button"
-                    onClick={handle_gift}
-                    className="mt-2 w-full text-center text-sm font-medium text-accent"
-                  >
-                    подарить этот напиток
-                  </button>
-                ) : null}
               </div>
 
               <div className="hidden min-[1024px]:block">
@@ -649,15 +626,6 @@ export default function product_drawer({
                 >
                   {is_cart_edit ? 'сохранить' : 'в корзину'} · {total_price} ₽
                 </button>
-                {on_gift && !is_cart_edit ? (
-                  <button
-                    type="button"
-                    onClick={handle_gift}
-                    className="mt-2 w-full text-center text-sm font-medium text-accent"
-                  >
-                    подарить этот напиток
-                  </button>
-                ) : null}
               </div>
             </div>
           </div>

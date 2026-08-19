@@ -371,20 +371,6 @@ export default function home_client({
     set_gift_open(true);
   }
 
-  function handle_product_gift(
-    item: menu_item,
-    qty: number,
-    options: { volume?: string; topping: number }
-  ) {
-    const line: cart_line = {
-      item,
-      quantity: qty,
-      volume: options.volume,
-      topping: options.topping,
-    };
-    begin_gift_flow(gift_items_from_lines([line]), false);
-  }
-
   async function proceed_gift_claim(pickup_time: string, pickup_label?: string) {
     const actor = gift_actor_from_user();
     const current = claiming_gift;
@@ -1385,7 +1371,7 @@ export default function home_client({
       {!is_admin_edit && gift_pick_mode ? (
         <div className="page-shell pb-3 min-[1024px]:pb-4">
           <div className="rounded-[12px] bg-[#ffe14d] px-4 py-3 text-sm font-medium text-neutral-900">
-            выберите напиток и нажмите «подарить этот напиток»
+            положите напиток в корзину и отметьте «это подарок»
           </div>
         </div>
       ) : null}
@@ -1508,7 +1494,6 @@ export default function home_client({
             initial_topping: edit_initial.topping,
             return_to_cart: product_from_cart,
             on_return_to_cart: handle_return_to_cart,
-            on_gift: handle_product_gift,
           })}
 
       {!is_admin_edit && createElement(cart_drawer, {

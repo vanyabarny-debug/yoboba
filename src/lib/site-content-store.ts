@@ -6,7 +6,7 @@ export type product_addon = {
   tint: string;
 };
 
-export const site_content_version = 17;
+export const site_content_version = 18;
 
 export type category_nutrition = {
   kcal: number;
@@ -273,7 +273,7 @@ kanji: 模様
 ## как это работает
 
 1. выбери напиток
-открой карточку и нажми «подарить этот напиток» — или отметь «это подарок» в корзине.
+собери заказ как обычно, открой корзину и отметь «это подарок».
 
 2. укажи номер
 введи телефон человека, которому даришь. напиток именной: забрать сможет только он.
