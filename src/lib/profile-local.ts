@@ -11,6 +11,7 @@ export type linked_card = {
 export type profile_local = {
   email: string;
   birthday: string; // YYYY-MM-DD
+  birthday_locked: boolean;
   marketing_opt_in: boolean;
   cards: linked_card[];
 };
@@ -20,6 +21,7 @@ const key = (user_id: string) => `yoboba_profile_local_v1_${user_id}`;
 const empty: profile_local = {
   email: '',
   birthday: '',
+  birthday_locked: false,
   marketing_opt_in: true,
   cards: [],
 };
@@ -33,6 +35,7 @@ export function get_profile_local(user_id: string): profile_local {
     return {
       email: typeof parsed.email === 'string' ? parsed.email : '',
       birthday: typeof parsed.birthday === 'string' ? parsed.birthday : '',
+      birthday_locked: parsed.birthday_locked === true,
       marketing_opt_in:
         typeof parsed.marketing_opt_in === 'boolean' ? parsed.marketing_opt_in : true,
       cards: Array.isArray(parsed.cards) ? parsed.cards : [],

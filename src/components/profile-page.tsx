@@ -269,6 +269,7 @@ export default function profile_page() {
   const [avatar_bg_draft, set_avatar_bg_draft] = useState<string | null>(null);
   const [saving_avatar, set_saving_avatar] = useState(false);
   const [avatar_error, set_avatar_error] = useState('');
+  const [rules_open, set_rules_open] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -520,7 +521,12 @@ export default function profile_page() {
 
   function handle_save_birthday() {
     if (!profile || !local) return;
-    persist_local({ ...local, birthday: birthday_draft });
+    if (local.birthday_locked) {
+      set_editing_birthday(false);
+      return;
+    }
+    if (!birthday_draft) return;
+    persist_local({ ...local, birthday: birthday_draft, birthday_locked: true });
     set_editing_birthday(false);
   }
 
@@ -606,28 +612,66 @@ export default function profile_page() {
       <div className="page-shell overflow-x-hidden py-8 sm:py-10 pb-[calc(5rem+var(--safe-bottom))]">
         <div className="w-full min-w-0 max-w-3xl space-y-10 sm:space-y-12">
         <section className="relative overflow-hidden rounded-[20px] bg-[linear-gradient(100deg,#ff2d6a_0%,#ff4d7d_42%,#ff6b6b_100%)] px-5 py-5 sm:px-7 sm:py-6 text-white">
-          <div className="relative z-10 max-w-[70%] pr-2">
-            <p className="text-[15px] sm:text-base font-medium leading-snug">
-              ваши тапикоины
-            </p>
-            <p className="mt-2 inline-flex items-center gap-2 text-[34px] sm:text-[40px] font-bold leading-none tabular-nums">
-              <TapicoinIcon size={28} className="bg-white/20" />
-              {profile.bonus_balance}
-            </p>
-            <p className="mt-3 text-sm sm:text-[15px] leading-snug text-white/90">
-              до бесплатного напитка:{' '}
-              <span className="font-semibold">{left_to_drink}</span>
-            </p>
-            <div className="mt-4 h-1.5 overflow-hidden rounded-full bg-white/25">
-              <div
-                className="h-full rounded-full bg-white transition-all"
-                style={{ width: `${tapicoin_progress}%` }}
-              />
+          <div className="relative z-10 flex items-start justify-between gap-3">
+            <div className="min-w-0 flex-1 pr-2">
+              <p className="text-[15px] sm:text-base font-medium leading-snug">
+                ваши тапикоины
+              </p>
+              <p className="mt-2 inline-flex items-center gap-2 text-[34px] sm:text-[40px] font-bold leading-none tabular-nums">
+                <TapicoinIcon size={28} className="bg-white/20" />
+                {profile.bonus_balance}
+              </p>
+              <p className="mt-3 text-sm sm:text-[15px] leading-snug text-white/90">
+                до бесплатного напитка:{' '}
+                <span className="font-semibold">{left_to_drink}</span>
+              </p>
+              <div className="mt-4 h-1.5 overflow-hidden rounded-full bg-white/25">
+                <div
+                  className="h-full rounded-full bg-white transition-all"
+                  style={{ width: `${tapicoin_progress}%` }}
+                />
+              </div>
+            </div>
+            <div className="pointer-events-none shrink-0 -mt-1 -mr-1 sm:-mr-2">
+              {banner_heart()}
             </div>
           </div>
-          <div className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 sm:right-6">
-            {banner_heart()}
-          </div>
+          <button
+            type="button"
+            onClick={() => set_rules_open((open) => !open)}
+            className="relative z-10 mt-4 inline-flex items-center gap-1.5 text-sm sm:text-[15px] font-semibold text-white/95 hover:text-white"
+            aria-expanded={rules_open}
+          >
+            условия получения
+            <svg
+              width="16"
+              height="16"
+              viewBox="0 0 16 16"
+              fill="none"
+              aria-hidden
+              className={`transition-transform ${rules_open ? 'rotate-180' : ''}`}
+            >
+              <path
+                d="M4 6l4 4 4-4"
+                stroke="currentColor"
+                strokeWidth="1.8"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </svg>
+          </button>
+          {rules_open && (
+            <ul className="relative z-10 mt-3 space-y-2 border-t border-white/20 pt-3">
+              {bonus_earning_rules.map((rule) => (
+                <li
+                  key={rule}
+                  className="text-[13px] sm:text-sm font-medium leading-snug text-white/90"
+                >
+                  {rule}
+                </li>
+              ))}
+            </ul>
+          )}
         </section>
 
         <section className="space-y-5">
@@ -760,7 +804,7 @@ export default function profile_page() {
                   size: 'sm',
                 })}
                 <span className="text-[16px] sm:text-[17px] font-medium text-neutral-900">
-                  ваш эмоджи аватар
+                  ваш аватар
                 </span>
               </div>
             )}
@@ -874,17 +918,18 @@ export default function profile_page() {
           <div>
             {field_label({
               label: 'дата рождения',
-              action: !editing_birthday
-                ? change_link({
-                    children: 'изменить',
-                    onClick: () => {
-                      set_birthday_draft(local.birthday);
-                      set_editing_birthday(true);
-                    },
-                  })
-                : null,
+              action:
+                !editing_birthday && !local.birthday_locked
+                  ? change_link({
+                      children: local.birthday ? 'изменить' : 'указать',
+                      onClick: () => {
+                        set_birthday_draft(local.birthday);
+                        set_editing_birthday(true);
+                      },
+                    })
+                  : null,
             })}
-            {editing_birthday ? (
+            {editing_birthday && !local.birthday_locked ? (
               <div className="space-y-2">
                 <input
                   type="date"
@@ -892,6 +937,9 @@ export default function profile_page() {
                   onChange={(e) => set_birthday_draft(e.target.value)}
                   className={field_input}
                 />
+                <p className="text-[13px] font-normal text-neutral-400">
+                  после сохранения изменить дату больше нельзя
+                </p>
                 <div className={edit_actions}>
                   <button
                     type="button"
@@ -902,6 +950,7 @@ export default function profile_page() {
                   </button>
                   <button
                     type="button"
+                    disabled={!birthday_draft}
                     onClick={handle_save_birthday}
                     className={edit_save}
                   >
@@ -912,6 +961,15 @@ export default function profile_page() {
             ) : (
               <p className={field_box}>{format_birthday(local.birthday)}</p>
             )}
+            {local.birthday_locked ? (
+              <p className="mt-2 text-[13px] font-normal text-neutral-400">
+                дату рождения можно указать один раз
+              </p>
+            ) : !editing_birthday ? (
+              <p className="mt-2 text-[13px] font-normal text-neutral-400">
+                можно указать один раз
+              </p>
+            ) : null}
           </div>
 
           <div>
@@ -1098,26 +1156,6 @@ export default function profile_page() {
               + привязать карту
             </button>
           )}
-        </section>
-
-        <section className="space-y-4">
-          <h2 className={`${section_title} inline-flex items-center gap-2`}>
-            <TapicoinIcon size={22} />
-            условия получения тапикоинов
-          </h2>
-          <ul className="space-y-3">
-            {bonus_earning_rules.map((rule) => (
-              <li
-                key={rule}
-                className="flex gap-3 text-[15px] font-normal leading-snug text-neutral-600"
-              >
-                <span className="mt-0.5 shrink-0">
-                  <TapicoinIcon size={14} />
-                </span>
-                <span>{rule}</span>
-              </li>
-            ))}
-          </ul>
         </section>
 
         <section className="space-y-5">
