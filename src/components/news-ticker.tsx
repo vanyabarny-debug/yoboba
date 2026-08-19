@@ -1,17 +1,12 @@
 'use client';
 
-const ticker_items = [
-  'накопи 50 тапикоинов — напиток бесплатно',
-  'студентам и школьникам −30%',
-  'заказ к времени — забери без очереди',
-  'тапиоку варим каждый день',
-  'за каждые 10 ₽ — 1 тапикоин',
-];
+const ticker_text = 'скоро открытие';
+const ticker_repeat = 12;
 
 function ticker_chunk() {
-  return ticker_items.map((text) => (
-    <span key={text} className="inline-flex items-center gap-4 sm:gap-5 pr-4 sm:pr-5">
-      <span>{text}</span>
+  return Array.from({ length: ticker_repeat }, (_, i) => (
+    <span key={i} className="inline-flex items-center gap-4 sm:gap-5 pr-4 sm:pr-5">
+      <span>{ticker_text}</span>
       <span className="text-[11px] opacity-70" aria-hidden>
         ●
       </span>

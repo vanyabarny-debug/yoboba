@@ -59,6 +59,9 @@ type props = {
   on_edit?: (line: cart_line, line_key: string) => void;
   on_checkout?: () => void;
   on_clear?: () => void;
+  /** оформить корзину как подарок по телефону */
+  as_gift?: boolean;
+  on_as_gift_change?: (value: boolean) => void;
 };
 
 function tapioca_info() {
@@ -91,6 +94,8 @@ export default function cart_drawer({
   on_edit,
   on_checkout,
   on_clear,
+  as_gift = false,
+  on_as_gift_change,
 }: props) {
   const [sheet_visible, set_sheet_visible] = useState(false);
   const [sheet_open, set_sheet_open] = useState(false);
@@ -341,7 +346,25 @@ export default function cart_drawer({
                   />
                 </div>
                 <div className="px-5 py-4 space-y-2.5 text-[15px]">
-                  {can_redeem && on_redeem_bonus_change ? (
+                  {on_as_gift_change ? (
+                    <label className="flex items-start gap-3 rounded-2xl border border-neutral-200 bg-[#fafafa] px-3 py-3">
+                      <input
+                        type="checkbox"
+                        checked={as_gift}
+                        onChange={(e) => on_as_gift_change(e.target.checked)}
+                        className="mt-0.5 rounded"
+                      />
+                      <span className="min-w-0">
+                        <span className="block font-semibold text-neutral-900">
+                          это подарок
+                        </span>
+                        <span className="mt-0.5 block text-xs text-neutral-600">
+                          оплатите онлайн — человек заберёт напиток по своему номеру
+                        </span>
+                      </span>
+                    </label>
+                  ) : null}
+                  {!as_gift && can_redeem && on_redeem_bonus_change ? (
                     <label className="flex items-start gap-3 rounded-2xl border border-accent/30 bg-accent/10 px-3 py-3">
                       <input
                         type="checkbox"
@@ -361,7 +384,7 @@ export default function cart_drawer({
                         </span>
                       </span>
                     </label>
-                  ) : bonus > 0 ? (
+                  ) : !as_gift && bonus > 0 ? (
                     <div className="flex items-center justify-between text-sm">
                       <span className="text-neutral-500">ваши тапикоины</span>
                       <span className="font-semibold tabular-nums text-neutral-800">
@@ -369,18 +392,22 @@ export default function cart_drawer({
                       </span>
                     </div>
                   ) : null}
-                  <div className="flex items-center justify-between">
-                    <span className="text-neutral-500">
-                      {redeem_on ? 'списание тапикоинов' : <>Начислим тапикоины{tapioca_info()}</>}
-                    </span>
-                    <span className="font-semibold font-mono tabular-nums text-neutral-900">
-                      {redeem_on ? `−${FREE_DRINK_BONUS_THRESHOLD}` : `+${bonus_points}`}
-                    </span>
-                  </div>
+                  {!as_gift ? (
+                    <div className="flex items-center justify-between">
+                      <span className="text-neutral-500">
+                        {redeem_on ? 'списание тапикоинов' : <>Начислим тапикоины{tapioca_info()}</>}
+                      </span>
+                      <span className="font-semibold font-mono tabular-nums text-neutral-900">
+                        {redeem_on ? `−${FREE_DRINK_BONUS_THRESHOLD}` : `+${bonus_points}`}
+                      </span>
+                    </div>
+                  ) : null}
                   <div className="flex items-center justify-between gap-3">
-                    <span className="text-neutral-500">Где забрать заказ</span>
+                    <span className="text-neutral-500">
+                      {as_gift ? 'Кто заберёт' : 'Где забрать заказ'}
+                    </span>
                     <span className="font-semibold text-neutral-900 text-right">
-                      {default_store_address}
+                      {as_gift ? 'получатель по телефону' : default_store_address}
                     </span>
                   </div>
                   <div className="flex items-center justify-between">
@@ -410,12 +437,18 @@ export default function cart_drawer({
                 className="inline-flex w-auto max-w-full items-center justify-center rounded-pill bg-accent px-6 py-4 text-base font-semibold text-accent-foreground hover:opacity-95 transition-opacity sm:relative sm:w-full"
               >
                 <span className="sm:hidden">
-                  {redeem_on
+                  {as_gift
+                    ? `подарить за ${format_price(total)} ₽`
+                    : redeem_on
                     ? `оформить бесплатно · −${FREE_DRINK_BONUS_THRESHOLD} т.`
                     : `к оформлению на ${format_price(pay_total)} ₽`}
                 </span>
                 <span className="hidden sm:inline">
-                  {redeem_on ? 'Оформить бесплатно за тапикоины' : 'К оформлению заказа'}
+                  {as_gift
+                    ? 'Подарить напиток'
+                    : redeem_on
+                      ? 'Оформить бесплатно за тапикоины'
+                      : 'К оформлению заказа'}
                 </span>
                 <svg
                   className="absolute right-5 top-1/2 -translate-y-1/2 hidden sm:block"

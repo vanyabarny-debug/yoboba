@@ -30,6 +30,9 @@ import location_modal from '@/components/location-modal';
 import order_gate_modal from '@/components/order-gate-modal';
 import phone_gate_modal from '@/components/phone-gate-modal';
 import pickup_slot_picker from '@/components/pickup-slot-picker';
+import gift_sheet from '@/components/gift-sheet';
+import gift_inbox_banner from '@/components/gift-inbox-banner';
+import { claim_gift_pickup, fetch_gift_by_id, fetch_my_gifts, type gift_actor } from '@/lib/gifts';
 import { add_to_cart, get_cart_items, upsert_cart_item } from '@/lib/cart';
 import site_header from '@/components/site-header';
 import { resolve_menu_categories } from '@/lib/menu-from-db';
@@ -56,7 +59,7 @@ import {
   subscribe_sidebar_ad_store,
   upsert_sidebar_slide,
 } from '@/lib/sidebar-ad-store';
-import type { menu_item, promo_banner, sidebar_ad_slide, story } from '@/lib/types';
+import type { gift, menu_item, order_item, promo_banner, sidebar_ad_slide, story } from '@/lib/types';
 import { get_auth_state, sign_out } from '@/lib/auth';
 import { create_order } from '@/lib/orders';
 import { format_order_number } from '@/lib/order-number';
@@ -198,7 +201,23 @@ function merge_cart_line(
 
 type pending_order_action =
   | { type: 'add'; item: menu_item; qty: number }
-  | { type: 'checkout' };
+  | { type: 'checkout' }
+  | { type: 'gift' }
+  | { type: 'claim_gift' };
+
+function gift_items_from_lines(lines: cart_line[]): order_item[] {
+  return lines.map((l) => {
+    const bits = [l.item.name];
+    if (l.volume) bits.push(`${l.volume} мл`);
+    if (l.topping && l.topping > 0) bits.push(`топ. ×${l.topping}`);
+    return {
+      menu_id: l.item.id,
+      name: bits.join(' · '),
+      price: cart_line_unit_price(l),
+      quantity: l.quantity,
+    };
+  });
+}
 
 export default function home_client({
   initial_menu,
@@ -247,6 +266,13 @@ export default function home_client({
   const [order_gate_open, set_order_gate_open] = useState(false);
   const [phone_gate_open, set_phone_gate_open] = useState(false);
   const [pickup_picker_open, set_pickup_picker_open] = useState(false);
+  const [as_gift, set_as_gift] = useState(false);
+  const [gift_open, set_gift_open] = useState(false);
+  const [gift_items, set_gift_items] = useState<order_item[]>([]);
+  const [gift_from_cart, set_gift_from_cart] = useState(false);
+  const [gift_pick_mode, set_gift_pick_mode] = useState(false);
+  const [inbox_gifts, set_inbox_gifts] = useState<gift[]>([]);
+  const [claiming_gift, set_claiming_gift] = useState<gift | null>(null);
   const [pending_action, set_pending_action] = useState<pending_order_action | null>(null);
   const [saved_location, set_saved_location] = useState<user_location | null>(null);
   const [address_confirmed, set_address_confirmed] = useState(false);
@@ -270,6 +296,7 @@ export default function home_client({
   const header_ref = useRef<HTMLDivElement>(null);
   const nav_ref = useRef<HTMLDivElement>(null);
   const skip_cart_reload_until_ref = useRef(0);
+  const claim_started_ref = useRef('');
 
   const is_admin_edit = admin_edit_mode;
   const is_staff_admin = !admin_edit_mode && user?.role === 'admin';
@@ -289,6 +316,8 @@ export default function home_client({
   useEffect(() => {
     const category = search_params.get('category');
     const cart = search_params.get('cart');
+    const gift_param = search_params.get('gift');
+    const as_gift_param = search_params.get('as_gift');
 
     if (category) {
       set_active_category(category);
@@ -300,10 +329,108 @@ export default function home_client({
     if (cart === '1') {
       set_cart_open(true);
     }
+    if (gift_param === '1') {
+      set_gift_pick_mode(true);
+    }
+    if (as_gift_param === '1') {
+      set_as_gift(true);
+    }
   }, [search_params]);
 
   function has_profile_phone() {
     return Boolean(normalize_phone(user?.phone));
+  }
+
+  function gift_actor_from_user(): gift_actor | null {
+    const id = user?.id || user_id;
+    if (!id || !is_logged_in) return null;
+    return {
+      id,
+      name: (user?.name || '').trim() || 'гость',
+      phone: normalize_phone(user?.phone),
+    };
+  }
+
+  function begin_gift_flow(items: order_item[], from_cart: boolean) {
+    if (items.length === 0) return;
+    set_gift_items(items);
+    set_gift_from_cart(from_cart);
+    set_cart_open(false);
+    set_drawer_open(false);
+
+    if (!is_logged_in) {
+      const return_url = from_cart ? '/?cart=1&as_gift=1' : '/?gift=1';
+      router.push(`/login?returnUrl=${encodeURIComponent(return_url)}`);
+      return;
+    }
+    if (!has_profile_phone()) {
+      set_pending_action({ type: 'gift' });
+      set_phone_gate_open(true);
+      return;
+    }
+    set_gift_open(true);
+  }
+
+  function handle_product_gift(
+    item: menu_item,
+    qty: number,
+    options: { volume?: string; topping: number }
+  ) {
+    const line: cart_line = {
+      item,
+      quantity: qty,
+      volume: options.volume,
+      topping: options.topping,
+    };
+    begin_gift_flow(gift_items_from_lines([line]), false);
+  }
+
+  async function proceed_gift_claim(pickup_time: string, pickup_label?: string) {
+    const actor = gift_actor_from_user();
+    const current = claiming_gift;
+    if (!actor || !current) {
+      set_order_error('войдите, чтобы забрать подарок');
+      return;
+    }
+    const { order, error } = await claim_gift_pickup({
+      id: current.id,
+      pickup_time,
+      actor,
+    });
+    if (error) {
+      set_order_error(error.message);
+      return;
+    }
+    set_claiming_gift(null);
+    set_inbox_gifts((prev) => prev.filter((g) => g.id !== current.id));
+    const num = order ? format_order_number(order) : '';
+    const label = pickup_label || new Date(pickup_time).toLocaleTimeString('ru-RU', {
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+    set_order_toast(
+      num ? `подарок в работе · № ${num} к ${label}` : `подарок в работе · к ${label}`
+    );
+    window.setTimeout(() => set_order_toast(''), 4500);
+    if (order?.id) {
+      const { set_active_order_id } = await import('@/lib/active-order-store');
+      set_active_order_id(order.id);
+      router.push(`/orders/${order.id}`);
+    }
+  }
+
+  function start_claim_gift(next: gift) {
+    set_claiming_gift(next);
+    if (!is_logged_in) {
+      router.push(`/login?returnUrl=${encodeURIComponent(`/?claim_gift=${next.id}`)}`);
+      return;
+    }
+    if (!has_profile_phone()) {
+      set_pending_action({ type: 'claim_gift' });
+      set_phone_gate_open(true);
+      return;
+    }
+    set_pickup_picker_open(true);
   }
 
   function open_pickup_picker() {
@@ -313,6 +440,10 @@ export default function home_client({
 
   async function handle_pickup_confirm(pickup_at: string, label: string) {
     set_pickup_picker_open(false);
+    if (claiming_gift) {
+      await proceed_gift_claim(pickup_at, label);
+      return;
+    }
     await proceed_checkout(pickup_at, label);
   }
 
@@ -743,6 +874,43 @@ export default function home_client({
     };
   }, [demo_mode, user_id, load_prod_cart]);
 
+  useEffect(() => {
+    if (is_admin_edit || !is_logged_in) {
+      set_inbox_gifts([]);
+      return;
+    }
+    const actor = gift_actor_from_user();
+    if (!actor) {
+      set_inbox_gifts([]);
+      return;
+    }
+    let cancelled = false;
+    void fetch_my_gifts(actor).then(({ inbox }) => {
+      if (!cancelled) set_inbox_gifts(inbox.filter((g) => g.status === 'paid' || g.status === 'claimed'));
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [is_admin_edit, is_logged_in, user_id, user?.id, user?.phone]);
+
+  useEffect(() => {
+    if (is_admin_edit) return;
+    const id = search_params.get('claim_gift');
+    if (!id) return;
+    const actor = gift_actor_from_user();
+    if (!actor) return;
+    let cancelled = false;
+    void fetch_gift_by_id(id, actor).then(({ gift }) => {
+      if (cancelled || !gift || gift.status !== 'paid') return;
+      if (claim_started_ref.current === gift.id) return;
+      claim_started_ref.current = gift.id;
+      start_claim_gift(gift);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [is_admin_edit, search_params, is_logged_in, user_id, user?.phone]);
+
   async function execute_add(
     item: menu_item,
     qty: number,
@@ -861,12 +1029,31 @@ export default function home_client({
       return;
     }
 
+    if (action.type === 'gift') {
+      set_gift_open(true);
+      return;
+    }
+    if (action.type === 'claim_gift') {
+      set_pickup_picker_open(true);
+      return;
+    }
+
     open_pickup_picker();
   }
 
   function handle_phone_saved(phone: string) {
     set_phone_gate_open(false);
     set_user((prev) => (prev ? { ...prev, phone } : prev));
+    const action = pending_action;
+    set_pending_action(null);
+    if (action?.type === 'gift') {
+      set_gift_open(true);
+      return;
+    }
+    if (action?.type === 'claim_gift') {
+      set_pickup_picker_open(true);
+      return;
+    }
     open_pickup_picker();
   }
 
@@ -943,6 +1130,11 @@ export default function home_client({
 
   async function handle_checkout() {
     if (cart_lines.length === 0) return;
+
+    if (as_gift) {
+      begin_gift_flow(gift_items_from_lines(cart_lines), true);
+      return;
+    }
 
     if (demo_mode) {
       if (!is_logged_in && !user_id) {
@@ -1190,6 +1382,18 @@ export default function home_client({
         })}
 
       {createElement(news_ticker)}
+      {!is_admin_edit && gift_pick_mode ? (
+        <div className="page-shell pb-3 min-[1024px]:pb-4">
+          <div className="rounded-[12px] bg-[#ffe14d] px-4 py-3 text-sm font-medium text-neutral-900">
+            выберите напиток и нажмите «подарить этот напиток»
+          </div>
+        </div>
+      ) : null}
+      {!is_admin_edit &&
+        createElement(gift_inbox_banner, {
+          gifts: inbox_gifts,
+          on_claim: start_claim_gift,
+        })}
 
       <section className="menu-sheet">
         <div ref={nav_ref} className="menu-sheet-head">
@@ -1304,6 +1508,7 @@ export default function home_client({
             initial_topping: edit_initial.topping,
             return_to_cart: product_from_cart,
             on_return_to_cart: handle_return_to_cart,
+            on_gift: handle_product_gift,
           })}
 
       {!is_admin_edit && createElement(cart_drawer, {
@@ -1321,6 +1526,11 @@ export default function home_client({
         on_edit: handle_edit_line,
         on_checkout: handle_checkout,
         on_clear: handle_clear_cart,
+        as_gift,
+        on_as_gift_change: (value: boolean) => {
+          set_as_gift(value);
+          if (value) set_redeem_bonus(false);
+        },
       })}
 
       {!is_admin_edit &&
@@ -1445,6 +1655,31 @@ export default function home_client({
         on_login: handle_order_gate_login,
       })}
 
+      {!is_admin_edit && createElement(gift_sheet, {
+        open: gift_open,
+        items: gift_items,
+        actor: gift_actor_from_user(),
+        on_close: () => set_gift_open(false),
+        on_need_login: () => {
+          set_gift_open(false);
+          const return_url = gift_from_cart ? '/?cart=1&as_gift=1' : '/?gift=1';
+          router.push(`/login?returnUrl=${encodeURIComponent(return_url)}`);
+        },
+        on_done: (gift) => {
+          set_gift_open(false);
+          set_gift_pick_mode(false);
+          set_as_gift(false);
+          if (gift_from_cart) {
+            set_cart_lines([]);
+            save_guest_cart([]);
+          }
+          set_order_toast(
+            gift.status === 'paid' ? 'подарок отправлен' : 'подарок создан — завершите оплату'
+          );
+          window.setTimeout(() => set_order_toast(''), 4500);
+        },
+      })}
+
       {!is_admin_edit && createElement(phone_gate_modal, {
         open: phone_gate_open,
         on_close: () => set_phone_gate_open(false),
@@ -1453,12 +1688,21 @@ export default function home_client({
 
       {!is_admin_edit && createElement(pickup_slot_picker, {
         open: pickup_picker_open,
-        cart_lines: cart_lines.map((l) => ({
-          menu_id: l.item.id,
-          name: l.item.name,
-          quantity: l.quantity,
-        })),
-        on_close: () => set_pickup_picker_open(false),
+        cart_lines: claiming_gift
+          ? claiming_gift.items.map((l) => ({
+              menu_id: l.menu_id,
+              name: l.name,
+              quantity: l.quantity,
+            }))
+          : cart_lines.map((l) => ({
+              menu_id: l.item.id,
+              name: l.item.name,
+              quantity: l.quantity,
+            })),
+        on_close: () => {
+          set_pickup_picker_open(false);
+          set_claiming_gift(null);
+        },
         on_confirm: handle_pickup_confirm,
       })}
 

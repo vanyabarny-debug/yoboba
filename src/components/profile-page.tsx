@@ -12,8 +12,9 @@ import {
   format_price,
 } from '@/lib/cart-summary';
 import { fetch_my_orders } from '@/lib/orders';
+import { fetch_my_gifts, gift_items_label, gift_status_label } from '@/lib/gifts';
 import { format_order_number } from '@/lib/order-number';
-import type { order } from '@/lib/types';
+import type { gift, order } from '@/lib/types';
 import { is_supabase_configured } from '@/lib/supabase/config';
 import { get_demo_user, clear_session, set_demo_user } from '@/lib/demo-auth';
 import {
@@ -246,6 +247,8 @@ export default function profile_page() {
   const [local, set_local] = useState<profile_local | null>(null);
   const [orders, set_orders] = useState<order[]>([]);
   const [orders_error, set_orders_error] = useState('');
+  const [inbox_gifts, set_inbox_gifts] = useState<gift[]>([]);
+  const [sent_gifts, set_sent_gifts] = useState<gift[]>([]);
   const [editing_name, set_editing_name] = useState(false);
   const [editing_phone, set_editing_phone] = useState(false);
   const [phone_draft, set_phone_draft] = useState('');
@@ -299,7 +302,16 @@ export default function profile_page() {
           set_email_draft(loc.email);
           set_birthday_draft(loc.birthday);
           set_orders([]);
-          set_loading(false);
+          const { inbox, sent } = await fetch_my_gifts({
+            id: u.id,
+            name: u.name,
+            phone: u.phone || null,
+          });
+          if (!cancelled) {
+            set_inbox_gifts(inbox);
+            set_sent_gifts(sent);
+            set_loading(false);
+          }
         }
         return;
       }
@@ -337,9 +349,16 @@ export default function profile_page() {
       set_birthday_draft(loc.birthday);
 
       const { data, error } = await fetch_my_orders();
+      const gifts = await fetch_my_gifts({
+        id: resolved.id,
+        name: resolved.name || 'гость',
+        phone: resolved.phone,
+      });
       if (!cancelled) {
         set_orders(data);
         set_orders_error(error ? error.message : '');
+        set_inbox_gifts(gifts.inbox);
+        set_sent_gifts(gifts.sent);
         set_loading(false);
       }
     }
@@ -1155,6 +1174,81 @@ export default function profile_page() {
             >
               + привязать карту
             </button>
+          )}
+        </section>
+
+        <section className="space-y-5">
+          <h2 className={section_title}>подарки</h2>
+          {inbox_gifts.length === 0 && sent_gifts.length === 0 ? (
+            <div>
+              <p className="text-[15px] text-neutral-400 mb-4">
+                пока нет подарков — можно отправить напиток другу по номеру
+              </p>
+              <Link
+                href="/?gift=1"
+                className="inline-flex rounded-pill bg-accent text-accent-foreground px-5 py-2.5 text-sm font-medium"
+              >
+                подарить напиток
+              </Link>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {inbox_gifts.map((g) => (
+                <div
+                  key={g.id}
+                  className="flex items-start justify-between gap-3 rounded-[12px] bg-[#f0f0f0] px-4 py-3.5"
+                >
+                  <div className="min-w-0">
+                    <p className="text-[15px] font-medium text-neutral-900">
+                      от {g.sender_name}
+                    </p>
+                    <p className="mt-0.5 text-[13px] text-neutral-500">
+                      {gift_items_label(g.items)} · {gift_status_label[g.status]}
+                    </p>
+                    {g.message ? (
+                      <p className="mt-1 text-[13px] text-neutral-600">«{g.message}»</p>
+                    ) : null}
+                  </div>
+                  {g.status === 'paid' ? (
+                    <Link
+                      href={`/?claim_gift=${encodeURIComponent(g.id)}`}
+                      className="shrink-0 text-[15px] font-medium text-accent"
+                    >
+                      забрать
+                    </Link>
+                  ) : g.order_id ? (
+                    <Link
+                      href={`/orders/${g.order_id}`}
+                      className="shrink-0 text-[15px] font-medium text-accent"
+                    >
+                      заказ
+                    </Link>
+                  ) : (
+                    <span className="shrink-0 text-[13px] text-neutral-400">
+                      {format_price(g.total_price)} ₽
+                    </span>
+                  )}
+                </div>
+              ))}
+              {sent_gifts.map((g) => (
+                <div
+                  key={g.id}
+                  className="flex items-start justify-between gap-3 rounded-[12px] bg-[#f0f0f0] px-4 py-3.5"
+                >
+                  <div className="min-w-0">
+                    <p className="text-[15px] font-medium text-neutral-900">
+                      для {format_phone_display(g.recipient_phone)}
+                    </p>
+                    <p className="mt-0.5 text-[13px] text-neutral-500">
+                      {gift_items_label(g.items)} · {gift_status_label[g.status]}
+                    </p>
+                  </div>
+                  <span className="shrink-0 text-[13px] tabular-nums text-neutral-500">
+                    {format_price(g.total_price)} ₽
+                  </span>
+                </div>
+              ))}
+            </div>
           )}
         </section>
 

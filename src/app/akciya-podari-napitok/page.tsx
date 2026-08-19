@@ -6,7 +6,7 @@ export default function page() {
     slug: 'akciya-podari-napitok',
     hero_src: '/images/promos/promo15.png?v=6',
     eyebrow: 'подарок · из приложения',
-    primary_cta: { href: '/', label: 'выбрать напиток' },
+    primary_cta: { href: '/?gift=1', label: 'выбрать напиток' },
     hero_bg: '#F9BAC2',
   });
 }

@@ -86,6 +86,35 @@ export type order_item = {
   quantity: number;
 };
 
+export type gift_status =
+  | 'pending_payment'
+  | 'paid'
+  | 'claimed'
+  | 'redeemed'
+  | 'cancelled';
+
+/** оплаченный онлайн подарок: напиток ждёт получателя по телефону */
+export type gift = {
+  id: string;
+  sender_id: string;
+  sender_name: string;
+  sender_phone: string | null;
+  recipient_phone: string;
+  recipient_user_id: string | null;
+  items: order_item[];
+  total_price: number;
+  message: string | null;
+  status: gift_status;
+  payment_id: string | null;
+  payment_provider: 'stub' | 'kassa';
+  checkout_url: string | null;
+  order_id: string | null;
+  created_at: string;
+  paid_at: string | null;
+  claimed_at: string | null;
+  expires_at: string | null;
+};
+
 export type order = {
   id: string;
   user_id: string;
