@@ -216,7 +216,7 @@ function track_client({ id }: { id: string }) {
             <div className="flex items-center justify-between border-t border-neutral-100 pt-3">
               <span className="text-sm text-neutral-500">
                 {paid_bonus
-                  ? 'оплачен бобами'
+                  ? 'оплачен бобабаллами'
                   : order.is_paid
                     ? 'оплачен'
                     : 'к оплате на кассе'}

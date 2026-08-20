@@ -22,7 +22,7 @@ export type redeem_result =
     }
   | { ok: false; error: string; status: number; bonus_balance?: number };
 
-/** списать бобы у гостя (supabase или демо-стор) */
+/** списать бобабаллы у гостя (supabase или демо-стор) */
 export async function redeem_bonus_points(input: {
   user_id?: string | null;
   phone?: string | null;
@@ -71,7 +71,7 @@ export async function redeem_bonus_points(input: {
     if (current < amount) {
       return {
         ok: false,
-        error: `не хватает бобов: есть ${current}, нужно ${amount}`,
+        error: `не хватает бобабаллов: есть ${current}, нужно ${amount}`,
         status: 400,
         bonus_balance: current,
       };
@@ -101,7 +101,7 @@ export async function redeem_bonus_points(input: {
   if (!phone) {
     return {
       ok: false,
-      error: 'нужен телефон гостя, чтобы списать бобы',
+      error: 'нужен телефон гостя, чтобы списать бобабаллы',
       status: 400,
     };
   }
@@ -114,7 +114,7 @@ export async function redeem_bonus_points(input: {
   if (demo.bonus_balance < amount) {
     return {
       ok: false,
-      error: `не хватает бобов: есть ${demo.bonus_balance}, нужно ${amount}`,
+      error: `не хватает бобабаллов: есть ${demo.bonus_balance}, нужно ${amount}`,
       status: 400,
       bonus_balance: demo.bonus_balance,
     };

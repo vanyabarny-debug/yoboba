@@ -855,7 +855,7 @@ export default function seller_board() {
       });
       if (!redeem_res.ok) {
         const body = (await redeem_res.json().catch(() => null)) as { error?: string } | null;
-        alert(body?.error || 'не удалось списать бобы');
+        alert(body?.error || 'не удалось списать бобабаллы');
         return;
       }
     }

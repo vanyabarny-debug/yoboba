@@ -52,7 +52,7 @@ export async function POST(request: Request) {
   if (redeem_bonus) {
     if (!phone) {
       return NextResponse.json(
-        { error: 'нужен телефон, чтобы списать бобы' },
+        { error: 'нужен телефон, чтобы списать бобабаллы' },
         { status: 400 }
       );
     }

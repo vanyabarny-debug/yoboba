@@ -50,7 +50,7 @@ const payment_label: Record<customer_order['payment_type'], string> = {
   cash: 'наличными',
   card: 'картой',
   online: 'онлайн',
-  bonus: 'бобами',
+  bonus: 'бобабаллами',
 };
 
 function format_when(iso: string | null) {
@@ -306,7 +306,7 @@ export default function customers_page() {
                     )}
                     {c.bonus_balance > 0 && (
                       <p className="mt-3 text-xs text-neutral-400">
-                        бобы: {c.bonus_balance}
+                        бобабаллы: {c.bonus_balance}
                       </p>
                     )}
                   </div>

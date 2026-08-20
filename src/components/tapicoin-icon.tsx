@@ -1,6 +1,6 @@
 'use client';
 
-/** кружок с «б» — знак ко́пи бобов */
+/** кружок с «бб» — знак бобабаллов */
 export default function TapicoinIcon({
   size = 18,
   className = '',
@@ -14,11 +14,12 @@ export default function TapicoinIcon({
       style={{
         width: size,
         height: size,
-        fontSize: Math.max(10, Math.round(size * 0.55)),
+        fontSize: Math.max(8, Math.round(size * 0.38)),
+        letterSpacing: '-0.04em',
       }}
       aria-hidden
     >
-      б
+      бб
     </span>
   );
 }

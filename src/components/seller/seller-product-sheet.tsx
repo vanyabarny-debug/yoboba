@@ -26,7 +26,7 @@ type props = {
   item: menu_item | null;
   all_items: menu_item[];
   open: boolean;
-  /** баланс бобов гостя, если уже найден по телефону */
+  /** баланс бобабаллов гостя, если уже найден по телефону */
   customer_bonus?: number | null;
   /** стартовые опции при правке позиции из корзины */
   initial?: { volume?: string; topping?: number; qty?: number } | null;
@@ -192,16 +192,16 @@ export default function seller_product_sheet({
             <p className="mt-0.5 text-base font-bold tabular-nums text-neutral-800">{unit} ₽</p>
             {can_pay_with_bonus ? (
               <p className="mt-1.5 rounded-xl bg-accent/10 px-3 py-2 text-xs font-semibold leading-snug text-accent">
-                у гостя {customer_bonus} б. — можно списать {FREE_DRINK_BONUS_THRESHOLD} б. и
+                у гостя {customer_bonus} бб — можно списать {FREE_DRINK_BONUS_THRESHOLD} бб и
                 отдать напиток бесплатно
               </p>
             ) : bonus_earn > 0 ? (
               <p className="mt-1.5 text-xs font-medium text-neutral-500">
                 начислим{' '}
                 <span className="font-semibold tabular-nums text-accent">+{bonus_earn}</span>{' '}
-                бобов
+                бобабаллов
                 {customer_bonus != null ? (
-                  <span className="text-neutral-400"> · сейчас {customer_bonus} б.</span>
+                  <span className="text-neutral-400"> · сейчас {customer_bonus} бб</span>
                 ) : null}
               </p>
             ) : null}
@@ -340,7 +340,7 @@ export default function seller_product_sheet({
                 : mode === 'edit'
                   ? `сохранить · ${line_total} ₽`
                   : `в заказ · ${line_total} ₽`}
-              {mode === 'add' && bonus_earn > 0 ? ` · +${bonus_earn} б.` : ''}
+              {mode === 'add' && bonus_earn > 0 ? ` · +${bonus_earn} бб` : ''}
             </button>
           </div>
         </div>

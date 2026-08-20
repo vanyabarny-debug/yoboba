@@ -39,7 +39,7 @@ export async function upsert_demo_bonus(input: {
   return row;
 }
 
-/** списать бобы; вернёт null если не хватает / нет гостя */
+/** списать бобабаллы; вернёт null если не хватает / нет гостя */
 export async function redeem_demo_bonus(
   phone: string,
   amount: number

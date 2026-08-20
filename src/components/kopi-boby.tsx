@@ -2,7 +2,10 @@
 
 import { createElement } from 'react';
 
-/** бренд баллов: ко́пи бобы — ударение на первый слог */
+/**
+ * бренд баллов: «копи бобабаллы»
+ * «копи» = копить; ударение смысловое на бОба
+ */
 export function kopi_boby_name({
   className = '',
   with_hint = false,
@@ -16,18 +19,19 @@ export function kopi_boby_name({
     createElement(
       'span',
       { className: 'whitespace-nowrap' },
+      'копи ',
       createElement(
         'u',
         { className: 'underline-offset-[3px] decoration-2' },
-        'ко\u0301'
+        'бО'
       ),
-      'пи бобы'
+      'бабаллы'
     ),
     with_hint
       ? createElement(
           'span',
           { className: 'ml-1.5 text-[0.7em] font-normal opacity-70' },
-          'ударение на КО'
+          'шарики и баллы · коротко бб'
         )
       : null
   );

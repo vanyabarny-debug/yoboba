@@ -112,7 +112,7 @@ const payment_label: Record<order['payment_type'], string> = {
   cash: 'наличными',
   card: 'картой',
   online: 'онлайн',
-  bonus: 'бобами',
+  bonus: 'бобабаллами',
 };
 
 function format_datetime(iso: string) {
@@ -459,7 +459,7 @@ export default function profile_page() {
     }
     if (emoji_changed && profile.bonus_balance < AVATAR_EMOJI_CHANGE_COST) {
       set_avatar_error(
-        `нужно ${AVATAR_EMOJI_CHANGE_COST} бобов на смену эмоджи, у вас ${profile.bonus_balance}`
+        `нужно ${AVATAR_EMOJI_CHANGE_COST} бобабаллов на смену эмоджи, у вас ${profile.bonus_balance}`
       );
       return;
     }
@@ -640,15 +640,17 @@ export default function profile_page() {
           <div className="relative z-10 flex items-start justify-between gap-3">
             <div className="min-w-0 flex-1 pr-2">
               <p className="text-[15px] sm:text-base font-medium leading-snug">
-                ваши {createElement(kopi_boby_name, { with_hint: true })}
+                {createElement(kopi_boby_name, { with_hint: true })}
               </p>
               <p className="mt-2 inline-flex items-center gap-2 text-[34px] sm:text-[40px] font-bold leading-none tabular-nums">
                 <TapicoinIcon size={28} className="bg-white/20" />
                 {profile.bonus_balance}
+                <span className="text-[18px] sm:text-[20px] font-semibold opacity-80">бб</span>
               </p>
               <p className="mt-3 text-sm sm:text-[15px] leading-snug text-white/90">
-                до бесплатного напитка:{' '}
-                <span className="font-semibold">{left_to_drink}</span>
+                ещё{' '}
+                <span className="font-semibold">{left_to_drink} бб</span>
+                {' '}до бесплатного напитка
               </p>
               <div className="mt-4 h-1.5 overflow-hidden rounded-full bg-white/25">
                 <div

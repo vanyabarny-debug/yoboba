@@ -390,7 +390,7 @@ export default function pos_panel({
       customer != null &&
       customer.bonus_balance >= FREE_DRINK_BONUS_THRESHOLD;
     if (pay_with_bonus && !can_bonus) {
-      set_error('нельзя списать бобы: нужен гость с балансом ≥ 50 б.');
+      set_error('нельзя списать бобабаллы: нужен гость с балансом ≥ 250 бб');
       return;
     }
 
@@ -574,9 +574,9 @@ export default function pos_panel({
                 className="mt-0.5 rounded"
               />
               <span className="min-w-0 text-xs font-semibold leading-snug text-accent">
-                списать {FREE_DRINK_BONUS_THRESHOLD} б. · напиток бесплатно
+                списать {FREE_DRINK_BONUS_THRESHOLD} бб · напиток бесплатно
                 <span className="mt-0.5 block font-medium text-neutral-600">
-                  у гостя {customer.bonus_balance} б.
+                  у гостя {customer.bonus_balance} бб
                 </span>
               </span>
             </label>
@@ -586,9 +586,9 @@ export default function pos_panel({
               <span className="font-semibold tabular-nums text-accent">
                 +{bonus_preview}
               </span>{' '}
-              бобов
+              бобабаллов
               {customer ? (
-                <span className="text-neutral-400"> · сейчас {customer.bonus_balance} б.</span>
+                <span className="text-neutral-400"> · сейчас {customer.bonus_balance} бб</span>
               ) : null}
             </p>
           ) : null}
@@ -613,7 +613,7 @@ export default function pos_panel({
           ) : customer ? (
             <p className="text-sm text-neutral-700">
               <span className="font-semibold">{customer.name || 'гость'}</span>
-              <span className="text-neutral-400"> · {customer.bonus_balance} бобов</span>
+              <span className="text-neutral-400"> · {customer.bonus_balance} бобабаллов</span>
             </p>
           ) : null}
 

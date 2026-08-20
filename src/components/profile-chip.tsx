@@ -72,7 +72,7 @@ export default function profile_chip({
       type="button"
       onClick={() => router.push('/profile')}
       className="group flex max-w-[10.5rem] items-center gap-2.5 transition-transform duration-200 hover:-translate-y-0.5 active:scale-[0.98] sm:max-w-[13rem]"
-      aria-label={`профиль ${name}, ${bonus} бобов`}
+      aria-label={`профиль ${name}, ${bonus} бобабаллов`}
     >
       <span className="relative shrink-0">
         {createElement(avatar_circle, {

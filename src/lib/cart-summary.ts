@@ -17,11 +17,14 @@ export function format_cart_summary(count: number, total: number): string {
   return `${format_positions(count)} на ${format_price(total)} ₽`;
 }
 
-/** сколько бобов капает с одного оплаченного напитка */
-export const BOBY_PER_DRINK = 10;
+/** шариков в средней порции ≈ бобабаллов с одного напитка */
+export const BOBY_PER_DRINK = 50;
 
-/** сколько бобов нужно, чтобы получить напиток бесплатно (5 напитков) */
-export const FREE_DRINK_BONUS_THRESHOLD = 50;
+/** 5 напитков → подарок */
+export const FREE_DRINK_BONUS_THRESHOLD = 250;
+
+/** короткое обозначение валюты */
+export const BOBY_SHORT = 'бб';
 
 export type bonus_line = {
   category?: string | null;
@@ -30,7 +33,7 @@ export type bonus_line = {
   menu_id?: string | null;
 };
 
-/** напиток копит бобы; закуски, добавки и топпинги — нет */
+/** напиток копит бобабаллы; закуски, добавки и топпинги — нет */
 export function is_boby_earning_item(item: bonus_line): boolean {
   const id = item.id || item.menu_id || '';
   if (id.startsWith('topping-') || id.startsWith('addon-')) return false;
@@ -40,7 +43,7 @@ export function is_boby_earning_item(item: bonus_line): boolean {
   return true;
 }
 
-/** бобы за заказ: +10 за каждый оплаченный напиток */
+/** бобабаллы за заказ: +50 за каждый оплаченный напиток */
 export function calc_order_bonus(items: bonus_line[]): number {
   let drinks = 0;
   for (const item of items) {
@@ -50,21 +53,26 @@ export function calc_order_bonus(items: bonus_line[]): number {
   return drinks * BOBY_PER_DRINK;
 }
 
+/** полная форма с числом: «150 бобабаллов» */
+export function format_bobyball(count: number): string {
+  return `${Math.round(count)} бобабаллов`;
+}
+
+/** короткая форма: «150 бб» */
+export function format_bb(count: number): string {
+  return `${Math.round(count)} ${BOBY_SHORT}`;
+}
+
+/** @deprecated use format_bobyball */
 export function format_boby(count: number): string {
-  const abs = Math.abs(Math.round(count));
-  const mod100 = abs % 100;
-  const mod10 = abs % 10;
-  if (mod100 >= 11 && mod100 <= 14) return `${count} бобов`;
-  if (mod10 === 1) return `${count} боб`;
-  if (mod10 >= 2 && mod10 <= 4) return `${count} боба`;
-  return `${count} бобов`;
+  return format_bobyball(count);
 }
 
 export const bonus_earning_rules = [
-  `за каждый оплаченный напиток начисляем ${BOBY_PER_DRINK} бобов`,
-  `накопите ${FREE_DRINK_BONUS_THRESHOLD} бобов — получите напиток бесплатно`,
-  'закуски и добавки не копятся, за подарок бобы не капают',
-  `списать ${FREE_DRINK_BONUS_THRESHOLD} б. можно в корзине или на кассе`,
+  `за каждый оплаченный напиток начисляем ${BOBY_PER_DRINK} бобабаллов (= порция шариков)`,
+  `накопите ${FREE_DRINK_BONUS_THRESHOLD} бобабаллов — получите напиток бесплатно`,
+  'закуски и добавки не копятся, за подарок бобабаллы не капают',
+  `списать ${FREE_DRINK_BONUS_THRESHOLD} ${BOBY_SHORT} можно в корзине или на кассе`,
 ] as const;
 
 const snack_categories = new Set(['закуски']);

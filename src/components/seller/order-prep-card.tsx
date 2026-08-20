@@ -37,7 +37,7 @@ function order_is_paid(o: order) {
 
 function payment_under_label(o: order) {
   if (o.payment_type === 'bonus' || (o.payment_type === 'online' && Number(o.total_price) === 0)) {
-    return 'оплачен бобами · выдайте';
+    return 'оплачен бобабаллами · выдайте';
   }
   return 'оплачен · к выдаче';
 }
@@ -307,7 +307,7 @@ export default function order_prep_card({
               выдача {pickup_label(o.pickup_time)} ·{' '}
               {paid
                 ? o.payment_type === 'bonus' || Number(o.total_price) === 0
-                  ? 'оплачен бобами'
+                  ? 'оплачен бобабаллами'
                   : 'оплачен'
                 : 'не оплачен'}
             </p>

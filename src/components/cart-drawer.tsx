@@ -48,7 +48,7 @@ type props = {
   open: boolean;
   lines: cart_line[];
   all_items: menu_item[];
-  /** баланс бобов гостя */
+  /** баланс бобабаллов гостя */
   bonus?: number;
   /** списать порог за бесплатный заказ */
   redeem_bonus?: boolean;
@@ -69,13 +69,13 @@ type props = {
 function boby_info() {
   return (
     <span className="group relative inline-flex align-middle">
-      <span className="ml-1 inline-flex h-3.5 w-3.5 cursor-help items-center justify-center rounded-full bg-[#0039A6] text-[9px] font-bold text-white font-mono">
-        б
+      <span className="ml-1 inline-flex h-3.5 w-3.5 cursor-help items-center justify-center rounded-full bg-[#0039A6] text-[8px] font-bold text-white font-mono tracking-tighter">
+        бб
       </span>
       <span className="pointer-events-none absolute bottom-full left-0 z-30 mb-2 w-64 rounded-xl bg-neutral-900 px-3 py-2.5 text-xs font-normal leading-relaxed text-white opacity-0 shadow-lg transition-opacity duration-150 group-hover:opacity-100">
-        {createElement(kopi_boby_name, { with_hint: true, className: 'font-semibold' })} — наши шарики тапиоки
-        и баллы. С напитка капает {BOBY_PER_DRINK} бобов, {FREE_DRINK_BONUS_THRESHOLD}{' '}
-        бобов = напиток в подарок.
+        {createElement(kopi_boby_name, { className: 'font-semibold' })} — баллы лояльности.
+        С напитка капает {BOBY_PER_DRINK} бб (как шариков в порции). {FREE_DRINK_BONUS_THRESHOLD}{' '}
+        бб = напиток в подарок.
       </span>
     </span>
   );
@@ -384,28 +384,28 @@ export default function cart_drawer({
                       />
                       <span className="min-w-0">
                         <span className="block font-semibold text-accent">
-                          списать {FREE_DRINK_BONUS_THRESHOLD} б. · напиток бесплатно
+                          списать {FREE_DRINK_BONUS_THRESHOLD} бб · напиток бесплатно
                         </span>
                         <span className="mt-0.5 block text-xs text-neutral-600">
-                          у вас {bonus} б.
+                          у вас {bonus} бб
                           {redeem_on
-                            ? ` · останется ${bonus - FREE_DRINK_BONUS_THRESHOLD} б.`
+                            ? ` · останется ${bonus - FREE_DRINK_BONUS_THRESHOLD} бб`
                             : ''}
                         </span>
                       </span>
                     </label>
                   ) : !as_gift && bonus > 0 ? (
                     <div className="flex items-center justify-between text-sm">
-                      <span className="text-neutral-500">ваши бобы</span>
+                      <span className="text-neutral-500">ваши бобабаллы</span>
                       <span className="font-semibold tabular-nums text-neutral-800">
-                        {bonus} б. · ещё {Math.max(0, FREE_DRINK_BONUS_THRESHOLD - bonus)} до бесплатного
+                        {bonus} бб · ещё {Math.max(0, FREE_DRINK_BONUS_THRESHOLD - bonus)} до бесплатного
                       </span>
                     </div>
                   ) : null}
                   {!as_gift ? (
                     <div className="flex items-center justify-between">
                       <span className="text-neutral-500">
-                        {redeem_on ? 'списание бобов' : <>Начислим бобы{boby_info()}</>}
+                        {redeem_on ? 'списание бобабаллов' : <>Начислим бобабаллы{boby_info()}</>}
                       </span>
                       <span className="font-semibold font-mono tabular-nums text-neutral-900">
                         {redeem_on ? `−${FREE_DRINK_BONUS_THRESHOLD}` : `+${bonus_points}`}
@@ -450,14 +450,14 @@ export default function cart_drawer({
                   {as_gift
                     ? `подарить за ${format_price(total)} ₽`
                     : redeem_on
-                    ? `оформить бесплатно · −${FREE_DRINK_BONUS_THRESHOLD} б.`
+                    ? `оформить бесплатно · −${FREE_DRINK_BONUS_THRESHOLD} бб`
                     : `к оформлению на ${format_price(pay_total)} ₽`}
                 </span>
                 <span className="hidden sm:inline">
                   {as_gift
                     ? 'Подарить напиток'
                     : redeem_on
-                      ? 'Оформить бесплатно за бобы'
+                      ? 'Оформить бесплатно за бобабаллы'
                       : 'К оформлению заказа'}
                 </span>
                 <svg
