@@ -262,10 +262,39 @@ export type menu_store = {
 const storage_key = 'yoboba_menu_store';
 const update_event = 'yoboba-menu-update';
 
+let published_heading_styles: Record<string, heading_style> | null = null;
+let publish_timer: number | undefined;
+
 function emit_update() {
   if (typeof window !== 'undefined') {
     window.dispatchEvent(new Event(update_event));
   }
+}
+
+export function apply_published_heading_styles(
+  styles?: Record<string, heading_style> | null
+) {
+  published_heading_styles = styles ?? null;
+}
+
+function publish_payload(store: menu_store) {
+  return JSON.stringify({ ...store, version: store_version });
+}
+
+export function publish_menu_now(store: menu_store = get_menu_store()) {
+  if (typeof window === 'undefined') return;
+  void fetch('/api/admin/menu', {
+    method: 'PUT',
+    credentials: 'same-origin',
+    headers: { 'content-type': 'application/json' },
+    body: publish_payload(store),
+  });
+}
+
+function schedule_publish(store: menu_store) {
+  if (typeof window === 'undefined') return;
+  window.clearTimeout(publish_timer);
+  publish_timer = window.setTimeout(() => publish_menu_now(store), 400);
 }
 
 function merge_default_badges(items: menu_item[]) {
@@ -403,8 +432,10 @@ export function get_menu_store(): menu_store {
 }
 
 export function save_menu_store(store: menu_store) {
-  localStorage.setItem(storage_key, JSON.stringify({ ...store, version: store_version }));
+  const next = { ...store, version: store_version };
+  localStorage.setItem(storage_key, JSON.stringify(next));
   emit_update();
+  schedule_publish(next);
 }
 
 export function reset_menu_store() {
@@ -466,6 +497,7 @@ export function set_category_heading_style(category: string, style: heading_styl
 }
 
 export function get_category_heading_style(category: string): heading_style {
+  if (published_heading_styles?.[category]) return published_heading_styles[category];
   const store = typeof window === 'undefined' ? get_default_store() : get_menu_store();
   return (
     store.category_heading_styles?.[category] ??

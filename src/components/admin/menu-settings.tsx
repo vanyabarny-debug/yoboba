@@ -8,6 +8,7 @@ import {
   delete_menu_item,
   get_menu_store,
   new_item_id,
+  publish_menu_now,
   subscribe_menu_store,
   upsert_menu_item,
 } from '@/lib/menu-store';
@@ -398,6 +399,7 @@ export default function menu_settings() {
 
   useEffect(() => {
     reload();
+    publish_menu_now();
     return subscribe_menu_store(reload);
   }, []);
 
@@ -440,7 +442,7 @@ export default function menu_settings() {
           <div>
             <h1 className="text-lg font-semibold text-neutral-900">меню</h1>
             <p className="mt-1 text-sm text-neutral-500">
-              название, фото, объёмы, состав и кбжу
+              правки сразу уходят на сайт
             </p>
           </div>
           <button

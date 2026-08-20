@@ -35,7 +35,6 @@ import gift_inbox_banner from '@/components/gift-inbox-banner';
 import { claim_gift_pickup, fetch_gift_by_id, fetch_my_gifts, type gift_actor } from '@/lib/gifts';
 import { add_to_cart, get_cart_items, upsert_cart_item } from '@/lib/cart';
 import site_header from '@/components/site-header';
-import { resolve_menu_categories } from '@/lib/menu-from-db';
 import {
   delete_promo,
   get_promo_store,
@@ -78,15 +77,18 @@ import { subscribe_spot_store } from '@/lib/spot-store';
 import type { store_spot } from '@/lib/types';
 import {
   add_category,
+  apply_published_heading_styles,
   delete_category,
   delete_menu_item,
   get_menu_store,
   new_item_id,
+  publish_menu_now,
   rename_category,
   reset_menu_store,
   subscribe_menu_store,
   upsert_menu_item,
   default_categories,
+  type menu_store,
 } from '@/lib/menu-store';
 import {
   delete_top_bar_link,
@@ -726,6 +728,11 @@ export default function home_client({
   }, []);
 
   useEffect(() => {
+    if (!admin_edit_mode) return;
+    publish_menu_now();
+  }, [admin_edit_mode]);
+
+  useEffect(() => {
     if (!demo_mode) return;
 
     function reload_menu() {
@@ -743,6 +750,24 @@ export default function home_client({
   }, [demo_mode, admin_edit_mode]);
 
   useEffect(() => {
+    if (admin_edit_mode) return;
+    let cancelled = false;
+    void fetch('/api/menu', { cache: 'no-store' })
+      .then((r) => r.json())
+      .then((body: { store?: menu_store | null }) => {
+        const store = body.store;
+        if (cancelled || !store?.items?.length) return;
+        apply_published_heading_styles(store.category_heading_styles);
+        set_categories(store.categories);
+        set_menu(store.items.filter((i) => i.is_available));
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [admin_edit_mode]);
+
+  useEffect(() => {
     if (!demo_mode || !is_admin_edit) return;
     set_lang_draft(get_site_content_store().lang_link);
     return subscribe_site_content_store(() => {
@@ -752,9 +777,9 @@ export default function home_client({
 
   useEffect(() => {
     if (demo_mode) return;
-    set_categories(resolve_menu_categories(initial_menu));
+    set_categories(initial_categories);
     set_menu(admin_edit_mode ? initial_menu : initial_menu.filter((i) => i.is_available));
-  }, [demo_mode, initial_menu, admin_edit_mode]);
+  }, [demo_mode, initial_menu, initial_categories, admin_edit_mode]);
 
   useEffect(() => {
     if (user_id) return;

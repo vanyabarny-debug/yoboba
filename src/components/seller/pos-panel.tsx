@@ -140,8 +140,7 @@ export default function pos_panel({
   }, [step, on_nav_depth]);
 
   useEffect(() => {
-    function sync() {
-      const store = get_menu_store();
+    function apply(store: ReturnType<typeof get_menu_store>) {
       const available = normalize_menu_item_images(store.items.filter((i) => i.is_available));
       set_items(available);
       const from_menu = (store.categories.length ? store.categories : default_categories).filter(
@@ -150,8 +149,15 @@ export default function pos_panel({
       set_categories(from_menu.length ? from_menu : store.categories);
       warm_menu_image_cache(available);
     }
-    sync();
-    return subscribe_menu_store(sync);
+    apply(get_menu_store());
+    const unsub = subscribe_menu_store(() => apply(get_menu_store()));
+    void fetch('/api/menu', { cache: 'no-store' })
+      .then((r) => r.json())
+      .then((body: { store?: ReturnType<typeof get_menu_store> | null }) => {
+        if (body.store?.items?.length) apply(body.store);
+      })
+      .catch(() => {});
+    return unsub;
   }, []);
 
   useEffect(() => {

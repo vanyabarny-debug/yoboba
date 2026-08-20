@@ -2,6 +2,7 @@ import { default_menu_items } from '@/lib/menu-store';
 import { get_demo_orders } from '@/lib/demo-orders-server';
 import { is_supabase_configured } from '@/lib/supabase/config';
 import { create_service_client } from '@/lib/supabase/service';
+import { read_published_menu } from '@/lib/menu-catalog-server';
 import { DEFAULT_PREP_MINUTES } from '@/lib/kitchen-queue';
 import type { menu_item, order } from '@/lib/types';
 
@@ -26,6 +27,20 @@ export async function load_menu_map(): Promise<Map<string, menu_item>> {
           typeof row.prep_minutes === 'number' && row.prep_minutes > 0
             ? row.prep_minutes
             : fallback?.prep_minutes ?? DEFAULT_PREP_MINUTES,
+      });
+    }
+  }
+
+  const published = await read_published_menu();
+  if (published?.items?.length) {
+    map.clear();
+    for (const item of published.items) {
+      map.set(item.id, {
+        ...item,
+        prep_minutes:
+          typeof item.prep_minutes === 'number' && item.prep_minutes > 0
+            ? item.prep_minutes
+            : DEFAULT_PREP_MINUTES,
       });
     }
   }
