@@ -19,6 +19,7 @@ import { format_order_number } from '@/lib/order-number';
 import type { gift, order } from '@/lib/types';
 import { is_supabase_configured } from '@/lib/supabase/config';
 import { get_demo_user, clear_session, set_demo_user } from '@/lib/demo-auth';
+import { peek_header_user, remember_header_user } from '@/lib/header-user';
 import {
   AVATAR_BG_POOL,
   AVATAR_EMOJI_CHANGE_COST,
@@ -303,19 +304,36 @@ export default function profile_page() {
         return;
       }
 
-      const resolved =
-        auth.profile ||
-        ({
-          id: auth.user_id,
-          phone: null,
-          name: null,
-          bonus_balance: 0,
-          avatar_emoji: null,
-          avatar_bg: null,
-          role: 'user' as const,
-        } satisfies profile);
+      const cached = peek_header_user();
+      const cache_bal =
+        cached?.id === auth.user_id ? Number(cached.bonus_balance) || 0 : 0;
+      const resolved: profile = auth.profile
+        ? {
+            ...auth.profile,
+            bonus_balance: Math.max(Number(auth.profile.bonus_balance) || 0, cache_bal),
+          }
+        : {
+            id: auth.user_id,
+            phone: null,
+            name: null,
+            bonus_balance: cache_bal,
+            avatar_emoji: null,
+            avatar_bg: null,
+            role: 'user' as const,
+          };
 
       if (cancelled) return;
+      remember_header_user({
+        id: resolved.id,
+        phone: resolved.phone || '',
+        name: resolved.name || '',
+        bonus_balance: resolved.bonus_balance,
+        avatar_emoji: resolved.avatar_emoji || '',
+        avatar_bg: resolved.avatar_bg,
+        avatar_url: resolved.avatar_url ?? null,
+        is_guest: false,
+        role: 'user',
+      });
       set_profile(resolved);
       set_name_draft(resolved.name || '');
       let loc = get_profile_local(resolved.id);
@@ -559,6 +577,7 @@ export default function profile_page() {
   }
 
   async function handle_logout() {
+    remember_header_user(null);
     if (demo_mode) {
       await clear_session();
     } else {
@@ -579,6 +598,7 @@ export default function profile_page() {
     set_deleting_profile(true);
     try {
       if (profile) clear_profile_local(profile.id);
+      remember_header_user(null);
       if (demo_mode) {
         await clear_session();
       } else {
@@ -625,9 +645,7 @@ export default function profile_page() {
                 {profile.bonus_balance}
               </p>
               <p className="mt-3 text-sm sm:text-[15px] leading-snug text-white/90">
-                ещё{' '}
-                <span className="font-semibold">{left_to_drink} бобаллов</span>
-                {' '}до бесплатного напитка
+                ещё {left_to_drink} бобаллов до бесплатного напитка
               </p>
               <div className="mt-4 h-1.5 max-w-[220px] overflow-hidden rounded-full bg-white/25">
                 <div

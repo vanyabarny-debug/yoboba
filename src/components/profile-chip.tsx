@@ -1,9 +1,10 @@
 'use client';
 
-import { createElement } from 'react';
+import { createElement, useLayoutEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import avatar_circle from '@/components/avatar-circle';
 import { avatar_emoji_from_id } from '@/lib/avatar-emoji';
+import { peek_header_user } from '@/lib/header-user';
 
 const PLACEHOLDER_NAMES = new Set(['', 'профиль', 'аккаунт']);
 
@@ -56,30 +57,55 @@ export default function profile_chip({
   on_login,
 }: props) {
   const router = useRouter();
+  const [cached, set_cached] = useState<ReturnType<typeof peek_header_user>>(null);
 
-  // без настоящего входа — только «войти», без аватарки и подписей
-  if (!is_logged_in || !is_real_display_name(user_name)) {
+  useLayoutEffect(() => {
+    set_cached(peek_header_user());
+  }, [is_logged_in, user_id, user_name, avatar_url, avatar_emoji]);
+
+  const shown =
+    is_logged_in
+      ? {
+          id: user_id || cached?.id || null,
+          name: user_name || cached?.name || '',
+          emoji: avatar_emoji || cached?.avatar_emoji || null,
+          bg: avatar_bg ?? cached?.avatar_bg ?? null,
+          url: avatar_url || cached?.avatar_url || null,
+          bonus,
+        }
+      : cached
+        ? {
+            id: cached.id,
+            name: cached.name,
+            emoji: cached.avatar_emoji,
+            bg: cached.avatar_bg,
+            url: cached.avatar_url || null,
+            bonus: cached.bonus_balance,
+          }
+        : null;
+
+  if (!shown) {
     return login_button(on_login);
   }
 
   const emoji =
-    avatar_emoji || (user_id ? avatar_emoji_from_id(user_id) : '🧋');
-  const name = (user_name || '').trim();
-  const bonus_label = bonus > 999 ? '999+' : String(bonus);
+    shown.emoji || (shown.id ? avatar_emoji_from_id(shown.id) : '🧋');
+  const name = shown.name.trim();
+  const bonus_label = shown.bonus > 999 ? '999+' : String(shown.bonus);
 
   return (
     <button
       type="button"
       onClick={() => router.push('/profile')}
       className="group flex max-w-[10.5rem] items-center gap-2.5 transition-transform duration-200 hover:-translate-y-0.5 active:scale-[0.98] sm:max-w-[13rem]"
-      aria-label={`профиль ${name}, ${bonus} бобаллов`}
+      aria-label={name ? `профиль ${name}, ${shown.bonus} бобаллов` : 'профиль'}
     >
       <span className="relative shrink-0">
         {createElement(avatar_circle, {
           emoji,
-          bg: avatar_bg,
-          image_url: avatar_url,
-          user_id,
+          bg: shown.bg,
+          image_url: shown.url,
+          user_id: shown.id,
           size: 'sm',
           className: 'transition group-hover:brightness-95',
         })}
@@ -87,9 +113,11 @@ export default function profile_chip({
           {bonus_label}
         </span>
       </span>
-      <span className="min-w-0 truncate text-left text-[13px] font-bold leading-tight text-neutral-900 sm:text-sm">
-        {name}
-      </span>
+      {is_real_display_name(name) ? (
+        <span className="min-w-0 truncate text-left text-[13px] font-bold leading-tight text-neutral-900 sm:text-sm">
+          {name}
+        </span>
+      ) : null}
     </button>
   );
 }

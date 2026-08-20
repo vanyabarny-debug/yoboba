@@ -1,6 +1,6 @@
 'use client';
 
-import { createElement, useEffect, useRef, useState } from 'react';
+import { createElement, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import location_modal from '@/components/location-modal';
 import site_header from '@/components/site-header';
@@ -9,6 +9,7 @@ import news_ticker from '@/components/news-ticker';
 import cart_mark from '@/components/cart-mark';
 import { get_auth_state, sign_out } from '@/lib/auth';
 import { clear_session, get_demo_user, type demo_user } from '@/lib/demo-auth';
+import { peek_header_user, remember_header_user } from '@/lib/header-user';
 import { get_location, set_location, type user_location } from '@/lib/location';
 import { default_categories } from '@/lib/menu-store';
 import { is_supabase_configured } from '@/lib/supabase/config';
@@ -35,6 +36,13 @@ export default function site_chrome({ children }: props) {
   const header_ref = useRef<HTMLDivElement>(null);
 
   const is_logged_in = Boolean(user && user.role === 'user' && !user.is_guest);
+
+  useLayoutEffect(() => {
+    const cached = peek_header_user();
+    if (!cached) return;
+    set_user(cached);
+    set_bonus(cached.bonus_balance);
+  }, []);
 
   useEffect(() => {
     const loc = get_location();
@@ -70,21 +78,28 @@ export default function site_chrome({ children }: props) {
         if (u && u.role === 'user' && !u.is_guest) {
           set_user(u);
           set_bonus(u.bonus_balance);
+          remember_header_user(u);
         } else {
           set_user(null);
           set_bonus(0);
+          remember_header_user(null);
         }
         return;
       }
 
-      get_auth_state().then((auth) => {
+      get_auth_state().then(async (first) => {
+        let auth = first;
+        for (let attempt = 0; attempt < 5 && !auth.is_permanent; attempt++) {
+          await new Promise((r) => setTimeout(r, 120 + attempt * 80));
+          auth = await get_auth_state();
+        }
         if (auth.is_permanent && auth.user_id) {
           const name = (auth.profile?.name || '').trim();
           const shown =
             name && name !== 'аккаунт' && name !== 'профиль'
               ? name
               : `id${auth.user_id.slice(0, 6)}`;
-          set_user({
+          const next: demo_user = {
             id: auth.profile?.id || auth.user_id,
             phone: auth.profile?.phone || '',
             name: shown,
@@ -94,11 +109,14 @@ export default function site_chrome({ children }: props) {
             avatar_url: auth.profile?.avatar_url || null,
             is_guest: false,
             role: 'user',
-          });
-          set_bonus(auth.profile?.bonus_balance || 0);
+          };
+          set_user(next);
+          set_bonus(next.bonus_balance);
+          remember_header_user(next);
         } else {
           set_user(null);
           set_bonus(0);
+          remember_header_user(null);
         }
       });
     }
@@ -120,11 +138,13 @@ export default function site_chrome({ children }: props) {
   async function handle_logout() {
     if (demo_mode) {
       await clear_session();
+      remember_header_user(null);
       set_user(null);
       set_bonus(0);
       return;
     }
     await sign_out();
+    remember_header_user(null);
     set_user(null);
     set_bonus(0);
   }

@@ -33,13 +33,15 @@ export type bonus_line = {
   menu_id?: string | null;
 };
 
-/** напиток копит бобаллы; закуски, добавки и топпинги — нет */
+const NON_EARNING_CATEGORIES = new Set(['закуски', 'десерты', 'добавки']);
+
+/** напиток копит бобаллы; закуски, десерты, добавки и топпинги — нет */
 export function is_boby_earning_item(item: bonus_line): boolean {
   const id = item.id || item.menu_id || '';
   if (id.startsWith('topping-') || id.startsWith('addon-')) return false;
   const cat = (item.category || '').trim().toLowerCase();
-  if (!cat) return false;
-  if (cat === 'закуски' || cat === 'добавки') return false;
+  if (!cat) return true;
+  if (NON_EARNING_CATEGORIES.has(cat)) return false;
   return true;
 }
 

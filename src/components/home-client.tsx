@@ -1,6 +1,6 @@
 'use client';
 
-import { createElement, useCallback, useEffect, useRef, useState } from 'react';
+import { createElement, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { create_client } from '@/lib/supabase/client';
 import { useRouter, useSearchParams } from 'next/navigation';
@@ -71,6 +71,7 @@ import {
   clear_session,
   type demo_user,
 } from '@/lib/demo-auth';
+import { peek_header_user, remember_header_user } from '@/lib/header-user';
 import { FREE_DRINK_BONUS_THRESHOLD } from '@/lib/cart-summary';
 import { get_location, is_city_served, resolve_spot, set_location, get_selected_spot, type user_location } from '@/lib/location';
 import { subscribe_spot_store } from '@/lib/spot-store';
@@ -309,6 +310,15 @@ export default function home_client({
           user.role === 'user' &&
           !user.is_guest
       );
+
+  useLayoutEffect(() => {
+    const cached = peek_header_user();
+    if (!cached) return;
+    set_user(cached);
+    set_user_id(cached.id);
+    set_is_anonymous(false);
+    set_bonus(cached.bonus_balance);
+  }, []);
   const cart_count = cart_lines.reduce((s, l) => s + l.quantity, 0);
   const cart_total = cart_lines.reduce((s, l) => s + cart_line_unit_price(l) * l.quantity, 0);
   const active_promos = promos.filter((p) => p.is_active);
@@ -470,6 +480,7 @@ export default function home_client({
         error?: string;
         bonus_balance?: number;
         bonus_redeemed?: number;
+        bonus_earned?: number;
       };
       if (!res.ok) {
         set_order_error(body.error || 'не удалось оформить заказ');
@@ -481,6 +492,11 @@ export default function home_client({
         if (u) set_demo_user({ ...u, bonus_balance: body.bonus_balance });
       } else if (want_redeem) {
         const next = Math.max(0, bonus - FREE_DRINK_BONUS_THRESHOLD);
+        set_bonus(next);
+        const u = get_demo_user();
+        if (u) set_demo_user({ ...u, bonus_balance: next });
+      } else if (body.bonus_earned) {
+        const next = bonus + body.bonus_earned;
         set_bonus(next);
         const u = get_demo_user();
         if (u) set_demo_user({ ...u, bonus_balance: next });
@@ -657,9 +673,11 @@ export default function home_client({
         set_user(u);
         if (u.role === 'user' && !u.is_guest) {
           set_bonus(u.bonus_balance);
+          remember_header_user(u);
         }
       } else {
         set_user(null);
+        remember_header_user(null);
       }
       set_cart_lines(load_guest_cart());
     }
@@ -814,6 +832,17 @@ export default function home_client({
           is_guest: false,
           role: 'user',
         });
+        remember_header_user({
+          id: auth.profile?.id || auth.user_id,
+          phone: auth.profile?.phone || '',
+          name: shown,
+          bonus_balance: auth.profile?.bonus_balance || 0,
+          avatar_emoji: auth.profile?.avatar_emoji || '',
+          avatar_bg: auth.profile?.avatar_bg ?? null,
+          avatar_url: auth.profile?.avatar_url || null,
+          is_guest: false,
+          role: 'user',
+        });
 
         await sync_guest_cart_to_server(auth.user_id);
         await load_prod_cart(auth.user_id);
@@ -824,6 +853,7 @@ export default function home_client({
       set_is_anonymous(false);
       set_user(null);
       set_bonus(0);
+      remember_header_user(null);
       set_cart_lines(load_guest_cart());
     }
 
@@ -1249,6 +1279,7 @@ export default function home_client({
         set_user(null);
         set_user_id(null);
         set_bonus(0);
+        remember_header_user(null);
         set_address_confirmed(false);
         set_cart_lines(load_guest_cart());
         if (admin_edit_mode) router.push('/admin/login');
@@ -1260,6 +1291,7 @@ export default function home_client({
     set_is_anonymous(false);
     set_user(null);
     set_bonus(0);
+    remember_header_user(null);
     set_address_confirmed(false);
     set_cart_lines(load_guest_cart());
   }

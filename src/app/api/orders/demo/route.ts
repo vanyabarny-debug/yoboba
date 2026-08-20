@@ -6,8 +6,9 @@ import {
   get_demo_orders,
   update_demo_order,
 } from '@/lib/demo-orders-server';
-import { FREE_DRINK_BONUS_THRESHOLD } from '@/lib/cart-summary';
+import { calc_order_bonus, FREE_DRINK_BONUS_THRESHOLD } from '@/lib/cart-summary';
 import { ensure_demo_bonus_row, redeem_bonus_points } from '@/lib/bonus-server';
+import { load_menu_map } from '@/lib/kitchen-server';
 import { normalize_phone } from '@/lib/phone';
 import type { order_item } from '@/lib/types';
 
@@ -115,9 +116,22 @@ export async function POST(request: Request) {
     order.is_paid = true;
   }
 
+  let bonus_earned = 0;
+  if (!redeem_bonus) {
+    const menu = await load_menu_map();
+    bonus_earned = calc_order_bonus(
+      items.map((i) => ({
+        menu_id: i.menu_id,
+        quantity: i.quantity,
+        category: menu.get(i.menu_id)?.category,
+      }))
+    );
+  }
+
   return NextResponse.json({
     order,
     bonus_redeemed,
+    bonus_earned,
     bonus_balance,
   });
 }
