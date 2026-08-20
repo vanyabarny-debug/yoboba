@@ -2,17 +2,8 @@
 
 import { createElement } from 'react';
 
-/**
- * бренд баллов: «копи бобаллы»
- * «копи» = копить; ударение смысловое на бО
- */
-export function kopi_boby_name({
-  className = '',
-  with_hint = false,
-}: {
-  className?: string;
-  with_hint?: boolean;
-}) {
+/** бренд: «копи бобаллы» — ударение смысловое на бО */
+export function kopi_boby_name({ className = '' }: { className?: string }) {
   return createElement(
     'span',
     { className },
@@ -26,14 +17,7 @@ export function kopi_boby_name({
         'бО'
       ),
       'баллы'
-    ),
-    with_hint
-      ? createElement(
-          'span',
-          { className: 'ml-1.5 text-[0.7em] font-normal opacity-70' },
-          'шарики и баллы · коротко бб'
-        )
-      : null
+    )
   );
 }
 

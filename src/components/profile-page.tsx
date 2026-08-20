@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation';
 import site_chrome from '@/components/site-chrome';
 import TapicoinIcon from '@/components/tapicoin-icon';
 import { kopi_boby_name } from '@/components/kopi-boby';
+import floating_boba_pearls from '@/components/floating-boba-pearls';
 import { get_auth_state, sign_out, update_profile, type profile } from '@/lib/auth';
 import {
   bonus_earning_rules,
@@ -167,32 +168,6 @@ function field_label({
       <span className="text-[15px] text-neutral-400">{label}</span>
       {action}
     </div>
-  );
-}
-
-function banner_heart() {
-  return (
-    <svg
-      viewBox="0 0 88 80"
-      className="h-[88px] w-[96px] drop-shadow-[0_8px_16px_rgba(120,0,40,0.28)]"
-      aria-hidden
-    >
-      <defs>
-        <linearGradient id="profile-heart" x1="18%" y1="0%" x2="80%" y2="100%">
-          <stop offset="0%" stopColor="#ffe1ea" />
-          <stop offset="45%" stopColor="#ff8aa8" />
-          <stop offset="100%" stopColor="#ff3d6e" />
-        </linearGradient>
-      </defs>
-      <path
-        fill="url(#profile-heart)"
-        d="M44 76C18 58 2 42 2 24 2 11.5 12 2 24.5 2 32.5 2 39 6.5 44 14 49 6.5 55.5 2 63.5 2 76 2 86 11.5 86 24c0 18-16 34-42 52z"
-      />
-      <path
-        fill="rgba(255,255,255,0.45)"
-        d="M24 16c-6 2-10 8-10 15 0 1.2.1 2.3.4 3.4C16.5 24 24 18 34 16c-3-2-6.5-2.2-10 0z"
-      />
-    </svg>
   );
 }
 
@@ -637,30 +612,29 @@ export default function profile_page() {
       <div className="page-shell overflow-x-hidden py-8 sm:py-10 pb-[calc(5rem+var(--safe-bottom))]">
         <div className="w-full min-w-0 max-w-3xl space-y-10 sm:space-y-12">
         <section className="relative overflow-hidden rounded-[20px] bg-[linear-gradient(100deg,#ff2d6a_0%,#ff4d7d_42%,#ff6b6b_100%)] px-5 py-5 sm:px-7 sm:py-6 text-white">
+          <div className="pointer-events-auto absolute inset-y-0 right-0 w-[42%] sm:w-[38%]">
+            {createElement(floating_boba_pearls)}
+          </div>
           <div className="relative z-10 flex items-start justify-between gap-3">
-            <div className="min-w-0 flex-1 pr-2">
+            <div className="min-w-0 flex-1 pr-2 sm:pr-4">
               <p className="text-[15px] sm:text-base font-medium leading-snug">
-                {createElement(kopi_boby_name, { with_hint: true })}
+                {createElement(kopi_boby_name)}
               </p>
-              <p className="mt-2 inline-flex items-center gap-2 text-[34px] sm:text-[40px] font-bold leading-none tabular-nums">
-                <TapicoinIcon size={28} className="bg-white/20" />
+              <p className="mt-2 inline-flex items-center gap-3 text-[34px] sm:text-[40px] font-bold leading-none tabular-nums">
+                <TapicoinIcon size={44} className="!ring-white/50" />
                 {profile.bonus_balance}
-                <span className="text-[18px] sm:text-[20px] font-semibold opacity-80">бб</span>
               </p>
               <p className="mt-3 text-sm sm:text-[15px] leading-snug text-white/90">
                 ещё{' '}
-                <span className="font-semibold">{left_to_drink} бб</span>
+                <span className="font-semibold">{left_to_drink} бобаллов</span>
                 {' '}до бесплатного напитка
               </p>
-              <div className="mt-4 h-1.5 overflow-hidden rounded-full bg-white/25">
+              <div className="mt-4 h-1.5 max-w-[220px] overflow-hidden rounded-full bg-white/25">
                 <div
                   className="h-full rounded-full bg-white transition-all"
                   style={{ width: `${tapicoin_progress}%` }}
                 />
               </div>
-            </div>
-            <div className="pointer-events-none shrink-0 -mt-1 -mr-1 sm:-mr-2">
-              {banner_heart()}
             </div>
           </div>
           <button

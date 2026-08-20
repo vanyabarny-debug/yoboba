@@ -74,8 +74,7 @@ function boby_info() {
       </span>
       <span className="pointer-events-none absolute bottom-full left-0 z-30 mb-2 w-64 rounded-xl bg-neutral-900 px-3 py-2.5 text-xs font-normal leading-relaxed text-white opacity-0 shadow-lg transition-opacity duration-150 group-hover:opacity-100">
         {createElement(kopi_boby_name, { className: 'font-semibold' })} — баллы лояльности.
-        С напитка капает {BOBY_PER_DRINK} бб (как шариков в порции). {FREE_DRINK_BONUS_THRESHOLD}{' '}
-        бб = напиток в подарок.
+        С напитка +{BOBY_PER_DRINK} бб, подарок за {FREE_DRINK_BONUS_THRESHOLD} бб.
       </span>
     </span>
   );

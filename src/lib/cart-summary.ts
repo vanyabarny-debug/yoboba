@@ -69,10 +69,10 @@ export function format_boby(count: number): string {
 }
 
 export const bonus_earning_rules = [
-  `за каждый оплаченный напиток начисляем ${BOBY_PER_DRINK} бобаллов (= порция шариков)`,
+  `за каждый оплаченный напиток начисляем ${BOBY_PER_DRINK} бобаллов`,
   `накопите ${FREE_DRINK_BONUS_THRESHOLD} бобаллов — получите напиток бесплатно`,
   'закуски и добавки не копятся, за подарок бобаллы не капают',
-  `списать ${FREE_DRINK_BONUS_THRESHOLD} ${BOBY_SHORT} можно в корзине или на кассе`,
+  `списать ${FREE_DRINK_BONUS_THRESHOLD} бобаллов можно в корзине или на кассе`,
 ] as const;
 
 const snack_categories = new Set(['закуски']);
