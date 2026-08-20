@@ -30,6 +30,15 @@ module.exports = {
       boxShadow: {
         soft: '0 4px 24px rgba(0, 0, 0, 0.06)',
       },
+      animation: {
+        'news-ticker': 'news-ticker-run 32s linear infinite',
+      },
+      keyframes: {
+        'news-ticker-run': {
+          from: { transform: 'translateX(0)' },
+          to: { transform: 'translateX(-50%)' },
+        },
+      },
     },
   },
   plugins: [],
