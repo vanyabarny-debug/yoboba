@@ -112,7 +112,7 @@ const payment_label: Record<order['payment_type'], string> = {
   cash: 'наличными',
   card: 'картой',
   online: 'онлайн',
-  bonus: 'бобабаллами',
+  bonus: 'бобаллами',
 };
 
 function format_datetime(iso: string) {
@@ -459,7 +459,7 @@ export default function profile_page() {
     }
     if (emoji_changed && profile.bonus_balance < AVATAR_EMOJI_CHANGE_COST) {
       set_avatar_error(
-        `нужно ${AVATAR_EMOJI_CHANGE_COST} бобабаллов на смену эмоджи, у вас ${profile.bonus_balance}`
+        `нужно ${AVATAR_EMOJI_CHANGE_COST} бобаллов на смену эмоджи, у вас ${profile.bonus_balance}`
       );
       return;
     }

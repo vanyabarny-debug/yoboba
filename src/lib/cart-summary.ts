@@ -17,7 +17,7 @@ export function format_cart_summary(count: number, total: number): string {
   return `${format_positions(count)} на ${format_price(total)} ₽`;
 }
 
-/** шариков в средней порции ≈ бобабаллов с одного напитка */
+/** шариков в средней порции ≈ бобаллов с одного напитка */
 export const BOBY_PER_DRINK = 50;
 
 /** 5 напитков → подарок */
@@ -33,7 +33,7 @@ export type bonus_line = {
   menu_id?: string | null;
 };
 
-/** напиток копит бобабаллы; закуски, добавки и топпинги — нет */
+/** напиток копит бобаллы; закуски, добавки и топпинги — нет */
 export function is_boby_earning_item(item: bonus_line): boolean {
   const id = item.id || item.menu_id || '';
   if (id.startsWith('topping-') || id.startsWith('addon-')) return false;
@@ -43,7 +43,7 @@ export function is_boby_earning_item(item: bonus_line): boolean {
   return true;
 }
 
-/** бобабаллы за заказ: +50 за каждый оплаченный напиток */
+/** бобаллы за заказ: +50 за каждый оплаченный напиток */
 export function calc_order_bonus(items: bonus_line[]): number {
   let drinks = 0;
   for (const item of items) {
@@ -53,9 +53,9 @@ export function calc_order_bonus(items: bonus_line[]): number {
   return drinks * BOBY_PER_DRINK;
 }
 
-/** полная форма с числом: «150 бобабаллов» */
+/** полная форма с числом: «150 бобаллов» */
 export function format_bobyball(count: number): string {
-  return `${Math.round(count)} бобабаллов`;
+  return `${Math.round(count)} бобаллов`;
 }
 
 /** короткая форма: «150 бб» */
@@ -69,9 +69,9 @@ export function format_boby(count: number): string {
 }
 
 export const bonus_earning_rules = [
-  `за каждый оплаченный напиток начисляем ${BOBY_PER_DRINK} бобабаллов (= порция шариков)`,
-  `накопите ${FREE_DRINK_BONUS_THRESHOLD} бобабаллов — получите напиток бесплатно`,
-  'закуски и добавки не копятся, за подарок бобабаллы не капают',
+  `за каждый оплаченный напиток начисляем ${BOBY_PER_DRINK} бобаллов (= порция шариков)`,
+  `накопите ${FREE_DRINK_BONUS_THRESHOLD} бобаллов — получите напиток бесплатно`,
+  'закуски и добавки не копятся, за подарок бобаллы не капают',
   `списать ${FREE_DRINK_BONUS_THRESHOLD} ${BOBY_SHORT} можно в корзине или на кассе`,
 ] as const;
 

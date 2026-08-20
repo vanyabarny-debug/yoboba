@@ -251,7 +251,7 @@ export async function POST(request: Request) {
   if (redeem_bonus) {
     if (!customer_phone) {
       return NextResponse.json(
-        { error: 'нужен телефон гостя, чтобы списать бобабаллы' },
+        { error: 'нужен телефон гостя, чтобы списать бобаллы' },
         { status: 400 }
       );
     }

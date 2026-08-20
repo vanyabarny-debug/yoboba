@@ -48,7 +48,7 @@ type props = {
   open: boolean;
   lines: cart_line[];
   all_items: menu_item[];
-  /** баланс бобабаллов гостя */
+  /** баланс бобаллов гостя */
   bonus?: number;
   /** списать порог за бесплатный заказ */
   redeem_bonus?: boolean;
@@ -396,7 +396,7 @@ export default function cart_drawer({
                     </label>
                   ) : !as_gift && bonus > 0 ? (
                     <div className="flex items-center justify-between text-sm">
-                      <span className="text-neutral-500">ваши бобабаллы</span>
+                      <span className="text-neutral-500">ваши бобаллы</span>
                       <span className="font-semibold tabular-nums text-neutral-800">
                         {bonus} бб · ещё {Math.max(0, FREE_DRINK_BONUS_THRESHOLD - bonus)} до бесплатного
                       </span>
@@ -405,7 +405,7 @@ export default function cart_drawer({
                   {!as_gift ? (
                     <div className="flex items-center justify-between">
                       <span className="text-neutral-500">
-                        {redeem_on ? 'списание бобабаллов' : <>Начислим бобабаллы{boby_info()}</>}
+                        {redeem_on ? 'списание бобаллов' : <>Начислим бобаллы{boby_info()}</>}
                       </span>
                       <span className="font-semibold font-mono tabular-nums text-neutral-900">
                         {redeem_on ? `−${FREE_DRINK_BONUS_THRESHOLD}` : `+${bonus_points}`}
@@ -457,7 +457,7 @@ export default function cart_drawer({
                   {as_gift
                     ? 'Подарить напиток'
                     : redeem_on
-                      ? 'Оформить бесплатно за бобабаллы'
+                      ? 'Оформить бесплатно за бобаллы'
                       : 'К оформлению заказа'}
                 </span>
                 <svg

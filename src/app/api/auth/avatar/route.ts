@@ -133,7 +133,7 @@ export async function POST(request: NextRequest) {
     if (next_balance < AVATAR_EMOJI_CHANGE_COST) {
       const res = NextResponse.json(
         {
-          error: `нужно ${AVATAR_EMOJI_CHANGE_COST} бобабаллов, у вас ${next_balance}`,
+          error: `нужно ${AVATAR_EMOJI_CHANGE_COST} бобаллов, у вас ${next_balance}`,
           bonus_balance: next_balance,
         },
         { status: 400 }

@@ -26,7 +26,7 @@ type props = {
   item: menu_item | null;
   all_items: menu_item[];
   open: boolean;
-  /** баланс бобабаллов гостя, если уже найден по телефону */
+  /** баланс бобаллов гостя, если уже найден по телефону */
   customer_bonus?: number | null;
   /** стартовые опции при правке позиции из корзины */
   initial?: { volume?: string; topping?: number; qty?: number } | null;
@@ -199,7 +199,7 @@ export default function seller_product_sheet({
               <p className="mt-1.5 text-xs font-medium text-neutral-500">
                 начислим{' '}
                 <span className="font-semibold tabular-nums text-accent">+{bonus_earn}</span>{' '}
-                бобабаллов
+                бобаллов
                 {customer_bonus != null ? (
                   <span className="text-neutral-400"> · сейчас {customer_bonus} бб</span>
                 ) : null}

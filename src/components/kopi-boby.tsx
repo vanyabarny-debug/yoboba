@@ -3,8 +3,8 @@
 import { createElement } from 'react';
 
 /**
- * бренд баллов: «копи бобабаллы»
- * «копи» = копить; ударение смысловое на бОба
+ * бренд баллов: «копи бобаллы»
+ * «копи» = копить; ударение смысловое на бО
  */
 export function kopi_boby_name({
   className = '',
@@ -25,7 +25,7 @@ export function kopi_boby_name({
         { className: 'underline-offset-[3px] decoration-2' },
         'бО'
       ),
-      'бабаллы'
+      'баллы'
     ),
     with_hint
       ? createElement(

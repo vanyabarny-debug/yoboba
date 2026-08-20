@@ -1,6 +1,6 @@
 'use client';
 
-/** кружок с «бб» — знак бобабаллов */
+/** кружок с «бб» — знак бобаллов */
 export default function TapicoinIcon({
   size = 18,
   className = '',

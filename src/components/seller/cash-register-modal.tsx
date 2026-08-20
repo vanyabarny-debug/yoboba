@@ -149,7 +149,7 @@ export default function cash_register_modal({
             </p>
             {method === 'bonus' ? (
               <p className="mt-1 text-xs font-semibold text-accent">
-                спишем {FREE_DRINK_BONUS_THRESHOLD} бобабаллов
+                спишем {FREE_DRINK_BONUS_THRESHOLD} бобаллов
               </p>
             ) : null}
           </div>
@@ -179,7 +179,7 @@ export default function cash_register_modal({
           {has_phone ? (
             <p className="text-xs text-neutral-500">
               {bonus_lookup
-                ? 'проверяем бобабаллы гостя…'
+                ? 'проверяем бобаллы гостя…'
                 : bonus_balance != null
                   ? can_bonus
                     ? `у гостя ${bonus_balance} бб — можно списать ${FREE_DRINK_BONUS_THRESHOLD} бб за напиток`
@@ -188,7 +188,7 @@ export default function cash_register_modal({
             </p>
           ) : (
             <p className="text-xs text-neutral-400">
-              без телефона списать бобабаллы нельзя — укажите телефон при создании заказа
+              без телефона списать бобаллы нельзя — укажите телефон при создании заказа
             </p>
           )}
 
@@ -256,7 +256,7 @@ export default function cash_register_modal({
 
           {method === 'bonus' && (
             <div className="rounded-2xl border border-accent/30 bg-accent/10 px-4 py-5 text-center">
-              <p className="text-sm font-semibold text-accent">оплата бобабаллами</p>
+              <p className="text-sm font-semibold text-accent">оплата бобаллами</p>
               <p className="mt-1 text-2xl font-bold font-mono tabular-nums text-neutral-900">
                 −{FREE_DRINK_BONUS_THRESHOLD} бб
               </p>
