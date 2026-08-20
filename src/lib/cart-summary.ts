@@ -17,18 +17,54 @@ export function format_cart_summary(count: number, total: number): string {
   return `${format_positions(count)} на ${format_price(total)} ₽`;
 }
 
-export function calc_order_bonus(total: number): number {
-  return Math.floor(total / 10);
-}
+/** сколько бобов капает с одного оплаченного напитка */
+export const BOBY_PER_DRINK = 10;
 
-/** сколько тапикоинов нужно, чтобы получить напиток бесплатно */
+/** сколько бобов нужно, чтобы получить напиток бесплатно (5 напитков) */
 export const FREE_DRINK_BONUS_THRESHOLD = 50;
 
+export type bonus_line = {
+  category?: string | null;
+  quantity: number;
+  id?: string | null;
+  menu_id?: string | null;
+};
+
+/** напиток копит бобы; закуски, добавки и топпинги — нет */
+export function is_boby_earning_item(item: bonus_line): boolean {
+  const id = item.id || item.menu_id || '';
+  if (id.startsWith('topping-') || id.startsWith('addon-')) return false;
+  const cat = (item.category || '').trim().toLowerCase();
+  if (!cat) return false;
+  if (cat === 'закуски' || cat === 'добавки') return false;
+  return true;
+}
+
+/** бобы за заказ: +10 за каждый оплаченный напиток */
+export function calc_order_bonus(items: bonus_line[]): number {
+  let drinks = 0;
+  for (const item of items) {
+    if (!is_boby_earning_item(item)) continue;
+    drinks += Math.max(0, Math.round(Number(item.quantity) || 0));
+  }
+  return drinks * BOBY_PER_DRINK;
+}
+
+export function format_boby(count: number): string {
+  const abs = Math.abs(Math.round(count));
+  const mod100 = abs % 100;
+  const mod10 = abs % 10;
+  if (mod100 >= 11 && mod100 <= 14) return `${count} бобов`;
+  if (mod10 === 1) return `${count} боб`;
+  if (mod10 >= 2 && mod10 <= 4) return `${count} боба`;
+  return `${count} бобов`;
+}
+
 export const bonus_earning_rules = [
-  'за каждые 10 ₽ в заказе начисляем 1 тапикоин',
-  `накопите ${FREE_DRINK_BONUS_THRESHOLD} тапикоинов — получите напиток бесплатно`,
-  'тапикоины начисляются после оформления заказа на ваш аккаунт',
-  `списать ${FREE_DRINK_BONUS_THRESHOLD} т. можно в корзине или на кассе`,
+  `за каждый оплаченный напиток начисляем ${BOBY_PER_DRINK} бобов`,
+  `накопите ${FREE_DRINK_BONUS_THRESHOLD} бобов — получите напиток бесплатно`,
+  'закуски и добавки не копятся, за подарок бобы не капают',
+  `списать ${FREE_DRINK_BONUS_THRESHOLD} б. можно в корзине или на кассе`,
 ] as const;
 
 const snack_categories = new Set(['закуски']);

@@ -1,5 +1,5 @@
-/** стоимость смены эмоджи в тапикоинах (цвет фона — бесплатно) */
-export const AVATAR_EMOJI_CHANGE_COST = 200;
+/** смена эмоджи бесплатна — бобы только за напитки */
+export const AVATAR_EMOJI_CHANGE_COST = 0;
 
 /** набор эмоджи для аватарок (бабл-ти / еда / милые) */
 export const AVATAR_EMOJI_POOL = [

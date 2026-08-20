@@ -1,6 +1,6 @@
 'use client';
 
-/** синий кружок с буквой t — знак тапикоина */
+/** кружок с «б» — знак ко́пи бобов */
 export default function TapicoinIcon({
   size = 18,
   className = '',
@@ -18,7 +18,7 @@ export default function TapicoinIcon({
       }}
       aria-hidden
     >
-      t
+      б
     </span>
   );
 }

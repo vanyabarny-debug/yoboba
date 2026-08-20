@@ -238,14 +238,20 @@ export async function POST(request: Request) {
       const profile_name = (profile.name || '').trim();
       if (profile_name) customer_name = profile_name;
       bonus_balance = profile.bonus_balance ?? 0;
-      bonus_earned = calc_order_bonus(total_price);
+      bonus_earned = calc_order_bonus(
+        items.map((i) => ({
+          menu_id: i.menu_id,
+          quantity: i.quantity,
+          category: menu.get(i.menu_id)?.category,
+        }))
+      );
     }
   }
 
   if (redeem_bonus) {
     if (!customer_phone) {
       return NextResponse.json(
-        { error: 'нужен телефон гостя, чтобы списать тапикоины' },
+        { error: 'нужен телефон гостя, чтобы списать бобы' },
         { status: 400 }
       );
     }
@@ -386,7 +392,13 @@ export async function POST(request: Request) {
     const { get_demo_bonus, upsert_demo_bonus } = await import('@/lib/demo-bonus-server');
     const { FREE_DRINK_BONUS_THRESHOLD } = await import('@/lib/cart-summary');
     const existing = await get_demo_bonus(customer_phone);
-    const earned = calc_order_bonus(final_total);
+    const earned = calc_order_bonus(
+      items.map((i) => ({
+        menu_id: i.menu_id,
+        quantity: i.quantity,
+        category: menu.get(i.menu_id)?.category,
+      }))
+    );
     bonus_earned = earned;
     const next = await upsert_demo_bonus({
       phone: customer_phone,

@@ -36,7 +36,7 @@ function make_supabase(request: NextRequest, cookie_response: NextResponse) {
   );
 }
 
-/** смена эмоджи (за т.) и/или цвета фона (бесплатно) */
+/** смена эмоджи и/или цвета фона (бесплатно) */
 export async function POST(request: NextRequest) {
   let cookie_response = NextResponse.next();
   const body = (await request.json().catch(() => ({}))) as {
@@ -133,7 +133,7 @@ export async function POST(request: NextRequest) {
     if (next_balance < AVATAR_EMOJI_CHANGE_COST) {
       const res = NextResponse.json(
         {
-          error: `нужно ${AVATAR_EMOJI_CHANGE_COST} тапикоинов, у вас ${next_balance}`,
+          error: `нужно ${AVATAR_EMOJI_CHANGE_COST} бобов, у вас ${next_balance}`,
           bonus_balance: next_balance,
         },
         { status: 400 }

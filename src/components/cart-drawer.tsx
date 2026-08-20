@@ -11,6 +11,7 @@ import {
 } from '@/lib/drawer-ui';
 import { use_sheet_swipe } from '@/lib/use-sheet-swipe';
 import {
+  BOBY_PER_DRINK,
   calc_order_bonus,
   format_cart_summary,
   format_positions,
@@ -18,6 +19,7 @@ import {
   get_upsell_items,
   FREE_DRINK_BONUS_THRESHOLD,
 } from '@/lib/cart-summary';
+import { kopi_boby_name } from '@/components/kopi-boby';
 import { configured_unit_price, get_topping_name } from '@/lib/product-details';
 import { default_store_address } from '@/lib/location';
 
@@ -46,7 +48,7 @@ type props = {
   open: boolean;
   lines: cart_line[];
   all_items: menu_item[];
-  /** баланс тапикоинов гостя */
+  /** баланс бобов гостя */
   bonus?: number;
   /** списать порог за бесплатный заказ */
   redeem_bonus?: boolean;
@@ -64,16 +66,16 @@ type props = {
   on_as_gift_change?: (value: boolean) => void;
 };
 
-function tapioca_info() {
+function boby_info() {
   return (
     <span className="group relative inline-flex align-middle">
       <span className="ml-1 inline-flex h-3.5 w-3.5 cursor-help items-center justify-center rounded-full bg-[#0039A6] text-[9px] font-bold text-white font-mono">
-        t
+        б
       </span>
-      <span className="pointer-events-none absolute bottom-full left-0 z-30 mb-2 w-60 rounded-xl bg-neutral-900 px-3 py-2.5 text-xs font-normal leading-relaxed text-white opacity-0 shadow-lg transition-opacity duration-150 group-hover:opacity-100">
-        Тапиока — классическая основа бабл ти. В порцию кладём около 60 г — это
-        примерно 50 шариков варёной тапиоки. Накопите 50 тапикоинов и получите
-        напиток бесплатно.
+      <span className="pointer-events-none absolute bottom-full left-0 z-30 mb-2 w-64 rounded-xl bg-neutral-900 px-3 py-2.5 text-xs font-normal leading-relaxed text-white opacity-0 shadow-lg transition-opacity duration-150 group-hover:opacity-100">
+        {createElement(kopi_boby_name, { with_hint: true, className: 'font-semibold' })} — наши шарики тапиоки
+        и баллы. С напитка капает {BOBY_PER_DRINK} бобов, {FREE_DRINK_BONUS_THRESHOLD}{' '}
+        бобов = напиток в подарок.
       </span>
     </span>
   );
@@ -142,7 +144,15 @@ export default function cart_drawer({
   const can_redeem = bonus >= FREE_DRINK_BONUS_THRESHOLD;
   const redeem_on = redeem_bonus && can_redeem;
   const pay_total = redeem_on ? 0 : total;
-  const bonus_points = redeem_on ? 0 : calc_order_bonus(total);
+  const bonus_points = redeem_on
+    ? 0
+    : calc_order_bonus(
+        lines.map((l) => ({
+          id: l.item.id,
+          category: l.item.category,
+          quantity: l.quantity,
+        }))
+      );
   const cart_ids = new Set(lines.map((l) => l.item.id));
   const { items: upsell_items, suggest_snacks } = get_upsell_items(all_items, cart_ids, lines);
 
@@ -374,28 +384,28 @@ export default function cart_drawer({
                       />
                       <span className="min-w-0">
                         <span className="block font-semibold text-accent">
-                          списать {FREE_DRINK_BONUS_THRESHOLD} т. · напиток бесплатно
+                          списать {FREE_DRINK_BONUS_THRESHOLD} б. · напиток бесплатно
                         </span>
                         <span className="mt-0.5 block text-xs text-neutral-600">
-                          у вас {bonus} т.
+                          у вас {bonus} б.
                           {redeem_on
-                            ? ` · останется ${bonus - FREE_DRINK_BONUS_THRESHOLD} т.`
+                            ? ` · останется ${bonus - FREE_DRINK_BONUS_THRESHOLD} б.`
                             : ''}
                         </span>
                       </span>
                     </label>
                   ) : !as_gift && bonus > 0 ? (
                     <div className="flex items-center justify-between text-sm">
-                      <span className="text-neutral-500">ваши тапикоины</span>
+                      <span className="text-neutral-500">ваши бобы</span>
                       <span className="font-semibold tabular-nums text-neutral-800">
-                        {bonus} т. · ещё {Math.max(0, FREE_DRINK_BONUS_THRESHOLD - bonus)} до бесплатного
+                        {bonus} б. · ещё {Math.max(0, FREE_DRINK_BONUS_THRESHOLD - bonus)} до бесплатного
                       </span>
                     </div>
                   ) : null}
                   {!as_gift ? (
                     <div className="flex items-center justify-between">
                       <span className="text-neutral-500">
-                        {redeem_on ? 'списание тапикоинов' : <>Начислим тапикоины{tapioca_info()}</>}
+                        {redeem_on ? 'списание бобов' : <>Начислим бобы{boby_info()}</>}
                       </span>
                       <span className="font-semibold font-mono tabular-nums text-neutral-900">
                         {redeem_on ? `−${FREE_DRINK_BONUS_THRESHOLD}` : `+${bonus_points}`}
@@ -440,14 +450,14 @@ export default function cart_drawer({
                   {as_gift
                     ? `подарить за ${format_price(total)} ₽`
                     : redeem_on
-                    ? `оформить бесплатно · −${FREE_DRINK_BONUS_THRESHOLD} т.`
+                    ? `оформить бесплатно · −${FREE_DRINK_BONUS_THRESHOLD} б.`
                     : `к оформлению на ${format_price(pay_total)} ₽`}
                 </span>
                 <span className="hidden sm:inline">
                   {as_gift
                     ? 'Подарить напиток'
                     : redeem_on
-                      ? 'Оформить бесплатно за тапикоины'
+                      ? 'Оформить бесплатно за бобы'
                       : 'К оформлению заказа'}
                 </span>
                 <svg

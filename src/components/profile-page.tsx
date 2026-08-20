@@ -5,6 +5,7 @@ import { createElement, Suspense, useEffect, useState, type ReactNode } from 're
 import { useRouter } from 'next/navigation';
 import site_chrome from '@/components/site-chrome';
 import TapicoinIcon from '@/components/tapicoin-icon';
+import { kopi_boby_name } from '@/components/kopi-boby';
 import { get_auth_state, sign_out, update_profile, type profile } from '@/lib/auth';
 import {
   bonus_earning_rules,
@@ -111,7 +112,7 @@ const payment_label: Record<order['payment_type'], string> = {
   cash: 'наличными',
   card: 'картой',
   online: 'онлайн',
-  bonus: 'тапикоинами',
+  bonus: 'бобами',
 };
 
 function format_datetime(iso: string) {
@@ -458,7 +459,7 @@ export default function profile_page() {
     }
     if (emoji_changed && profile.bonus_balance < AVATAR_EMOJI_CHANGE_COST) {
       set_avatar_error(
-        `нужно ${AVATAR_EMOJI_CHANGE_COST} тапикоинов на смену эмоджи, у вас ${profile.bonus_balance}`
+        `нужно ${AVATAR_EMOJI_CHANGE_COST} бобов на смену эмоджи, у вас ${profile.bonus_balance}`
       );
       return;
     }
@@ -639,7 +640,7 @@ export default function profile_page() {
           <div className="relative z-10 flex items-start justify-between gap-3">
             <div className="min-w-0 flex-1 pr-2">
               <p className="text-[15px] sm:text-base font-medium leading-snug">
-                ваши тапикоины
+                ваши {createElement(kopi_boby_name, { with_hint: true })}
               </p>
               <p className="mt-2 inline-flex items-center gap-2 text-[34px] sm:text-[40px] font-bold leading-none tabular-nums">
                 <TapicoinIcon size={28} className="bg-white/20" />
@@ -729,10 +730,7 @@ export default function profile_page() {
                     size: 'lg',
                   })}
                   <p className="text-[13px] font-normal text-neutral-500 leading-relaxed">
-                    эмоджи — {AVATAR_EMOJI_CHANGE_COST} т., цвет фона бесплатно.
-                    {profile.bonus_balance < AVATAR_EMOJI_CHANGE_COST
-                      ? ` у вас ${profile.bonus_balance} т.`
-                      : ` · баланс ${profile.bonus_balance} т.`}
+                    эмоджи и цвет фона — бесплатно.
                   </p>
                 </div>
 
@@ -813,7 +811,7 @@ export default function profile_page() {
                       ? 'сохраняем…'
                       : avatar_draft !==
                           (profile.avatar_emoji || avatar_emoji_from_id(profile.id))
-                        ? `сохранить (−${AVATAR_EMOJI_CHANGE_COST} т.)`
+                        ? 'сохранить'
                         : 'сохранить цвет'}
                   </button>
                 </div>

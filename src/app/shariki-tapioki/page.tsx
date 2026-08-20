@@ -1,6 +1,5 @@
-import { createElement } from 'react';
-import site_content_page from '@/components/site-content-page';
+import { redirect } from 'next/navigation';
 
 export default function page() {
-  return createElement(site_content_page, { slug: 'shariki-tapioki' });
+  redirect('/boby');
 }

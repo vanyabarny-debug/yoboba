@@ -12,7 +12,7 @@ import { format_phone_input, phone_input_to_e164 } from '@/lib/phone';
 import { category_tile_meta } from '@/lib/category-icons';
 import { configured_unit_price, first_volume_id, resolve_volume_id } from '@/lib/product-details';
 import { tile_grid, board_tile_grid } from '@/lib/seller-tile-grid';
-import { FREE_DRINK_BONUS_THRESHOLD } from '@/lib/cart-summary';
+import { calc_order_bonus, FREE_DRINK_BONUS_THRESHOLD } from '@/lib/cart-summary';
 import { gift_items_label } from '@/lib/gifts';
 import { use_page_swipe } from '@/lib/use-page-swipe';
 import type { gift, menu_item, order_item } from '@/lib/types';
@@ -215,6 +215,13 @@ export default function pos_panel({
 
   const total = cart.reduce((s, i) => s + i.price * i.quantity, 0);
   const count = cart.reduce((s, i) => s + i.quantity, 0);
+  const bonus_preview = calc_order_bonus(
+    cart.map((line) => ({
+      menu_id: line.menu_id,
+      quantity: line.quantity,
+      category: items.find((i) => i.id === line.menu_id)?.category,
+    }))
+  );
 
   function open_category(c: string) {
     set_category(c);
@@ -383,7 +390,7 @@ export default function pos_panel({
       customer != null &&
       customer.bonus_balance >= FREE_DRINK_BONUS_THRESHOLD;
     if (pay_with_bonus && !can_bonus) {
-      set_error('нельзя списать тапикоины: нужен гость с балансом ≥ 50 т.');
+      set_error('нельзя списать бобы: нужен гость с балансом ≥ 50 б.');
       return;
     }
 
@@ -567,21 +574,21 @@ export default function pos_panel({
                 className="mt-0.5 rounded"
               />
               <span className="min-w-0 text-xs font-semibold leading-snug text-accent">
-                списать {FREE_DRINK_BONUS_THRESHOLD} т. · напиток бесплатно
+                списать {FREE_DRINK_BONUS_THRESHOLD} б. · напиток бесплатно
                 <span className="mt-0.5 block font-medium text-neutral-600">
-                  у гостя {customer.bonus_balance} т.
+                  у гостя {customer.bonus_balance} б.
                 </span>
               </span>
             </label>
-          ) : total >= 10 ? (
+          ) : bonus_preview > 0 ? (
             <p className="text-xs text-neutral-500">
               начислим{' '}
               <span className="font-semibold tabular-nums text-accent">
-                +{Math.floor(total / 10)}
+                +{bonus_preview}
               </span>{' '}
-              тапикоинов
+              бобов
               {customer ? (
-                <span className="text-neutral-400"> · сейчас {customer.bonus_balance} т.</span>
+                <span className="text-neutral-400"> · сейчас {customer.bonus_balance} б.</span>
               ) : null}
             </p>
           ) : null}
@@ -606,7 +613,7 @@ export default function pos_panel({
           ) : customer ? (
             <p className="text-sm text-neutral-700">
               <span className="font-semibold">{customer.name || 'гость'}</span>
-              <span className="text-neutral-400"> · {customer.bonus_balance} тапикоинов</span>
+              <span className="text-neutral-400"> · {customer.bonus_balance} бобов</span>
             </p>
           ) : null}
 
@@ -650,7 +657,7 @@ export default function pos_panel({
             />
             уже оплачен
             {pay_with_bonus ? (
-              <span className="text-xs text-accent">· тапикоинами</span>
+              <span className="text-xs text-accent">· бобами</span>
             ) : null}
           </label>
 

@@ -6,7 +6,7 @@ export type product_addon = {
   tint: string;
 };
 
-export const site_content_version = 18;
+export const site_content_version = 19;
 
 export type category_nutrition = {
   kcal: number;
@@ -102,7 +102,7 @@ export const default_top_bar_links: top_bar_link[] = [
   { id: 'jobs', label: 'работа в yomoyo', href: '/rabota', is_active: true },
   { id: 'contacts', label: 'контакты', href: '/kontakty', is_active: true },
   { id: 'promos', label: 'акции', href: '/akcii', is_active: true },
-  { id: 'tapioca', label: 'шарики тапиоки', href: '/shariki-tapioki', is_active: true },
+  { id: 'tapioca', label: 'бобы', href: '/boby', is_active: true },
 ];
 
 export const default_pages: site_page[] = [
@@ -330,9 +330,24 @@ kanji: 模様
 subzero — это холодная газировка, блюкюрасао, джусболы личи-ментол и кокосовое желе. если любишь яркий цвет и ледяную свежесть — начинай с него.`,
   },
   {
+    slug: 'boby',
+    title: 'бобы',
+    body: `бобы — это наши шарики тапиоки и баллы лояльности.
+
+## ко́пи бобы
+
+ударение на первый слог: КО. это копилка, не «копировать».
+
+в стакане — порция бобов. за каждый оплаченный напиток копим 10 бобов. накопи 50 — забери напиток бесплатно в корзине или на кассе. закуски не копятся, за подарок бобы не капают.
+
+## шарики в напитке
+
+тапиока — главная фишка bubble tea: мягкие жевательные шарики из крахмала маниоки. мы варим их каждый день, чтобы они оставались упругими. можно добавить дополнительную порцию в любой напиток.`,
+  },
+  {
     slug: 'shariki-tapioki',
-    title: 'шарики тапиоки',
-    body: 'тапиока — главная фишка bubble tea: мягкие жевательные шарики из крахмала.\n\nмы варим их каждый день, чтобы они оставались упругими и нежными. можно добавить дополнительную порцию в любой напиток.',
+    title: 'бобы',
+    body: 'эта страница переехала — открой /boby.',
   },
   {
     slug: 'yazyk',
@@ -381,9 +396,23 @@ export function get_site_content_store(): site_content_store {
   try {
     const parsed = JSON.parse(raw) as site_content_store;
     const needs_upgrade = !parsed.version || parsed.version < site_content_version;
+    const top_bar_links = seed.top_bar_links.map((seed_link) => {
+      const existing = (parsed.top_bar_links ?? []).find((l) => l.id === seed_link.id);
+      if (!existing) return seed_link;
+      if (seed_link.id === 'tapioca') {
+        return { ...existing, label: seed_link.label, href: seed_link.href };
+      }
+      if (/баблтишн/i.test(existing.label)) {
+        return { ...existing, label: seed_link.label };
+      }
+      return existing;
+    });
     const seed_pages = seed.pages.map((seed_page) => {
       const existing = (parsed.pages ?? []).find((p) => p.slug === seed_page.slug);
       if (!existing || is_code_owned_page(seed_page.slug)) return seed_page;
+      if (seed_page.slug === 'boby' || seed_page.slug === 'shariki-tapioki') {
+        return seed_page;
+      }
       if (!needs_upgrade) return existing;
       const mentions_old =
         /баблтишн/i.test(existing.title) || /баблтишн/i.test(existing.body);
@@ -397,14 +426,6 @@ export function get_site_content_store(): site_content_store {
     const extra_pages = (parsed.pages ?? []).filter(
       (page) => !seed.pages.some((seed_page) => seed_page.slug === page.slug)
     );
-    const top_bar_links = seed.top_bar_links.map((seed_link) => {
-      const existing = (parsed.top_bar_links ?? []).find((l) => l.id === seed_link.id);
-      if (!existing) return seed_link;
-      if (/баблтишн/i.test(existing.label)) {
-        return { ...existing, label: seed_link.label };
-      }
-      return existing;
-    });
     const merged = {
       ...seed,
       ...parsed,

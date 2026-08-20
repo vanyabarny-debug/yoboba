@@ -149,7 +149,7 @@ export default function cash_register_modal({
             </p>
             {method === 'bonus' ? (
               <p className="mt-1 text-xs font-semibold text-accent">
-                спишем {FREE_DRINK_BONUS_THRESHOLD} тапикоинов
+                спишем {FREE_DRINK_BONUS_THRESHOLD} бобов
               </p>
             ) : null}
           </div>
@@ -179,16 +179,16 @@ export default function cash_register_modal({
           {has_phone ? (
             <p className="text-xs text-neutral-500">
               {bonus_lookup
-                ? 'проверяем тапикоины гостя…'
+                ? 'проверяем бобы гостя…'
                 : bonus_balance != null
                   ? can_bonus
-                    ? `у гостя ${bonus_balance} т. — можно списать ${FREE_DRINK_BONUS_THRESHOLD} т. за напиток`
-                    : `у гостя ${bonus_balance} т. — нужно ещё ${Math.max(0, FREE_DRINK_BONUS_THRESHOLD - bonus_balance)} т.`
+                    ? `у гостя ${bonus_balance} б. — можно списать ${FREE_DRINK_BONUS_THRESHOLD} б. за напиток`
+                    : `у гостя ${bonus_balance} б. — нужно ещё ${Math.max(0, FREE_DRINK_BONUS_THRESHOLD - bonus_balance)} б.`
                   : 'гость с этим телефоном не найден в базе'}
             </p>
           ) : (
             <p className="text-xs text-neutral-400">
-              без телефона списать тапикоины нельзя — укажите телефон при создании заказа
+              без телефона списать бобы нельзя — укажите телефон при создании заказа
             </p>
           )}
 
@@ -214,7 +214,7 @@ export default function cash_register_modal({
                   onClick={() => set_method('bonus')}
                   className="rounded-2xl border border-accent/40 bg-accent/10 py-5 text-sm font-semibold text-accent"
                 >
-                  тапикоины
+                  бобы
                 </button>
               ) : null}
             </div>
@@ -256,12 +256,12 @@ export default function cash_register_modal({
 
           {method === 'bonus' && (
             <div className="rounded-2xl border border-accent/30 bg-accent/10 px-4 py-5 text-center">
-              <p className="text-sm font-semibold text-accent">оплата тапикоинами</p>
+              <p className="text-sm font-semibold text-accent">оплата бобами</p>
               <p className="mt-1 text-2xl font-bold font-mono tabular-nums text-neutral-900">
-                −{FREE_DRINK_BONUS_THRESHOLD} т.
+                −{FREE_DRINK_BONUS_THRESHOLD} б.
               </p>
               <p className="mt-1 text-xs text-neutral-500">
-                останется {(bonus_balance ?? 0) - FREE_DRINK_BONUS_THRESHOLD} т.
+                останется {(bonus_balance ?? 0) - FREE_DRINK_BONUS_THRESHOLD} б.
               </p>
             </div>
           )}

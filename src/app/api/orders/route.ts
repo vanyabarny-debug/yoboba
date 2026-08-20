@@ -204,7 +204,13 @@ export async function POST(request: Request) {
 
   let earned = 0;
   if (!redeem_bonus && final_total > 0 && !user.is_anonymous) {
-    earned = calc_order_bonus(final_total);
+    earned = calc_order_bonus(
+      items.map((i) => ({
+        menu_id: i.menu_id,
+        quantity: i.quantity,
+        category: menu_by_id.get(i.menu_id)?.category,
+      }))
+    );
     if (earned > 0) {
       const current = bonus_balance_after;
       bonus_balance_after = current + earned;
