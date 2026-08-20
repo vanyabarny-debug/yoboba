@@ -53,7 +53,10 @@ export type menu_item = {
   name: string;
   price: number;
   image_url: string | null;
+  /** основная категория (для топпингов, кбжу, бобаллов) */
   category: string;
+  /** все разделы, где показывать позицию; если пусто — только category */
+  categories?: string[];
   is_available: boolean;
   recommendations: string[];
   prep_minutes?: number;

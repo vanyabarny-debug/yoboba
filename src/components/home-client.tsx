@@ -71,6 +71,7 @@ import {
   type demo_user,
 } from '@/lib/demo-auth';
 import { peek_header_user, remember_header_user } from '@/lib/header-user';
+import { item_in_category } from '@/lib/menu-item-categories';
 import { FREE_DRINK_BONUS_THRESHOLD } from '@/lib/cart-summary';
 import { get_location, is_city_served, resolve_spot, set_location, get_selected_spot, type user_location } from '@/lib/location';
 import { subscribe_spot_store } from '@/lib/spot-store';
@@ -1328,6 +1329,7 @@ export default function home_client({
       price: 0,
       image_url: null,
       category,
+      categories: [category],
       is_available: true,
       recommendations: [],
       prep_minutes: 2,
@@ -1626,7 +1628,7 @@ export default function home_client({
       {is_admin_edit && createElement(category_edit_sheet, {
         category: editing_category,
         item_count: editing_category
-          ? menu.filter((i) => i.category === editing_category).length
+          ? menu.filter((i) => item_in_category(i, editing_category)).length
           : 0,
         on_close: () => set_editing_category(null),
         on_rename: (old_name, new_name) => {

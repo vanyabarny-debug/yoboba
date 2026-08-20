@@ -13,6 +13,7 @@ import {
   subscribe_menu_store,
   upsert_menu_item,
 } from '@/lib/menu-store';
+import { item_in_category } from '@/lib/menu-item-categories';
 import {
   delete_promo,
   get_promo_store,
@@ -111,6 +112,7 @@ export default function menu_manage() {
       price: 0,
       image_url: null,
       category,
+      categories: [category],
       is_available: true,
       recommendations: [],
       prep_minutes: 2,
@@ -324,7 +326,7 @@ export default function menu_manage() {
       {createElement(category_edit_sheet, {
         category: editing_category,
         item_count: editing_category
-          ? items.filter((i) => i.category === editing_category).length
+          ? items.filter((i) => item_in_category(i, editing_category)).length
           : 0,
         on_close: () => set_editing_category(null),
         on_rename: (old_name, new_name) => {

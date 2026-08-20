@@ -14,6 +14,8 @@ import {
 } from '@/lib/product-details';
 import { normalize_menu_badge } from '@/lib/menu-badge';
 import menu_badge, { menu_badge_on_card } from '@/components/menu-badge';
+import category_multi_pick from '@/components/admin/category-multi-pick';
+import { get_menu_store } from '@/lib/menu-store';
 import {
   get_category_nutrition,
   get_site_content_store,
@@ -184,6 +186,14 @@ export default function product_drawer_admin({ item, open, on_close, on_save, on
                   onChange={(e) => set_draft({ ...draft, name: e.target.value })}
                   className="w-full text-[28px] sm:text-[32px] font-bold leading-[1.05] text-neutral-900 bg-transparent border-b border-transparent focus:border-accent/40 outline-none"
                 />
+              </div>
+
+              <div className="mt-4">
+                {createElement(category_multi_pick, {
+                  item: draft,
+                  categories: get_menu_store().categories,
+                  on_change: set_draft,
+                })}
               </div>
 
               <div className="mt-3 inline-flex rounded-full bg-[#f3f4f6] p-0.5">

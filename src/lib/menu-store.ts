@@ -2,6 +2,12 @@ import type { menu_badge_color, menu_item } from '@/lib/types';
 import { DEFAULT_PREP_MINUTES } from '@/lib/kitchen-queue';
 import type { heading_style } from '@/lib/heading-style';
 import { default_category_heading_styles } from '@/lib/heading-style';
+import {
+  drop_item_category,
+  item_categories,
+  rename_item_category,
+  set_item_categories,
+} from '@/lib/menu-item-categories';
 
 export const store_version = 18;
 
@@ -354,15 +360,23 @@ function repair_menu_store(store: menu_store): menu_store {
   const items = merge_default_badges(
     (store.items ?? []).map((item) => {
       const fallback = find_default_item(item, default_by_id, default_by_name);
-      const category = categories.includes(item.category)
-        ? item.category
-        : fallback?.category ?? categories[0];
+      const known_cats = item_categories(item).filter((c) => categories.includes(c));
+      const category = known_cats[0]
+        ?? (categories.includes(item.category) ? item.category : null)
+        ?? fallback?.category
+        ?? categories[0];
       const image_url = resolve_image_url(item, fallback);
       const prep_minutes =
         typeof item.prep_minutes === 'number' && item.prep_minutes > 0
           ? item.prep_minutes
           : fallback?.prep_minutes ?? DEFAULT_PREP_MINUTES;
-      return { ...item, category, image_url, prep_minutes };
+      return {
+        ...item,
+        category,
+        categories: known_cats.length ? known_cats : [category],
+        image_url,
+        prep_minutes,
+      };
     })
   );
   for (const def of defaults.items) {
@@ -461,9 +475,7 @@ export function rename_category(old_name: string, new_name: string) {
   const trimmed = new_name.trim().toLowerCase();
   if (!trimmed || trimmed === old_name) return;
   store.categories = store.categories.map((c) => (c === old_name ? trimmed : c));
-  store.items = store.items.map((i) =>
-    i.category === old_name ? { ...i, category: trimmed } : i
-  );
+  store.items = store.items.map((i) => rename_item_category(i, old_name, trimmed));
   const styles = { ...(store.category_heading_styles ?? {}) };
   const prev_style =
     styles[old_name] ?? default_category_heading_styles[old_name] ?? undefined;
@@ -478,7 +490,10 @@ export function rename_category(old_name: string, new_name: string) {
 export function delete_category(name: string) {
   const store = get_menu_store();
   store.categories = store.categories.filter((c) => c !== name);
-  store.items = store.items.filter((i) => i.category !== name);
+  store.items = store.items.flatMap((i) => {
+    const next = drop_item_category(i, name);
+    return next ? [next] : [];
+  });
   if (store.category_heading_styles?.[name]) {
     const styles = { ...store.category_heading_styles };
     delete styles[name];
@@ -519,11 +534,12 @@ export function move_category(name: string, dir: -1 | 1) {
 
 export function upsert_menu_item(data: menu_item) {
   const store = get_menu_store();
-  const idx = store.items.findIndex((i) => i.id === data.id);
-  if (idx >= 0) store.items[idx] = data;
-  else store.items.push(data);
-  if (!store.categories.includes(data.category)) {
-    store.categories.push(data.category);
+  const next = set_item_categories(data, item_categories(data));
+  const idx = store.items.findIndex((i) => i.id === next.id);
+  if (idx >= 0) store.items[idx] = next;
+  else store.items.push(next);
+  for (const cat of item_categories(next)) {
+    if (!store.categories.includes(cat)) store.categories.push(cat);
   }
   save_menu_store(store);
 }

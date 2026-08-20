@@ -8,6 +8,7 @@ import { menu_item_has_badge } from '@/lib/menu-badge';
 import { fly_to_cart } from '@/lib/fly-to-cart';
 import promo_inline from '@/components/promo-inline';
 import { get_category_heading_style, subscribe_menu_store } from '@/lib/menu-store';
+import { item_in_category } from '@/lib/menu-item-categories';
 import { category_heading_class_name } from '@/lib/heading-style';
 
 type props = {
@@ -150,7 +151,7 @@ export default function menu_grid({
 
   const visible_categories = active_category
     ? [active_category]
-    : categories.filter((cat) => items.some((i) => i.category === cat));
+    : categories.filter((cat) => items.some((i) => item_in_category(i, cat)));
 
   const active_promos = promos.filter((p) => p.is_active);
   const show_inline = inline_promos && !active_category && on_promo_click;
@@ -167,7 +168,7 @@ export default function menu_grid({
     <div className="space-y-8 sm:space-y-10">
       {visible_categories.map((category) => {
         const cat_items = items
-          .filter((i) => i.category === category)
+          .filter((i) => item_in_category(i, category))
           .sort((a, b) => Number(b.is_available) - Number(a.is_available));
         if (!cat_items.length) {
           if (active_category) {

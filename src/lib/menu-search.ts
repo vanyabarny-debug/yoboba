@@ -6,6 +6,7 @@ import {
   get_item_volumes,
   get_topping_name,
 } from '@/lib/product-details';
+import { item_categories } from '@/lib/menu-item-categories';
 
 export type menu_search_result = {
   item: menu_item;
@@ -81,7 +82,7 @@ function item_fields(item: menu_item, all_items: menu_item[]) {
 
   return [
     { label: 'название', text: item.name, weight: 100 },
-    { label: 'категория', text: item.category, weight: 80 },
+    { label: 'категория', text: item_categories(item).join(' '), weight: 80 },
     { label: 'цена', text: `${item.price} руб ${item.price} ₽`, weight: 40 },
     { label: 'состав', text: `${composition}, ${item.name}`, weight: 60 },
     { label: 'описание', text: description, weight: 50 },

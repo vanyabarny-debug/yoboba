@@ -1,5 +1,6 @@
 import { default_categories } from '@/lib/menu-store';
 import { normalize_menu_item_images } from '@/lib/menu-store';
+import { item_categories } from '@/lib/menu-item-categories';
 import { DEFAULT_PREP_MINUTES } from '@/lib/kitchen-queue';
 import type { menu_item } from '@/lib/types';
 
@@ -16,7 +17,7 @@ export function normalize_menu_prep_minutes(items: menu_item[]) {
 export function resolve_menu_categories(menu: menu_item[]) {
   if (menu.length === 0) return [...default_categories];
 
-  const from_menu = [...new Set(menu.map((item) => item.category))];
+  const from_menu = [...new Set(menu.flatMap((item) => item_categories(item)))];
   const ordered = default_categories.filter((category) => from_menu.includes(category));
   const extras = from_menu.filter((category) => !default_categories.includes(category));
 

@@ -9,6 +9,7 @@ import edit_pencil from '@/components/admin/edit-pencil';
 import product_photo_picker from '@/components/admin/product-photo-picker';
 import { desktop_category_heading_offset } from '@/components/menu-grid';
 import { get_category_heading_style, subscribe_menu_store } from '@/lib/menu-store';
+import { item_in_category } from '@/lib/menu-item-categories';
 import { category_heading_class_name } from '@/lib/heading-style';
 
 type props = {
@@ -233,7 +234,7 @@ export default function menu_grid_admin({
 
   const visible_categories = active_category
     ? [active_category]
-    : categories.filter((cat) => items.some((i) => i.category === cat));
+    : categories.filter((cat) => items.some((i) => item_in_category(i, cat)));
 
   if (visible_categories.length === 0) {
     return (
@@ -246,7 +247,7 @@ export default function menu_grid_admin({
   return (
     <div className="space-y-8 sm:space-y-10">
       {visible_categories.map((category) => {
-        const cat_items = items.filter((i) => i.category === category);
+        const cat_items = items.filter((i) => item_in_category(i, category));
         const desktop_cells = pad_row(cat_items);
         const heading_style = get_category_heading_style(category);
 

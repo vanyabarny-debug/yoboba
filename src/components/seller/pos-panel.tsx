@@ -8,6 +8,7 @@ import {
   resolve_menu_item_image_url,
   subscribe_menu_store,
 } from '@/lib/menu-store';
+import { item_in_category } from '@/lib/menu-item-categories';
 import { format_phone_input, phone_input_to_e164 } from '@/lib/phone';
 import { category_tile_meta } from '@/lib/category-icons';
 import { configured_unit_price, first_volume_id, resolve_volume_id } from '@/lib/product-details';
@@ -144,7 +145,7 @@ export default function pos_panel({
       const available = normalize_menu_item_images(store.items.filter((i) => i.is_available));
       set_items(available);
       const from_menu = (store.categories.length ? store.categories : default_categories).filter(
-        (c) => available.some((i) => i.category === c)
+        (c) => available.some((i) => item_in_category(i, c))
       );
       set_categories(from_menu.length ? from_menu : store.categories);
       warm_menu_image_cache(available);
@@ -204,7 +205,7 @@ export default function pos_panel({
 
   const filtered = useMemo(() => {
     if (!category) return [];
-    return items.filter((i) => i.category === category);
+    return items.filter((i) => item_in_category(i, category));
   }, [items, category]);
 
   // свайп в товарах всегда возвращает к категориям (не листает категории)

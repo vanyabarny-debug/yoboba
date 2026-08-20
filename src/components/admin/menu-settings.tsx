@@ -15,6 +15,8 @@ import {
 import AdminShell from '@/components/admin/admin-shell';
 import menu_image from '@/components/menu-image';
 import { product_photo_button } from '@/components/admin/product-photo-picker';
+import category_multi_pick from '@/components/admin/category-multi-pick';
+import { item_categories, item_in_category } from '@/lib/menu-item-categories';
 import { item_has_toppings, item_has_volumes } from '@/lib/cart-summary';
 import {
   default_drink_volumes,
@@ -147,7 +149,7 @@ function editor({
           />
         </label>
 
-        <div className="mt-3 grid grid-cols-2 gap-3">
+        <div className="mt-3">
           <label className="block text-xs text-neutral-500">
             цена, ₽
             <input
@@ -158,20 +160,14 @@ function editor({
               className={field_class}
             />
           </label>
-          <label className="block text-xs text-neutral-500">
-            категория
-            <select
-              value={draft.category}
-              onChange={(e) => set_draft({ ...draft, category: e.target.value })}
-              className="mt-1 w-full rounded-xl border border-neutral-200 bg-white px-3 py-2.5 text-sm outline-none"
-            >
-              {categories.map((c) => (
-                <option key={c} value={c}>
-                  {c}
-                </option>
-              ))}
-            </select>
-          </label>
+        </div>
+
+        <div className="mt-4">
+          {createElement(category_multi_pick, {
+            item: draft,
+            categories,
+            on_change: set_draft,
+          })}
         </div>
 
         <div className="mt-4 space-y-2">
@@ -406,7 +402,7 @@ export default function menu_settings() {
   const visible = useMemo(() => {
     const q = query.trim().toLowerCase();
     return items.filter((item) => {
-      if (category !== 'все' && item.category !== category) return false;
+      if (category !== 'все' && !item_in_category(item, category)) return false;
       if (q && !item.name.toLowerCase().includes(q)) return false;
       return true;
     });
@@ -421,6 +417,7 @@ export default function menu_settings() {
       price: 0,
       image_url: null,
       category: cat,
+      categories: [cat],
       is_available: true,
       recommendations: [],
       prep_minutes: 2,
@@ -525,7 +522,7 @@ export default function menu_settings() {
                 <span className="min-w-0 flex-1">
                   <span className="block truncate text-sm font-medium text-neutral-900">{item.name}</span>
                   <span className="mt-0.5 block text-xs text-neutral-400">
-                    {item.category}
+                    {item_categories(item).join(' · ')}
                     {!item.is_available ? ' · стоп' : ''}
                     {item_has_volumes(item)
                       ? ` · ${get_item_volumes(item).map((v) => v.ml).join('/')} мл`
