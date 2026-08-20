@@ -31,14 +31,28 @@ function split_blocks(text: string): string[] {
     .filter(Boolean);
 }
 
+function plain_text(text: string): string {
+  return text
+    .replace(/\*\*([^*]+)\*\*/g, '$1')
+    .replace(/^##\s+/, '')
+    .trim();
+}
+
 function parse_body(body: string): { intro: string[]; sections: section[] } {
-  const parts = body.split(/\n## /);
-  const intro = split_blocks(parts[0]);
-  const sections = parts.slice(1).map((part) => {
+  const text = body.trim();
+  const starts_with_heading = /^##\s+/.test(text);
+  const chunks = text.split(/(?:^|\n)##\s+/);
+  const intro_raw = starts_with_heading ? '' : chunks[0] || '';
+  const section_chunks = starts_with_heading
+    ? chunks.filter((c) => c.trim())
+    : chunks.slice(1);
+
+  const intro = split_blocks(intro_raw).map(plain_text);
+  const sections = section_chunks.map((part) => {
     const [title_line, ...rest] = part.split('\n');
-    const blocks = split_blocks(rest.join('\n'));
+    const blocks = split_blocks(rest.join('\n')).map(plain_text);
     return {
-      title: title_line.trim(),
+      title: plain_text(title_line || ''),
       prose: blocks.filter((block) => !/^\d+\.\s/.test(block)),
       cards: blocks
         .filter((block) => /^\d+\.\s/.test(block))

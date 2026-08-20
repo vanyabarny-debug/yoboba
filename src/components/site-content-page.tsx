@@ -36,14 +36,29 @@ function split_blocks(text: string): string[] {
     .filter(Boolean);
 }
 
+/** убирает **жирный** и лишние markdown-хвосты из обычных абзацев */
+function plain_text(text: string): string {
+  return text
+    .replace(/\*\*([^*]+)\*\*/g, '$1')
+    .replace(/^##\s+/, '')
+    .trim();
+}
+
 function parse_body(body: string): { intro: string[]; sections: content_section[] } {
-  const parts = body.split(/\n## /);
-  const intro = split_blocks(parts[0]);
-  const sections = parts.slice(1).map((part) => {
+  const text = body.trim();
+  const starts_with_heading = /^##\s+/.test(text);
+  const chunks = text.split(/(?:^|\n)##\s+/);
+  const intro_raw = starts_with_heading ? '' : chunks[0] || '';
+  const section_chunks = starts_with_heading
+    ? chunks.filter((c) => c.trim())
+    : chunks.slice(1);
+
+  const intro = split_blocks(intro_raw).map(plain_text);
+  const sections = section_chunks.map((part) => {
     const [title_line, ...rest] = part.split('\n');
-    const blocks = split_blocks(rest.join('\n'));
+    const blocks = split_blocks(rest.join('\n')).map(plain_text);
     return {
-      title: title_line.trim(),
+      title: plain_text(title_line || ''),
       prose: blocks.filter((block) => !/^\d+\.\s/.test(block)),
       cards: blocks.filter((block) => /^\d+\.\s/.test(block)),
     };
@@ -399,17 +414,23 @@ export default function site_content_page({ slug, children }: props) {
 
   return with_chrome(
     <div className="page-shell py-8 sm:py-10 pb-16">
-      <section className="grid gap-6">
-        <div>
-          <h1 className="font-heading-soft text-4xl sm:text-5xl lg:text-6xl font-bold leading-[0.98] text-neutral-900">
-            {page.title}
-          </h1>
+      <section>
+        <h1 className="font-heading-soft text-4xl sm:text-5xl lg:text-6xl font-bold leading-[0.98] text-neutral-900">
+          {page.title}
+        </h1>
+        {is_about ? (
           <div className="mt-6 max-w-3xl space-y-4 text-[16px] font-medium leading-relaxed text-neutral-800">
-            {intro_blocks.slice(0, is_about ? 3 : 2).map((paragraph) => (
-              <p key={paragraph.slice(0, 32)}>{paragraph}</p>
+            {intro_blocks.slice(0, 3).map((paragraph) => (
+              <p key={paragraph.slice(0, 48)}>{paragraph}</p>
             ))}
           </div>
-        </div>
+        ) : intro_blocks.length > 0 ? (
+          <div className="mt-6 max-w-3xl space-y-4 text-[16px] font-medium leading-relaxed text-neutral-800">
+            {intro_blocks.map((paragraph) => (
+              <p key={paragraph.slice(0, 48)}>{paragraph}</p>
+            ))}
+          </div>
+        ) : null}
       </section>
 
       {is_about ? (
@@ -424,7 +445,7 @@ export default function site_content_page({ slug, children }: props) {
             </div>
             <div className="space-y-4 text-[16px] font-medium leading-relaxed text-neutral-800">
               {intro_blocks.slice(3).map((paragraph) => (
-                <p key={paragraph.slice(0, 32)}>{paragraph}</p>
+                <p key={paragraph.slice(0, 48)}>{paragraph}</p>
               ))}
             </div>
           </section>
@@ -439,37 +460,39 @@ export default function site_content_page({ slug, children }: props) {
           )}
         </>
       ) : (
-        <section className="mt-2">
-          <div className="max-w-5xl space-y-4 text-[16px] font-medium leading-relaxed text-neutral-800">
-            {intro_blocks.map((paragraph) => (
-              <p key={paragraph.slice(0, 32)}>{paragraph}</p>
-            ))}
-            {sections.map((section) => (
-              <div key={section.title}>
-                <h2 className="font-heading-soft text-2xl font-bold text-neutral-900">
-                  {section.title}
-                </h2>
-                {section.prose.map((paragraph) => (
-                  <p key={paragraph.slice(0, 32)} className="mt-4">
-                    {paragraph}
-                  </p>
-                ))}
-                {section.cards.map((block) => {
-                  const numbered = block.match(/^(\d+)\.\s+([\s\S]+)$/);
-                  if (!numbered) return null;
-                  const [, , rest] = numbered;
-                  const [title, ...body_parts] = rest.split('\n');
-                  return (
-                    <div key={title} className="mt-4">
-                      <h3 className="font-display text-lg font-bold">{title}</h3>
-                      {body_parts.length > 0 && <p className="mt-1">{body_parts.join('\n')}</p>}
-                    </div>
-                  );
-                })}
-              </div>
-            ))}
-          </div>
-        </section>
+        <div className="mt-2 max-w-3xl">
+          {sections.map((section) => (
+            <section key={section.title} className="mt-10 first:mt-8">
+              <h2 className="font-heading-soft text-2xl sm:text-3xl font-bold text-neutral-900">
+                {section.title}
+              </h2>
+              {section.prose.map((paragraph) => (
+                <p
+                  key={paragraph.slice(0, 48)}
+                  className="mt-4 text-[16px] font-medium leading-relaxed text-neutral-800"
+                >
+                  {paragraph}
+                </p>
+              ))}
+              {section.cards.map((block) => {
+                const numbered = block.match(/^(\d+)\.\s+([\s\S]+)$/);
+                if (!numbered) return null;
+                const [, , rest] = numbered;
+                const [title, ...body_parts] = rest.split('\n');
+                return (
+                  <div key={title} className="mt-5">
+                    <h3 className="font-display text-lg font-bold text-neutral-900">{title}</h3>
+                    {body_parts.length > 0 && (
+                      <p className="mt-1 text-[15px] font-medium leading-relaxed text-neutral-700">
+                        {body_parts.join('\n')}
+                      </p>
+                    )}
+                  </div>
+                );
+              })}
+            </section>
+          ))}
+        </div>
       )}
 
       {children}
