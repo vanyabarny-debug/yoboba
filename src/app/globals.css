@@ -189,6 +189,7 @@ body::-webkit-scrollbar {
   position: relative;
   z-index: 1;
   background-color: #ffffff;
+  overflow: visible;
 }
 
 #promos {

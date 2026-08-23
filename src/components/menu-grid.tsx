@@ -56,14 +56,14 @@ function dish_card({
   }
 
   return (
-    <div className="group flex h-full w-full flex-col items-center text-center">
+    <div className="group relative z-0 flex h-full w-full flex-col items-center text-center hover:z-20 focus-within:z-20">
       <button
         type="button"
         onClick={() => on_item_click(item)}
         className="flex w-full flex-col items-center text-center min-[1024px]:min-h-0 min-[1024px]:flex-1"
       >
         {/* wrapper без overflow — плашка может выходить за край карточки */}
-        <div className="relative w-full mb-2">
+        <div className="relative z-10 w-full mb-2 overflow-visible pt-2 pl-1.5">
           <div
             ref={image_ref}
             className={`relative aspect-square w-full overflow-hidden rounded-card ${
@@ -191,7 +191,7 @@ export default function menu_grid({
           <div key={category}>
             <section
               id={`cat-${encodeURIComponent(category)}`}
-              className="scroll-mt-36 sm:scroll-mt-40"
+              className="scroll-mt-36 overflow-visible sm:scroll-mt-40"
             >
               {!active_category && (
                 <h2 className={category_heading_class_name(heading_style)}>{category}</h2>

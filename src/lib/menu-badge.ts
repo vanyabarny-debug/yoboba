@@ -26,4 +26,4 @@ export function normalize_menu_badge(item: menu_item): menu_item {
 
 /** прижата в левый верхний угол, поверх края карточки */
 export const menu_badge_corner_class =
-  'pointer-events-none absolute z-30 -left-2.5 -top-2 origin-top-left -rotate-[6deg] sm:-left-3 sm:-top-2.5';
+  'pointer-events-none absolute z-50 -left-1 -top-1 origin-top-left -rotate-[6deg] sm:-left-1.5 sm:-top-1.5';

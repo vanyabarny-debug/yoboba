@@ -288,16 +288,8 @@ export default function site_content_page({ slug, children }: props) {
     return (
       <section
         key={section.title}
-        className="relative mt-14 overflow-hidden rounded-[28px] border border-neutral-200 bg-pearl px-5 py-8 sm:px-8 sm:py-10"
+        className="relative mt-14 overflow-hidden rounded-[28px] border border-neutral-200 bg-neutral-50 px-5 py-8 sm:px-8 sm:py-10"
       >
-        <div
-          className="pointer-events-none absolute inset-0 opacity-40"
-          style={{
-            backgroundImage:
-              'repeating-linear-gradient(0deg, transparent, transparent 27px, color-mix(in srgb, var(--color-accent) 18%, transparent) 28px)',
-          }}
-          aria-hidden
-        />
         <div className="relative">
           <p className="text-[11px] font-bold uppercase tracking-[0.28em] text-accent">
             этимология · морфология · смысл
@@ -306,7 +298,7 @@ export default function site_content_page({ slug, children }: props) {
             {section.title}
           </h2>
 
-          <div className="mt-7 rounded-[2px] border border-neutral-300/80 bg-white/90 p-5 sm:p-6">
+          <div className="mt-7 rounded-[2px] border border-neutral-300/80 bg-white p-5 sm:p-6">
             <div className="flex flex-wrap items-end gap-x-4 gap-y-2">
               <span className="font-display text-4xl sm:text-5xl font-bold leading-none text-neutral-900">
                 yomoyo

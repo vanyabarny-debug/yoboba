@@ -803,21 +803,26 @@ export default function home_client({
       return;
     }
     set_cart_lines((prev) => {
+      const rows = (data || []).filter((row) => row.menu);
+      if (
+        rows.length === 0 &&
+        prev.length > 0 &&
+        Date.now() < skip_cart_reload_until_ref.current
+      ) {
+        return prev;
+      }
       const by_id = new Map(prev.map((l) => [l.item.id, l]));
-      const lines: cart_line[] = (data || [])
-        .filter((row) => row.menu)
-        .map((row, index) => {
-          const item = row.menu as unknown as menu_item;
-          const prev_line = by_id.get(item.id);
-          return {
-            item,
-            quantity: row.quantity,
-            // сервер не хранит volume/topping/key — сохраняем локальные
-            key: prev_line?.key || `srv-${item.id}-${index}`,
-            volume: prev_line?.volume ?? '450',
-            topping: prev_line?.topping ?? 0,
-          };
-        });
+      const lines: cart_line[] = rows.map((row, index) => {
+        const item = row.menu as unknown as menu_item;
+        const prev_line = by_id.get(item.id);
+        return {
+          item,
+          quantity: row.quantity,
+          key: prev_line?.key || `srv-${item.id}-${index}`,
+          volume: prev_line?.volume ?? '450',
+          topping: prev_line?.topping ?? 0,
+        };
+      });
       return lines;
     });
   }, []);
@@ -983,7 +988,7 @@ export default function home_client({
       console.warn('cart:', error.message);
       return;
     }
-    await load_prod_cart(user_id);
+    skip_cart_reload_until_ref.current = Date.now() + 2500;
   }
 
   async function handle_add(
@@ -1027,23 +1032,21 @@ export default function home_client({
 
     if (demo_mode && !user_id) return;
     if (!user_id || !line) return;
+    skip_cart_reload_until_ref.current = Date.now() + 2500;
     const { error } = await upsert_cart_item(user_id, line.item.id, 0);
-    if (!error) await load_prod_cart(user_id);
+    if (error) console.warn('cart remove:', error.message);
   }
 
   async function handle_clear_cart() {
-    if (demo_mode && !user_id) {
-      set_cart_lines([]);
-      save_guest_cart([]);
-      return;
-    }
-    if (!user_id) {
-      set_cart_lines([]);
-      save_guest_cart([]);
-      return;
-    }
-    await Promise.all(cart_lines.map((line) => upsert_cart_item(user_id, line.item.id, 0)));
-    await load_prod_cart(user_id);
+    const snapshot = [...cart_lines];
+    set_cart_lines([]);
+    save_guest_cart([]);
+
+    if (demo_mode && !user_id) return;
+    if (!user_id) return;
+
+    skip_cart_reload_until_ref.current = Date.now() + 3000;
+    await Promise.all(snapshot.map((line) => upsert_cart_item(user_id, line.item.id, 0)));
   }
 
   function handle_location_confirm(loc: user_location) {

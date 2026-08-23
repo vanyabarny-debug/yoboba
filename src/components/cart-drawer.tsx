@@ -143,14 +143,18 @@ export default function cart_drawer({
   }, [sheet_visible, open]);
 
   useEffect(() => {
-    if (lines.length > 0) set_clearing(false);
-  }, [lines.length]);
+    if (!open) set_clearing(false);
+  }, [open]);
 
   async function handle_clear_click() {
     if (!on_clear || clearing) return;
     set_clearing(true);
-    await new Promise((resolve) => window.setTimeout(resolve, 260));
-    on_clear();
+    try {
+      await new Promise((resolve) => window.setTimeout(resolve, 200));
+      await on_clear();
+    } finally {
+      set_clearing(false);
+    }
   }
 
   if (!sheet_visible && !open) return null;
@@ -173,7 +177,7 @@ export default function cart_drawer({
   const { items: upsell_items, suggest_snacks } = get_upsell_items(all_items, cart_ids, lines);
   const pickup_label = pickup_spot?.address || 'выберите точку';
   const show_lines = lines.length > 0;
-  const show_empty = lines.length === 0 && !clearing;
+  const show_empty = lines.length === 0;
 
   return (
     <div className="fixed inset-0 z-50 flex items-stretch justify-center p-0 sm:items-center sm:p-6">
@@ -259,7 +263,7 @@ export default function cart_drawer({
             </div>
           ) : show_lines ? (
             <>
-              <div className={`space-y-2 transition-opacity duration-300 ${clearing ? 'opacity-0 translate-y-1' : ''}`}>
+              <div className="space-y-2">
               {lines.map((line, index) => {
                 const key = cart_line_key(line, index);
                 const unit = cart_line_unit_price(line);

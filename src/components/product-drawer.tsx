@@ -359,13 +359,13 @@ export default function product_drawer({
           )}
         </button>
         <div
-          className={`product-panel product-panel-sheet relative flex h-full w-full flex-col overflow-hidden bg-white shadow-[0_24px_80px_rgba(0,0,0,0.22)] sm:h-auto sm:max-h-[min(94vh,760px)] sm:flex-row sm:rounded-[28px] ${sheet_open ? 'is-visible' : ''}`}
+          className={`product-panel product-panel-sheet relative flex h-full w-full flex-col bg-white shadow-[0_24px_80px_rgba(0,0,0,0.22)] sm:h-auto sm:max-h-[min(94vh,760px)] sm:flex-row sm:overflow-hidden sm:rounded-[28px] ${sheet_open ? 'is-visible' : ''}`}
           {...sheet_props}
         >
-          <div className="relative w-full shrink-0 sm:w-[43%]">
+          <div className="relative z-20 w-full shrink-0 overflow-visible pt-3 pl-3 sm:w-[43%] sm:pt-4 sm:pl-4">
             <div
               ref={image_ref}
-              className="relative aspect-square w-full overflow-hidden bg-[#f3f4f6] sm:aspect-auto sm:h-full sm:min-h-[280px]"
+              className="relative aspect-square w-full overflow-hidden rounded-[20px] bg-[#f3f4f6] sm:aspect-auto sm:h-full sm:min-h-[280px] sm:rounded-[24px]"
             >
               {createElement(menu_image, {
                 item: active_item,
@@ -426,18 +426,15 @@ export default function product_drawer({
               </div>
 
               <div className="mt-5">
-                <p className="text-[15px] font-semibold tracking-tight text-neutral-900">состав</p>
-                <div className="mt-3">
-                  <div className="flex flex-wrap gap-x-5 gap-y-1 text-sm font-normal text-neutral-500">
-                    <span>{nutrition.kcal} ккал</span>
-                    <span>белки {nutrition.protein} г</span>
-                    <span>жиры {nutrition.fat} г</span>
-                    <span>углеводы {nutrition.carb} г</span>
-                  </div>
-                  <p className="mt-2 text-[15px] leading-relaxed text-neutral-700">
-                    {composition.join(', ')}
-                  </p>
+                <div className="flex flex-wrap gap-x-5 gap-y-1 text-sm font-normal text-neutral-500">
+                  <span>{nutrition.kcal} ккал</span>
+                  <span>белки {nutrition.protein} г</span>
+                  <span>жиры {nutrition.fat} г</span>
+                  <span>углеводы {nutrition.carb} г</span>
                 </div>
+                <p className="mt-2 text-[15px] leading-relaxed text-neutral-700">
+                  {composition.join(', ')}
+                </p>
               </div>
 
               {show_toppings && (
