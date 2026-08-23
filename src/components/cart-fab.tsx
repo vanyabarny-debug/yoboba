@@ -7,10 +7,11 @@ type props = {
   count: number;
   total: number;
   on_click: () => void;
+  hidden?: boolean;
 };
 
-export default function cart_fab({ count, total, on_click }: props) {
-  if (count <= 0) return null;
+export default function cart_fab({ count, total, on_click, hidden = false }: props) {
+  if (count <= 0 || hidden) return null;
 
   return (
     <button

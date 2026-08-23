@@ -21,7 +21,7 @@ import {
 } from '@/lib/cart-summary';
 import { kopi_boby_name } from '@/components/kopi-boby';
 import { configured_unit_price, get_topping_name } from '@/lib/product-details';
-import { default_store_address } from '@/lib/location';
+import type { store_spot } from '@/lib/types';
 
 export type cart_line = {
   item: menu_item;
@@ -61,6 +61,9 @@ type props = {
   on_edit?: (line: cart_line, line_key: string) => void;
   on_checkout?: () => void;
   on_clear?: () => void;
+  /** точка выдачи */
+  pickup_spot?: store_spot | null;
+  on_pickup_change?: () => void;
   /** оформить корзину как подарок по телефону */
   as_gift?: boolean;
   on_as_gift_change?: (value: boolean) => void;
@@ -95,11 +98,14 @@ export default function cart_drawer({
   on_edit,
   on_checkout,
   on_clear,
+  pickup_spot = null,
+  on_pickup_change,
   as_gift = false,
   on_as_gift_change,
 }: props) {
   const [sheet_visible, set_sheet_visible] = useState(false);
   const [sheet_open, set_sheet_open] = useState(false);
+  const [clearing, set_clearing] = useState(false);
   const body_ref = useRef<HTMLDivElement>(null);
 
   const { sheet_props, backdrop_style } = use_sheet_swipe({
@@ -136,6 +142,17 @@ export default function cart_drawer({
     };
   }, [sheet_visible, open]);
 
+  useEffect(() => {
+    if (lines.length > 0) set_clearing(false);
+  }, [lines.length]);
+
+  async function handle_clear_click() {
+    if (!on_clear || clearing) return;
+    set_clearing(true);
+    await new Promise((resolve) => window.setTimeout(resolve, 260));
+    on_clear();
+  }
+
   if (!sheet_visible && !open) return null;
 
   const total = lines.reduce((s, l) => s + cart_line_unit_price(l) * l.quantity, 0);
@@ -154,6 +171,9 @@ export default function cart_drawer({
       );
   const cart_ids = new Set(lines.map((l) => l.item.id));
   const { items: upsell_items, suggest_snacks } = get_upsell_items(all_items, cart_ids, lines);
+  const pickup_label = pickup_spot?.address || 'выберите точку';
+  const show_lines = lines.length > 0;
+  const show_empty = lines.length === 0 && !clearing;
 
   return (
     <div className="fixed inset-0 z-50 flex items-stretch justify-center p-0 sm:items-center sm:p-6">
@@ -176,17 +196,15 @@ export default function cart_drawer({
           </svg>
         </button>
         <div
-          className={`product-panel-sheet relative flex h-full max-h-none flex-col overflow-hidden bg-[#f3f4f6] shadow-soft sm:max-h-[88vh] sm:rounded-card ${sheet_open ? 'is-visible' : ''}`}
+          className={`product-panel-sheet relative flex h-full max-h-none flex-col overflow-hidden bg-[#f3f4f6] shadow-soft sm:max-h-[88vh] sm:rounded-card touch-pan-y ${sheet_open ? 'is-visible' : ''}`}
           {...sheet_props}
         >
-        <div
-          className={`bg-[#f3f4f6] px-5 pt-[max(1.25rem,var(--safe-top))] pb-4 sm:pt-5 ${lines.length > 0 ? 'hidden sm:block' : ''}`}
-        >
+        <div className="bg-[#f3f4f6] px-5 pt-[max(1.25rem,var(--safe-top))] pb-4 sm:pt-5">
           <div className="flex items-start justify-between gap-3">
             <h3 className="text-2xl font-bold text-neutral-900">
-              {count > 0 ? format_cart_summary(count, total) : 'корзина'}
+              {show_lines ? format_cart_summary(count, total) : 'корзина'}
             </h3>
-            {lines.length === 0 && (
+            {show_empty && (
               <button
                 type="button"
                 onClick={on_close}
@@ -201,15 +219,16 @@ export default function cart_drawer({
           </div>
         </div>
 
-        {lines.length > 0 && (
-          <div className="flex items-center justify-between gap-3 bg-[#f3f4f6] px-5 pt-[max(1.25rem,var(--safe-top))] pb-3 sm:hidden">
+        {show_lines && (
+          <div className="flex items-center justify-between gap-3 bg-[#f3f4f6] px-5 pb-3 sm:hidden">
             {on_clear ? (
               <button
                 type="button"
-                onClick={on_clear}
-                className="text-sm font-semibold text-accent-pink hover:opacity-80 transition-opacity"
+                onClick={handle_clear_click}
+                disabled={clearing}
+                className="text-sm font-semibold text-accent-pink hover:opacity-80 transition-opacity disabled:opacity-50"
               >
-                очистить корзину
+                {clearing ? 'очищаем…' : 'очистить корзину'}
               </button>
             ) : (
               <span />
@@ -227,12 +246,20 @@ export default function cart_drawer({
           </div>
         )}
 
-        <div ref={body_ref} className="product-panel-body flex-1 overflow-y-auto pb-[calc(5rem+var(--safe-bottom))] sm:pb-0">
-          {lines.length === 0 ? (
-            <p className="bg-white px-5 py-10 text-sm text-neutral-400 text-center">корзина пуста</p>
-          ) : (
+        <div
+          ref={body_ref}
+          className={`product-panel-body flex-1 overflow-y-auto overflow-x-hidden overscroll-y-contain touch-pan-y ${
+            show_lines ? 'pb-[calc(5rem+var(--safe-bottom))] sm:pb-0' : ''
+          }`}
+        >
+          {show_empty ? (
+            <div className="flex min-h-[50vh] flex-col items-center justify-center bg-white px-5 py-16 text-center">
+              <p className="text-base font-semibold text-neutral-700">корзина пуста</p>
+              <p className="mt-2 text-sm text-neutral-400">добавьте напиток из меню</p>
+            </div>
+          ) : show_lines ? (
             <>
-              <div className="space-y-2">
+              <div className={`space-y-2 transition-opacity duration-300 ${clearing ? 'opacity-0 translate-y-1' : ''}`}>
               {lines.map((line, index) => {
                 const key = cart_line_key(line, index);
                 const unit = cart_line_unit_price(line);
@@ -281,7 +308,7 @@ export default function cart_drawer({
                             onClick={() => on_edit(line, key)}
                             className="text-sm font-semibold text-accent hover:underline"
                           >
-                            Изменить
+                            изменить
                           </button>
                         )}
                         <div className="flex items-center gap-1 rounded-full bg-[#f3f4f6] p-1">
@@ -314,43 +341,40 @@ export default function cart_drawer({
               {upsell_items.length > 0 && on_open_item && (
                 <div className="px-5 py-4">
                   <p className="text-[17px] font-bold text-neutral-900 mb-3">
-                    {suggest_snacks ? 'Добавить закуску?' : 'Добавить к заказу?'}
+                    {suggest_snacks ? 'добавить закуску?' : 'добавить к заказу?'}
                   </p>
-                  <div className="-mx-5 px-5 overflow-x-auto stories-scroll">
-                    <div className="flex w-max gap-2.5">
-                      {upsell_items.map((item) => (
-                        <button
-                          key={item.id}
-                          type="button"
-                          onClick={() => on_open_item(item)}
-                          className="flex w-56 flex-shrink-0 items-center gap-3 rounded-2xl border border-[#ececef] bg-white p-2.5 text-left shadow-[0_2px_10px_rgba(0,0,0,0.04)] transition-all hover:border-neutral-300"
-                        >
-                          {createElement(menu_image, {
-                            item,
-                            className: 'w-20 h-20 rounded-xl flex-shrink-0',
-                            variant: 'thumb',
-                          })}
-                          <div className="min-w-0">
-                            <p className="text-sm font-medium leading-snug text-neutral-900 line-clamp-2">
-                              {item.name}
-                            </p>
-                            <p className="mt-1 text-sm font-semibold font-mono tabular-nums text-neutral-900">
-                              от {format_price(item.price)} ₽
-                            </p>
-                          </div>
-                        </button>
-                      ))}
-                    </div>
+                  <div className="space-y-2.5">
+                    {upsell_items.map((item) => (
+                      <button
+                        key={item.id}
+                        type="button"
+                        onClick={() => on_open_item(item)}
+                        className="flex w-full items-center gap-3 rounded-2xl border border-[#ececef] bg-white p-2.5 text-left shadow-[0_2px_10px_rgba(0,0,0,0.04)] transition-all hover:border-neutral-300"
+                      >
+                        {createElement(menu_image, {
+                          item,
+                          className: 'w-20 h-20 rounded-xl flex-shrink-0',
+                          variant: 'thumb',
+                        })}
+                        <div className="min-w-0">
+                          <p className="text-sm font-medium leading-snug text-neutral-900 line-clamp-2">
+                            {item.name}
+                          </p>
+                          <p className="mt-1 text-sm font-semibold font-mono tabular-nums text-neutral-900">
+                            от {format_price(item.price)} ₽
+                          </p>
+                        </div>
+                      </button>
+                    ))}
                   </div>
                 </div>
               )}
 
               <div className="bg-white">
-                <p className="px-5 pt-4 pb-2 text-[17px] font-bold text-neutral-900">Детали</p>
                 <div className="px-5 py-4 border-t border-b border-[#f0f0f2]">
                   <input
                     type="text"
-                    placeholder="Промокод"
+                    placeholder="введите промокод"
                     className="w-full bg-transparent text-base text-neutral-900 outline-none placeholder:text-neutral-400"
                   />
                 </div>
@@ -412,12 +436,29 @@ export default function cart_drawer({
                     </div>
                   ) : null}
                   <div className="flex items-center justify-between gap-3">
-                    <span className="text-neutral-500">
-                      {as_gift ? 'Кто заберёт' : 'Где забрать заказ'}
+                    <span className="text-neutral-500 shrink-0">
+                      {as_gift ? 'кто заберёт' : 'где забрать заказ'}
                     </span>
-                    <span className="font-semibold text-neutral-900 text-right">
-                      {as_gift ? 'получатель по телефону' : default_store_address}
-                    </span>
+                    {as_gift ? (
+                      <span className="font-semibold text-neutral-900 text-right">
+                        получатель по телефону
+                      </span>
+                    ) : on_pickup_change ? (
+                      <button
+                        type="button"
+                        onClick={on_pickup_change}
+                        className="min-w-0 text-right font-semibold text-neutral-900 hover:text-accent transition-colors"
+                      >
+                        <span className="block truncate">{pickup_label}</span>
+                        <span className="mt-0.5 block text-xs font-medium text-accent">
+                          выбрать · изменить
+                        </span>
+                      </button>
+                    ) : (
+                      <span className="font-semibold text-neutral-900 text-right">
+                        {pickup_label}
+                      </span>
+                    )}
                   </div>
                   <div className="flex items-center justify-between">
                     <span className="text-neutral-500">{format_positions(count)}</span>
@@ -434,10 +475,10 @@ export default function cart_drawer({
               </div>
               </div>
             </>
-          )}
+          ) : null}
         </div>
 
-        {lines.length > 0 && (
+        {show_lines && (
           <div className="absolute inset-x-0 bottom-0 z-20 border-t border-[#f0f0f2] bg-white sm:static sm:shrink-0">
             <div className="flex justify-center px-4 pt-3 pb-[max(0.75rem,var(--safe-bottom))] sm:px-4 sm:pt-4 sm:pb-4">
               <button

@@ -136,6 +136,7 @@ body::-webkit-scrollbar {
 .stories-scroll {
   scrollbar-width: none;
   -ms-overflow-style: none;
+  overscroll-behavior-x: contain;
 }
 .stories-scroll::-webkit-scrollbar {
   display: none;

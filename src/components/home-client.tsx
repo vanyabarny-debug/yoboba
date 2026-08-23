@@ -250,6 +250,7 @@ export default function home_client({
   const [selected, set_selected] = useState<menu_item | null>(null);
   const [drawer_open, set_drawer_open] = useState(false);
   const [product_from_cart, set_product_from_cart] = useState(false);
+  const [from_cart_upsell, set_from_cart_upsell] = useState(false);
   const [editing_line_key, set_editing_line_key] = useState<string | null>(null);
   const editing_line_key_ref = useRef<string | null>(null);
   const [edit_initial, set_edit_initial] = useState<{
@@ -1144,9 +1145,9 @@ export default function home_client({
   }
 
   function handle_open_from_cart(item: menu_item) {
-    set_cart_open(false);
     set_selected(item);
     set_product_from_cart(false);
+    set_from_cart_upsell(true);
     editing_line_key_ref.current = null;
     set_editing_line_key(null);
     set_edit_initial({ qty: 1, volume: first_volume_id(item), topping: 0 });
@@ -1154,16 +1155,20 @@ export default function home_client({
   }
 
   function handle_product_close() {
+    const reopen_cart = from_cart_upsell;
     set_drawer_open(false);
     set_product_from_cart(false);
+    set_from_cart_upsell(false);
     editing_line_key_ref.current = null;
     set_editing_line_key(null);
     set_selected(null);
+    if (reopen_cart) set_cart_open(true);
   }
 
   function handle_return_to_cart() {
     set_drawer_open(false);
     set_product_from_cart(false);
+    set_from_cart_upsell(false);
     editing_line_key_ref.current = null;
     set_editing_line_key(null);
     set_selected(null);
@@ -1553,6 +1558,7 @@ export default function home_client({
             initial_topping: edit_initial.topping,
             return_to_cart: product_from_cart,
             on_return_to_cart: handle_return_to_cart,
+            skip_fly: from_cart_upsell,
           })}
 
       {!is_admin_edit && createElement(cart_drawer, {
@@ -1570,6 +1576,8 @@ export default function home_client({
         on_edit: handle_edit_line,
         on_checkout: handle_checkout,
         on_clear: handle_clear_cart,
+        pickup_spot: selected_spot,
+        on_pickup_change: () => set_location_open(true),
         as_gift,
         on_as_gift_change: (value: boolean) => {
           set_as_gift(value);
@@ -1582,6 +1590,7 @@ export default function home_client({
           count: cart_count,
           total: cart_total,
           on_click: () => set_cart_open(true),
+          hidden: cart_open || drawer_open,
         })}
 
       {!is_admin_edit && story_index !== null &&

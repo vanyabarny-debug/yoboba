@@ -197,9 +197,9 @@ export default function menu_grid({
                 <h2 className={category_heading_class_name(heading_style)}>{category}</h2>
               )}
 
-              <div className="grid grid-cols-2 min-[1024px]:grid-cols-4 gap-2 gap-y-5">
+              <div className="grid grid-cols-2 min-[1024px]:grid-cols-4 gap-2 gap-y-5 overflow-visible">
                 {cat_items.map((item) => (
-                  <div key={item.id} className="min-w-0 min-[1024px]:h-full">
+                  <div key={item.id} className="min-w-0 min-[1024px]:h-full overflow-visible">
                     {createElement(dish_card, { item, on_item_click, on_quick_add })}
                   </div>
                 ))}

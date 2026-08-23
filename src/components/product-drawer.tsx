@@ -11,7 +11,6 @@ import {
   configured_unit_price,
   first_volume_id,
   get_composition,
-  get_description,
   get_item_volumes,
   get_nutrition,
   get_topping_name,
@@ -41,13 +40,14 @@ type props = {
   initial_topping?: number;
   return_to_cart?: boolean;
   on_return_to_cart?: () => void;
+  /** добавление из блока «добавить закуску» в корзине — без анимации полёта */
+  skip_fly?: boolean;
 };
 
 type card_state = {
   qty: number;
   volume: string;
   topping: number;
-  details_open: boolean;
 };
 
 type history_entry = {
@@ -56,7 +56,7 @@ type history_entry = {
 };
 
 function default_card_state(item?: menu_item | null): card_state {
-  return { qty: 1, volume: first_volume_id(item), topping: 0, details_open: false };
+  return { qty: 1, volume: first_volume_id(item), topping: 0 };
 }
 
 function SectionTitle({ children }: { children: ReactNode }) {
@@ -81,12 +81,12 @@ export default function product_drawer({
   initial_topping = 0,
   return_to_cart = false,
   on_return_to_cart,
+  skip_fly = false,
 }: props) {
   const [qty, set_qty] = useState(1);
   const image_ref = useRef<HTMLDivElement>(null);
   const [volume, set_volume] = useState('450');
   const [topping, set_topping] = useState(0);
-  const [details_open, set_details_open] = useState(false);
   const [nav_item, set_nav_item] = useState<menu_item | null>(null);
   const [history, set_history] = useState<history_entry[]>([]);
   const [recommendations, set_recommendations] = useState<menu_item[]>([]);
@@ -105,7 +105,7 @@ export default function product_drawer({
   const resolved_item = item ?? last_item;
   const active_item = nav_item ?? resolved_item;
   const can_go_back = history.length > 0;
-  const show_back_arrow = can_go_back || return_to_cart;
+  const show_back_arrow = can_go_back || return_to_cart || skip_fly;
   const show_recommendations = !can_go_back && !return_to_cart && !edit_mode;
   const is_cart_edit = edit_mode || return_to_cart;
   const show_volumes = active_item ? item_has_volumes(active_item) : false;
@@ -115,11 +115,10 @@ export default function product_drawer({
     set_qty(state.qty);
     set_volume(state.volume);
     set_topping(state.topping);
-    set_details_open(state.details_open);
   }
 
   function snapshot_card_state(): card_state {
-    return { qty, volume, topping, details_open };
+    return { qty, volume, topping };
   }
 
   useEffect(() => {
@@ -181,7 +180,6 @@ export default function product_drawer({
           ? resolve_volume_id(item, initial_volume) ?? first_volume_id(item)
           : first_volume_id(item),
         topping: Math.max(0, initial_topping),
-        details_open: false,
       });
     } else {
       apply_card_state(default_card_state(item));
@@ -250,10 +248,6 @@ export default function product_drawer({
     () => (active_item ? get_composition(active_item) : []),
     [active_item, meta_tick]
   );
-  const description = useMemo(
-    () => (active_item ? get_description(active_item) : ''),
-    [active_item, meta_tick]
-  );
   const nutrition = useMemo(
     () => (active_item ? get_nutrition(active_item, volume_ml, topping_used) : null),
     [active_item, volume_ml, topping_used, meta_tick]
@@ -261,7 +255,7 @@ export default function product_drawer({
   const topping_name = active_item ? get_topping_name(active_item) : '';
 
   function finish_view() {
-    if (return_to_cart) {
+    if (return_to_cart || skip_fly) {
       on_return_to_cart?.();
       return;
     }
@@ -313,7 +307,7 @@ export default function product_drawer({
       ? editing_key_ref.current || editing_line_key || `edit-${active_item.id}`
       : null;
 
-    fly_to_cart(image_ref.current);
+    if (!skip_fly) fly_to_cart(image_ref.current);
     try {
       await on_add(active_item, qty, {
         ...(volume_used ? { volume: volume_used } : {}),
@@ -338,7 +332,7 @@ export default function product_drawer({
   if ((!sheet_visible && !open) || !resolved_item || !active_item || !nutrition) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-stretch justify-center p-0 sm:items-center sm:p-6">
+    <div className="fixed inset-0 z-[55] flex items-stretch justify-center p-0 sm:items-center sm:p-6">
       <button
         type="button"
         aria-label="закрыть"
@@ -365,18 +359,20 @@ export default function product_drawer({
           )}
         </button>
         <div
-          className={`product-panel product-panel-sheet relative flex h-full w-full flex-col overflow-hidden bg-white shadow-[0_24px_80px_rgba(0,0,0,0.22)] sm:h-[min(88vh,620px)] sm:max-h-[88vh] sm:flex-row sm:rounded-[28px] ${sheet_open ? 'is-visible' : ''}`}
+          className={`product-panel product-panel-sheet relative flex h-full w-full flex-col overflow-hidden bg-white shadow-[0_24px_80px_rgba(0,0,0,0.22)] sm:h-auto sm:max-h-[min(94vh,760px)] sm:flex-row sm:rounded-[28px] ${sheet_open ? 'is-visible' : ''}`}
           {...sheet_props}
         >
-          <div
-            ref={image_ref}
-            className="relative w-full shrink-0 aspect-square overflow-hidden bg-[#f3f4f6] sm:aspect-auto sm:h-full sm:w-[43%]"
-          >
-            {createElement(menu_image, {
-              item: active_item,
-              className: 'h-full w-full sm:!aspect-auto',
-              variant: 'card',
-            })}
+          <div className="relative w-full shrink-0 sm:w-[43%]">
+            <div
+              ref={image_ref}
+              className="relative aspect-square w-full overflow-hidden bg-[#f3f4f6] sm:aspect-auto sm:h-full sm:min-h-[280px]"
+            >
+              {createElement(menu_image, {
+                item: active_item,
+                className: 'h-full w-full sm:!aspect-auto',
+                variant: 'card',
+              })}
+            </div>
             {menu_item_has_badge(active_item) &&
               createElement(menu_badge_on_card, {
                 text: active_item.badge_text!,
@@ -399,8 +395,8 @@ export default function product_drawer({
             </button>
           </div>
 
-          <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
-            <div ref={body_ref} className="product-panel-body flex-1 overflow-y-auto overflow-x-hidden overscroll-contain px-5 py-4 sm:px-7 sm:py-6">
+          <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden sm:overflow-visible">
+            <div ref={body_ref} className="product-panel-body flex-1 overflow-y-auto overflow-x-hidden overscroll-y-contain touch-pan-y px-5 py-4 sm:overflow-visible sm:overscroll-auto sm:px-7 sm:py-6">
               <div className="pr-10 sm:pr-0">
                 <h3 className="text-2xl sm:text-[32px] font-bold leading-tight text-neutral-900">
                   {active_item.name}
@@ -429,40 +425,19 @@ export default function product_drawer({
                 )}
               </div>
 
-              <p className="mt-4 text-[15px] leading-relaxed text-neutral-700">{description}</p>
-
               <div className="mt-5">
-                <button
-                  type="button"
-                  onClick={() => set_details_open((o) => !o)}
-                  aria-expanded={details_open}
-                  className="flex items-center gap-1.5 text-[15px] font-semibold tracking-tight text-neutral-900"
-                >
-                  состав
-                  <svg
-                    width="16"
-                    height="16"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    aria-hidden="true"
-                    className={`transition-transform duration-200 ${details_open ? 'rotate-180' : ''}`}
-                  >
-                    <path d="M6 9l6 6 6-6" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
-                  </svg>
-                </button>
-                {details_open && (
-                  <div className="mt-3">
-                    <div className="flex flex-wrap gap-x-5 gap-y-1 text-sm font-normal text-neutral-500">
-                      <span>{nutrition.kcal} ккал</span>
-                      <span>белки {nutrition.protein} г</span>
-                      <span>жиры {nutrition.fat} г</span>
-                      <span>углеводы {nutrition.carb} г</span>
-                    </div>
-                    <p className="mt-2 text-[15px] leading-relaxed text-neutral-700">
-                      {composition.join(', ')}
-                    </p>
+                <p className="text-[15px] font-semibold tracking-tight text-neutral-900">состав</p>
+                <div className="mt-3">
+                  <div className="flex flex-wrap gap-x-5 gap-y-1 text-sm font-normal text-neutral-500">
+                    <span>{nutrition.kcal} ккал</span>
+                    <span>белки {nutrition.protein} г</span>
+                    <span>жиры {nutrition.fat} г</span>
+                    <span>углеводы {nutrition.carb} г</span>
                   </div>
-                )}
+                  <p className="mt-2 text-[15px] leading-relaxed text-neutral-700">
+                    {composition.join(', ')}
+                  </p>
+                </div>
               </div>
 
               {show_toppings && (
