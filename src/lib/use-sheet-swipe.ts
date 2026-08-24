@@ -19,6 +19,8 @@ type sheet_swipe_options = {
   on_dismiss: () => void;
   on_back?: () => void;
   can_back?: boolean;
+  /** только свайп вниз для закрытия — без горизонтали */
+  vertical_only?: boolean;
   get_scroll_top?: () => number;
 };
 
@@ -27,6 +29,7 @@ export function use_sheet_swipe({
   on_dismiss,
   on_back,
   can_back = false,
+  vertical_only = false,
   get_scroll_top,
 }: sheet_swipe_options) {
   const [mobile, set_mobile] = useState(false);
@@ -41,11 +44,13 @@ export function use_sheet_swipe({
   const on_back_ref = useRef(on_back);
   const on_dismiss_ref = useRef(on_dismiss);
   const get_scroll_top_ref = useRef(get_scroll_top);
+  const vertical_only_ref = useRef(vertical_only);
 
   can_back_ref.current = can_back;
   on_back_ref.current = on_back;
   on_dismiss_ref.current = on_dismiss;
   get_scroll_top_ref.current = get_scroll_top;
+  vertical_only_ref.current = vertical_only;
 
   useEffect(() => {
     const mq = window.matchMedia('(max-width: 1023px)');
@@ -99,6 +104,7 @@ export function use_sheet_swipe({
         if (dy > 0 && Math.abs(dy) > Math.abs(dx) && scroll_top <= 0) {
           mode_ref.current = 'vertical';
         } else if (
+          !vertical_only_ref.current &&
           dx > 0 &&
           Math.abs(dx) > Math.abs(dy) &&
           can_back_ref.current &&

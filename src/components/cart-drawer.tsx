@@ -111,6 +111,7 @@ export default function cart_drawer({
   const { sheet_props, backdrop_style } = use_sheet_swipe({
     active: sheet_open,
     on_dismiss: on_close,
+    vertical_only: true,
     get_scroll_top: () => body_ref.current?.scrollTop ?? 0,
   });
 
@@ -252,12 +253,12 @@ export default function cart_drawer({
 
         <div
           ref={body_ref}
-          className={`product-panel-body flex-1 overflow-y-auto overflow-x-hidden overscroll-y-contain touch-pan-y ${
+          className={`product-panel-body flex min-h-0 flex-1 flex-col overflow-y-auto overflow-x-hidden overscroll-y-contain touch-pan-y ${
             show_lines ? 'pb-[calc(5rem+var(--safe-bottom))] sm:pb-0' : ''
           }`}
         >
           {show_empty ? (
-            <div className="flex min-h-[50vh] flex-col items-center justify-center bg-white px-5 py-16 text-center">
+            <div className="flex min-h-full flex-1 flex-col items-center justify-center bg-white px-5 py-16 text-center">
               <p className="text-base font-semibold text-neutral-700">корзина пуста</p>
               <p className="mt-2 text-sm text-neutral-400">добавьте напиток из меню</p>
             </div>

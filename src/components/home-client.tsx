@@ -33,7 +33,7 @@ import pickup_slot_picker from '@/components/pickup-slot-picker';
 import gift_sheet from '@/components/gift-sheet';
 import gift_inbox_banner from '@/components/gift-inbox-banner';
 import { claim_gift_pickup, fetch_gift_by_id, fetch_my_gifts, type gift_actor } from '@/lib/gifts';
-import { add_to_cart, get_cart_items, upsert_cart_item } from '@/lib/cart';
+import { add_to_cart, clear_cart, get_cart_items, upsert_cart_item } from '@/lib/cart';
 import site_header from '@/components/site-header';
 import {
   delete_promo,
@@ -259,7 +259,7 @@ export default function home_client({
     topping: number;
   }>({ qty: 1, volume: '450', topping: 0 });
   const [cart_open, set_cart_open] = useState(false);
-  const [cart_lines, set_cart_lines] = useState<cart_line[]>([]);
+  const [cart_lines, set_cart_lines] = useState<cart_line[]>(() => load_guest_cart());
   const [user, set_user] = useState<demo_user | null>(null);
   const [user_id, set_user_id] = useState<string | null>(null);
   const [is_anonymous, set_is_anonymous] = useState(false);
@@ -301,6 +301,8 @@ export default function home_client({
   const header_ref = useRef<HTMLDivElement>(null);
   const nav_ref = useRef<HTMLDivElement>(null);
   const skip_cart_reload_until_ref = useRef(0);
+  const cart_hydrated_ref = useRef(false);
+  const cart_cleared_until_ref = useRef(0);
   const claim_started_ref = useRef('');
 
   const is_admin_edit = admin_edit_mode;
@@ -784,9 +786,8 @@ export default function home_client({
   }, [demo_mode, initial_menu, initial_categories, admin_edit_mode]);
 
   useEffect(() => {
-    if (user_id) return;
     save_guest_cart(cart_lines);
-  }, [cart_lines, user_id]);
+  }, [cart_lines]);
 
   function add_to_local_cart(
     item: menu_item,
@@ -796,34 +797,57 @@ export default function home_client({
     set_cart_lines((prev) => merge_cart_line(prev, item, qty, options));
   }
 
-  const load_prod_cart = useCallback(async (uid: string) => {
-    const { data, error } = await get_cart_items(uid);
+  /** подтянуть позиции с сервера, не стирая локальную корзину */
+  const load_prod_cart = useCallback(async (_uid: string) => {
+    const { data, error } = await get_cart_items(_uid);
     if (error) {
       console.warn('cart load:', error.message);
       return;
     }
+
+    const catalog = new Map(
+      get_menu_store().items.map((item) => [item.id, item] as const)
+    );
+
     set_cart_lines((prev) => {
-      const rows = (data || []).filter((row) => row.menu);
-      if (
-        rows.length === 0 &&
-        prev.length > 0 &&
-        Date.now() < skip_cart_reload_until_ref.current
-      ) {
+      if (Date.now() < cart_cleared_until_ref.current) {
         return prev;
       }
-      const by_id = new Map(prev.map((l) => [l.item.id, l]));
-      const lines: cart_line[] = rows.map((row, index) => {
-        const item = row.menu as unknown as menu_item;
-        const prev_line = by_id.get(item.id);
-        return {
+
+      const rows = data || [];
+      const hydrated: cart_line[] = [];
+
+      for (const row of rows) {
+        const menu_id = row.menu_id;
+        if (!menu_id || row.quantity <= 0) continue;
+        const prev_line = prev.find((l) => l.item.id === menu_id);
+        const joined = row.menu as menu_item | null;
+        const item = catalog.get(menu_id) || prev_line?.item || joined;
+        if (!item) continue;
+        hydrated.push({
           item,
           quantity: row.quantity,
-          key: prev_line?.key || `srv-${item.id}-${index}`,
-          volume: prev_line?.volume ?? '450',
+          key: prev_line?.key || `srv-${menu_id}`,
+          volume: prev_line?.volume,
           topping: prev_line?.topping ?? 0,
-        };
-      });
-      return lines;
+        });
+      }
+
+      // пустой/битый ответ сервера не должен обнулять локальную корзину
+      if (hydrated.length === 0) {
+        return prev;
+      }
+
+      const by_id = new Map(hydrated.map((l) => [l.item.id, l]));
+
+      // оптимистичные локальные позиции, которых ещё нет на сервере
+      if (Date.now() < skip_cart_reload_until_ref.current) {
+        for (const line of prev) {
+          if (!by_id.has(line.item.id)) by_id.set(line.item.id, line);
+        }
+      }
+
+      return [...by_id.values()];
     });
   }, []);
 
@@ -832,15 +856,18 @@ export default function home_client({
     if (!local.length) return;
 
     for (const line of local) {
-      await add_to_cart(uid, line.item, line.quantity);
+      const { error } = await add_to_cart(uid, line.item, line.quantity);
+      if (error) {
+        console.warn('cart sync:', error.message);
+        return;
+      }
     }
-    save_guest_cart([]);
   }, []);
 
   useEffect(() => {
     if (demo_mode) return;
 
-    async function load_user() {
+    async function load_user(opts?: { refresh_cart?: boolean }) {
       const auth = await get_auth_state();
 
       if (auth.is_permanent && auth.user_id) {
@@ -876,11 +903,21 @@ export default function home_client({
           role: 'user',
         });
 
-        await sync_guest_cart_to_server(auth.user_id);
-        await load_prod_cart(auth.user_id);
+        const should_hydrate = opts?.refresh_cart || !cart_hydrated_ref.current;
+        if (should_hydrate) {
+          cart_hydrated_ref.current = true;
+          const local = load_guest_cart();
+          if (local.length > 0) {
+            set_cart_lines(local);
+          }
+          await sync_guest_cart_to_server(auth.user_id);
+          skip_cart_reload_until_ref.current = Date.now() + 2500;
+          await load_prod_cart(auth.user_id);
+        }
         return;
       }
 
+      cart_hydrated_ref.current = false;
       set_user_id(null);
       set_is_anonymous(false);
       set_user(null);
@@ -889,17 +926,20 @@ export default function home_client({
       set_cart_lines(load_guest_cart());
     }
 
-    load_user();
+    void load_user({ refresh_cart: true });
 
     const supabase = create_client();
     const { data: { subscription } } = supabase.auth.onAuthStateChange(() => {
-      load_user();
+      void load_user();
     });
 
-    window.addEventListener('focus', load_user);
+    function on_focus() {
+      void load_user({ refresh_cart: false });
+    }
+    window.addEventListener('focus', on_focus);
     return () => {
       subscription.unsubscribe();
-      window.removeEventListener('focus', load_user);
+      window.removeEventListener('focus', on_focus);
     };
   }, [demo_mode, load_prod_cart, sync_guest_cart_to_server]);
 
@@ -969,10 +1009,10 @@ export default function home_client({
     if (demo_mode && !user_id) return;
     if (!user_id) return;
 
-    // при правке не делаем delta-add и не перезагружаем серверную корзину —
-    // иначе затираются volume/topping и появляется «вторая» позиция
+    // блокируем realtime/reload до завершения записи
+    skip_cart_reload_until_ref.current = Date.now() + 4000;
+
     if (options?.replace_key) {
-      skip_cart_reload_until_ref.current = Date.now() + 2000;
       await upsert_cart_item(user_id, item.id, qty);
       return;
     }
@@ -986,9 +1026,7 @@ export default function home_client({
     const { error } = await add_to_cart(user_id, server_item, qty);
     if (error) {
       console.warn('cart:', error.message);
-      return;
     }
-    skip_cart_reload_until_ref.current = Date.now() + 2500;
   }
 
   async function handle_add(
@@ -1021,8 +1059,8 @@ export default function home_client({
 
     const line = cart_lines.find((l, i) => cart_line_key(l, i) === line_key);
     if (!line) return;
+    skip_cart_reload_until_ref.current = Date.now() + 4000;
     const { error } = await upsert_cart_item(user_id, line.item.id, quantity);
-    // не перезагружаем с сервера — иначе сотрём volume/topping
     if (error) console.warn('cart qty:', error.message);
   }
 
@@ -1032,21 +1070,22 @@ export default function home_client({
 
     if (demo_mode && !user_id) return;
     if (!user_id || !line) return;
-    skip_cart_reload_until_ref.current = Date.now() + 2500;
+    skip_cart_reload_until_ref.current = Date.now() + 4000;
     const { error } = await upsert_cart_item(user_id, line.item.id, 0);
     if (error) console.warn('cart remove:', error.message);
   }
 
   async function handle_clear_cart() {
-    const snapshot = [...cart_lines];
     set_cart_lines([]);
     save_guest_cart([]);
+    cart_cleared_until_ref.current = Date.now() + 5000;
 
     if (demo_mode && !user_id) return;
     if (!user_id) return;
 
-    skip_cart_reload_until_ref.current = Date.now() + 3000;
-    await Promise.all(snapshot.map((line) => upsert_cart_item(user_id, line.item.id, 0)));
+    skip_cart_reload_until_ref.current = Date.now() + 5000;
+    const { error } = await clear_cart(user_id);
+    if (error) console.warn('cart clear:', error.message);
   }
 
   function handle_location_confirm(loc: user_location) {

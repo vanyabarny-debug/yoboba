@@ -1,6 +1,7 @@
 import type { menu_item } from '@/lib/types';
 
 type cart_row = {
+  id?: string;
   menu_id: string;
   quantity: number;
   menu: menu_item | null;
