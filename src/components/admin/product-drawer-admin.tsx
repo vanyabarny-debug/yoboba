@@ -36,7 +36,7 @@ type props = {
 };
 
 const volumes = [
-  { id: '450', label: '450 мл', ml: 450, add: 0 },
+  { id: '500', label: '500 мл', ml: 500, add: 0 },
   { id: '650', label: '650 мл', ml: 650, add: 50 },
 ] as const;
 
@@ -51,7 +51,7 @@ export default function product_drawer_admin({ item, open, on_close, on_save, on
     fat: 0,
     carb: 0,
   });
-  const [volume, set_volume] = useState<(typeof volumes)[number]['id']>('450');
+  const [volume, set_volume] = useState<(typeof volumes)[number]['id']>('500');
   const [topping, set_topping] = useState(0);
   const [details_open, set_details_open] = useState(false);
   const [badge_enabled, set_badge_enabled] = useState(false);
@@ -76,13 +76,13 @@ export default function product_drawer_admin({ item, open, on_close, on_save, on
     set_composition(store.category_compositions[item.category] ?? '');
     set_topping_price(get_topping_portion_price_value());
     set_nutrition_base(get_category_nutrition(item.category));
-    set_volume('450');
+    set_volume('500');
     set_topping(0);
     set_details_open(false);
     set_badge_enabled(Boolean(item.badge_text?.trim()));
   }, [item?.id, open]);
 
-  const volume_ml = volumes.find((v) => v.id === volume)?.ml ?? 450;
+  const volume_ml = volumes.find((v) => v.id === volume)?.ml ?? 500;
   const topping_max = Math.max(4, Math.round(volume_ml / 60));
   const topping_name = draft ? get_topping_name(draft) : '';
 

@@ -19,7 +19,7 @@ export function get_addons(): product_addon[] {
 }
 
 export const default_drink_volumes: menu_volume[] = [
-  { ml: 450, add: 0 },
+  { ml: 500, add: 0 },
   { ml: 650, add: 50 },
 ];
 
@@ -43,7 +43,7 @@ export function get_item_volumes(item: menu_item): menu_volume[] {
 
 export function first_volume_id(item?: menu_item | null): string {
   const vols = item ? get_item_volumes(item) : default_drink_volumes;
-  return vols[0] ? String(vols[0].ml) : '450';
+  return vols[0] ? String(vols[0].ml) : '500';
 }
 
 export function resolve_volume_id(item: menu_item, volume?: string | null): string | undefined {
@@ -126,15 +126,12 @@ export function get_topping_portion_price_value(): number {
 export const topping_portion_price = 60;
 
 const category_topping: Record<string, string> = {
-  'классические бабл ти': 'тапиока',
-  'с джусболами': 'джусболы',
-  матча: 'тапиока',
-  пп: 'желе',
-  фраппе: 'тапиока',
-  'газированные бабл ти': 'джусболы',
-  'бабл тоники': 'желе',
-  закуски: 'тапиока',
-  десерты: 'тапиока',
+  классика: 'тапиока',
+  'матча & таро': 'тапиока',
+  молочные: 'джус-боллы',
+  лимонады: 'джус-боллы',
+  'на фруктовом пюре': 'джус-боллы',
+  'напиток месяца': 'джус-боллы',
   комбо: 'тапиока',
 };
 

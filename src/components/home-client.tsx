@@ -8,11 +8,13 @@ import menu_grid from '@/components/menu-grid';
 import menu_grid_admin from '@/components/admin/menu-grid-admin';
 import product_drawer from '@/components/product-drawer';
 import product_drawer_admin from '@/components/admin/product-drawer-admin';
+import combo_builder from '@/components/combo-builder';
 import cart_drawer, {
   cart_line_key,
   cart_line_unit_price,
   type cart_line,
 } from '@/components/cart-drawer';
+import { format_combo_picks, is_combo_item } from '@/lib/combo';
 import cart_fab from '@/components/cart-fab';
 import top_bar from '@/components/top-bar';
 import promo_banners from '@/components/promo-banners';
@@ -43,11 +45,6 @@ import {
   upsert_promo,
   default_promos,
 } from '@/lib/promo-store';
-import {
-  get_viewed_promos,
-  mark_promo_viewed,
-  subscribe_viewed_promos,
-} from '@/lib/viewed-promos';
 import sidebar_ad from '@/components/sidebar-ad';
 import {
   default_sidebar_interval_ms,
@@ -89,6 +86,7 @@ import {
   subscribe_menu_store,
   upsert_menu_item,
   default_categories,
+  store_version,
   type menu_store,
 } from '@/lib/menu-store';
 import {
@@ -125,10 +123,17 @@ function merge_cart_line(
   lines: cart_line[],
   item: menu_item,
   qty: number,
-  options?: { volume?: string; topping?: number; replace_key?: string }
+  options?: {
+    volume?: string;
+    topping?: number;
+    replace_key?: string;
+    combo_picks?: string[];
+  }
 ): cart_line[] {
   const volume = resolve_volume_id(item, options?.volume);
   const topping = options?.topping ?? 0;
+  const combo_picks = options?.combo_picks;
+  const combo_key = combo_picks?.join('|') ?? '';
   const next_qty = Math.max(1, qty);
 
   // правка из корзины: жёстко заменить позицию (qty абсолютный, не +=)
@@ -169,6 +174,7 @@ function merge_cart_line(
         quantity: next_qty,
         volume,
         topping,
+        ...(combo_picks?.length ? { combo_picks } : {}),
       },
     ];
   }
@@ -179,6 +185,7 @@ function merge_cart_line(
       l.item.id === item.id &&
       (l.volume ?? '') === (volume ?? '') &&
       (l.topping ?? 0) === topping &&
+      (l.combo_picks?.join('|') ?? '') === combo_key &&
       !l.item.id.startsWith('topping-')
   );
   if (same >= 0) {
@@ -199,6 +206,7 @@ function merge_cart_line(
       quantity: next_qty,
       volume,
       topping,
+      ...(combo_picks?.length ? { combo_picks } : {}),
     },
   ];
 }
@@ -214,6 +222,7 @@ function gift_items_from_lines(lines: cart_line[]): order_item[] {
     const bits = [l.item.name];
     if (l.volume) bits.push(`${l.volume} мл`);
     if (l.topping && l.topping > 0) bits.push(`топ. ×${l.topping}`);
+    if (l.combo_picks?.length) bits.push(format_combo_picks(l.combo_picks));
     return {
       menu_id: l.item.id,
       name: bits.join(' · '),
@@ -248,6 +257,8 @@ export default function home_client({
   );
   const [categories, set_categories] = useState(initial_categories);
   const [selected, set_selected] = useState<menu_item | null>(null);
+  const [combo_building, set_combo_building] = useState<menu_item | null>(null);
+  const [combo_edit_picks, set_combo_edit_picks] = useState<menu_item[] | undefined>(undefined);
   const [drawer_open, set_drawer_open] = useState(false);
   const [product_from_cart, set_product_from_cart] = useState(false);
   const [from_cart_upsell, set_from_cart_upsell] = useState(false);
@@ -257,7 +268,7 @@ export default function home_client({
     qty: number;
     volume: string;
     topping: number;
-  }>({ qty: 1, volume: '450', topping: 0 });
+  }>({ qty: 1, volume: '500', topping: 0 });
   const [cart_open, set_cart_open] = useState(false);
   const [cart_lines, set_cart_lines] = useState<cart_line[]>(() => load_guest_cart());
   const [user, set_user] = useState<demo_user | null>(null);
@@ -289,7 +300,6 @@ export default function home_client({
   const [nav_h, set_nav_h] = useState(56);
   const [editing_promo, set_editing_promo] = useState<promo_banner | null>(null);
   const [story_index, set_story_index] = useState<number | null>(null);
-  const [viewed_promos, set_viewed_promos] = useState<Set<string>>(() => new Set());
   const [editing_slide, set_editing_slide] = useState<sidebar_ad_slide | null>(null);
   const [editing_link, set_editing_link] = useState<top_bar_link | null>(null);
   const [editing_category, set_editing_category] = useState<string | null>(null);
@@ -334,6 +344,7 @@ export default function home_client({
     const cart = search_params.get('cart');
     const gift_param = search_params.get('gift');
     const as_gift_param = search_params.get('as_gift');
+    const combo_id = search_params.get('combo') || search_params.get('menu');
 
     if (category) {
       set_active_category(category);
@@ -351,7 +362,18 @@ export default function home_client({
     if (as_gift_param === '1') {
       set_as_gift(true);
     }
-  }, [search_params]);
+    if (combo_id && !is_admin_edit) {
+      const item = menu.find((i) => i.id === combo_id);
+      if (item && is_combo_item(item)) {
+        set_combo_edit_picks(undefined);
+        set_combo_building(item);
+      } else if (item) {
+        set_selected(item);
+        set_product_from_cart(false);
+        set_drawer_open(true);
+      }
+    }
+  }, [search_params, menu, is_admin_edit]);
 
   function has_profile_phone() {
     return Boolean(normalize_phone(user?.phone));
@@ -461,7 +483,10 @@ export default function home_client({
 
     const items = cart_lines.map((l) => ({
       menu_id: l.item.id,
-      name: l.item.name,
+      name:
+        l.combo_picks && l.combo_picks.length > 0
+          ? `${l.item.name}: ${format_combo_picks(l.combo_picks)}`
+          : l.item.name,
       price: cart_line_unit_price(l),
       quantity: l.quantity,
     }));
@@ -724,14 +749,6 @@ export default function home_client({
   }, []);
 
   useEffect(() => {
-    function reload_viewed() {
-      set_viewed_promos(get_viewed_promos());
-    }
-    reload_viewed();
-    return subscribe_viewed_promos(reload_viewed);
-  }, []);
-
-  useEffect(() => {
     if (!admin_edit_mode) return;
     publish_menu_now();
   }, [admin_edit_mode]);
@@ -761,6 +778,7 @@ export default function home_client({
       .then((body: { store?: menu_store | null }) => {
         const store = body.store;
         if (cancelled || !store?.items?.length) return;
+        if (typeof store.version === 'number' && store.version < store_version) return;
         apply_published_heading_styles(store.category_heading_styles);
         set_categories(store.categories);
         set_menu(store.items.filter((i) => i.is_available));
@@ -792,7 +810,12 @@ export default function home_client({
   function add_to_local_cart(
     item: menu_item,
     qty: number,
-    options?: { volume?: string; topping?: number; replace_key?: string }
+    options?: {
+      volume?: string;
+      topping?: number;
+      replace_key?: string;
+      combo_picks?: string[];
+    }
   ) {
     set_cart_lines((prev) => merge_cart_line(prev, item, qty, options));
   }
@@ -830,6 +853,7 @@ export default function home_client({
           key: prev_line?.key || `srv-${menu_id}`,
           volume: prev_line?.volume,
           topping: prev_line?.topping ?? 0,
+          combo_picks: prev_line?.combo_picks,
         });
       }
 
@@ -1002,7 +1026,12 @@ export default function home_client({
   async function execute_add(
     item: menu_item,
     qty: number,
-    options?: { volume?: string; topping?: number; replace_key?: string }
+    options?: {
+      volume?: string;
+      topping?: number;
+      replace_key?: string;
+      combo_picks?: string[];
+    }
   ) {
     add_to_local_cart(item, qty, options);
 
@@ -1032,7 +1061,12 @@ export default function home_client({
   async function handle_add(
     item: menu_item,
     qty: number,
-    options?: { volume?: string; topping?: number; replace_key?: string }
+    options?: {
+      volume?: string;
+      topping?: number;
+      replace_key?: string;
+      combo_picks?: string[];
+    }
   ) {
     // replace_key только явно из drawer при «Изменить» — иначе upsell/quick-add
     // накладывается на редактируемую строку и удваивает qty
@@ -1041,6 +1075,7 @@ export default function home_client({
       volume: options?.volume,
       topping: options?.topping,
       replace_key,
+      combo_picks: options?.combo_picks,
     });
     if (replace_key) {
       editing_line_key_ref.current = null;
@@ -1142,6 +1177,19 @@ export default function home_client({
     open_pickup_picker();
   }
 
+  function open_menu_item(item: menu_item, from_cart = false) {
+    if (is_combo_item(item) && !is_admin_edit) {
+      set_combo_edit_picks(undefined);
+      set_combo_building(item);
+      set_drawer_open(false);
+      set_selected(null);
+      return;
+    }
+    set_selected(item);
+    set_product_from_cart(from_cart);
+    set_drawer_open(true);
+  }
+
   function handle_edit_line(line: cart_line, line_key?: string) {
     const key =
       line_key ||
@@ -1174,6 +1222,19 @@ export default function home_client({
     });
 
     set_cart_open(false);
+
+    if (is_combo_item(line.item)) {
+      const by_name = new Map(menu.map((m) => [m.name, m]));
+      const picks = (line.combo_picks ?? [])
+        .map((name) => by_name.get(name))
+        .filter((m): m is menu_item => Boolean(m));
+      editing_line_key_ref.current = key;
+      set_editing_line_key(key);
+      set_combo_edit_picks(picks);
+      set_combo_building(line.item);
+      return;
+    }
+
     set_selected(line.item);
     set_product_from_cart(true);
     editing_line_key_ref.current = key;
@@ -1292,9 +1353,7 @@ export default function home_client({
     if (slide.menu_id) {
       const item = menu.find((i) => i.id === slide.menu_id);
       if (item) {
-        set_selected(item);
-        set_product_from_cart(false);
-        set_drawer_open(true);
+        open_menu_item(item);
         return;
       }
     }
@@ -1320,9 +1379,7 @@ export default function home_client({
     if (promo.menu_id) {
       const item = menu.find((i) => i.id === promo.menu_id);
       if (item) {
-        set_selected(item);
-        set_product_from_cart(false);
-        set_drawer_open(true);
+        open_menu_item(item);
         return;
       }
     }
@@ -1470,7 +1527,6 @@ export default function home_client({
         } : {
           promos,
           on_promo_click: handle_promo_click,
-          viewed_ids: viewed_promos,
         })}
 
       {createElement(news_ticker)}
@@ -1509,12 +1565,10 @@ export default function home_client({
               on_change: set_active_category,
               on_cart_click: () => set_cart_open(true),
               on_item_click: (item: menu_item) => {
-                set_selected(item);
-                set_product_from_cart(false);
                 editing_line_key_ref.current = null;
                 set_editing_line_key(null);
                 set_edit_initial({ qty: 1, volume: first_volume_id(item), topping: 0 });
-                set_drawer_open(true);
+                open_menu_item(item);
               },
             })}
           </div>
@@ -1544,13 +1598,14 @@ export default function home_client({
                     promos,
                     inline_promos: true,
                     on_promo_click: handle_promo_click,
-                    viewed_promo_ids: viewed_promos,
                     on_item_click: (item: menu_item) => {
-                      set_selected(item);
-                      set_product_from_cart(false);
-                      set_drawer_open(true);
+                      open_menu_item(item);
                     },
                     on_quick_add: (item: menu_item) => {
+                      if (is_combo_item(item)) {
+                        open_menu_item(item);
+                        return;
+                      }
                       void handle_add(item, 1);
                     },
                   })}
@@ -1603,6 +1658,35 @@ export default function home_client({
             skip_fly: from_cart_upsell,
           })}
 
+      {!is_admin_edit &&
+        createElement(combo_builder, {
+          combo: combo_building,
+          all_items: menu,
+          open: Boolean(combo_building),
+          initial_picks: combo_edit_picks,
+          on_close: () => {
+            set_combo_building(null);
+            set_combo_edit_picks(undefined);
+            if (editing_line_key) {
+              editing_line_key_ref.current = null;
+              set_editing_line_key(null);
+              set_cart_open(true);
+            }
+          },
+          on_confirm: (combo, picks) => {
+            const replace_key = editing_line_key || undefined;
+            void handle_add(combo, 1, {
+              combo_picks: picks.map((p) => p.name),
+              ...(replace_key ? { replace_key } : {}),
+            });
+            set_combo_building(null);
+            set_combo_edit_picks(undefined);
+            editing_line_key_ref.current = null;
+            set_editing_line_key(null);
+            set_cart_open(true);
+          },
+        })}
+
       {!is_admin_edit && createElement(cart_drawer, {
         open: cart_open,
         lines: cart_lines,
@@ -1642,7 +1726,6 @@ export default function home_client({
           open: true,
           on_close: () => set_story_index(null),
           on_action: perform_promo_action,
-          on_view: (promo: promo_banner) => mark_promo_viewed(promo.id),
         })}
 
       {is_admin_edit && createElement(promo_edit_sheet, {

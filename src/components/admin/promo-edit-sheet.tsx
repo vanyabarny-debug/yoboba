@@ -99,9 +99,9 @@ export default function promo_edit_sheet({ promo, categories, on_close, on_save,
         className="space-y-3"
       >
         {draft.image_url ? (
-          <img src={draft.image_url} alt="" className="mx-auto w-28 aspect-[9/16] rounded-xl object-contain bg-surface" />
+          <img src={draft.image_url} alt="" className="mx-auto w-28 aspect-[2/3] rounded-xl object-contain bg-surface" />
         ) : (
-          <div className="mx-auto w-28 aspect-[9/16] rounded-xl bg-surface flex items-center justify-center text-sm text-neutral-400">
+          <div className="mx-auto w-28 aspect-[2/3] rounded-xl bg-surface flex items-center justify-center text-sm text-neutral-400">
             фото
           </div>
         )}
@@ -114,13 +114,30 @@ export default function promo_edit_sheet({ promo, categories, on_close, on_save,
           размер картинки: <span className="font-medium text-neutral-700">{PROMO_SIZE_HINT}</span>.
           важные элементы — не ближе ~120px к верхнему и нижнему краю (там прогресс и кнопка в сторис).
         </p>
-        <input
+        <textarea
           value={draft.title}
           onChange={(e) => set_draft({ ...draft, title: e.target.value })}
-          placeholder="заголовок"
-          className="w-full rounded-xl border border-surface px-3 py-2 text-sm"
+          placeholder={'заголовок\nможно с новой строки'}
+          rows={2}
+          className="w-full rounded-xl border border-surface px-3 py-2 text-sm resize-y"
           required
         />
+        <label className="flex items-start gap-2 text-sm">
+          <input
+            type="checkbox"
+            className="mt-0.5"
+            checked={!draft.title_in_image}
+            onChange={(e) =>
+              set_draft({ ...draft, title_in_image: !e.target.checked })
+            }
+          />
+          <span>
+            белый текст на фото
+            <span className="mt-0.5 block text-xs text-neutral-400">
+              Montserrat Alternates · если снять галку — текст уже на картинке
+            </span>
+          </span>
+        </label>
         <input
           value={draft.subtitle || ''}
           onChange={(e) => set_draft({ ...draft, subtitle: e.target.value })}

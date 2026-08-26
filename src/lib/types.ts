@@ -66,12 +66,16 @@ export type menu_item = {
   has_volumes?: boolean;
   /** порции топпинга в карточке; по умолчанию да, кроме закусок */
   has_toppings?: boolean;
-  /** варианты объёма; если пусто — 450 / 650 */
+  /** варианты объёма; если пусто — 500 / 650 */
   volumes?: menu_volume[];
   /** состав через запятую; иначе берётся из категории */
   composition?: string;
   /** кбжу: на 100 мл, если есть объёмы, иначе на порцию */
   nutrition?: menu_nutrition;
+  /** можно холодно */
+  cold?: boolean;
+  /** можно горячо */
+  hot?: boolean;
 };
 
 export type story = {

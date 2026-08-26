@@ -1,6 +1,6 @@
 import type { promo_banner } from '@/lib/types';
 
-export const promo_store_version = 27;
+export const promo_store_version = 33;
 
 const storage_key = 'yoboba_promo_store';
 const update_event = 'yoboba-promo-update';
@@ -11,7 +11,7 @@ export const default_promos: promo_banner[] = [
     title: 'бесплатно нальём самым быстрым',
     subtitle: '100 напитков · подписка, лайк, репост',
     badge: '100 шт',
-    image_url: '/images/promos/promo13.png?v=7',
+    image_url: '/images/promos/promo13.png?v=8',
     link_url: '/akciya-pervye-100',
     cta_label: 'условия',
     title_in_image: true,
@@ -22,7 +22,7 @@ export const default_promos: promo_banner[] = [
     title: 'студентам и школьникам −30%',
     subtitle: 'по дневнику или студенческому билету',
     badge: '−30%',
-    image_url: '/images/promos/promo14.png?v=6',
+    image_url: '/images/promos/promo14.png?v=7',
     link_url: '/akciya-studentam',
     cta_label: 'условия скидки',
     title_in_image: true,
@@ -32,7 +32,7 @@ export const default_promos: promo_banner[] = [
     id: 'promo-15',
     title: 'подари ей напиток',
     badge: 'подарок',
-    image_url: '/images/promos/promo15.png?v=6',
+    image_url: '/images/promos/promo15.png?v=7',
     link_url: '/akciya-podari-napitok',
     cta_label: 'как подарить',
     title_in_image: true,
@@ -40,13 +40,26 @@ export const default_promos: promo_banner[] = [
   },
   {
     id: 'promo-16',
-    title: 'напиток месяца — subzero',
+    title: 'напиток месяца\nsubzero',
     subtitle: 'блюкюрасао · личи-ментол · кокосовое желе',
     badge: 'месяца',
-    image_url: '/images/promos/promo16.png?v=7',
+    image_url: '/images/promos/promo-subzero.png?v=2',
     link_url: '/napitok-mesyaca-subzero',
+    menu_id: 'subzero',
+    category: 'напиток месяца',
     cta_label: 'подробнее',
-    title_in_image: true,
+    title_in_image: false,
+    is_active: true,
+  },
+  {
+    id: 'promo-17',
+    title: 'с друзьями\nдешевле',
+    badge: 'комбо',
+    image_url: '/images/promos/promo-druzhba.png?v=2',
+    menu_id: 'combo-druzhba',
+    category: 'комбо',
+    cta_label: 'собрать комбо',
+    title_in_image: false,
     is_active: true,
   },
 ];
@@ -83,12 +96,19 @@ function merge_with_code_defaults(parsed: promo_store): promo_store {
   const saved = (parsed.promos ?? []).filter(
     (promo) => promo?.id && !removed.has(promo.id)
   );
-  const saved_ids = new Set(saved.map((promo) => promo.id));
+  const saved_by_id = new Map(saved.map((promo) => [promo.id, promo]));
+  const default_ids = default_promo_ids();
 
-  const next = [...saved];
+  const next: promo_banner[] = [];
   for (const def of default_promos) {
-    if (removed.has(def.id) || saved_ids.has(def.id)) continue;
-    next.push({ ...def });
+    if (removed.has(def.id)) continue;
+    const prev = saved_by_id.get(def.id);
+    // дефолтные акции подтягиваем из кода (cta, картинка, текст), is_active сохраняем
+    next.push(prev ? { ...def, is_active: prev.is_active } : { ...def });
+  }
+  for (const promo of saved) {
+    if (default_ids.has(promo.id) || removed.has(promo.id)) continue;
+    next.push(promo);
   }
 
   return {

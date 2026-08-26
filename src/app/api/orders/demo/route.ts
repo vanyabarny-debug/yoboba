@@ -31,7 +31,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'доступ запрещён' }, { status: 403 });
     }
     const samples: order_item[] = [
-      { menu_id: 'bt-1', name: 'классический бабл ти', price: 290, quantity: 1 },
+      { menu_id: 'original-black', name: 'чёрный сахар', price: 390, quantity: 1 },
       { menu_id: 'mt-1', name: 'матча латте', price: 320, quantity: 1 },
     ];
     const order = await create_fake_order_from_items(samples, body.pickup_minutes ?? 8);

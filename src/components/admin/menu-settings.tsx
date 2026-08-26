@@ -86,7 +86,7 @@ function editor({
   on_delete: (id: string) => void;
 }) {
   const [draft, set_draft] = useState<menu_item>(item);
-  const others = items.filter((i) => i.id !== item.id);
+  const others = items.filter((i) => i.id !== item.id && i.category === draft.category);
   const volumes = draft.volumes?.length ? draft.volumes : default_drink_volumes;
   const nutrition = draft.nutrition ?? empty_nutrition();
   const nutrition_preview = get_nutrition(
@@ -311,8 +311,8 @@ function editor({
         </div>
 
         <div className="mt-5">
-          <p className="text-xs font-medium text-neutral-500">похожее · хорошо сочетается</p>
-          <p className="mt-1 text-xs text-neutral-400">до 8 позиций, покажутся в карточке</p>
+          <p className="text-xs font-medium text-neutral-500">похожие</p>
+          <p className="mt-1 text-xs text-neutral-400">из того же раздела, до 8 позиций</p>
           <div className="mt-2 max-h-48 space-y-1 overflow-y-auto rounded-2xl border border-neutral-200 p-2">
             {others.map((other) => {
               const on = draft.recommendations.includes(other.id);

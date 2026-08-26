@@ -4,7 +4,7 @@ import { DEFAULT_HEADING_STYLE } from '@/lib/brand';
 export type { heading_style };
 
 export const default_category_heading_styles: Record<string, heading_style> = {
-  'газированные бабл ти': 'playful',
+  'напиток месяца': 'playful',
 };
 
 export function resolve_heading_style(

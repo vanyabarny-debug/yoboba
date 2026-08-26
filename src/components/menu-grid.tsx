@@ -3,6 +3,7 @@
 import { createElement, useEffect, useRef, useState } from 'react';
 import type { menu_item, promo_banner } from '@/lib/types';
 import menu_image from '@/components/menu-image';
+import menu_temp_marks from '@/components/menu-temp-marks';
 import { menu_badge_on_card } from '@/components/menu-badge';
 import { menu_item_has_badge } from '@/lib/menu-badge';
 import { fly_to_cart } from '@/lib/fly-to-cart';
@@ -20,7 +21,6 @@ type props = {
   promos?: promo_banner[];
   on_promo_click?: (promo: promo_banner) => void;
   inline_promos?: boolean;
-  viewed_promo_ids?: Set<string>;
 };
 
 const cols = 4;
@@ -74,6 +74,7 @@ function dish_card({
               item,
               className: 'w-full h-full',
               variant: 'card',
+              fit: 'contain',
             })}
           </div>
           {!available && (
@@ -91,7 +92,10 @@ function dish_card({
             available ? 'text-neutral-900 group-hover:text-accent' : 'text-neutral-400'
           }`}
         >
-          {item.name}
+          <span className="inline-flex items-center justify-center gap-1">
+            <span>{item.name}</span>
+            {createElement(menu_temp_marks, { item, size: 13 })}
+          </span>
         </p>
       </button>
       <div className="mt-1 min-[1024px]:mt-2 flex shrink-0 items-center gap-1.5">
@@ -144,7 +148,6 @@ export default function menu_grid({
   promos = [],
   on_promo_click,
   inline_promos = false,
-  viewed_promo_ids,
 }: props) {
   const [, set_tick] = useState(0);
   useEffect(() => subscribe_menu_store(() => set_tick((t) => t + 1)), []);
@@ -215,7 +218,6 @@ export default function menu_grid({
               createElement(promo_inline, {
                 promos: category_promos,
                 on_promo_click: on_promo_click!,
-                viewed_ids: viewed_promo_ids,
               })}
           </div>
         );

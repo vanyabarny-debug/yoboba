@@ -2,7 +2,6 @@
 
 import { createElement, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import type { menu_item } from '@/lib/types';
-import { create_client } from '@/lib/supabase/client';
 import menu_image from '@/components/menu-image';
 import { menu_badge_on_card } from '@/components/menu-badge';
 import { menu_item_has_badge } from '@/lib/menu-badge';
@@ -21,6 +20,7 @@ import { subscribe_site_content_store } from '@/lib/site-content-store';
 import { DRAWER_CLOSE_BTN_CLASS, DRAWER_INLINE_CLOSE_BTN_CLASS } from '@/lib/drawer-ui';
 import { use_sheet_swipe } from '@/lib/use-sheet-swipe';
 import { item_has_toppings, item_has_volumes } from '@/lib/cart-summary';
+import menu_temp_marks from '@/components/menu-temp-marks';
 
 type props = {
   item: menu_item | null;
@@ -77,7 +77,7 @@ export default function product_drawer({
   edit_mode = false,
   editing_line_key = null,
   initial_qty = 1,
-  initial_volume = '450',
+  initial_volume = '500',
   initial_topping = 0,
   return_to_cart = false,
   on_return_to_cart,
@@ -85,7 +85,7 @@ export default function product_drawer({
 }: props) {
   const [qty, set_qty] = useState(1);
   const image_ref = useRef<HTMLDivElement>(null);
-  const [volume, set_volume] = useState('450');
+  const [volume, set_volume] = useState('500');
   const [topping, set_topping] = useState(0);
   const [nav_item, set_nav_item] = useState<menu_item | null>(null);
   const [history, set_history] = useState<history_entry[]>([]);
@@ -193,44 +193,33 @@ export default function product_drawer({
       return;
     }
 
-    async function load_recs(active: menu_item) {
-      const rec_ids = active.recommendations ?? [];
-      const snack_extras = all_items
-        .filter((m) => m.is_available && m.category === 'закуски')
-        .slice(0, 2)
-        .map((m) => m.id);
-
+    function load_recs(active: menu_item) {
       const excluded = new Set<string>();
       if (item) excluded.add(item.id);
       history.forEach((entry) => excluded.add(entry.item.id));
 
-      const ids = [...new Set([...rec_ids, ...snack_extras])].filter(
-        (id) => !excluded.has(id)
+      const same_section = all_items.filter(
+        (m) =>
+          m.is_available &&
+          m.category === active.category &&
+          m.id !== active.id &&
+          !excluded.has(m.id)
       );
-      if (ids.length === 0) {
+      if (same_section.length === 0) {
         set_recommendations([]);
         return;
       }
 
-      const local = all_items.filter((m) => ids.includes(m.id) && m.is_available);
-      if (local.length > 0) {
-        set_recommendations(local);
-        return;
-      }
-
-      const supabase = create_client();
-      const { data } = await supabase
-        .from('menu')
-        .select('*')
-        .in('id', ids)
-        .eq('is_available', true);
-      set_recommendations((data as menu_item[]) || []);
+      const preferred_ids = new Set(active.recommendations ?? []);
+      const preferred = same_section.filter((m) => preferred_ids.has(m.id));
+      const rest = same_section.filter((m) => !preferred_ids.has(m.id));
+      set_recommendations([...preferred, ...rest].slice(0, 4));
     }
     load_recs(current);
   }, [active_item?.id, all_items, item, show_recommendations, history]);
 
   const volume_options = active_item ? get_item_volumes(active_item) : [];
-  const volume_ml = volume_options.find((v) => String(v.ml) === volume)?.ml ?? volume_options[0]?.ml ?? 450;
+  const volume_ml = volume_options.find((v) => String(v.ml) === volume)?.ml ?? volume_options[0]?.ml ?? 500;
   const topping_max = Math.max(4, Math.round(volume_ml / 60));
   const topping_used = show_toppings ? topping : 0;
   const volume_used = show_volumes ? volume : undefined;
@@ -371,6 +360,7 @@ export default function product_drawer({
                 item: active_item,
                 className: 'h-full w-full sm:!aspect-auto',
                 variant: 'card',
+                fit: 'contain',
               })}
             </div>
             {menu_item_has_badge(active_item) &&
@@ -398,8 +388,9 @@ export default function product_drawer({
           <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden sm:overflow-visible">
             <div ref={body_ref} className="product-panel-body flex-1 overflow-y-auto overflow-x-hidden overscroll-y-contain touch-pan-y px-5 py-4 sm:overflow-visible sm:overscroll-auto sm:px-7 sm:py-6">
               <div className="pr-10 sm:pr-0">
-                <h3 className="text-2xl sm:text-[32px] font-bold leading-tight text-neutral-900">
-                  {active_item.name}
+                <h3 className="flex flex-wrap items-center gap-1.5 text-2xl sm:text-[32px] font-bold leading-tight text-neutral-900">
+                  <span>{active_item.name}</span>
+                  {createElement(menu_temp_marks, { item: active_item, size: 18 })}
                 </h3>
                 {show_volumes && volume_options.length > 0 && (
                 <div className="mt-3 inline-flex max-w-full flex-wrap rounded-full bg-[#f3f4f6] p-0.5">
@@ -491,7 +482,7 @@ export default function product_drawer({
 
               {show_recommendations && recommendations.length > 0 && (
                 <div className="mt-6">
-                  <SectionTitle>хорошо сочетается</SectionTitle>
+                  <SectionTitle>похожие</SectionTitle>
                   <div className="mt-2 grid grid-cols-4 gap-1 sm:mt-3 sm:grid-cols-3 sm:gap-2 sm:gap-y-5">
                     {recommendations.map((rec) => (
                       <button
@@ -505,6 +496,7 @@ export default function product_drawer({
                             item: rec,
                             className: 'h-full w-full',
                             variant: 'card',
+                            fit: 'contain',
                           })}
                         </div>
                         <p className="mb-1 w-full px-0.5 text-[9px] sm:mb-2 sm:px-1 sm:text-[15px] font-bold leading-tight text-neutral-900 line-clamp-2 transition-colors group-hover:text-accent">

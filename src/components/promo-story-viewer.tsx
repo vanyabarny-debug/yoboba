@@ -1,7 +1,8 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState, createElement } from 'react';
 import type { promo_banner } from '@/lib/types';
+import promo_title_on_image from '@/components/promo-title-on-image';
 
 type props = {
   promos: promo_banner[];
@@ -122,7 +123,7 @@ export default function promo_story_viewer({
 
   const has_target = promo_has_target(current);
   const cta_label = current.cta_label?.trim() || 'перейти';
-  const show_title = !current.title_in_image;
+  const show_title_on_image = !current.title_in_image;
 
   function handle_pointer_down() {
     pointer_ts_ref.current = performance.now();
@@ -190,6 +191,11 @@ export default function promo_story_viewer({
             className="absolute inset-0 h-full w-full select-none object-cover object-center"
             draggable={false}
           />
+          {show_title_on_image &&
+            createElement(promo_title_on_image, {
+              title: current.title,
+              size: 'story',
+            })}
 
           {/* тапы только по картинке */}
           <div className="absolute inset-0 z-10 flex">
@@ -219,18 +225,11 @@ export default function promo_story_viewer({
             className="pointer-events-none absolute inset-x-0 bottom-full h-28 bg-gradient-to-t from-black to-transparent"
             aria-hidden
           />
-          {(show_title || current.subtitle) && (
+          {current.subtitle && (
             <div className="mb-4 space-y-1.5">
-              {show_title && (
-                <p className="text-[17px] font-bold leading-snug text-white">
-                  {current.title}
-                </p>
-              )}
-              {current.subtitle && (
-                <p className="text-[14px] font-medium leading-relaxed text-white/75">
-                  {current.subtitle}
-                </p>
-              )}
+              <p className="text-[14px] font-medium leading-relaxed text-white/75">
+                {current.subtitle}
+              </p>
             </div>
           )}
           {has_target && (

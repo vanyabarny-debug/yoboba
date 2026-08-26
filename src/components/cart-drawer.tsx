@@ -21,6 +21,7 @@ import {
 } from '@/lib/cart-summary';
 import { kopi_boby_name } from '@/components/kopi-boby';
 import { configured_unit_price, get_topping_name } from '@/lib/product-details';
+import { format_combo_picks } from '@/lib/combo';
 import type { store_spot } from '@/lib/types';
 
 export type cart_line = {
@@ -31,6 +32,8 @@ export type cart_line = {
   volume?: string;
   /** порций топпинга на 1 шт */
   topping?: number;
+  /** выбранные напитки в комбо (названия) */
+  combo_picks?: string[];
 };
 
 export function cart_line_unit_price(line: cart_line): number {
@@ -273,7 +276,11 @@ export default function cart_drawer({
                   (line.topping ?? 0) > 0
                     ? `+${line.topping}× ${get_topping_name(line.item)}`
                     : null;
-                const meta = [volume_label, topping_label, line.item.category]
+                const combo_label =
+                  line.combo_picks && line.combo_picks.length > 0
+                    ? format_combo_picks(line.combo_picks)
+                    : null;
+                const meta = [volume_label, topping_label, combo_label, line.item.category]
                   .filter(Boolean)
                   .join(' · ');
                 return (

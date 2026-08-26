@@ -139,7 +139,7 @@ export default function akciya_promo_page({
           <img
             src={hero_src}
             alt=""
-            className="block w-full object-contain aspect-[9/16]"
+            className="block w-full object-contain aspect-[2/3]"
           />
         </div>
 

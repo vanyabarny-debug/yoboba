@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, createElement } from 'react';
 import type { promo_banner } from '@/lib/types';
 import edit_pencil from '@/components/admin/edit-pencil';
+import promo_title_on_image from '@/components/promo-title-on-image';
 
 type props = {
   promos: promo_banner[];
@@ -10,7 +11,6 @@ type props = {
   edit_mode?: boolean;
   on_edit_promo?: (promo: promo_banner) => void;
   on_add_promo?: () => void;
-  viewed_ids?: Set<string>;
   /** home: кружки на мобилке, карточки на пк; cards: карточки везде (страница «все акции») */
   layout?: 'home' | 'cards';
 };
@@ -24,7 +24,6 @@ export default function promo_banners({
   edit_mode = false,
   on_edit_promo,
   on_add_promo,
-  viewed_ids,
   layout = 'home',
 }: props) {
   const active = edit_mode ? promos : promos.filter((p) => p.is_active);
@@ -195,9 +194,7 @@ export default function promo_banners({
         <div className="min-[1024px]:hidden w-full min-w-0">
           <div className="promo-stories-scroll stories-scroll">
             <div className="flex w-max gap-3 py-4 pl-[var(--page-gutter)]">
-              {active.map((promo) => {
-                const viewed = !edit_mode && viewed_ids?.has(promo.id);
-                return (
+              {active.map((promo) => (
                   <div
                     key={promo.id}
                     className={`relative flex-shrink-0 ${
@@ -211,13 +208,7 @@ export default function promo_banners({
                       }
                       className="flex w-[136px] flex-col items-center gap-2 text-center"
                     >
-                      <span
-                        className={`block size-[128px] overflow-hidden rounded-full bg-neutral-200 ${
-                          viewed
-                            ? 'opacity-65 shadow-[0_0_0_3px_#f4f5f6,0_0_0_5px_#d4d4d4]'
-                            : 'shadow-[0_0_0_3px_#f4f5f6,0_0_0_7px_#ff6b6b]'
-                        }`}
-                      >
+                      <span className="block size-[128px] overflow-hidden rounded-full bg-neutral-200 shadow-[0_0_0_3px_#f4f5f6,0_0_0_7px_#ff6b6b]">
                         <img
                           src={promo.image_url}
                           alt=""
@@ -225,7 +216,7 @@ export default function promo_banners({
                         />
                       </span>
                       <span className="w-full px-0.5 text-sm font-extrabold leading-snug text-neutral-900">
-                        {promo.title}
+                        {promo.title.replace(/\n+/g, ' ')}
                       </span>
                     </button>
                     {edit_mode &&
@@ -236,8 +227,7 @@ export default function promo_banners({
                         className: 'absolute -top-1 -right-1 z-20',
                       })}
                   </div>
-                );
-              })}
+              ))}
               {edit_mode && on_add_promo && (
                 <button
                   type="button"
@@ -285,16 +275,14 @@ export default function promo_banners({
               {active.map((promo) => (
                 <div
                   key={promo.id}
-                  className={`relative flex-shrink-0 w-[152px] sm:w-[180px] aspect-[9/16] rounded-card overflow-hidden isolate ${
+                  className={`relative flex-shrink-0 w-[152px] sm:w-[180px] aspect-[2/3] rounded-card overflow-hidden isolate ${
                     edit_mode && !promo.is_active ? 'opacity-45' : ''
                   }`}
                 >
                   <button
                     type="button"
                     onClick={() => (edit_mode ? on_edit_promo?.(promo) : on_promo_click(promo))}
-                    className={`relative block size-full bg-neutral-900 text-left hover:brightness-[1.03] transition-[filter,opacity] ${
-                      !edit_mode && viewed_ids?.has(promo.id) ? 'opacity-50 saturate-[0.7]' : ''
-                    }`}
+                    className="relative block size-full bg-neutral-900 text-left hover:brightness-[1.03] transition-[filter,opacity]"
                     style={{
                       backgroundImage: `url("${promo.image_url}")`,
                       backgroundSize: 'contain',
@@ -302,13 +290,11 @@ export default function promo_banners({
                       backgroundRepeat: 'no-repeat',
                     }}
                   >
-                    {!promo.title_in_image && (
-                      <div className="absolute inset-x-0 bottom-0 p-4 sm:p-5">
-                        <p className="font-bold text-white text-[15px] sm:text-[17px] leading-snug drop-shadow-[0_1px_2px_rgba(0,0,0,0.25)]">
-                          {promo.title}
-                        </p>
-                      </div>
-                    )}
+                    {!promo.title_in_image &&
+                      createElement(promo_title_on_image, {
+                        title: promo.title,
+                        size: 'card',
+                      })}
                   </button>
                   {edit_mode &&
                     on_edit_promo &&
@@ -323,7 +309,7 @@ export default function promo_banners({
                 <button
                   type="button"
                   onClick={on_add_promo}
-                  className="flex-shrink-0 w-[152px] sm:w-[180px] aspect-[9/16] rounded-card border border-dashed border-surface bg-white text-sm text-neutral-500"
+                  className="flex-shrink-0 w-[152px] sm:w-[180px] aspect-[2/3] rounded-card border border-dashed border-surface bg-white text-sm text-neutral-500"
                 >
                   + акция
                 </button>

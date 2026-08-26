@@ -33,7 +33,7 @@ export type bonus_line = {
   menu_id?: string | null;
 };
 
-const NON_EARNING_CATEGORIES = new Set(['закуски', 'десерты', 'добавки']);
+const NON_EARNING_CATEGORIES = new Set(['закуски', 'десерты', 'добавки', 'комбо']);
 
 /** напиток копит бобаллы; закуски, десерты, добавки и топпинги — нет */
 export function is_boby_earning_item(item: bonus_line): boolean {

@@ -8,7 +8,6 @@ import site_content_page from '@/components/site-content-page';
 import type { promo_banner } from '@/lib/types';
 import { get_promo_store, subscribe_promo_store } from '@/lib/promo-store';
 import { default_promos } from '@/lib/promo-store';
-import { mark_promo_viewed } from '@/lib/viewed-promos';
 
 export default function akcii_page() {
   const router = useRouter();
@@ -33,7 +32,7 @@ export default function akcii_page() {
   function perform_promo_action(promo: promo_banner) {
     set_story_index(null);
     if (promo.menu_id) {
-      router.push('/');
+      router.push(`/?combo=${encodeURIComponent(promo.menu_id)}`);
       return;
     }
     if (promo.category) {
@@ -69,7 +68,6 @@ export default function akcii_page() {
           open: true,
           on_close: () => set_story_index(null),
           on_action: perform_promo_action,
-          on_view: (promo: promo_banner) => mark_promo_viewed(promo.id),
         }),
     ])
   );

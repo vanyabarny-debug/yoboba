@@ -56,7 +56,7 @@ export default function seller_product_sheet({
 }: props) {
   const [active, set_active] = useState<menu_item | null>(item);
   const [qty, set_qty] = useState(1);
-  const [volume, set_volume] = useState('450');
+  const [volume, set_volume] = useState('500');
   const [topping, set_topping] = useState(0);
   const [details_open, set_details_open] = useState(false);
   const [recs, set_recs] = useState<menu_item[]>([]);
@@ -111,7 +111,7 @@ export default function seller_product_sheet({
   const show_volumes = active ? item_has_volumes(active) : false;
   const show_toppings = active ? item_has_toppings(active) : false;
   const volume_options = active ? get_item_volumes(active) : [];
-  const volume_ml = volume_options.find((v) => String(v.ml) === volume)?.ml ?? volume_options[0]?.ml ?? 450;
+  const volume_ml = volume_options.find((v) => String(v.ml) === volume)?.ml ?? volume_options[0]?.ml ?? 500;
   const topping_max = Math.max(4, Math.round(volume_ml / 60));
   const topping_used = show_toppings ? topping : 0;
   const volume_used = show_volumes ? volume : undefined;

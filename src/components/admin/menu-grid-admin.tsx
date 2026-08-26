@@ -88,6 +88,7 @@ function admin_dish_card({
                 item,
                 className: 'w-full h-full',
                 variant: 'card',
+                fit: 'contain',
               })}
             </div>
             {menu_item_has_badge(item) &&
