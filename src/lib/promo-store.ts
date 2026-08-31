@@ -9,7 +9,7 @@ import {
   standard_promo_vignette,
 } from '@/lib/promo-image-vignette';
 
-export const promo_store_version = 43;
+export const promo_store_version = 44;
 
 const storage_key = 'yoboba_promo_store';
 const update_event = 'yoboba-promo-update';
@@ -137,21 +137,28 @@ export function get_default_promo_store(): promo_store {
 }
 
 function merge_with_code_defaults(parsed: promo_store): promo_store {
-  const removed = new Set(
-    (parsed.removed_ids ?? []).filter((id) => typeof id === 'string' && id)
-  );
-  const saved = (parsed.promos ?? []).filter(
-    (promo) => promo?.id && !removed.has(promo.id)
-  );
   const default_ids = default_promo_ids();
   const default_by_id = new Map(default_promos.map((def) => [def.id, def]));
   const upgrading = (parsed.version ?? 0) < promo_store_version;
+
+  const removed = new Set(
+    (parsed.removed_ids ?? []).filter((id) => typeof id === 'string' && id)
+  );
+  // при апгрейде вернуть дефолтные акции, если их случайно удалили/выключили
+  if (upgrading) {
+    for (const id of default_ids) removed.delete(id);
+  }
+
+  const saved = (parsed.promos ?? []).filter(
+    (promo) => promo?.id && !removed.has(promo.id)
+  );
 
   function merge_one(def: promo_banner, prev: promo_banner): promo_banner {
     const merged: promo_banner = { ...def, ...prev, image_url: def.image_url };
     if (upgrading) {
       merged.title = def.title;
       merged.title_in_image = def.title_in_image;
+      merged.is_active = def.is_active;
       if (def.title_layout) merged.title_layout = def.title_layout;
       if (def.image_vignette !== undefined) merged.image_vignette = def.image_vignette;
     }
@@ -174,7 +181,7 @@ function merge_with_code_defaults(parsed: promo_store): promo_store {
     }
   }
 
-  // новые дефолтные акции, которых ещё нет у пользователя
+  // новые / восстановленные дефолтные акции
   for (const def of default_promos) {
     if (removed.has(def.id) || seen.has(def.id)) continue;
     next.push({ ...def });
