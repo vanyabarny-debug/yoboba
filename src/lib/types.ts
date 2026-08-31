@@ -83,6 +83,10 @@ export type menu_item = {
   cold?: boolean;
   /** можно горячо */
   hot?: boolean;
+  /** лимитированная позиция — показывать остаток */
+  stock_limited?: boolean;
+  /** сколько порций осталось (если stock_limited) */
+  stock_qty?: number | null;
 };
 
 export type story = {

@@ -71,15 +71,15 @@ export default function sidebar_ad({
               loading="lazy"
               decoding="async"
             />
-            <div className="absolute inset-x-0 top-0 p-4">
+            <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/55 via-black/25 to-transparent px-4 pb-4 pt-10">
               <p className="font-bold text-white text-base leading-snug drop-shadow-[0_1px_3px_rgba(0,0,0,0.35)]">
                 {slide.title}
               </p>
-              {slide.subtitle && (
+              {slide.subtitle ? (
                 <p className="text-white/90 text-xs mt-1 leading-snug drop-shadow-[0_1px_2px_rgba(0,0,0,0.3)]">
                   {slide.subtitle}
                 </p>
-              )}
+              ) : null}
             </div>
           </button>
         ))}

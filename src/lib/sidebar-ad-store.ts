@@ -1,6 +1,6 @@
 import type { sidebar_ad_slide } from '@/lib/types';
 
-export const sidebar_ad_store_version = 8;
+export const sidebar_ad_store_version = 11;
 
 const storage_key = 'yoboba_sidebar_ad_store';
 const update_event = 'yoboba-sidebar-ad-update';
@@ -10,33 +10,9 @@ export const default_sidebar_interval_ms = 5000;
 export const default_sidebar_slides: sidebar_ad_slide[] = [
   {
     id: 'side-viral',
-    title: '25 000 просмотров = напиток',
-    subtitle: 'короткое видео с упоминанием yomoyo',
-    image_url: '/images/sidebar/slide-viral.png?v=3',
-    link_url: '/',
-    is_active: true,
-  },
-  {
-    id: 'side-1',
-    title: 'удобная оплата',
-    subtitle: 'картой или на кассе',
-    image_url: '/images/sidebar/slide1.png',
-    is_active: true,
-  },
-  {
-    id: 'side-2',
-    title: 'приложение yomoyo',
-    subtitle: 'ещё выгоднее в pwa',
-    image_url: '/images/sidebar/slide2.png',
-    link_url: '/',
-    is_active: true,
-  },
-  {
-    id: 'side-3',
-    title: 'комбо недели',
-    subtitle: 'бабл + закуска',
-    image_url: '/images/sidebar/slide3.png',
-    menu_id: 'cb-1',
+    title: 'баблти за просмотры',
+    image_url: '/images/sidebar/slide-viral.png?v=5',
+    link_url: '/akciya-25k-prosmotrov',
     is_active: true,
   },
 ];
@@ -69,12 +45,7 @@ function repair_sidebar_store(store: sidebar_ad_store): sidebar_ad_store {
     by_id.set(def.id, {
       ...def,
       ...existing,
-      title:
-        existing?.title && /баблтишн/i.test(existing.title)
-          ? def.title
-          : upgrading
-            ? def.title
-            : existing?.title ?? def.title,
+      title: upgrading ? def.title : existing?.title ?? def.title,
       subtitle: upgrading ? def.subtitle : existing?.subtitle ?? def.subtitle,
       image_url:
         upgrading || !existing?.image_url || existing.image_url.endsWith('.svg')
@@ -85,12 +56,16 @@ function repair_sidebar_store(store: sidebar_ad_store): sidebar_ad_store {
       is_active: upgrading ? def.is_active : existing?.is_active ?? def.is_active,
     });
   }
-  // порядок как в дефолтах, кастомные слайды — в конце
+
+  // на апгрейде v10 — только дефолтные слайды (убираем старые side-1/2/3)
   const default_ids = new Set(default_sidebar_slides.map((s) => s.id));
-  let slides = [
-    ...default_sidebar_slides.map((def) => by_id.get(def.id)!),
-    ...[...by_id.values()].filter((s) => !default_ids.has(s.id)),
-  ];
+  let slides = upgrading
+    ? default_sidebar_slides.map((def) => by_id.get(def.id)!)
+    : [
+        ...default_sidebar_slides.map((def) => by_id.get(def.id)!),
+        ...[...by_id.values()].filter((s) => !default_ids.has(s.id)),
+      ];
+
   if (!slides.some((s) => s.is_active)) {
     slides = slides.map((s) =>
       default_sidebar_slides.some((d) => d.id === s.id) ? { ...s, is_active: true } : s
@@ -124,7 +99,7 @@ export function get_sidebar_ad_store(): sidebar_ad_store {
       return repair_sidebar_store({
         ...get_default_sidebar_ad_store(),
         ...parsed,
-        version: sidebar_ad_store_version,
+        version: parsed.version ?? 0,
       });
     }
     return repair_sidebar_store(parsed);

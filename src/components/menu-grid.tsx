@@ -11,6 +11,12 @@ import promo_inline from '@/components/promo-inline';
 import { get_category_heading_style, subscribe_menu_store } from '@/lib/menu-store';
 import { item_in_category } from '@/lib/menu-item-categories';
 import { category_heading_class_name } from '@/lib/heading-style';
+import {
+  format_stock_left,
+  item_is_effectively_available,
+  item_show_stock_left,
+  item_stock_qty,
+} from '@/lib/menu-stock';
 
 type props = {
   items: menu_item[];
@@ -46,7 +52,9 @@ function dish_card({
   on_item_click: (item: menu_item) => void;
   on_quick_add?: (item: menu_item) => void;
 }) {
-  const available = item.is_available;
+  const available = item_is_effectively_available(item);
+  const stock_qty = item_stock_qty(item);
+  const show_stock = item_show_stock_left(item);
   const image_ref = useRef<HTMLDivElement>(null);
 
   function quick_add() {
@@ -80,6 +88,15 @@ function dish_card({
           {!available && (
             <span className="pointer-events-none absolute inset-x-0 bottom-2 z-30 mx-auto w-max rounded-pill bg-neutral-900/80 px-2.5 py-1 text-[11px] font-bold text-white">
               нет в наличии
+            </span>
+          )}
+          {show_stock && stock_qty !== null && (
+            <span
+              className={`pointer-events-none absolute inset-x-0 bottom-2 z-30 mx-auto w-max rounded-pill px-2.5 py-1 text-[11px] font-bold text-white ${
+                stock_qty <= 3 ? 'bg-accent' : 'bg-neutral-900/75'
+              }`}
+            >
+              {format_stock_left(stock_qty)}
             </span>
           )}
           {menu_item_has_badge(item) &&

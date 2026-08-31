@@ -1,6 +1,6 @@
 'use client';
 
-import { createElement, Suspense, useEffect, useState } from 'react';
+import { createElement, Suspense, useEffect, useState, type ReactNode } from 'react';
 import Link from 'next/link';
 import site_chrome from '@/components/site-chrome';
 import {
@@ -16,6 +16,8 @@ type props = {
   eyebrow?: string;
   primary_cta?: { href: string; label: string };
   hero_bg?: string;
+  /** блок под интро (счётчик акции и т.п.) */
+  after_intro?: ReactNode;
 };
 
 type section = {
@@ -94,6 +96,7 @@ export default function akciya_promo_page({
   eyebrow = 'акция',
   primary_cta = { href: '/', label: 'в меню' },
   hero_bg = '#0141C7',
+  after_intro,
 }: props) {
   // дефолты из кода — одинаковые на сервере и клиенте (без localStorage)
   const [page, set_page] = useState<site_page | null>(
@@ -155,6 +158,7 @@ export default function akciya_promo_page({
               <p key={paragraph.slice(0, 40)}>{linkify(paragraph)}</p>
             ))}
           </div>
+          {after_intro}
           <div className="mt-7 flex flex-wrap gap-3">
             <Link
               href={primary_cta.href}

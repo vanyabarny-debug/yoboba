@@ -21,6 +21,12 @@ import { DRAWER_CLOSE_BTN_CLASS, DRAWER_INLINE_CLOSE_BTN_CLASS } from '@/lib/dra
 import { use_sheet_swipe } from '@/lib/use-sheet-swipe';
 import { item_has_toppings, item_has_volumes } from '@/lib/cart-summary';
 import menu_temp_marks from '@/components/menu-temp-marks';
+import {
+  format_stock_left,
+  item_is_effectively_available,
+  item_show_stock_left,
+  item_stock_qty,
+} from '@/lib/menu-stock';
 
 type props = {
   item: menu_item | null;
@@ -290,6 +296,7 @@ export default function product_drawer({
 
   async function handle_add_to_cart() {
     if (!active_item || saving_ref.current) return;
+    if (!item_is_effectively_available(active_item)) return;
     saving_ref.current = true;
 
     const replace_key = is_cart_edit
@@ -392,6 +399,18 @@ export default function product_drawer({
                   <span>{active_item.name}</span>
                   {createElement(menu_temp_marks, { item: active_item, size: 18 })}
                 </h3>
+                {item_show_stock_left(active_item) && item_stock_qty(active_item) !== null && (
+                  <p
+                    className={`mt-2 text-sm font-bold ${
+                      (item_stock_qty(active_item) ?? 0) <= 3 ? 'text-accent' : 'text-neutral-600'
+                    }`}
+                  >
+                    {format_stock_left(item_stock_qty(active_item)!)}
+                  </p>
+                )}
+                {!item_is_effectively_available(active_item) && (
+                  <p className="mt-2 text-sm font-bold text-neutral-400">нет в наличии</p>
+                )}
                 {show_volumes && volume_options.length > 0 && (
                 <div className="mt-3 inline-flex max-w-full flex-wrap rounded-full bg-[#f3f4f6] p-0.5">
                   {volume_options.map((option) => {
@@ -529,7 +548,14 @@ export default function product_drawer({
                     <span className="w-8 text-center text-sm font-semibold">{qty}</span>
                     <button
                       type="button"
-                      onClick={() => set_qty((q) => q + 1)}
+                      onClick={() =>
+                        set_qty((q) => {
+                          const max = item_stock_qty(active_item);
+                          const next = q + 1;
+                          if (max === null) return next;
+                          return Math.min(max, next);
+                        })
+                      }
                       className="flex h-9 w-9 items-center justify-center rounded-full text-lg text-neutral-800"
                     >
                       +
@@ -541,12 +567,13 @@ export default function product_drawer({
                   <button
                     type="button"
                     onClick={handle_add_to_cart}
+                    disabled={!item_is_effectively_available(active_item)}
                     aria-label={
                       is_cart_edit
                         ? `сохранить за ${total_price} рублей`
                         : `в корзину за ${total_price} рублей`
                     }
-                    className="inline-flex items-center gap-2 rounded-pill bg-accent px-6 py-3 text-accent-foreground hover:opacity-95 transition-opacity"
+                    className="inline-flex items-center gap-2 rounded-pill bg-accent px-6 py-3 text-accent-foreground hover:opacity-95 transition-opacity disabled:cursor-not-allowed disabled:opacity-45"
                   >
                     {!is_cart_edit && <span className="text-xl font-bold leading-none">+</span>}
                     <span className="text-base font-semibold">
@@ -575,7 +602,14 @@ export default function product_drawer({
                     <span className="w-8 text-center text-sm font-semibold">{qty}</span>
                     <button
                       type="button"
-                      onClick={() => set_qty((q) => q + 1)}
+                      onClick={() =>
+                        set_qty((q) => {
+                          const max = item_stock_qty(active_item);
+                          const next = q + 1;
+                          if (max === null) return next;
+                          return Math.min(max, next);
+                        })
+                      }
                       className="flex h-9 w-9 items-center justify-center rounded-full text-lg text-neutral-800"
                     >
                       +
@@ -586,7 +620,8 @@ export default function product_drawer({
                 <button
                   type="button"
                   onClick={handle_add_to_cart}
-                  className="w-full rounded-pill bg-accent py-4 text-base font-semibold text-accent-foreground shadow-[0_8px_24px_rgba(4,104,240,0.28)] hover:opacity-95 transition-opacity"
+                  disabled={!item_is_effectively_available(active_item)}
+                  className="w-full rounded-pill bg-accent py-4 text-base font-semibold text-accent-foreground shadow-[0_8px_24px_rgba(4,104,240,0.28)] hover:opacity-95 transition-opacity disabled:cursor-not-allowed disabled:opacity-45"
                 >
                   {is_cart_edit ? 'сохранить' : 'в корзину'} · {total_price} ₽
                 </button>

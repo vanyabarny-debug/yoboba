@@ -178,6 +178,36 @@ function editor({
             on_change: (on) => set_draft({ ...draft, is_available: on }),
           })}
           {toggle_row({
+            label: 'лимитированная',
+            hint: 'показывать остаток на карточке, как на lamoda',
+            on: draft.stock_limited === true,
+            on_change: (on) =>
+              set_draft({
+                ...draft,
+                stock_limited: on,
+                stock_qty: on
+                  ? Math.max(0, Number(draft.stock_qty) || 10)
+                  : draft.stock_qty ?? null,
+              }),
+          })}
+          {draft.stock_limited === true && (
+            <label className="block text-xs text-neutral-500">
+              сколько осталось
+              <input
+                type="number"
+                min={0}
+                value={Math.max(0, Number(draft.stock_qty) || 0)}
+                onChange={(e) =>
+                  set_draft({
+                    ...draft,
+                    stock_qty: Math.max(0, Math.floor(Number(e.target.value) || 0)),
+                  })
+                }
+                className={field_class}
+              />
+            </label>
+          )}
+          {toggle_row({
             label: 'объёмы',
             hint: 'гость выбирает мл в карточке',
             on: item_has_volumes(draft),
