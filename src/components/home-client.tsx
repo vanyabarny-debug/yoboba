@@ -21,7 +21,6 @@ import promo_banners from '@/components/promo-banners';
 import promo_story_viewer from '@/components/promo-story-viewer';
 import news_ticker from '@/components/news-ticker';
 import news_ticker_edit_sheet from '@/components/admin/news-ticker-edit-sheet';
-import akciya_100_counter from '@/components/akciya-100-counter';
 import promo_edit_sheet from '@/components/admin/promo-edit-sheet';
 import category_nav from '@/components/category-nav';
 import category_edit_sheet from '@/components/admin/category-edit-sheet';
@@ -1539,23 +1538,13 @@ export default function home_client({
           on_promo_click: handle_promo_click,
         })}
 
-      <div className="page-shell relative pb-3 min-[1024px]:pb-4">
-        <div className="grid grid-cols-2 gap-2">
-          {createElement(news_ticker, {
-            embedded: true,
-            ...(is_admin_edit
-              ? {
-                  edit_mode: true,
-                  on_edit: () => {
-                    set_ticker_settings(get_news_ticker_settings());
-                    set_editing_ticker(true);
-                  },
-                }
-              : {}),
-          })}
-          {createElement(akciya_100_counter, { variant: 'banner' })}
-        </div>
-      </div>
+      {createElement(news_ticker, is_admin_edit ? {
+        edit_mode: true,
+        on_edit: () => {
+          set_ticker_settings(get_news_ticker_settings());
+          set_editing_ticker(true);
+        },
+      } : {})}
       {!is_admin_edit && gift_pick_mode ? (
         <div className="page-shell pb-3 min-[1024px]:pb-4">
           <div className="rounded-[12px] bg-[#ffe14d] px-4 py-3 text-sm font-medium text-neutral-900">

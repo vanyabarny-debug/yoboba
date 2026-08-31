@@ -13,8 +13,8 @@ type status = {
 const DIGITS = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9] as const;
 
 type props = {
-  /** компактный блок рядом с бегущей строкой на главной */
-  variant?: 'page' | 'banner';
+  /** page — на странице акции; story — кружок в ленте; card — карточка 2:3 */
+  variant?: 'page' | 'story' | 'card';
 };
 
 function digit_reel({ value }: { value: number }) {
@@ -132,6 +132,8 @@ export default function akciya_100_counter({ variant = 'page' }: props) {
         ? 'бесплатные напитки закончились'
         : `осталось ${target} бесплатных бабл ти`;
 
+  const label = sold_out ? 'закончились' : 'осталось бабл ти';
+
   const reels = (
     <span className="flex items-start leading-none" aria-hidden>
       {digit_reel({ value: hundreds })}
@@ -140,26 +142,45 @@ export default function akciya_100_counter({ variant = 'page' }: props) {
     </span>
   );
 
-  if (variant === 'banner') {
+  if (variant === 'story') {
     return (
       <Link
         href="/akciya-pervye-100"
-        className="flex h-9 w-full items-center justify-between gap-2 overflow-hidden rounded-[10px] bg-accent px-3 text-accent-foreground sm:h-10 sm:px-3.5"
+        className="flex w-[136px] flex-shrink-0 flex-col items-center gap-2 text-center"
         aria-label={aria}
       >
-        <span className="min-w-0 truncate text-[10px] font-bold uppercase leading-tight tracking-[0.14em] sm:text-[11px]">
+        <span className="flex size-[128px] flex-col items-center justify-center overflow-hidden rounded-full bg-accent text-accent-foreground shadow-[0_0_0_3px_#f4f5f6,0_0_0_7px_#ff6b6b]">
+          <span className="text-[9px] font-bold uppercase tracking-[0.14em] opacity-90">
+            {sold_out ? 'всё' : 'осталось'}
+          </span>
+          <span className="mt-0.5 text-[2.35rem] leading-none">{reels}</span>
+        </span>
+        <span className="w-full px-0.5 text-sm font-extrabold leading-snug text-neutral-900">
+          {label}
+        </span>
+      </Link>
+    );
+  }
+
+  if (variant === 'card') {
+    return (
+      <Link
+        href="/akciya-pervye-100"
+        className="relative flex flex-shrink-0 w-[152px] sm:w-[180px] aspect-[2/3] flex-col items-center justify-center overflow-hidden rounded-card bg-accent px-3 text-center text-accent-foreground"
+        aria-label={aria}
+      >
+        <span className="text-[10px] font-bold uppercase tracking-[0.16em] opacity-90 sm:text-[11px]">
           {sold_out ? 'закончились' : 'осталось бабл ти'}
         </span>
-        <span className="shrink-0 text-[1.55rem] leading-none sm:text-[1.7rem]">{reels}</span>
+        <span className="mt-3 text-[3.25rem] leading-none sm:text-[3.75rem]">{reels}</span>
+        <span className="mt-4 text-sm font-semibold opacity-90">из 100</span>
       </Link>
     );
   }
 
   return (
     <div className="mt-6 sm:mt-7" aria-live="polite">
-      <p className="text-[12px] font-bold uppercase tracking-[0.2em] text-accent">
-        {sold_out ? 'закончились' : 'осталось бабл ти'}
-      </p>
+      <p className="text-[12px] font-bold uppercase tracking-[0.2em] text-accent">{label}</p>
       <div
         className="mt-1.5 flex items-start text-[clamp(4.25rem,13vw,6.75rem)] leading-none text-neutral-900"
         aria-label={aria}

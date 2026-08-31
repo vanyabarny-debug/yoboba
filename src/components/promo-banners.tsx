@@ -4,6 +4,7 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState, createElemen
 import type { promo_banner } from '@/lib/types';
 import edit_pencil from '@/components/admin/edit-pencil';
 import promo_image_with_title from '@/components/promo-image-with-title';
+import akciya_100_counter from '@/components/akciya-100-counter';
 import { move_promo, reorder_promos } from '@/lib/promo-store';
 
 type props = {
@@ -338,6 +339,7 @@ export default function promo_banners({
         <div className="min-[1024px]:hidden w-full min-w-0">
           <div className="promo-stories-scroll stories-scroll">
             <div className="flex w-max gap-3 py-4 pl-[var(--page-gutter)]">
+              {createElement(akciya_100_counter, { variant: 'story' })}
               {active.map((promo, index) => (
                   <div
                     key={promo.id}
@@ -422,6 +424,7 @@ export default function promo_banners({
         <div className="page-shell overflow-visible">
           <div ref={scroll_ref} className="overflow-x-auto stories-scroll min-w-0">
             <div ref={track_ref} className="flex w-max shrink-0 gap-2">
+              {createElement(akciya_100_counter, { variant: 'card' })}
               {active.map((promo, index) => (
                 <div
                   key={promo.id}
