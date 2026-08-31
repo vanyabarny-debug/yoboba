@@ -25,10 +25,10 @@ function is_unusable_src(src: string | null | undefined) {
 function skeleton({ className = '', fill = false }: { className?: string; fill?: boolean }) {
   return (
     <div
-      className={`${fill ? 'h-full w-full' : 'aspect-square'} overflow-hidden bg-neutral-200 ${className}`}
+      className={`${fill ? 'h-full w-full' : 'aspect-square'} overflow-hidden bg-white ${className}`}
       aria-hidden
     >
-      <div className="h-full w-full animate-pulse bg-gradient-to-br from-neutral-200 via-neutral-100 to-neutral-200" />
+      <div className="h-full w-full animate-pulse bg-gradient-to-br from-neutral-100 via-white to-neutral-100" />
     </div>
   );
 }
@@ -77,11 +77,11 @@ function menu_image_inner({
   return (
     <div
       className={`relative overflow-hidden ${
-        fit === 'contain' ? 'bg-transparent' : 'bg-neutral-200'
+        fit === 'contain' ? 'bg-transparent' : 'bg-white'
       } ${fill ? 'h-full w-full' : 'aspect-square'} ${className}`}
     >
       {!loaded && (
-        <div className="absolute inset-0 animate-pulse bg-gradient-to-br from-neutral-200 via-neutral-100 to-neutral-200" />
+        <div className="absolute inset-0 animate-pulse bg-gradient-to-br from-neutral-100 via-white to-neutral-100" />
       )}
       <img
         ref={img_ref}

@@ -140,7 +140,7 @@ export default function combo_builder({
                     key={`${pick.id}-${index}`}
                     type="button"
                     onClick={() => remove_at(index)}
-                    className="inline-flex max-w-full items-center gap-1.5 rounded-full bg-[#f3f4f6] py-1.5 pl-1.5 pr-2.5 text-left text-xs font-semibold text-neutral-800"
+                    className="inline-flex max-w-full items-center gap-1.5 rounded-full bg-accent/10 py-1.5 pl-1.5 pr-2.5 text-left text-xs font-semibold text-neutral-800"
                     aria-label={`убрать ${pick.name}`}
                   >
                     <span className="relative h-7 w-7 shrink-0 overflow-hidden rounded-full bg-white">
@@ -175,10 +175,10 @@ export default function combo_builder({
                     className={`flex min-w-0 flex-col items-center rounded-2xl p-2 text-center transition-colors ${
                       disabled
                         ? 'opacity-40'
-                        : 'hover:bg-neutral-50 active:bg-neutral-100'
+                        : 'hover:bg-accent/[0.06] active:bg-accent/10'
                     }`}
                   >
-                    <div className="aspect-square w-full overflow-hidden rounded-xl bg-[#f3f4f6]">
+                    <div className="aspect-square w-full overflow-hidden rounded-xl bg-white">
                       {createElement(menu_image, {
                         item,
                         className: 'h-full w-full',

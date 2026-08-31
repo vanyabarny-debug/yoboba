@@ -361,7 +361,7 @@ export default function product_drawer({
           <div className="relative z-20 w-full shrink-0 overflow-visible pt-3 pl-3 sm:w-[43%] sm:pt-4 sm:pl-4">
             <div
               ref={image_ref}
-              className="relative aspect-square w-full overflow-hidden rounded-[20px] bg-[#f3f4f6] sm:aspect-auto sm:h-full sm:min-h-[280px] sm:rounded-[24px]"
+              className="relative aspect-square w-full overflow-hidden rounded-[20px] bg-white sm:aspect-auto sm:h-full sm:min-h-[280px] sm:rounded-[24px]"
             >
               {createElement(menu_image, {
                 item: active_item,
@@ -402,7 +402,7 @@ export default function product_drawer({
                 {item_show_stock_left(active_item) && item_stock_qty(active_item) !== null && (
                   <p
                     className={`mt-2 text-sm font-bold ${
-                      (item_stock_qty(active_item) ?? 0) <= 3 ? 'text-accent' : 'text-neutral-600'
+                      (item_stock_qty(active_item) ?? 0) <= 3 ? 'text-accent' : 'text-neutral-800'
                     }`}
                   >
                     {format_stock_left(item_stock_qty(active_item)!)}
@@ -412,7 +412,7 @@ export default function product_drawer({
                   <p className="mt-2 text-sm font-bold text-neutral-400">нет в наличии</p>
                 )}
                 {show_volumes && volume_options.length > 0 && (
-                <div className="mt-3 inline-flex max-w-full flex-wrap rounded-full bg-[#f3f4f6] p-0.5">
+                <div className="mt-3 inline-flex max-w-full flex-wrap rounded-full border border-black/[0.08] bg-white p-0.5">
                   {volume_options.map((option) => {
                     const id = String(option.ml);
                     const active = id === volume;
@@ -423,8 +423,8 @@ export default function product_drawer({
                         onClick={() => set_volume(id)}
                         className={`rounded-full px-3.5 py-1.5 text-sm transition-all ${
                           active
-                            ? 'bg-white text-neutral-900 font-semibold shadow-[0_2px_8px_rgba(0,0,0,0.08)]'
-                            : 'text-neutral-500 hover:text-neutral-800'
+                            ? 'bg-accent text-accent-foreground font-semibold shadow-[0_2px_8px_rgba(255,107,107,0.28)]'
+                            : 'text-neutral-600 hover:text-neutral-900'
                         }`}
                       >
                         {option.ml} мл
@@ -436,13 +436,13 @@ export default function product_drawer({
               </div>
 
               <div className="mt-5">
-                <div className="flex flex-wrap gap-x-5 gap-y-1 text-sm font-normal text-neutral-500">
+                <div className="flex flex-wrap gap-x-5 gap-y-1 text-sm font-medium text-neutral-700">
                   <span>{nutrition.kcal} ккал</span>
                   <span>белки {nutrition.protein} г</span>
                   <span>жиры {nutrition.fat} г</span>
                   <span>углеводы {nutrition.carb} г</span>
                 </div>
-                <p className="mt-2 text-[15px] leading-relaxed text-neutral-700">
+                <p className="mt-2 text-[15px] leading-relaxed text-neutral-800">
                   {composition.join(', ')}
                 </p>
               </div>
@@ -461,7 +461,7 @@ export default function product_drawer({
                       <button
                         type="button"
                         aria-label="что за топинг"
-                        className="flex h-5 w-5 items-center justify-center rounded-full bg-neutral-200 text-[11px] font-bold text-neutral-600 transition-colors hover:bg-neutral-300"
+                        className="flex h-5 w-5 items-center justify-center rounded-full bg-accent/15 text-[11px] font-bold text-accent transition-colors hover:bg-accent/25"
                       >
                         i
                       </button>
@@ -472,7 +472,7 @@ export default function product_drawer({
                       </span>
                     </span>
                   </div>
-                  <div className="flex shrink-0 items-center gap-1 rounded-full bg-[#f3f4f6] p-1">
+                  <div className="flex shrink-0 items-center gap-1 rounded-full border border-black/[0.08] bg-white p-1">
                     <button
                       type="button"
                       onClick={() => set_topping((t) => Math.max(0, t - 1))}
@@ -535,7 +535,7 @@ export default function product_drawer({
               <div className="min-[1024px]:hidden">
                 <div className="mb-3 flex items-center justify-between gap-3">
                   <p className="text-sm font-medium text-neutral-500">количество</p>
-                  <div className="flex items-center gap-1 rounded-full bg-[#f3f4f6] p-1">
+                  <div className="flex items-center gap-1 rounded-full border border-black/[0.08] bg-white p-1">
                     <button
                       type="button"
                       onClick={() => set_qty((q) => Math.max(1, q - 1))}
@@ -589,7 +589,7 @@ export default function product_drawer({
               <div className="hidden min-[1024px]:block">
                 <div className="mb-3 flex items-center justify-between gap-3">
                   <p className="text-sm font-medium text-neutral-500">количество</p>
-                  <div className="flex items-center gap-1 rounded-full bg-[#f3f4f6] p-1">
+                  <div className="flex items-center gap-1 rounded-full border border-black/[0.08] bg-white p-1">
                     <button
                       type="button"
                       onClick={() => set_qty((q) => Math.max(1, q - 1))}
