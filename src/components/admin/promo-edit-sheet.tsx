@@ -7,6 +7,9 @@ import { image_upload_button } from '@/components/admin/image-file-picker';
 import { classify_promo_link, allowed_platform_labels } from '@/lib/promo-link';
 import { PROMO_SIZE_HINT } from '@/lib/promo-format';
 import { get_page_by_slug, type site_page } from '@/lib/site-content-store';
+import promo_title_layout_editor from '@/components/admin/promo-title-layout-editor';
+import { default_promo_title_layout } from '@/lib/promo-title-layout';
+import { default_promo_image_vignette } from '@/lib/promo-image-vignette';
 
 type props = {
   promo: promo_banner | null;
@@ -64,6 +67,12 @@ export default function promo_edit_sheet({ promo, categories, on_close, on_save,
             subtitle: draft.subtitle?.trim() || undefined,
             badge: draft.badge?.trim() || undefined,
             cta_label: draft.cta_label?.trim() || undefined,
+            title_in_image: draft.title_in_image === true,
+            title_layout: draft.title_in_image ? undefined : draft.title_layout,
+            image_vignette:
+              draft.image_vignette && draft.image_vignette.strength > 0
+                ? draft.image_vignette
+                : undefined,
           };
 
           let payload: promo_banner;
@@ -99,7 +108,16 @@ export default function promo_edit_sheet({ promo, categories, on_close, on_save,
         className="space-y-3"
       >
         {draft.image_url ? (
-          <img src={draft.image_url} alt="" className="mx-auto w-28 aspect-[2/3] rounded-xl object-contain bg-surface" />
+          createElement(promo_title_layout_editor, {
+            title: draft.title,
+            image_url: draft.image_url,
+            title_in_image: draft.title_in_image === true,
+            layout: draft.title_layout || default_promo_title_layout(),
+            on_change: (title_layout) => set_draft({ ...draft, title_layout }),
+            vignette: draft.image_vignette ?? null,
+            on_vignette_change: (image_vignette) =>
+              set_draft({ ...draft, image_vignette: image_vignette ?? undefined }),
+          })
         ) : (
           <div className="mx-auto w-28 aspect-[2/3] rounded-xl bg-surface flex items-center justify-center text-sm text-neutral-400">
             фото
@@ -127,14 +145,22 @@ export default function promo_edit_sheet({ promo, categories, on_close, on_save,
             type="checkbox"
             className="mt-0.5"
             checked={!draft.title_in_image}
-            onChange={(e) =>
-              set_draft({ ...draft, title_in_image: !e.target.checked })
-            }
+            onChange={(e) => {
+              const overlay = e.target.checked;
+              set_draft({
+                ...draft,
+                title_in_image: !overlay,
+                title_layout:
+                  overlay && !draft.title_layout
+                    ? default_promo_title_layout()
+                    : draft.title_layout,
+              });
+            }}
           />
           <span>
             белый текст на фото
             <span className="mt-0.5 block text-xs text-neutral-400">
-              Montserrat Alternates · если снять галку — текст уже на картинке
+              цвет, тень, обводка, размер и позиция на кадре
             </span>
           </span>
         </label>

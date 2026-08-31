@@ -1,9 +1,10 @@
 'use client';
 
-import { useCallback, useEffect, useLayoutEffect, useRef, useState, createElement } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, createElement, type PointerEvent as ReactPointerEvent } from 'react';
 import type { promo_banner } from '@/lib/types';
 import edit_pencil from '@/components/admin/edit-pencil';
-import promo_title_on_image from '@/components/promo-title-on-image';
+import promo_image_with_title from '@/components/promo-image-with-title';
+import { move_promo, reorder_promos } from '@/lib/promo-store';
 
 type props = {
   promos: promo_banner[];
@@ -29,6 +30,144 @@ export default function promo_banners({
   const active = edit_mode ? promos : promos.filter((p) => p.is_active);
   const show_stories = layout === 'home';
   const show_cards = layout === 'cards';
+
+  const drag_from_ref = useRef<number | null>(null);
+  const drag_over_ref = useRef<number | null>(null);
+  const drag_cleanup_ref = useRef<(() => void) | null>(null);
+  const [drag_from, set_drag_from] = useState<number | null>(null);
+  const [drag_over, set_drag_over] = useState<number | null>(null);
+
+  useEffect(() => {
+    return () => drag_cleanup_ref.current?.();
+  }, []);
+
+  const clear_drag = useCallback(() => {
+    drag_cleanup_ref.current?.();
+    drag_cleanup_ref.current = null;
+    drag_from_ref.current = null;
+    drag_over_ref.current = null;
+    set_drag_from(null);
+    set_drag_over(null);
+  }, []);
+
+  const resolve_drop_index = useCallback((client_x: number, client_y: number) => {
+    const el = document.elementFromPoint(client_x, client_y);
+    const target = el?.closest('[data-promo-index]');
+    if (!target) return null;
+    const idx = Number((target as HTMLElement).dataset.promoIndex);
+    return Number.isFinite(idx) ? idx : null;
+  }, []);
+
+  const finish_drag = useCallback(() => {
+    const from = drag_from_ref.current;
+    const to = drag_over_ref.current;
+    if (from !== null && to !== null && from !== to) {
+      reorder_promos(from, to);
+    }
+    clear_drag();
+  }, [clear_drag]);
+
+  const start_drag = useCallback(
+    (index: number, e: ReactPointerEvent<HTMLElement>) => {
+      if (!edit_mode || e.button !== 0) return;
+      e.preventDefault();
+      e.stopPropagation();
+
+      clear_drag();
+      drag_from_ref.current = index;
+      drag_over_ref.current = index;
+      set_drag_from(index);
+      set_drag_over(index);
+
+      const on_move = (ev: PointerEvent) => {
+        const to = resolve_drop_index(ev.clientX, ev.clientY);
+        if (to === null) return;
+        drag_over_ref.current = to;
+        set_drag_over(to);
+      };
+
+      const on_up = () => finish_drag();
+
+      window.addEventListener('pointermove', on_move);
+      window.addEventListener('pointerup', on_up, { once: true });
+      window.addEventListener('pointercancel', on_up, { once: true });
+
+      drag_cleanup_ref.current = () => {
+        window.removeEventListener('pointermove', on_move);
+        window.removeEventListener('pointerup', on_up);
+        window.removeEventListener('pointercancel', on_up);
+      };
+    },
+    [clear_drag, edit_mode, finish_drag, resolve_drop_index]
+  );
+
+  function promo_drag_handle(index: number, className = '') {
+    if (!edit_mode) return null;
+    return (
+      <div
+        role="button"
+        tabIndex={0}
+        aria-label={`перетащить акцию ${index + 1}`}
+        onPointerDown={(e) => start_drag(index, e)}
+        onKeyDown={(e) => e.stopPropagation()}
+        onClick={(e) => e.stopPropagation()}
+        className={`flex h-8 w-8 items-center justify-center rounded-full bg-white text-neutral-700 shadow-[0_2px_10px_rgba(0,0,0,0.18)] cursor-grab active:cursor-grabbing touch-none select-none ${className}`}
+      >
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+          <circle cx="9" cy="7" r="1.6" />
+          <circle cx="15" cy="7" r="1.6" />
+          <circle cx="9" cy="12" r="1.6" />
+          <circle cx="15" cy="12" r="1.6" />
+          <circle cx="9" cy="17" r="1.6" />
+          <circle cx="15" cy="17" r="1.6" />
+        </svg>
+      </div>
+    );
+  }
+
+  function promo_move_buttons(promo: promo_banner, index: number, className = '') {
+    if (!edit_mode) return null;
+    return (
+      <div className={`absolute z-30 flex gap-1 ${className}`}>
+        <button
+          type="button"
+          disabled={index <= 0}
+          aria-label="сдвинуть акцию левее"
+          onClick={(e) => {
+            e.stopPropagation();
+            move_promo(promo.id, -1);
+          }}
+          className="flex h-7 min-w-7 items-center justify-center rounded-full bg-white/95 px-2 text-xs font-bold text-neutral-800 shadow disabled:opacity-35"
+        >
+          ←
+        </button>
+        <button
+          type="button"
+          disabled={index >= active.length - 1}
+          aria-label="сдвинуть акцию правее"
+          onClick={(e) => {
+            e.stopPropagation();
+            move_promo(promo.id, 1);
+          }}
+          className="flex h-7 min-w-7 items-center justify-center rounded-full bg-white/95 px-2 text-xs font-bold text-neutral-800 shadow disabled:opacity-35"
+        >
+          →
+        </button>
+      </div>
+    );
+  }
+
+  function promo_drop_class(index: number, base = '') {
+    const dragging = drag_from === index;
+    const over = drag_over === index && drag_from !== null && drag_from !== index;
+    return [
+      base,
+      dragging ? 'opacity-50 scale-[0.98] pointer-events-none' : '',
+      over ? 'ring-2 ring-accent ring-offset-2 ring-offset-page' : '',
+    ]
+      .filter(Boolean)
+      .join(' ');
+  }
 
   const scroll_ref = useRef<HTMLDivElement>(null);
   const track_ref = useRef<HTMLDivElement>(null);
@@ -131,7 +270,7 @@ export default function promo_banners({
   }, []);
 
   useEffect(() => {
-    if (!show_cards || active.length <= 3) return;
+    if (!show_cards || active.length <= 3 || edit_mode) return;
 
     const el = scroll_ref.current;
     const wrap = wrap_ref.current;
@@ -162,7 +301,7 @@ export default function promo_banners({
       wrap?.removeEventListener('mouseenter', on_enter);
       wrap?.removeEventListener('mouseleave', on_leave);
     };
-  }, [active.length, show_cards, scroll_cards]);
+  }, [active.length, show_cards, scroll_cards, edit_mode]);
 
   if (!active.length && !edit_mode) return null;
   if (!active.length && edit_mode) {
@@ -188,19 +327,30 @@ export default function promo_banners({
           <h2 className="text-xl sm:text-2xl font-extrabold leading-tight tracking-tight text-neutral-900">
             а у нас новости
           </h2>
+          {edit_mode ? (
+            <p className="mt-1 text-xs font-medium text-neutral-500">
+              ⋮⋮ — перетащить · ← → — сдвинуть
+            </p>
+          ) : null}
         </div>
       )}
       {show_stories && (
         <div className="min-[1024px]:hidden w-full min-w-0">
           <div className="promo-stories-scroll stories-scroll">
             <div className="flex w-max gap-3 py-4 pl-[var(--page-gutter)]">
-              {active.map((promo) => (
+              {active.map((promo, index) => (
                   <div
                     key={promo.id}
-                    className={`relative flex-shrink-0 ${
-                      edit_mode && !promo.is_active ? 'opacity-45' : ''
-                    }`}
+                    data-promo-index={index}
+                    className={promo_drop_class(
+                      index,
+                      `relative flex-shrink-0 transition-[transform,opacity,box-shadow] ${
+                        edit_mode && !promo.is_active ? 'opacity-45' : ''
+                      }`
+                    )}
                   >
+                    {promo_drag_handle(index, 'absolute -top-1 left-0 z-40')}
+                    {promo_move_buttons(promo, index, 'bottom-0 left-1/2 -translate-x-1/2 translate-y-1')}
                     <button
                       type="button"
                       onClick={() =>
@@ -272,29 +422,25 @@ export default function promo_banners({
         <div className="page-shell overflow-visible">
           <div ref={scroll_ref} className="overflow-x-auto stories-scroll min-w-0">
             <div ref={track_ref} className="flex w-max shrink-0 gap-2">
-              {active.map((promo) => (
+              {active.map((promo, index) => (
                 <div
                   key={promo.id}
-                  className={`relative flex-shrink-0 w-[152px] sm:w-[180px] aspect-[2/3] rounded-card overflow-hidden isolate ${
-                    edit_mode && !promo.is_active ? 'opacity-45' : ''
-                  }`}
+                  data-promo-index={index}
+                  className={promo_drop_class(
+                    index,
+                    `relative flex-shrink-0 w-[152px] sm:w-[180px] aspect-[2/3] rounded-card overflow-hidden isolate transition-[transform,opacity,box-shadow] ${
+                      edit_mode && !promo.is_active ? 'opacity-45' : ''
+                    }`
+                  )}
                 >
+                  {promo_drag_handle(index, 'absolute top-2 left-2 z-40')}
+                  {promo_move_buttons(promo, index, 'bottom-2 left-2 right-2 justify-center')}
                   <button
                     type="button"
                     onClick={() => (edit_mode ? on_edit_promo?.(promo) : on_promo_click(promo))}
-                    className="relative block size-full bg-neutral-900 text-left hover:brightness-[1.03] transition-[filter,opacity]"
-                    style={{
-                      backgroundImage: `url("${promo.image_url}")`,
-                      backgroundSize: 'contain',
-                      backgroundPosition: 'center',
-                      backgroundRepeat: 'no-repeat',
-                    }}
+                    className="relative block size-full overflow-hidden text-left hover:brightness-[1.03] transition-[filter,opacity]"
                   >
-                    {!promo.title_in_image &&
-                      createElement(promo_title_on_image, {
-                        title: promo.title,
-                        size: 'card',
-                      })}
+                    {createElement(promo_image_with_title, { promo })}
                   </button>
                   {edit_mode &&
                     on_edit_promo &&

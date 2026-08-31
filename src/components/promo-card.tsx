@@ -2,7 +2,7 @@
 
 import { createElement } from 'react';
 import type { promo_banner } from '@/lib/types';
-import promo_title_on_image from '@/components/promo-title-on-image';
+import promo_image_with_title from '@/components/promo-image-with-title';
 
 type props = {
   promo: promo_banner;
@@ -26,19 +26,9 @@ export default function promo_card({
     <button
       type="button"
       onClick={on_click}
-      className={`relative ${size === 'inline' ? '' : 'flex-shrink-0'} ${size_class} rounded-card overflow-hidden isolate text-left hover:brightness-[1.03] transition-[filter,opacity] bg-neutral-900 ${className}`}
-      style={{
-        backgroundImage: `url("${promo.image_url}")`,
-        backgroundSize: 'contain',
-        backgroundPosition: 'center',
-        backgroundRepeat: 'no-repeat',
-      }}
+      className={`relative ${size === 'inline' ? '' : 'flex-shrink-0'} ${size_class} rounded-card overflow-hidden isolate text-left hover:brightness-[1.03] transition-[filter,opacity] ${className}`}
     >
-      {!promo.title_in_image &&
-        createElement(promo_title_on_image, {
-          title: promo.title,
-          size: size === 'inline' ? 'inline' : 'card',
-        })}
+      {createElement(promo_image_with_title, { promo })}
     </button>
   );
 }

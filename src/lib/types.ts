@@ -1,3 +1,6 @@
+import type { promo_title_layout } from '@/lib/promo-title-layout';
+import type { promo_image_vignette } from '@/lib/promo-image-vignette';
+
 export type store_spot = {
   id: string;
   city: string;
@@ -30,6 +33,10 @@ export type promo_banner = {
   cta_label?: string;
   /** текст уже на картинке — не дублировать в карточке/сторис */
   title_in_image?: boolean;
+  /** позиция и стиль заголовка на кадре (если title_in_image = false) */
+  title_layout?: promo_title_layout;
+  /** затемнение сверху или снизу кадра */
+  image_vignette?: promo_image_vignette | null;
   is_active: boolean;
 };
 
@@ -120,6 +127,18 @@ export type gift = {
   paid_at: string | null;
   claimed_at: string | null;
   expires_at: string | null;
+};
+
+/** выдача бесплатного напитка по акции «100 первым» — один номер = один напиток */
+export type opening_100_entry = {
+  id: string;
+  phone: string;
+  items: order_item[];
+  order_id: string;
+  seller_id: string | null;
+  seller_name: string | null;
+  shift_id: string | null;
+  created_at: string;
 };
 
 export type order = {

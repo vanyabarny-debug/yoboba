@@ -104,7 +104,7 @@ export default function akciya_100_page({ hero_src }: props) {
           </Link>
 
           <div className="mt-5 grid gap-8 lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)] lg:items-start lg:gap-12">
-            <div className="mx-auto w-full max-w-[280px] overflow-hidden rounded-[24px] bg-[#0141C7] lg:mx-0 lg:max-w-none">
+            <div className="mx-auto w-full max-w-[280px] overflow-hidden rounded-[24px] bg-[#ff6b6b] lg:mx-0 lg:max-w-none">
               <img
                 src={hero_src}
                 alt=""

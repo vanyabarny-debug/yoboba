@@ -1,6 +1,15 @@
 import type { promo_banner } from '@/lib/types';
 
-export const promo_store_version = 33;
+import {
+  default_promo_title_layout,
+  standard_promo_title_layout,
+} from '@/lib/promo-title-layout';
+import {
+  default_promo_image_vignette,
+  standard_promo_vignette,
+} from '@/lib/promo-image-vignette';
+
+export const promo_store_version = 43;
 
 const storage_key = 'yoboba_promo_store';
 const update_event = 'yoboba-promo-update';
@@ -8,34 +17,40 @@ const update_event = 'yoboba-promo-update';
 export const default_promos: promo_banner[] = [
   {
     id: 'promo-13',
-    title: 'бесплатно нальём самым быстрым',
+    title: 'бесплатно нальём\nсамым быстрым',
     subtitle: '100 напитков · подписка, лайк, репост',
     badge: '100 шт',
-    image_url: '/images/promos/promo13.png?v=8',
+    image_url: '/images/promos/promo13.png?v=9',
     link_url: '/akciya-pervye-100',
     cta_label: 'условия',
-    title_in_image: true,
+    title_in_image: false,
+    title_layout: standard_promo_title_layout({ font_size: 16 }),
+    image_vignette: standard_promo_vignette(),
     is_active: true,
   },
   {
     id: 'promo-14',
-    title: 'студентам и школьникам −30%',
+    title: 'студентам и\nшкольникам −30%',
     subtitle: 'по дневнику или студенческому билету',
     badge: '−30%',
-    image_url: '/images/promos/promo14.png?v=7',
+    image_url: '/images/promos/promo14.png?v=9',
     link_url: '/akciya-studentam',
     cta_label: 'условия скидки',
-    title_in_image: true,
+    title_in_image: false,
+    title_layout: standard_promo_title_layout({ font_size: 17 }),
+    image_vignette: standard_promo_vignette(),
     is_active: true,
   },
   {
     id: 'promo-15',
-    title: 'подари ей напиток',
+    title: 'подари ей\nнапиток',
     badge: 'подарок',
-    image_url: '/images/promos/promo15.png?v=7',
+    image_url: '/images/promos/promo15.png?v=9',
     link_url: '/akciya-podari-napitok',
     cta_label: 'как подарить',
-    title_in_image: true,
+    title_in_image: false,
+    title_layout: standard_promo_title_layout({ font_size: 18 }),
+    image_vignette: standard_promo_vignette(),
     is_active: true,
   },
   {
@@ -43,12 +58,24 @@ export const default_promos: promo_banner[] = [
     title: 'напиток месяца\nsubzero',
     subtitle: 'блюкюрасао · личи-ментол · кокосовое желе',
     badge: 'месяца',
-    image_url: '/images/promos/promo-subzero.png?v=2',
+    image_url: '/images/promos/promo-subzero.png?v=5',
     link_url: '/napitok-mesyaca-subzero',
     menu_id: 'subzero',
     category: 'напиток месяца',
     cta_label: 'подробнее',
     title_in_image: false,
+    title_layout: default_promo_title_layout({
+      font_size: 17,
+      font_weight: 800,
+      x_pct: 50,
+      y_pct: 10,
+      anchor: 'top-center',
+      text_align: 'center',
+      color: '#ffffff',
+      shadow: true,
+      stroke: false,
+    }),
+    image_vignette: default_promo_image_vignette({ edge: 'top', strength: 34 }),
     is_active: true,
   },
   {
@@ -60,6 +87,26 @@ export const default_promos: promo_banner[] = [
     category: 'комбо',
     cta_label: 'собрать комбо',
     title_in_image: false,
+    title_layout: default_promo_title_layout({
+      font_size: 18,
+      x_pct: 50,
+      y_pct: 82,
+      anchor: 'bottom-center',
+      text_align: 'center',
+    }),
+    is_active: true,
+  },
+  {
+    id: 'promo-18',
+    title: 'ищем\nбариста',
+    subtitle: 'присоединяйся к команде yomoyo',
+    badge: 'работа',
+    image_url: '/images/promos/promo-barista.png?v=3',
+    link_url: '/rabota',
+    cta_label: 'узнать больше',
+    title_in_image: false,
+    title_layout: standard_promo_title_layout({ font_size: 18 }),
+    image_vignette: standard_promo_vignette(),
     is_active: true,
   },
 ];
@@ -96,19 +143,41 @@ function merge_with_code_defaults(parsed: promo_store): promo_store {
   const saved = (parsed.promos ?? []).filter(
     (promo) => promo?.id && !removed.has(promo.id)
   );
-  const saved_by_id = new Map(saved.map((promo) => [promo.id, promo]));
   const default_ids = default_promo_ids();
+  const default_by_id = new Map(default_promos.map((def) => [def.id, def]));
+  const upgrading = (parsed.version ?? 0) < promo_store_version;
+
+  function merge_one(def: promo_banner, prev: promo_banner): promo_banner {
+    const merged: promo_banner = { ...def, ...prev, image_url: def.image_url };
+    if (upgrading) {
+      merged.title = def.title;
+      merged.title_in_image = def.title_in_image;
+      if (def.title_layout) merged.title_layout = def.title_layout;
+      if (def.image_vignette !== undefined) merged.image_vignette = def.image_vignette;
+    }
+    return merged;
+  }
 
   const next: promo_banner[] = [];
-  for (const def of default_promos) {
-    if (removed.has(def.id)) continue;
-    const prev = saved_by_id.get(def.id);
-    // дефолтные акции подтягиваем из кода (cta, картинка, текст), is_active сохраняем
-    next.push(prev ? { ...def, is_active: prev.is_active } : { ...def });
-  }
+  const seen = new Set<string>();
+
+  // сохраняем порядок из localStorage
   for (const promo of saved) {
-    if (default_ids.has(promo.id) || removed.has(promo.id)) continue;
-    next.push(promo);
+    seen.add(promo.id);
+    const def = default_by_id.get(promo.id);
+    if (def) {
+      next.push(merge_one(def, promo));
+      continue;
+    }
+    if (!default_ids.has(promo.id)) {
+      next.push(promo);
+    }
+  }
+
+  // новые дефолтные акции, которых ещё нет у пользователя
+  for (const def of default_promos) {
+    if (removed.has(def.id) || seen.has(def.id)) continue;
+    next.push({ ...def });
   }
 
   return {
@@ -187,6 +256,24 @@ export function move_promo(id: string, dir: -1 | 1) {
   if (idx < 0 || next < 0 || next >= store.promos.length) return;
   const list = [...store.promos];
   [list[idx], list[next]] = [list[next], list[idx]];
+  store.promos = list;
+  save_promo_store(store);
+}
+
+export function reorder_promos(from_index: number, to_index: number) {
+  const store = get_promo_store();
+  const list = [...store.promos];
+  if (
+    from_index < 0 ||
+    to_index < 0 ||
+    from_index >= list.length ||
+    to_index >= list.length ||
+    from_index === to_index
+  ) {
+    return;
+  }
+  const [item] = list.splice(from_index, 1);
+  list.splice(to_index, 0, item);
   store.promos = list;
   save_promo_store(store);
 }

@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState, createElement } from 'react';
 import type { promo_banner } from '@/lib/types';
-import promo_title_on_image from '@/components/promo-title-on-image';
+import promo_image_with_title from '@/components/promo-image-with-title';
 
 type props = {
   promos: promo_banner[];
@@ -123,7 +123,6 @@ export default function promo_story_viewer({
 
   const has_target = promo_has_target(current);
   const cta_label = current.cta_label?.trim() || 'перейти';
-  const show_title_on_image = !current.title_in_image;
 
   function handle_pointer_down() {
     pointer_ts_ref.current = performance.now();
@@ -185,17 +184,9 @@ export default function promo_story_viewer({
 
         {/* картинка — отдельно */}
         <div className="relative min-h-0 flex-1 bg-neutral-950">
-          <img
-            src={current.image_url}
-            alt=""
-            className="absolute inset-0 h-full w-full select-none object-cover object-center"
-            draggable={false}
-          />
-          {show_title_on_image &&
-            createElement(promo_title_on_image, {
-              title: current.title,
-              size: 'story',
-            })}
+          {createElement(promo_image_with_title, {
+            promo: current,
+          })}
 
           {/* тапы только по картинке */}
           <div className="absolute inset-0 z-10 flex">

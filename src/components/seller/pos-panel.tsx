@@ -9,7 +9,7 @@ import {
   subscribe_menu_store,
 } from '@/lib/menu-store';
 import { item_in_category } from '@/lib/menu-item-categories';
-import { format_phone_input, phone_input_to_e164 } from '@/lib/phone';
+import { format_phone_display, format_phone_input, phone_input_to_e164 } from '@/lib/phone';
 import { category_tile_meta } from '@/lib/category-icons';
 import { configured_unit_price, first_volume_id, resolve_volume_id } from '@/lib/product-details';
 import { tile_grid, board_tile_grid } from '@/lib/seller-tile-grid';
@@ -41,6 +41,21 @@ type found_customer = {
   name: string | null;
   phone: string | null;
   bonus_balance: number;
+};
+
+type opening_100_status = {
+  limit: number;
+  redeemed_count: number;
+  remaining: number;
+  sold_out: boolean;
+  phone: string | null;
+  already_redeemed: boolean;
+  entry: {
+    id: string;
+    phone: string;
+    created_at: string;
+    items: order_item[];
+  } | null;
 };
 
 type step = 'categories' | 'products';
@@ -123,6 +138,8 @@ export default function pos_panel({
   const [phone_draft, set_phone_draft] = useState('');
   const [customer, set_customer] = useState<found_customer | null>(null);
   const [lookup_gifts, set_lookup_gifts] = useState<gift[]>([]);
+  const [opening_100, set_opening_100] = useState<opening_100_status | null>(null);
+  const [opening_100_busy, set_opening_100_busy] = useState(false);
   const [gift_busy, set_gift_busy] = useState<string | null>(null);
   const [lookup_busy, set_lookup_busy] = useState(false);
   const [busy, set_busy] = useState(false);
@@ -130,11 +147,22 @@ export default function pos_panel({
   const [paid_now, set_paid_now] = useState(false);
   const [pay_with_bonus, set_pay_with_bonus] = useState(false);
   const [confirm_open, set_confirm_open] = useState(false);
+  const [confirm_promo_mode, set_confirm_promo_mode] = useState(false);
   const [selected, set_selected] = useState<menu_item | null>(null);
   const [sheet_open, set_sheet_open] = useState(false);
   /** индекс позиции в корзине: правка опций или замена на другое блюдо */
   const [edit_index, set_edit_index] = useState<number | null>(null);
   const [replace_index, set_replace_index] = useState<number | null>(null);
+
+  function open_confirm(mode: 'order' | 'promo' | 'gift' = 'order') {
+    set_confirm_promo_mode(mode === 'promo');
+    set_confirm_open(true);
+  }
+
+  function close_confirm() {
+    set_confirm_open(false);
+    set_confirm_promo_mode(false);
+  }
 
   useEffect(() => {
     on_nav_depth?.(step === 'products');
@@ -162,11 +190,34 @@ export default function pos_panel({
   }, []);
 
   useEffect(() => {
+    let cancelled = false;
+    void fetch('/api/seller/opening-100', { credentials: 'same-origin' })
+      .then((r) => r.json())
+      .then((body: opening_100_status) => {
+        if (!cancelled) set_opening_100(body);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
     if (!confirm_open) return;
     const e164 = phone_input_to_e164(phone_draft);
     if (!e164) {
       set_customer(null);
       set_lookup_gifts([]);
+      set_opening_100((prev) =>
+        prev
+          ? {
+              ...prev,
+              phone: null,
+              already_redeemed: false,
+              entry: null,
+            }
+          : prev
+      );
       return;
     }
 
@@ -180,11 +231,15 @@ export default function pos_panel({
         fetch(`/api/seller/gifts?phone=${encodeURIComponent(e164)}`, {
           credentials: 'same-origin',
         }).then((r) => r.json()) as Promise<{ gifts?: gift[] }>,
+        fetch(`/api/seller/opening-100?phone=${encodeURIComponent(e164)}`, {
+          credentials: 'same-origin',
+        }).then((r) => r.json()) as Promise<opening_100_status>,
       ])
-        .then(([orders_body, gifts_body]) => {
+        .then(([orders_body, gifts_body, opening_body]) => {
           if (cancelled) return;
           set_customer(orders_body.customer || null);
           set_lookup_gifts(gifts_body.gifts || []);
+          set_opening_100(opening_body);
         })
         .catch(() => {
           if (!cancelled) {
@@ -276,7 +331,7 @@ export default function pos_panel({
     set_edit_index(null);
     set_sheet_open(false);
     set_selected(null);
-    set_confirm_open(false);
+    close_confirm();
     set_step('categories');
     set_category('');
   }
@@ -319,7 +374,7 @@ export default function pos_panel({
       });
       set_replace_index(null);
       set_edit_index(null);
-      set_confirm_open(true);
+      open_confirm('order');
       return;
     }
 
@@ -358,6 +413,78 @@ export default function pos_panel({
     );
   }
 
+  async function redeem_opening_100_promo() {
+    if (opening_100_busy || busy) return;
+    const phone = phone_input_to_e164(phone_draft);
+    if (!phone) {
+      set_error('введите телефон полностью');
+      return;
+    }
+    if (!cart.length) {
+      set_error('добавьте напиток в корзину');
+      return;
+    }
+    const drink_count = cart.reduce((s, line) => s + line.quantity, 0);
+    if (drink_count !== 1) {
+      set_error('по акции — один напиток на номер');
+      return;
+    }
+    if (opening_100?.already_redeemed) {
+      set_error('этот номер уже получал бесплатный напиток');
+      return;
+    }
+    if (opening_100?.sold_out) {
+      set_error('все 100 напитков уже розданы');
+      return;
+    }
+
+    set_opening_100_busy(true);
+    set_error(null);
+    try {
+      const res = await fetch('/api/seller/opening-100', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        credentials: 'same-origin',
+        body: JSON.stringify({
+          phone,
+          items: cart.map(({ menu_id, name, price, quantity }) => ({
+            menu_id,
+            name,
+            price,
+            quantity,
+          })),
+          pickup_minutes: 10,
+          seller_id,
+          seller_name,
+          shift_id,
+          customer_name: customer?.name || undefined,
+        }),
+      });
+      const body = (await res.json()) as {
+        error?: string;
+        status?: opening_100_status;
+      };
+      if (!res.ok) {
+        set_error(body.error || 'не удалось выдать напиток по акции');
+        return;
+      }
+      if (body.status) set_opening_100(body.status);
+      set_cart([]);
+      set_phone_draft('');
+      set_customer(null);
+      set_paid_now(false);
+      set_pay_with_bonus(false);
+      close_confirm();
+      set_step('categories');
+      set_category('');
+      on_created();
+    } catch {
+      set_error('не удалось выдать напиток по акции');
+    } finally {
+      set_opening_100_busy(false);
+    }
+  }
+
   async function redeem_gift(gift_id: string) {
     if (gift_busy) return;
     set_gift_busy(gift_id);
@@ -375,7 +502,7 @@ export default function pos_panel({
         return;
       }
       set_lookup_gifts((prev) => prev.filter((g) => g.id !== gift_id));
-      set_confirm_open(false);
+      close_confirm();
       on_created();
     } catch {
       set_error('не удалось выдать подарок');
@@ -493,7 +620,7 @@ export default function pos_panel({
       set_customer(null);
       set_paid_now(false);
       set_pay_with_bonus(false);
-      set_confirm_open(false);
+      close_confirm();
       set_step('categories');
       set_category('');
       on_created();
@@ -504,19 +631,44 @@ export default function pos_panel({
     }
   }
 
+  const drink_count = cart.reduce((s, line) => s + line.quantity, 0);
+  const opening_phone_ready = Boolean(phone_input_to_e164(phone_draft));
+  const can_redeem_opening_100 =
+    opening_phone_ready &&
+    cart.length > 0 &&
+    drink_count === 1 &&
+    !opening_100?.already_redeemed &&
+    !opening_100?.sold_out;
+  const hide_paid_checkbox =
+    !cart.length || confirm_promo_mode || can_redeem_opening_100;
+  const promo_checkout =
+    cart.length > 0 && (confirm_promo_mode || can_redeem_opening_100);
+
   const confirm_modal = confirm_open ? (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
       <button
         type="button"
         aria-label="закрыть"
         className="absolute inset-0 bg-black/40"
-        onClick={() => set_confirm_open(false)}
+        onClick={() => close_confirm()}
       />
       <div className="relative w-full max-w-md rounded-t-3xl sm:rounded-3xl bg-white shadow-xl overflow-hidden">
         <div className="px-5 pt-5 pb-3 border-b border-neutral-100">
           <div className="mx-auto mb-3 h-1 w-10 rounded-full bg-neutral-200 sm:hidden" />
-          <h3 className="text-lg font-bold text-neutral-900">всё верно?</h3>
-          <p className="text-sm text-neutral-500 mt-0.5">заказ уйдёт в работу</p>
+          <h3 className="text-lg font-bold text-neutral-900">
+            {confirm_promo_mode
+              ? 'акция · 100 напитков'
+              : cart.length
+                ? 'всё верно?'
+                : 'выдача по номеру'}
+          </h3>
+          <p className="text-sm text-neutral-500 mt-0.5">
+            {confirm_promo_mode
+              ? 'бесплатный напиток — оплата не нужна'
+              : cart.length
+                ? 'заказ уйдёт в работу'
+                : 'телефон, подарки и акция открытия'}
+          </p>
         </div>
 
         <div className="px-5 py-4 space-y-3 max-h-[50vh] overflow-y-auto">
@@ -624,6 +776,66 @@ export default function pos_panel({
             </p>
           ) : null}
 
+          {opening_100 ? (
+            <div className="rounded-2xl border border-amber-200 bg-amber-50 px-3 py-3 space-y-2">
+              <div className="flex items-start justify-between gap-2">
+                <div>
+                  <p className="text-xs font-bold uppercase tracking-wide text-amber-900">
+                    акция · 100 напитков
+                  </p>
+                  <p className="mt-0.5 text-sm text-amber-950">
+                    выдано{' '}
+                    <span className="font-semibold tabular-nums">
+                      {opening_100.redeemed_count}/{opening_100.limit}
+                    </span>
+                    {opening_100.remaining > 0 ? (
+                      <span className="text-amber-800">
+                        {' '}
+                        · осталось {opening_100.remaining}
+                      </span>
+                    ) : (
+                      <span className="font-semibold text-amber-900"> · всё роздано</span>
+                    )}
+                  </p>
+                </div>
+              </div>
+
+              {!opening_phone_ready ? (
+                <p className="text-xs text-amber-900/80">
+                  введите телефон — проверим, получал ли гость бесплатный напиток
+                </p>
+              ) : opening_100.already_redeemed && opening_100.entry ? (
+                <p className="text-xs font-semibold text-amber-950">
+                  {format_phone_display(opening_100.entry.phone)} уже получал
+                  {opening_100.entry.items?.[0]?.name
+                    ? ` · ${opening_100.entry.items[0].name}`
+                    : ''}
+                </p>
+              ) : opening_100.sold_out ? (
+                <p className="text-xs font-semibold text-amber-950">
+                  лимит исчерпан — новых выдач не будет
+                </p>
+              ) : !cart.length ? (
+                <p className="text-xs text-amber-900/80">
+                  добавьте один напиток в корзину и нажмите «выдать бесплатно»
+                </p>
+              ) : drink_count !== 1 ? (
+                <p className="text-xs font-semibold text-amber-950">
+                  в корзине должна быть ровно 1 позиция напитка
+                </p>
+              ) : (
+                <button
+                  type="button"
+                  disabled={!can_redeem_opening_100 || opening_100_busy}
+                  onClick={() => void redeem_opening_100_promo()}
+                  className="w-full rounded-xl bg-amber-900 px-3 py-2.5 text-sm font-semibold text-white disabled:opacity-40"
+                >
+                  {opening_100_busy ? 'фиксируем…' : 'выдать бесплатно · зафиксировать номер'}
+                </button>
+              )}
+            </div>
+          ) : null}
+
           {lookup_gifts.length > 0 ? (
             <div className="space-y-2">
               <p className="text-xs text-neutral-500">оплаченные подарки на этот номер</p>
@@ -654,19 +866,21 @@ export default function pos_panel({
             </div>
           ) : null}
 
-          <label className="flex items-center gap-2 text-sm text-neutral-700">
-            <input
-              type="checkbox"
-              checked={paid_now || pay_with_bonus}
-              disabled={pay_with_bonus}
-              onChange={(e) => set_paid_now(e.target.checked)}
-              className="rounded"
-            />
-            уже оплачен
-            {pay_with_bonus ? (
-              <span className="text-xs text-accent">· бобами</span>
-            ) : null}
-          </label>
+          {!hide_paid_checkbox ? (
+            <label className="flex items-center gap-2 text-sm text-neutral-700">
+              <input
+                type="checkbox"
+                checked={paid_now || pay_with_bonus}
+                disabled={pay_with_bonus}
+                onChange={(e) => set_paid_now(e.target.checked)}
+                className="rounded"
+              />
+              уже оплачен
+              {pay_with_bonus ? (
+                <span className="text-xs text-accent">· бобами</span>
+              ) : null}
+            </label>
+          ) : null}
 
           {error ? <p className="text-sm text-neutral-700">{error}</p> : null}
         </div>
@@ -674,19 +888,21 @@ export default function pos_panel({
         <div className="px-5 py-4 border-t border-neutral-100 flex gap-2">
           <button
             type="button"
-            onClick={() => set_confirm_open(false)}
+            onClick={() => close_confirm()}
             className="flex-1 rounded-xl border border-neutral-200 bg-white py-3.5 text-sm font-medium"
           >
             отмена
           </button>
-          <button
-            type="button"
-            disabled={!cart.length || busy}
-            onClick={() => void submit()}
-            className="flex-[1.4] rounded-xl bg-accent py-3.5 text-sm font-semibold text-white disabled:opacity-40"
-          >
-            {busy ? 'создаём…' : 'верно'}
-          </button>
+          {!promo_checkout ? (
+            <button
+              type="button"
+              disabled={!cart.length || busy}
+              onClick={() => void submit()}
+              className="flex-[1.4] rounded-xl bg-accent py-3.5 text-sm font-semibold text-white disabled:opacity-40"
+            >
+              {busy ? 'создаём…' : 'верно'}
+            </button>
+          ) : null}
         </div>
       </div>
     </div>
@@ -779,11 +995,23 @@ export default function pos_panel({
         {createElement(cart_bar, {
           count,
           total,
-          on_work: () => set_confirm_open(true),
+          on_work: () => open_confirm('order'),
         })}
         <button
           type="button"
-          onClick={() => set_confirm_open(true)}
+          onClick={() => open_confirm('promo')}
+          className="shrink-0 rounded-2xl border border-amber-200 bg-amber-50 px-3 py-2.5 text-center text-xs font-semibold text-amber-950"
+        >
+          акция · 100 напитков
+          {opening_100 != null ? (
+            <span className="mt-0.5 block font-medium tabular-nums text-amber-800">
+              осталось {opening_100.remaining} из {opening_100.limit}
+            </span>
+          ) : null}
+        </button>
+        <button
+          type="button"
+          onClick={() => open_confirm('gift')}
           className="shrink-0 py-1 text-center text-xs font-medium text-neutral-500"
         >
           выдать подарок по телефону
@@ -860,7 +1088,7 @@ export default function pos_panel({
       {createElement(cart_bar, {
         count,
         total,
-        on_work: () => set_confirm_open(true),
+        on_work: () => open_confirm('order'),
       })}
       {confirm_modal}
       {sheet}

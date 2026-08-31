@@ -14,6 +14,7 @@ const seeds: Record<string, unknown> = {
   'handed-orders': [],
   'demo-bonuses': [],
   gifts: [],
+  'opening-100': [],
   'push-subscriptions': [],
   'vapid-keys': null,
   'seller-prep-state': {},
