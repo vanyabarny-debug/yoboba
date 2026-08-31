@@ -17,7 +17,7 @@ type props = {
   variant?: 'page' | 'story' | 'card';
 };
 
-function digit_reel({ value }: { value: number }) {
+function DigitReel({ value }: { value: number }) {
   const digit = ((value % 10) + 10) % 10;
   return (
     <span
@@ -41,17 +41,20 @@ function digit_reel({ value }: { value: number }) {
   );
 }
 
-function format_places(n: number, places: number) {
-  const safe = Math.max(0, Math.floor(n));
-  return String(safe).padStart(places, '0').slice(-places);
+function number_digits(n: number) {
+  return String(Math.max(0, Math.floor(n))).split('').map((ch) => Number(ch));
 }
 
 export default function akciya_100_counter({ variant = 'page' }: props) {
+  const [limit, set_limit] = useState(100);
   const [target, set_target] = useState<number | null>(null);
   const [display, set_display] = useState(100);
   const [sold_out, set_sold_out] = useState(false);
+  const [play_id, set_play_id] = useState(0);
   const raf_ref = useRef<number | null>(null);
   const display_ref = useRef(100);
+  const target_ref = useRef<number | null>(null);
+  const limit_ref = useRef(100);
 
   useEffect(() => {
     let cancelled = false;
@@ -61,8 +64,13 @@ export default function akciya_100_counter({ variant = 'page' }: props) {
         .then((res) => res.json())
         .then((body: status) => {
           if (cancelled || typeof body?.remaining !== 'number') return;
-          set_target(Math.max(0, body.remaining));
-          set_sold_out(body.sold_out === true || body.remaining <= 0);
+          const next_limit = Math.max(1, Number(body.limit) || 100);
+          const next_target = Math.max(0, body.remaining);
+          limit_ref.current = next_limit;
+          target_ref.current = next_target;
+          set_limit(next_limit);
+          set_target(next_target);
+          set_sold_out(body.sold_out === true || next_target <= 0);
         })
         .catch(() => undefined);
     }
@@ -75,6 +83,20 @@ export default function akciya_100_counter({ variant = 'page' }: props) {
     };
   }, []);
 
+  // при загрузке и когда вкладка снова активна — проигрываем убывание
+  useEffect(() => {
+    function replay() {
+      if (document.visibilityState !== 'visible') return;
+      set_play_id((n) => n + 1);
+    }
+
+    replay();
+    document.addEventListener('visibilitychange', replay);
+    return () => {
+      document.removeEventListener('visibilitychange', replay);
+    };
+  }, []);
+
   useEffect(() => {
     if (target === null) return;
 
@@ -83,15 +105,15 @@ export default function akciya_100_counter({ variant = 'page' }: props) {
       raf_ref.current = null;
     }
 
-    const from = display_ref.current;
+    const from = Math.max(target, limit_ref.current);
     const to = target;
-    if (from === to) {
-      set_display(to);
-      return;
-    }
+    display_ref.current = from;
+    set_display(from);
+
+    if (from === to) return;
 
     const distance = Math.abs(from - to);
-    const duration = Math.min(2800, 420 + distance * 48);
+    const duration = Math.min(2600, 480 + distance * 42);
     const started = performance.now();
 
     function tick(now: number) {
@@ -118,12 +140,9 @@ export default function akciya_100_counter({ variant = 'page' }: props) {
         raf_ref.current = null;
       }
     };
-  }, [target]);
+  }, [target, limit, play_id]);
 
-  const places = format_places(display, 3);
-  const hundreds = Number(places[0]);
-  const tens = Number(places[1]);
-  const ones = Number(places[2]);
+  const digits = number_digits(display);
 
   const aria =
     target === null
@@ -136,14 +155,13 @@ export default function akciya_100_counter({ variant = 'page' }: props) {
 
   const reels = (
     <span className="flex items-start leading-none text-neutral-900" aria-hidden>
-      {digit_reel({ value: hundreds })}
-      {digit_reel({ value: tens })}
-      {digit_reel({ value: ones })}
+      {digits.map((d, i) => (
+        <DigitReel key={`${digits.length}-${i}`} value={d} />
+      ))}
     </span>
   );
 
   if (variant === 'story') {
-    // ширина как два кружка акций (136 + 12 + 136), высота как кружок
     return (
       <Link
         href="/akciya-pervye-100"
@@ -159,7 +177,6 @@ export default function akciya_100_counter({ variant = 'page' }: props) {
   }
 
   if (variant === 'card') {
-    // ширина как две карточки акций + gap
     return (
       <Link
         href="/akciya-pervye-100"
