@@ -1,6 +1,6 @@
 import type { sidebar_ad_slide } from '@/lib/types';
 
-export const sidebar_ad_store_version = 5;
+export const sidebar_ad_store_version = 8;
 
 const storage_key = 'yoboba_sidebar_ad_store';
 const update_event = 'yoboba-sidebar-ad-update';
@@ -8,6 +8,14 @@ const update_event = 'yoboba-sidebar-ad-update';
 export const default_sidebar_interval_ms = 5000;
 
 export const default_sidebar_slides: sidebar_ad_slide[] = [
+  {
+    id: 'side-viral',
+    title: '25 000 просмотров = напиток',
+    subtitle: 'короткое видео с упоминанием yomoyo',
+    image_url: '/images/sidebar/slide-viral.png?v=3',
+    link_url: '/',
+    is_active: true,
+  },
   {
     id: 'side-1',
     title: 'удобная оплата',
@@ -54,6 +62,7 @@ export function get_default_sidebar_ad_store(): sidebar_ad_store {
 }
 
 function repair_sidebar_store(store: sidebar_ad_store): sidebar_ad_store {
+  const upgrading = (store.version ?? 0) < sidebar_ad_store_version;
   const by_id = new Map(store.slides.map((s) => [s.id, s]));
   for (const def of default_sidebar_slides) {
     const existing = by_id.get(def.id);
@@ -61,15 +70,27 @@ function repair_sidebar_store(store: sidebar_ad_store): sidebar_ad_store {
       ...def,
       ...existing,
       title:
-        existing?.title && /баблтишн/i.test(existing.title) ? def.title : existing?.title ?? def.title,
+        existing?.title && /баблтишн/i.test(existing.title)
+          ? def.title
+          : upgrading
+            ? def.title
+            : existing?.title ?? def.title,
+      subtitle: upgrading ? def.subtitle : existing?.subtitle ?? def.subtitle,
       image_url:
-        !existing?.image_url || existing.image_url.endsWith('.svg')
+        upgrading || !existing?.image_url || existing.image_url.endsWith('.svg')
           ? def.image_url
           : existing.image_url,
-      is_active: existing?.is_active ?? def.is_active,
+      link_url: upgrading ? def.link_url : existing?.link_url ?? def.link_url,
+      menu_id: upgrading ? def.menu_id : existing?.menu_id ?? def.menu_id,
+      is_active: upgrading ? def.is_active : existing?.is_active ?? def.is_active,
     });
   }
-  let slides = [...by_id.values()];
+  // порядок как в дефолтах, кастомные слайды — в конце
+  const default_ids = new Set(default_sidebar_slides.map((s) => s.id));
+  let slides = [
+    ...default_sidebar_slides.map((def) => by_id.get(def.id)!),
+    ...[...by_id.values()].filter((s) => !default_ids.has(s.id)),
+  ];
   if (!slides.some((s) => s.is_active)) {
     slides = slides.map((s) =>
       default_sidebar_slides.some((d) => d.id === s.id) ? { ...s, is_active: true } : s
