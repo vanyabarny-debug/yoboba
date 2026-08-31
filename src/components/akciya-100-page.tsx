@@ -3,7 +3,6 @@
 import { createElement, Suspense, type MouseEvent } from 'react';
 import Link from 'next/link';
 import site_chrome from '@/components/site-chrome';
-import akciya_100_counter from '@/components/akciya-100-counter';
 
 const VK_POST = 'https://vk.ru/wall-240740999_1';
 const VK_COMMUNITY = 'https://vk.ru/yomoyo_kimry';
@@ -121,7 +120,6 @@ export default function akciya_100_page({ hero_src }: props) {
                 бесплатно нальём
                 <br className="hidden sm:block" /> самым быстрым
               </h1>
-              {createElement(akciya_100_counter)}
               <p className="mt-4 max-w-xl text-[17px] font-medium leading-relaxed text-neutral-700">
                 сто первых гостей получают напиток бесплатно. чтобы участвовать —
                 зайди в пост вк и сделай три шага ниже.

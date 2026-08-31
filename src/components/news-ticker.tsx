@@ -14,6 +14,8 @@ const ticker_repeat = 12;
 type props = {
   edit_mode?: boolean;
   on_edit?: () => void;
+  /** без page-shell — когда рядом второй блок на главной */
+  embedded?: boolean;
 };
 
 function ticker_chunk(text: string) {
@@ -42,7 +44,7 @@ function ticker_copy({ text, hidden }: { text: string; hidden?: boolean }) {
 }
 
 /** бегущая строка как у фарфора — над меню */
-export default function news_ticker({ edit_mode = false, on_edit }: props) {
+export default function news_ticker({ edit_mode = false, on_edit, embedded = false }: props) {
   const [settings, set_settings] = useState<news_ticker_settings>(default_news_ticker);
 
   useEffect(() => {
@@ -53,24 +55,28 @@ export default function news_ticker({ edit_mode = false, on_edit }: props) {
     return subscribe_news_ticker_store(reload);
   }, []);
 
-  return (
-    <div className="page-shell relative pb-3 min-[1024px]:pb-4">
-      <div
-        className="h-9 overflow-hidden rounded-[10px] sm:h-10"
-        style={{ backgroundColor: settings.bg_color, color: settings.text_color }}
-      >
-        <div className="flex w-max flex-nowrap motion-reduce:animate-none animate-news-ticker hover:[animation-play-state:paused]">
-          {ticker_copy({ text: settings.text })}
-          {ticker_copy({ text: settings.text, hidden: true })}
-        </div>
+  const bar = (
+    <div
+      className="relative h-9 overflow-hidden rounded-[10px] sm:h-10"
+      style={{ backgroundColor: settings.bg_color, color: settings.text_color }}
+    >
+      <div className="flex w-max flex-nowrap motion-reduce:animate-none animate-news-ticker hover:[animation-play-state:paused]">
+        {ticker_copy({ text: settings.text })}
+        {ticker_copy({ text: settings.text, hidden: true })}
       </div>
       {edit_mode && on_edit
         ? createElement(edit_pencil, {
             label: 'править бегущую строку',
             onClick: on_edit,
-            className: 'absolute top-1 right-[calc(var(--page-gutter)+4px)] z-20',
+            className: embedded
+              ? 'absolute top-1 right-1 z-20'
+              : 'absolute top-1 right-[calc(var(--page-gutter)+4px)] z-20',
           })
         : null}
     </div>
   );
+
+  if (embedded) return bar;
+
+  return <div className="page-shell relative pb-3 min-[1024px]:pb-4">{bar}</div>;
 }
