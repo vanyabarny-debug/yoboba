@@ -153,12 +153,12 @@ export default function akciya_promo_page({
           <h1 className="mt-3 font-heading-soft text-4xl sm:text-5xl lg:text-6xl font-bold leading-[0.98] text-neutral-900">
             {page.title}
           </h1>
+          {after_intro}
           <div className="mt-6 max-w-3xl space-y-4 text-[16px] font-medium leading-relaxed text-neutral-800">
             {intro.map((paragraph) => (
               <p key={paragraph.slice(0, 40)}>{linkify(paragraph)}</p>
             ))}
           </div>
-          {after_intro}
           <div className="mt-7 flex flex-wrap gap-3">
             <Link
               href={primary_cta.href}
