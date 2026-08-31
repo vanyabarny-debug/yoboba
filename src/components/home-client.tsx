@@ -20,12 +20,18 @@ import top_bar from '@/components/top-bar';
 import promo_banners from '@/components/promo-banners';
 import promo_story_viewer from '@/components/promo-story-viewer';
 import news_ticker from '@/components/news-ticker';
+import news_ticker_edit_sheet from '@/components/admin/news-ticker-edit-sheet';
 import promo_edit_sheet from '@/components/admin/promo-edit-sheet';
 import category_nav from '@/components/category-nav';
 import category_edit_sheet from '@/components/admin/category-edit-sheet';
 import sidebar_edit_sheet from '@/components/admin/sidebar-edit-sheet';
 import top_bar_edit_sheet from '@/components/admin/top-bar-edit-sheet';
 import brand_edit_sheet from '@/components/admin/brand-edit-sheet';
+import {
+  get_news_ticker_settings,
+  save_news_ticker_settings,
+  type news_ticker_settings,
+} from '@/lib/news-ticker-store';
 import { admin_sheet } from '@/components/admin/admin-sheet';
 import { AdminHeader } from '@/components/admin/admin-shell';
 import location_modal from '@/components/location-modal';
@@ -305,6 +311,9 @@ export default function home_client({
   const [editing_category, set_editing_category] = useState<string | null>(null);
   const [editing_lang, set_editing_lang] = useState(false);
   const [editing_brand, set_editing_brand] = useState<false | 'logo' | 'tagline'>(false);
+  const [editing_ticker, set_editing_ticker] = useState(false);
+  const [ticker_settings, set_ticker_settings] =
+    useState<news_ticker_settings | null>(null);
   const [lang_draft, set_lang_draft] = useState({ label: 'язык', href: '/yazyk' });
   const [order_toast, set_order_toast] = useState('');
   const [order_error, set_order_error] = useState('');
@@ -1529,7 +1538,13 @@ export default function home_client({
           on_promo_click: handle_promo_click,
         })}
 
-      {createElement(news_ticker)}
+      {createElement(news_ticker, is_admin_edit ? {
+        edit_mode: true,
+        on_edit: () => {
+          set_ticker_settings(get_news_ticker_settings());
+          set_editing_ticker(true);
+        },
+      } : {})}
       {!is_admin_edit && gift_pick_mode ? (
         <div className="page-shell pb-3 min-[1024px]:pb-4">
           <div className="rounded-[12px] bg-[#ffe14d] px-4 py-3 text-sm font-medium text-neutral-900">
@@ -1727,6 +1742,19 @@ export default function home_client({
           on_close: () => set_story_index(null),
           on_action: perform_promo_action,
         })}
+
+      {is_admin_edit && createElement(news_ticker_edit_sheet, {
+        open: editing_ticker,
+        settings: ticker_settings,
+        on_close: () => {
+          set_editing_ticker(false);
+          set_ticker_settings(null);
+        },
+        on_save: (settings) => {
+          save_news_ticker_settings(settings);
+          set_ticker_settings(settings);
+        },
+      })}
 
       {is_admin_edit && createElement(promo_edit_sheet, {
         promo: editing_promo,
