@@ -9,12 +9,12 @@ type status = {
   sold_out: boolean;
 };
 
-export default function akciya_25k_counter() {
+export default function akciya_100_counter() {
   const [status, set_status] = useState<status | null>(null);
 
   useEffect(() => {
     let cancelled = false;
-    fetch('/api/akciya-25k')
+    fetch('/api/akciya-100')
       .then((res) => res.json())
       .then((body: status) => {
         if (!cancelled && typeof body?.remaining === 'number') set_status(body);
@@ -25,7 +25,7 @@ export default function akciya_25k_counter() {
     };
   }, []);
 
-  const limit = status?.limit ?? 50;
+  const limit = status?.limit ?? 100;
   const remaining = status?.remaining ?? null;
   const redeemed = status?.redeemed_count ?? 0;
   const sold_out = status?.sold_out === true;
@@ -33,10 +33,10 @@ export default function akciya_25k_counter() {
     remaining === null ? 100 : Math.round((remaining / Math.max(1, limit)) * 100);
 
   return (
-    <div className="relative mt-7 overflow-hidden rounded-[28px] bg-[#002d7a] px-5 py-6 text-white shadow-[0_18px_50px_rgba(0,45,122,0.28)] sm:px-7 sm:py-7">
+    <div className="relative mt-6 overflow-hidden rounded-[28px] bg-[#111827] px-5 py-6 text-white shadow-[0_18px_50px_rgba(17,24,39,0.22)] sm:mt-7 sm:px-7 sm:py-7">
       <div
         aria-hidden
-        className="pointer-events-none absolute -right-10 -top-16 h-48 w-48 rounded-full bg-[#ff6b6b]/30 blur-3xl"
+        className="pointer-events-none absolute -right-10 -top-16 h-48 w-48 rounded-full bg-[#ff6b6b]/35 blur-3xl"
       />
       <div
         aria-hidden
@@ -54,7 +54,7 @@ export default function akciya_25k_counter() {
           </p>
           <p className="mt-2 text-base font-medium text-white/75">
             {sold_out
-              ? 'все бесплатные напитки уже выданы'
+              ? 'все 100 бесплатных напитков уже выданы'
               : remaining === null
                 ? 'считаем остаток…'
                 : `из ${limit} ещё можно забрать`}

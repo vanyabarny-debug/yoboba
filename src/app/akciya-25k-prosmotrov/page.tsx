@@ -1,6 +1,5 @@
 import { createElement } from 'react';
 import akciya_promo_page from '@/components/akciya-promo-page';
-import akciya_25k_counter from '@/components/akciya-25k-counter';
 
 export default function page() {
   return createElement(akciya_promo_page, {
@@ -12,6 +11,5 @@ export default function page() {
       label: 'написать в vk',
     },
     hero_bg: '#002d7a',
-    after_intro: createElement(akciya_25k_counter),
   });
 }
