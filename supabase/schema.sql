@@ -55,6 +55,9 @@ create table public.orders (
   total_price numeric(10, 2) not null check (total_price >= 0),
   status public.order_status not null default 'new',
   payment_type public.payment_type not null default 'online',
+  is_paid boolean not null default false,
+  customer_name text,
+  customer_phone text,
   pickup_time timestamptz not null,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()

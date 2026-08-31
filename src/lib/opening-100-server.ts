@@ -146,11 +146,37 @@ async function create_promo_order(input: {
       order_number: daily.order_number,
       order_day: daily.order_day,
     };
-    const { data, error } = await admin.from('orders').insert(payload).select('*').single();
+    let { data, error } = await admin.from('orders').insert(payload).select('*').single();
+
+    // старая схема без колонок кассы — пробуем без них
+    if (error && /is_paid|customer_name|customer_phone|schema cache/i.test(error.message)) {
+      const retry = await admin
+        .from('orders')
+        .insert({
+          user_id,
+          items: input.items,
+          total_price: 0,
+          payment_type: 'online' as const,
+          pickup_time: input.pickup_time,
+          status: 'new' as const,
+          order_number: daily.order_number,
+          order_day: daily.order_day,
+        })
+        .select('*')
+        .single();
+      data = retry.data;
+      error = retry.error;
+    }
+
     if (error || !data) {
       throw new Error(error?.message || 'не удалось поставить напиток в работу');
     }
-    return data as order;
+    return {
+      ...(data as order),
+      customer_name: input.customer_name,
+      customer_phone: input.phone,
+      is_paid: true,
+    };
   }
 
   return add_demo_order({
