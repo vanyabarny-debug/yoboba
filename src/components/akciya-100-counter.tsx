@@ -132,10 +132,10 @@ export default function akciya_100_counter({ variant = 'page' }: props) {
         ? 'бесплатные напитки закончились'
         : `осталось ${target} бесплатных бабл ти`;
 
-  const label = sold_out ? 'закончились' : 'осталось бабл ти';
+  const label = sold_out ? 'закончились' : 'осталось бесплатных бабл ти';
 
   const reels = (
-    <span className="flex items-start leading-none" aria-hidden>
+    <span className="flex items-start leading-none text-neutral-900" aria-hidden>
       {digit_reel({ value: hundreds })}
       {digit_reel({ value: tens })}
       {digit_reel({ value: ones })}
@@ -143,37 +143,33 @@ export default function akciya_100_counter({ variant = 'page' }: props) {
   );
 
   if (variant === 'story') {
+    // ширина как два кружка акций (136 + 12 + 136), высота как кружок
     return (
       <Link
         href="/akciya-pervye-100"
-        className="flex w-[136px] flex-shrink-0 flex-col items-center gap-2 text-center"
+        className="flex h-[128px] w-[284px] flex-shrink-0 flex-col items-start justify-center rounded-[24px] bg-white px-5 shadow-[0_2px_14px_rgba(0,0,0,0.06)]"
         aria-label={aria}
       >
-        <span className="flex size-[128px] flex-col items-center justify-center overflow-hidden rounded-full bg-accent text-accent-foreground shadow-[0_0_0_3px_#f4f5f6,0_0_0_7px_#ff6b6b]">
-          <span className="text-[9px] font-bold uppercase tracking-[0.14em] opacity-90">
-            {sold_out ? 'всё' : 'осталось'}
-          </span>
-          <span className="mt-0.5 text-[2.35rem] leading-none">{reels}</span>
-        </span>
-        <span className="w-full px-0.5 text-sm font-extrabold leading-snug text-neutral-900">
+        <span className="text-[11px] font-bold uppercase leading-tight tracking-[0.14em] text-accent">
           {label}
         </span>
+        <span className="mt-1 text-[3.25rem] leading-none">{reels}</span>
       </Link>
     );
   }
 
   if (variant === 'card') {
+    // ширина как две карточки акций + gap
     return (
       <Link
         href="/akciya-pervye-100"
-        className="relative flex flex-shrink-0 w-[152px] sm:w-[180px] aspect-[2/3] flex-col items-center justify-center overflow-hidden rounded-card bg-accent px-3 text-center text-accent-foreground"
+        className="relative flex h-[228px] w-[312px] flex-shrink-0 flex-col items-start justify-center overflow-hidden rounded-card bg-white px-5 shadow-[0_2px_14px_rgba(0,0,0,0.06)] sm:h-[270px] sm:w-[368px] sm:px-6"
         aria-label={aria}
       >
-        <span className="text-[10px] font-bold uppercase tracking-[0.16em] opacity-90 sm:text-[11px]">
-          {sold_out ? 'закончились' : 'осталось бабл ти'}
+        <span className="text-[11px] font-bold uppercase leading-tight tracking-[0.14em] text-accent sm:text-xs">
+          {label}
         </span>
-        <span className="mt-3 text-[3.25rem] leading-none sm:text-[3.75rem]">{reels}</span>
-        <span className="mt-4 text-sm font-semibold opacity-90">из 100</span>
+        <span className="mt-2 text-[4rem] leading-none sm:text-[4.75rem]">{reels}</span>
       </Link>
     );
   }
