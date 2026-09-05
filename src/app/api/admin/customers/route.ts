@@ -20,6 +20,10 @@ type profile_row = {
   bonus_balance: number | null;
   created_at: string | null;
   avatar_emoji: string | null;
+  student_claimed?: boolean | null;
+  student_verified?: boolean | null;
+  student_verified_at?: string | null;
+  student_verified_by?: string | null;
 };
 
 type customer_order = {
@@ -42,6 +46,10 @@ type customer_row = {
   avatar_emoji: string | null;
   avatar_url: string | null;
   vk_url: string | null;
+  student_claimed: boolean;
+  student_verified: boolean;
+  student_verified_at: string | null;
+  student_verified_by: string | null;
   orders_count: number;
   spent: number;
   last_order_at: string | null;
@@ -125,6 +133,10 @@ function empty_customer(input: {
   avatar_emoji?: string | null;
   avatar_url?: string | null;
   vk_url?: string | null;
+  student_claimed?: boolean | null;
+  student_verified?: boolean | null;
+  student_verified_at?: string | null;
+  student_verified_by?: string | null;
 }): customer_row {
   return {
     id: input.id,
@@ -137,6 +149,10 @@ function empty_customer(input: {
     avatar_emoji: input.avatar_emoji || null,
     avatar_url: input.avatar_url?.trim() || null,
     vk_url: input.vk_url?.trim() || null,
+    student_claimed: input.student_claimed === true,
+    student_verified: input.student_verified === true,
+    student_verified_at: input.student_verified_at || null,
+    student_verified_by: input.student_verified_by || null,
     orders_count: 0,
     spent: 0,
     last_order_at: null,
@@ -293,7 +309,7 @@ export async function GET() {
       try {
         profiles = await fetch_all_rows<profile_row>(
           'profiles',
-          'id, name, phone, role, bonus_balance, created_at, avatar_emoji'
+          'id, name, phone, role, bonus_balance, created_at, avatar_emoji, student_claimed, student_verified, student_verified_at, student_verified_by'
         );
       } catch (err) {
         const msg = err instanceof Error ? err.message : '';
@@ -319,6 +335,10 @@ export async function GET() {
             avatar_emoji: p.avatar_emoji,
             avatar_url: auth?.avatar_url,
             vk_url: auth?.vk_url,
+            student_claimed: p.student_claimed,
+            student_verified: p.student_verified,
+            student_verified_at: p.student_verified_at,
+            student_verified_by: p.student_verified_by,
           })
         );
       }

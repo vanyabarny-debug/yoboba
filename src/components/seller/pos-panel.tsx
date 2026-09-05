@@ -17,6 +17,7 @@ import { calc_order_bonus, FREE_DRINK_BONUS_THRESHOLD } from '@/lib/cart-summary
 import { gift_items_label } from '@/lib/gifts';
 import { use_page_swipe } from '@/lib/use-page-swipe';
 import type { gift, menu_item, order_item } from '@/lib/types';
+import { STUDENT_DISCOUNT_LABEL, student_line_price } from '@/lib/student-discount';
 import menu_image from '@/components/menu-image';
 import seller_product_sheet from '@/components/seller/seller-product-sheet';
 
@@ -41,6 +42,8 @@ type found_customer = {
   name: string | null;
   phone: string | null;
   bonus_balance: number;
+  student_claimed?: boolean;
+  student_verified?: boolean;
 };
 
 type opening_100_status = {
@@ -146,6 +149,7 @@ export default function pos_panel({
   const [error, set_error] = useState<string | null>(null);
   const [paid_now, set_paid_now] = useState(false);
   const [pay_with_bonus, set_pay_with_bonus] = useState(false);
+  const [confirm_student, set_confirm_student] = useState(false);
   const [confirm_open, set_confirm_open] = useState(false);
   const [confirm_promo_mode, set_confirm_promo_mode] = useState(false);
   const [selected, set_selected] = useState<menu_item | null>(null);
@@ -207,6 +211,7 @@ export default function pos_panel({
     const e164 = phone_input_to_e164(phone_draft);
     if (!e164) {
       set_customer(null);
+      set_confirm_student(false);
       set_lookup_gifts([]);
       set_opening_100((prev) =>
         prev
@@ -238,12 +243,14 @@ export default function pos_panel({
         .then(([orders_body, gifts_body, opening_body]) => {
           if (cancelled) return;
           set_customer(orders_body.customer || null);
+          set_confirm_student(false);
           set_lookup_gifts(gifts_body.gifts || []);
           set_opening_100(opening_body);
         })
         .catch(() => {
           if (!cancelled) {
             set_customer(null);
+            set_confirm_student(false);
             set_lookup_gifts([]);
           }
         })
@@ -275,7 +282,20 @@ export default function pos_panel({
     },
   });
 
-  const total = cart.reduce((s, i) => s + i.price * i.quantity, 0);
+  const apply_student =
+    Boolean(customer?.student_verified) || confirm_student;
+  const total = cart.reduce((s, line) => {
+    const menu = items.find((i) => i.id === line.menu_id);
+    return (
+      s +
+      student_line_price(
+        line.price,
+        { category: menu?.category, menu_id: line.menu_id },
+        apply_student
+      ) *
+        line.quantity
+    );
+  }, 0);
   const count = cart.reduce((s, i) => s + i.quantity, 0);
   const bonus_preview = calc_order_bonus(
     cart.map((line) => ({
@@ -472,6 +492,7 @@ export default function pos_panel({
       set_cart([]);
       set_phone_draft('');
       set_customer(null);
+      set_confirm_student(false);
       set_paid_now(false);
       set_pay_with_bonus(false);
       close_confirm();
@@ -548,6 +569,10 @@ export default function pos_panel({
           is_paid: paid_now || pay_with_bonus,
           payment_type: pay_with_bonus ? 'bonus' : 'cash',
           redeem_bonus: pay_with_bonus,
+          confirm_student:
+            confirm_student &&
+            Boolean(customer) &&
+            !customer?.student_verified,
         }),
       });
       if (!res.ok) {
@@ -618,6 +643,7 @@ export default function pos_panel({
       set_cart([]);
       set_phone_draft('');
       set_customer(null);
+      set_confirm_student(false);
       set_paid_now(false);
       set_pay_with_bonus(false);
       close_confirm();
@@ -708,14 +734,24 @@ export default function pos_panel({
                   </div>
                 </div>
                 <span className="shrink-0 tabular-nums font-semibold text-neutral-800">
-                  {line.price * line.quantity} ₽
+                  {student_line_price(
+                    line.price,
+                    {
+                      category: items.find((i) => i.id === line.menu_id)?.category,
+                      menu_id: line.menu_id,
+                    },
+                    apply_student
+                  ) * line.quantity}{' '}
+                  ₽
                 </span>
               </li>
             ))}
           </ul>
 
           <div className="rounded-2xl bg-white border border-neutral-200 px-4 py-3 flex justify-between items-center">
-            <span className="text-sm text-neutral-500">итого</span>
+            <span className="text-sm text-neutral-500">
+              {apply_student ? STUDENT_DISCOUNT_LABEL : 'итого'}
+            </span>
             <span className="text-xl font-bold tabular-nums text-neutral-900">
               {pay_with_bonus ? '0 ₽' : `${total} ₽`}
             </span>
@@ -773,7 +809,31 @@ export default function pos_panel({
             <p className="text-sm text-neutral-700">
               <span className="font-semibold">{customer.name || 'гость'}</span>
               <span className="text-neutral-400"> · {customer.bonus_balance} бобаллов</span>
+              {customer.student_verified ? (
+                <span className="mt-1 block text-xs font-semibold text-accent">
+                  {STUDENT_DISCOUNT_LABEL}
+                </span>
+              ) : null}
             </p>
+          ) : null}
+
+          {customer && !customer.student_verified ? (
+            <label className="flex items-start gap-3 rounded-xl border border-accent/30 bg-accent/10 px-3 py-3">
+              <input
+                type="checkbox"
+                checked={confirm_student}
+                onChange={(e) => set_confirm_student(e.target.checked)}
+                className="mt-0.5 rounded"
+              />
+              <span className="min-w-0 text-xs font-semibold leading-snug text-accent">
+                подтвердить студенческую скидку −30%
+                <span className="mt-0.5 block font-medium text-neutral-600">
+                  {customer.student_claimed
+                    ? 'гость отметил «я студент» в профиле'
+                    : 'скидка останется в карточке клиента'}
+                </span>
+              </span>
+            </label>
           ) : null}
 
           {opening_100 ? (

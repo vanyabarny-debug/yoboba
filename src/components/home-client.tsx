@@ -11,6 +11,7 @@ import product_drawer_admin from '@/components/admin/product-drawer-admin';
 import combo_builder from '@/components/combo-builder';
 import cart_drawer, {
   cart_line_key,
+  cart_line_pay_price,
   cart_line_unit_price,
   type cart_line,
 } from '@/components/cart-drawer';
@@ -344,8 +345,12 @@ export default function home_client({
     set_is_anonymous(false);
     set_bonus(cached.bonus_balance);
   }, []);
+  const student_verified = Boolean(user?.student_verified);
   const cart_count = cart_lines.reduce((s, l) => s + l.quantity, 0);
-  const cart_total = cart_lines.reduce((s, l) => s + cart_line_unit_price(l) * l.quantity, 0);
+  const cart_total = cart_lines.reduce(
+    (s, l) => s + cart_line_pay_price(l, student_verified) * l.quantity,
+    0
+  );
   const active_promos = promos.filter((p) => p.is_active);
 
   useEffect(() => {
@@ -923,6 +928,8 @@ export default function home_client({
           avatar_url: auth.profile?.avatar_url || null,
           is_guest: false,
           role: 'user',
+          student_claimed: auth.profile?.student_claimed === true,
+          student_verified: auth.profile?.student_verified === true,
         });
         remember_header_user({
           id: auth.profile?.id || auth.user_id,
@@ -934,6 +941,8 @@ export default function home_client({
           avatar_url: auth.profile?.avatar_url || null,
           is_guest: false,
           role: 'user',
+          student_claimed: auth.profile?.student_claimed === true,
+          student_verified: auth.profile?.student_verified === true,
         });
 
         const should_hydrate = opts?.refresh_cart || !cart_hydrated_ref.current;
@@ -1612,6 +1621,7 @@ export default function home_client({
                     active_category: active_category ?? undefined,
                     promos,
                     inline_promos: true,
+                    student_verified,
                     on_promo_click: handle_promo_click,
                     on_item_click: (item: menu_item) => {
                       open_menu_item(item);
@@ -1671,6 +1681,7 @@ export default function home_client({
             return_to_cart: product_from_cart,
             on_return_to_cart: handle_return_to_cart,
             skip_fly: from_cart_upsell,
+            student_verified,
           })}
 
       {!is_admin_edit &&
@@ -1688,6 +1699,7 @@ export default function home_client({
               set_cart_open(true);
             }
           },
+          student_verified,
           on_confirm: (combo, picks) => {
             const replace_key = editing_line_key || undefined;
             void handle_add(combo, 1, {
@@ -1720,6 +1732,7 @@ export default function home_client({
         pickup_spot: selected_spot,
         on_pickup_change: () => set_location_open(true),
         as_gift,
+        student_verified,
         on_as_gift_change: (value: boolean) => {
           set_as_gift(value);
           if (value) set_redeem_bonus(false);

@@ -273,6 +273,8 @@ export default function profile_page() {
             avatar_emoji: u.avatar_emoji || avatar_emoji_from_id(u.id),
             avatar_bg: u.avatar_bg ?? null,
             role: 'user' as const,
+            student_claimed: u.student_claimed === true,
+            student_verified: u.student_verified === true,
           };
           set_profile(p);
           const loc = get_profile_local(u.id);
@@ -333,6 +335,8 @@ export default function profile_page() {
         avatar_url: resolved.avatar_url ?? null,
         is_guest: false,
         role: 'user',
+        student_claimed: resolved.student_claimed === true,
+        student_verified: resolved.student_verified === true,
       });
       set_profile(resolved);
       set_name_draft(resolved.name || '');
@@ -551,6 +555,37 @@ export default function profile_page() {
     if (next) {
       await subscribe_to_push(profile.id);
     }
+  }
+
+  async function handle_toggle_student() {
+    if (!profile || profile.student_verified) return;
+    const next = !profile.student_claimed;
+    if (demo_mode) {
+      const u = get_demo_user();
+      if (u) {
+        const next_user = { ...u, student_claimed: next };
+        set_demo_user(next_user);
+        remember_header_user(next_user);
+      }
+      set_profile({ ...profile, student_claimed: next });
+      return;
+    }
+    const { profile: saved, error } = await update_profile({ student_claimed: next });
+    if (error || !saved) return;
+    set_profile(saved);
+    remember_header_user({
+      id: saved.id,
+      phone: saved.phone || '',
+      name: saved.name || '',
+      bonus_balance: saved.bonus_balance,
+      avatar_emoji: saved.avatar_emoji || '',
+      avatar_bg: saved.avatar_bg,
+      avatar_url: saved.avatar_url ?? null,
+      is_guest: false,
+      role: 'user',
+      student_claimed: saved.student_claimed === true,
+      student_verified: saved.student_verified === true,
+    });
   }
 
   function handle_add_card() {
@@ -1036,6 +1071,45 @@ export default function profile_page() {
 
         <section className="space-y-4">
           <h2 className={section_title}>подписки</h2>
+          <button
+            type="button"
+            role="checkbox"
+            aria-checked={Boolean(profile.student_claimed || profile.student_verified)}
+            aria-disabled={profile.student_verified === true}
+            onClick={() => void handle_toggle_student()}
+            className="flex w-full items-start gap-3 text-left"
+          >
+            <span
+              className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-[4px] border-2 transition ${
+                profile.student_claimed || profile.student_verified
+                  ? 'border-accent bg-accent text-white'
+                  : 'border-neutral-300 bg-white'
+              }`}
+              aria-hidden
+            >
+              {profile.student_claimed || profile.student_verified ? (
+                <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+                  <path
+                    d="M2.5 6.2L4.8 8.6L9.5 3.4"
+                    stroke="currentColor"
+                    strokeWidth="1.8"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                </svg>
+              ) : null}
+            </span>
+            <span>
+              <span className="block text-[16px] sm:text-[17px] font-medium text-neutral-900">
+                я студент
+              </span>
+              <span className="mt-1 block text-[13px] font-normal leading-snug text-neutral-400">
+                {profile.student_verified
+                  ? 'подтверждено на кассе · личная скидка −30% на напитки и комбо'
+                  : 'скидка −30% после подтверждения администратором или кассиром'}
+              </span>
+            </span>
+          </button>
           <button
             type="button"
             role="checkbox"

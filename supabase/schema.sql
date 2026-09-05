@@ -18,6 +18,10 @@ create table public.profiles (
   avatar_bg text,
   bonus_balance integer not null default 0 check (bonus_balance >= 0),
   role public.user_role not null default 'user',
+  student_claimed boolean not null default false,
+  student_verified boolean not null default false,
+  student_verified_at timestamptz,
+  student_verified_by text,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );

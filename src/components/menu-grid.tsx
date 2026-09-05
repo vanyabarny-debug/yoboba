@@ -17,6 +17,7 @@ import {
   item_show_stock_left,
   item_stock_qty,
 } from '@/lib/menu-stock';
+import { student_line_price } from '@/lib/student-discount';
 
 type props = {
   items: menu_item[];
@@ -27,6 +28,7 @@ type props = {
   promos?: promo_banner[];
   on_promo_click?: (promo: promo_banner) => void;
   inline_promos?: boolean;
+  student_verified?: boolean;
 };
 
 const cols = 4;
@@ -47,15 +49,18 @@ function dish_card({
   item,
   on_item_click,
   on_quick_add,
+  student_verified = false,
 }: {
   item: menu_item;
   on_item_click: (item: menu_item) => void;
   on_quick_add?: (item: menu_item) => void;
+  student_verified?: boolean;
 }) {
   const available = item_is_effectively_available(item);
   const stock_qty = item_stock_qty(item);
   const show_stock = item_show_stock_left(item);
   const image_ref = useRef<HTMLDivElement>(null);
+  const pay_price = student_line_price(item.price, item, student_verified);
 
   function quick_add() {
     if (!on_quick_add) return;
@@ -125,9 +130,12 @@ function dish_card({
               ? 'bg-surface text-neutral-900 hover:bg-surface/80'
               : 'bg-surface/60 text-neutral-400 cursor-not-allowed'
           }`}
-          aria-label={`${item.name}, ${item.price} рублей — подробнее`}
+          aria-label={`${item.name}, ${pay_price} рублей — подробнее`}
         >
-          {item.price} ₽
+          {pay_price} ₽
+          {student_verified && pay_price < item.price ? (
+            <span className="ml-1 text-[11px] font-bold text-accent">−30%</span>
+          ) : null}
         </button>
         {available && on_quick_add && (
           <button
@@ -165,6 +173,7 @@ export default function menu_grid({
   promos = [],
   on_promo_click,
   inline_promos = false,
+  student_verified = false,
 }: props) {
   const [, set_tick] = useState(0);
   useEffect(() => subscribe_menu_store(() => set_tick((t) => t + 1)), []);
@@ -220,7 +229,7 @@ export default function menu_grid({
               <div className="grid grid-cols-2 min-[1024px]:grid-cols-4 gap-2 gap-y-5 overflow-visible">
                 {cat_items.map((item) => (
                   <div key={item.id} className="min-w-0 min-[1024px]:h-full overflow-visible">
-                    {createElement(dish_card, { item, on_item_click, on_quick_add })}
+                    {createElement(dish_card, { item, on_item_click, on_quick_add, student_verified })}
                   </div>
                 ))}
                 {desktop_cells.slice(cat_items.length).map((_, idx) => (

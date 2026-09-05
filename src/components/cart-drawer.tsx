@@ -23,6 +23,7 @@ import { kopi_boby_name } from '@/components/kopi-boby';
 import { configured_unit_price, get_topping_name } from '@/lib/product-details';
 import { format_combo_picks } from '@/lib/combo';
 import type { store_spot } from '@/lib/types';
+import { STUDENT_DISCOUNT_LABEL, student_line_price } from '@/lib/student-discount';
 
 export type cart_line = {
   item: menu_item;
@@ -41,6 +42,10 @@ export function cart_line_unit_price(line: cart_line): number {
     return line.item.price;
   }
   return configured_unit_price(line.item, line.volume, line.topping ?? 0);
+}
+
+export function cart_line_pay_price(line: cart_line, student_verified = false): number {
+  return student_line_price(cart_line_unit_price(line), line.item, student_verified);
 }
 
 export function cart_line_key(line: cart_line, index: number) {
@@ -70,6 +75,7 @@ type props = {
   /** оформить корзину как подарок по телефону */
   as_gift?: boolean;
   on_as_gift_change?: (value: boolean) => void;
+  student_verified?: boolean;
 };
 
 function boby_info() {
@@ -105,6 +111,7 @@ export default function cart_drawer({
   on_pickup_change,
   as_gift = false,
   on_as_gift_change,
+  student_verified = false,
 }: props) {
   const [sheet_visible, set_sheet_visible] = useState(false);
   const [sheet_open, set_sheet_open] = useState(false);
@@ -163,7 +170,7 @@ export default function cart_drawer({
 
   if (!sheet_visible && !open) return null;
 
-  const total = lines.reduce((s, l) => s + cart_line_unit_price(l) * l.quantity, 0);
+  const total = lines.reduce((s, l) => s + cart_line_pay_price(l, student_verified) * l.quantity, 0);
   const count = lines.reduce((s, l) => s + l.quantity, 0);
   const can_redeem = bonus >= FREE_DRINK_BONUS_THRESHOLD;
   const redeem_on = redeem_bonus && can_redeem;
@@ -270,7 +277,8 @@ export default function cart_drawer({
               <div className="space-y-2">
               {lines.map((line, index) => {
                 const key = cart_line_key(line, index);
-                const unit = cart_line_unit_price(line);
+                const unit = cart_line_pay_price(line, student_verified);
+                const full = cart_line_unit_price(line);
                 const volume_label = line.volume ? `${line.volume} мл` : null;
                 const topping_label =
                   (line.topping ?? 0) > 0
@@ -312,6 +320,11 @@ export default function cart_drawer({
                     <div className="border-t border-[#f0f0f2] mt-3 pt-3 flex items-center justify-between gap-3">
                       <p className="text-[17px] font-bold font-mono tabular-nums text-neutral-900">
                         {format_price(unit * line.quantity)} ₽
+                        {student_verified && unit < full ? (
+                          <span className="ml-2 text-xs font-medium text-neutral-400 line-through">
+                            {format_price(full * line.quantity)} ₽
+                          </span>
+                        ) : null}
                       </p>
                       <div className="flex items-center gap-3">
                         {on_edit && !line.item.id.startsWith('topping-') && (
@@ -473,7 +486,9 @@ export default function cart_drawer({
                     )}
                   </div>
                   <div className="flex items-center justify-between">
-                    <span className="text-neutral-500">{format_positions(count)}</span>
+                    <span className="text-neutral-500">
+                      {student_verified ? STUDENT_DISCOUNT_LABEL : format_positions(count)}
+                    </span>
                     <span className="font-semibold font-mono tabular-nums text-neutral-900">
                       {format_price(pay_total)} ₽
                       {redeem_on && total > 0 ? (

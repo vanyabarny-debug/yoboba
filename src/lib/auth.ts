@@ -16,6 +16,10 @@ export type profile = {
   avatar_bg: string | null;
   avatar_url?: string | null;
   role: user_role;
+  student_claimed?: boolean;
+  student_verified?: boolean;
+  student_verified_at?: string | null;
+  student_verified_by?: string | null;
 };
 
 export type auth_state = {
@@ -141,6 +145,10 @@ function hydrate_profile(
     avatar_bg: row?.avatar_bg ?? null,
     avatar_url: row?.avatar_url || meta_avatar || null,
     role: row?.role || 'user',
+    student_claimed: row?.student_claimed === true,
+    student_verified: row?.student_verified === true,
+    student_verified_at: row?.student_verified_at || null,
+    student_verified_by: row?.student_verified_by || null,
   };
 }
 
@@ -336,7 +344,11 @@ export async function get_profile(): Promise<profile | null> {
   return data;
 }
 
-export async function update_profile(input: { name?: string; phone?: string }) {
+export async function update_profile(input: {
+  name?: string;
+  phone?: string;
+  student_claimed?: boolean;
+}) {
   const res = await fetch('/api/auth/profile', {
     method: 'PATCH',
     credentials: 'same-origin',

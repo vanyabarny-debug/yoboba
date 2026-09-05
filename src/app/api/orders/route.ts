@@ -8,6 +8,8 @@ import { allocate_daily_order_number } from '@/lib/order-number';
 import { is_pickup_feasible } from '@/lib/kitchen-queue';
 import { load_active_orders, load_menu_map } from '@/lib/kitchen-server';
 import type { order_item } from '@/lib/types';
+import { student_line_price } from '@/lib/student-discount';
+import { read_student_status } from '@/lib/student-server';
 
 export async function GET() {
   const supabase = await create_server_client();
@@ -123,9 +125,23 @@ export async function POST(request: Request) {
     );
   }
 
+  const student = await read_student_status({ user_id: user.id, phone: profile_phone });
+  const priced_items = items.map((i) => {
+    const menu = menu_by_id.get(i.menu_id);
+    return {
+      ...i,
+      price: student_line_price(
+        Number(i.price) || 0,
+        { category: menu?.category, menu_id: i.menu_id },
+        student.student_verified
+      ),
+    };
+  });
+  const priced_total = priced_items.reduce((s, i) => s + i.price * i.quantity, 0);
+
   let redeemed = 0;
   let bonus_balance_after = Number(profile?.bonus_balance) || 0;
-  let final_total = total_price;
+  let final_total = priced_total;
   let final_payment = payment_type;
   let is_paid = false;
 
@@ -158,7 +174,7 @@ export async function POST(request: Request) {
 
   const order_payload = {
     user_id: user.id,
-    items,
+    items: priced_items,
     total_price: final_total,
     payment_type: final_payment,
     pickup_time,
@@ -177,7 +193,7 @@ export async function POST(request: Request) {
       .from('orders')
       .insert({
         user_id: user.id,
-        items,
+        items: priced_items,
         total_price: final_total,
         payment_type: final_payment === 'bonus' ? 'online' : final_payment,
         pickup_time,
@@ -205,7 +221,7 @@ export async function POST(request: Request) {
   let earned = 0;
   if (!redeem_bonus && final_total > 0 && !user.is_anonymous) {
     earned = calc_order_bonus(
-      items.map((i) => ({
+      priced_items.map((i) => ({
         menu_id: i.menu_id,
         quantity: i.quantity,
         category: menu_by_id.get(i.menu_id)?.category,

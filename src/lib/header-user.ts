@@ -14,6 +14,8 @@ function as_header_user(user: demo_user): demo_user | null {
     avatar_url: user.avatar_url ?? null,
     is_guest: false,
     role: 'user',
+    student_claimed: user.student_claimed === true,
+    student_verified: user.student_verified === true,
   };
 }
 

@@ -10,6 +10,12 @@ import { is_supabase_configured } from '@/lib/supabase/config';
 import { create_service_client } from '@/lib/supabase/service';
 import { clear_order_prep } from '@/lib/seller-prep-server';
 import type { order, order_item } from '@/lib/types';
+import { student_line_price } from '@/lib/student-discount';
+import {
+  read_student_status,
+  set_student_verified,
+  staff_actor_name,
+} from '@/lib/student-server';
 
 async function is_staff() {
   const store = await cookies();
@@ -20,20 +26,56 @@ async function is_staff() {
 async function find_profile_by_phone(phone: string) {
   if (!is_supabase_configured()) return null;
   const admin = create_service_client();
-  const { data } = await admin
+  const full = await admin
     .from('profiles')
-    .select('id, name, phone, bonus_balance')
+    .select(
+      'id, name, phone, bonus_balance, student_claimed, student_verified, student_verified_at, student_verified_by'
+    )
     .eq('phone', phone)
     .maybeSingle();
+  const data = full.error
+    ? (
+        await admin
+          .from('profiles')
+          .select('id, name, phone, bonus_balance')
+          .eq('phone', phone)
+          .maybeSingle()
+      ).data
+    : full.data;
   return data as {
     id: string;
     name: string | null;
     phone: string | null;
     bonus_balance: number | null;
+    student_claimed?: boolean | null;
+    student_verified?: boolean | null;
+    student_verified_at?: string | null;
+    student_verified_by?: string | null;
   } | null;
 }
 
-/** создаём реального пользователя в auth+profiles — иначе FK на orders.user_id падает */
+async function customer_payload(profile: {
+  id: string;
+  name: string | null;
+  phone: string | null;
+  bonus_balance: number | null;
+  student_claimed?: boolean | null;
+  student_verified?: boolean | null;
+  student_verified_at?: string | null;
+  student_verified_by?: string | null;
+}) {
+  const student = await read_student_status({ user_id: profile.id, phone: profile.phone });
+  return {
+    id: profile.id,
+    name: (profile.name || '').trim() || null,
+    phone: profile.phone,
+    bonus_balance: profile.bonus_balance ?? 0,
+    student_claimed: student.student_claimed || profile.student_claimed === true,
+    student_verified: student.student_verified || profile.student_verified === true,
+    student_verified_at: student.student_verified_at || profile.student_verified_at || null,
+    student_verified_by: student.student_verified_by || profile.student_verified_by || null,
+  };
+}
 async function resolve_walk_in_user_id(
   customer_name: string,
   customer_phone: string | null
@@ -144,12 +186,7 @@ export async function GET(request: Request) {
     if (by_id) {
       return NextResponse.json({
         phone: by_id.phone,
-        customer: {
-          id: by_id.id,
-          name: (by_id.name || '').trim() || null,
-          phone: by_id.phone,
-          bonus_balance: by_id.bonus_balance ?? 0,
-        },
+        customer: await customer_payload(by_id),
       });
     }
   }
@@ -162,18 +199,14 @@ export async function GET(request: Request) {
   if (profile) {
     return NextResponse.json({
       phone,
-      customer: {
-        id: profile.id,
-        name: (profile.name || '').trim() || null,
-        phone: profile.phone,
-        bonus_balance: profile.bonus_balance ?? 0,
-      },
+      customer: await customer_payload(profile),
     });
   }
 
   const { get_demo_bonus } = await import('@/lib/demo-bonus-server');
   const demo = await get_demo_bonus(phone);
   if (demo) {
+    const student = await read_student_status({ phone });
     return NextResponse.json({
       phone,
       customer: {
@@ -181,6 +214,7 @@ export async function GET(request: Request) {
         name: (demo.name || '').trim() || null,
         phone: demo.phone,
         bonus_balance: demo.bonus_balance,
+        ...student,
       },
     });
   }
@@ -200,19 +234,34 @@ export async function POST(request: Request) {
   }
 
   const menu = await load_menu_map();
+  const customer_phone = normalize_phone(body.customer_phone as string | undefined);
+  const raw_confirm_student = Boolean(body.confirm_student);
+  let student_verified = false;
+  if (customer_phone) {
+    let student = await read_student_status({ phone: customer_phone });
+    if (raw_confirm_student && !student.student_verified) {
+      student = await set_student_verified({
+        phone: customer_phone,
+        verified: true,
+        by: await staff_actor_name(),
+      });
+    }
+    student_verified = student.student_verified;
+  }
+
   const items: order_item[] = raw_items.map((row) => {
     const m = menu.get(row.menu_id);
+    const base = m?.price ?? row.price;
     return {
       menu_id: row.menu_id,
       name: m?.name || row.name,
-      price: m?.price ?? row.price,
+      price: student_line_price(base, { category: m?.category, menu_id: row.menu_id }, student_verified),
       quantity: Math.max(1, Math.round(Number(row.quantity) || 1)),
     };
   });
 
   const total_price = items.reduce((s, i) => s + i.price * i.quantity, 0);
   const pickup_minutes = Math.max(5, Math.min(60, Number(body.pickup_minutes) || 10));
-  const customer_phone = normalize_phone(body.customer_phone as string | undefined);
   let is_paid = Boolean(body.is_paid);
   let payment_type =
     (body.payment_type as 'cash' | 'card' | 'bonus' | 'online') || 'cash';

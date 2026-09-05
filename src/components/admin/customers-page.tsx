@@ -28,6 +28,10 @@ type customer_row = {
   orders_count: number;
   spent: number;
   last_order_at: string | null;
+  student_claimed: boolean;
+  student_verified: boolean;
+  student_verified_at: string | null;
+  student_verified_by: string | null;
   top_items: { name: string; quantity: number }[];
   orders: customer_order[];
 };
@@ -82,6 +86,7 @@ export default function customers_page() {
   const [query, set_query] = useState('');
   const [only_buyers, set_only_buyers] = useState(false);
   const [open_id, set_open_id] = useState<string | null>(null);
+  const [student_busy, set_student_busy] = useState<string | null>(null);
 
   useEffect(() => {
     fetch('/api/admin/customers', { credentials: 'same-origin' })
@@ -109,6 +114,55 @@ export default function customers_page() {
       return hay.includes(q);
     });
   }, [data, query, only_buyers]);
+
+  async function set_student(c: customer_row, verified: boolean) {
+    set_student_busy(c.id);
+    try {
+      const res = await fetch('/api/staff/student-discount', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          user_id: c.id.startsWith('guest:') ? undefined : c.id,
+          phone: c.phone,
+          verified,
+        }),
+      });
+      const body = (await res.json()) as {
+        error?: string;
+        student_claimed?: boolean;
+        student_verified?: boolean;
+        student_verified_at?: string | null;
+        student_verified_by?: string | null;
+      };
+      if (!res.ok) {
+        set_error(body.error || 'не удалось обновить статус студента');
+        return;
+      }
+      set_data((prev) =>
+        prev
+          ? {
+              ...prev,
+              customers: prev.customers.map((row) =>
+                row.id === c.id
+                  ? {
+                      ...row,
+                      student_claimed: body.student_claimed === true,
+                      student_verified: body.student_verified === true,
+                      student_verified_at: body.student_verified_at || null,
+                      student_verified_by: body.student_verified_by || null,
+                    }
+                  : row
+              ),
+            }
+          : prev
+      );
+    } catch {
+      set_error('не удалось обновить статус студента');
+    } finally {
+      set_student_busy(null);
+    }
+  }
 
   return (
     <AdminShell>
@@ -253,6 +307,11 @@ export default function customers_page() {
                         ? `${c.orders_count} ${orders_word(c.orders_count)} · ${c.spent.toLocaleString('ru-RU')} ₽`
                         : 'пока без заказов'}
                       {c.top_items[0] ? ` · часто: ${c.top_items[0].name}` : ''}
+                      {c.student_verified
+                        ? ' · студент −30%'
+                        : c.student_claimed
+                          ? ' · ждёт подтверждения студента'
+                          : ''}
                     </span>
                   </span>
                   <span className="shrink-0 text-xs text-neutral-400">
@@ -261,7 +320,38 @@ export default function customers_page() {
                 </button>
 
                 {open && (
-                  <div className="border-t border-neutral-100 px-4 py-3">
+                  <div className="border-t border-neutral-100 px-4 py-3 space-y-3">
+                    <div className="rounded-xl bg-page px-3 py-2.5">
+                      <p className="text-sm font-medium text-neutral-900">студенческая скидка</p>
+                      <p className="mt-0.5 text-xs text-neutral-500">
+                        {c.student_verified
+                          ? `подтверждена${c.student_verified_by ? ` · ${c.student_verified_by}` : ''}`
+                          : c.student_claimed
+                            ? 'гость отметил «я студент» — подтвердите, чтобы включить −30%'
+                            : 'гость не отмечал статус студента'}
+                      </p>
+                      <div className="mt-2 flex flex-wrap gap-2">
+                        {!c.student_verified ? (
+                          <button
+                            type="button"
+                            disabled={student_busy === c.id}
+                            onClick={() => void set_student(c, true)}
+                            className="rounded-lg bg-accent px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-40"
+                          >
+                            {student_busy === c.id ? '…' : 'подтвердить студента'}
+                          </button>
+                        ) : (
+                          <button
+                            type="button"
+                            disabled={student_busy === c.id}
+                            onClick={() => void set_student(c, false)}
+                            className="rounded-lg border border-neutral-200 bg-white px-3 py-1.5 text-xs font-semibold text-neutral-700 disabled:opacity-40"
+                          >
+                            {student_busy === c.id ? '…' : 'снять подтверждение'}
+                          </button>
+                        )}
+                      </div>
+                    </div>
                     {c.top_items.length > 0 && (
                       <p className="mb-3 text-xs text-neutral-500">
                         брал:{' '}

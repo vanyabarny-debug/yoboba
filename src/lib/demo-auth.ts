@@ -11,6 +11,8 @@ export type demo_user = {
   avatar_url?: string | null;
   is_guest: boolean;
   role: user_role;
+  student_claimed?: boolean;
+  student_verified?: boolean;
 };
 
 const storage_key = 'yoboba_demo_user';

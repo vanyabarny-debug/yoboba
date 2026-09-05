@@ -3,6 +3,7 @@ import { createClient } from '@supabase/supabase-js';
 import { NextResponse, type NextRequest } from 'next/server';
 import { normalize_phone } from '@/lib/phone';
 import { read_profile, update_profile_row } from '@/lib/profile-row';
+import { read_student_status, set_student_claimed } from '@/lib/student-server';
 
 function merge_cookies(from: NextResponse, to: NextResponse) {
   from.cookies.getAll().forEach((cookie) => {
@@ -44,7 +45,6 @@ export async function GET(request: NextRequest) {
   }
 
   const { data: profile } = await read_profile(supabase, user.id);
-
   const meta_phone = normalize_phone(
     (user.user_metadata as { phone?: string } | undefined)?.phone
   );
@@ -112,6 +112,22 @@ export async function GET(request: NextRequest) {
     resolved_profile = { ...resolved_profile, avatar_url: meta_avatar };
   }
 
+  if (resolved_profile) {
+    const student = await read_student_status({
+      user_id: user.id,
+      phone: resolved_profile.phone,
+    });
+    resolved_profile = {
+      ...resolved_profile,
+      student_claimed: student.student_claimed || resolved_profile.student_claimed,
+      student_verified: student.student_verified || resolved_profile.student_verified,
+      student_verified_at:
+        student.student_verified_at || resolved_profile.student_verified_at || null,
+      student_verified_by:
+        student.student_verified_by || resolved_profile.student_verified_by || null,
+    };
+  }
+
   const res = NextResponse.json({
     user: {
       id: user.id,
@@ -138,8 +154,17 @@ export async function PATCH(request: NextRequest) {
     return res;
   }
 
-  const body = (await request.json()) as { name?: string; phone?: string };
-  const updates: { name?: string; phone?: string; updated_at: string } = {
+  const body = (await request.json()) as {
+    name?: string;
+    phone?: string;
+    student_claimed?: boolean;
+  };
+  const updates: {
+    name?: string;
+    phone?: string;
+    student_claimed?: boolean;
+    updated_at: string;
+  } = {
     updated_at: new Date().toISOString(),
   };
 
@@ -163,7 +188,11 @@ export async function PATCH(request: NextRequest) {
     updates.phone = phone;
   }
 
-  if (!updates.name && !updates.phone) {
+  if (typeof body.student_claimed === 'boolean') {
+    updates.student_claimed = body.student_claimed;
+  }
+
+  if (!updates.name && !updates.phone && typeof updates.student_claimed !== 'boolean') {
     const res = NextResponse.json({ error: 'нечего обновлять' }, { status: 400 });
     merge_cookies(cookie_response, res);
     return res;
@@ -207,7 +236,23 @@ export async function PATCH(request: NextRequest) {
     });
   }
 
-  const res = NextResponse.json({ profile });
+  let resolved = profile;
+  if (typeof updates.student_claimed === 'boolean') {
+    const student = await set_student_claimed({
+      user_id: user.id,
+      phone: profile.phone,
+      claimed: updates.student_claimed,
+    });
+    resolved = {
+      ...profile,
+      student_claimed: student.student_claimed,
+      student_verified: student.student_verified,
+      student_verified_at: student.student_verified_at,
+      student_verified_by: student.student_verified_by,
+    };
+  }
+
+  const res = NextResponse.json({ profile: resolved });
   merge_cookies(cookie_response, res);
   return res;
 }

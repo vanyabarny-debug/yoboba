@@ -20,6 +20,7 @@ import { subscribe_site_content_store } from '@/lib/site-content-store';
 import { DRAWER_CLOSE_BTN_CLASS, DRAWER_INLINE_CLOSE_BTN_CLASS } from '@/lib/drawer-ui';
 import { use_sheet_swipe } from '@/lib/use-sheet-swipe';
 import { item_has_toppings, item_has_volumes } from '@/lib/cart-summary';
+import { STUDENT_DISCOUNT_LABEL, student_line_price } from '@/lib/student-discount';
 import menu_temp_marks from '@/components/menu-temp-marks';
 import {
   format_stock_left,
@@ -48,6 +49,7 @@ type props = {
   on_return_to_cart?: () => void;
   /** добавление из блока «добавить закуску» в корзине — без анимации полёта */
   skip_fly?: boolean;
+  student_verified?: boolean;
 };
 
 type card_state = {
@@ -88,6 +90,7 @@ export default function product_drawer({
   return_to_cart = false,
   on_return_to_cart,
   skip_fly = false,
+  student_verified = false,
 }: props) {
   const [qty, set_qty] = useState(1);
   const image_ref = useRef<HTMLDivElement>(null);
@@ -232,10 +235,15 @@ export default function product_drawer({
 
   const topping_price = get_topping_portion_price_value();
 
-  const unit_price = useMemo(() => {
+  const full_unit = useMemo(() => {
     if (!active_item) return 0;
     return configured_unit_price(active_item, volume_used, topping_used);
   }, [active_item, volume_used, topping_used, topping_price, meta_tick]);
+  const unit_price = student_line_price(
+    full_unit,
+    active_item || { category: null, id: null },
+    student_verified
+  );
 
   const total_price = unit_price * qty;
 
@@ -584,6 +592,11 @@ export default function product_drawer({
                     </span>
                   </button>
                 </div>
+                {student_verified && unit_price < full_unit ? (
+                  <p className="text-center text-[12px] font-medium text-accent">
+                    {STUDENT_DISCOUNT_LABEL}
+                  </p>
+                ) : null}
               </div>
 
               <div className="hidden min-[1024px]:block">
@@ -625,6 +638,11 @@ export default function product_drawer({
                 >
                   {is_cart_edit ? 'сохранить' : 'в корзину'} · {total_price} ₽
                 </button>
+                {student_verified && unit_price < full_unit ? (
+                  <p className="mt-2 text-center text-[12px] font-medium text-accent">
+                    {STUDENT_DISCOUNT_LABEL}
+                  </p>
+                ) : null}
               </div>
             </div>
           </div>

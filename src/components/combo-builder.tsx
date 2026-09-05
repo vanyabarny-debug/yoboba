@@ -15,6 +15,7 @@ import {
   format_combo_picks,
   get_combo_drink_count,
 } from '@/lib/combo';
+import { student_line_price } from '@/lib/student-discount';
 
 type props = {
   combo: menu_item | null;
@@ -23,6 +24,7 @@ type props = {
   on_close: () => void;
   on_confirm: (combo: menu_item, picks: menu_item[]) => void;
   initial_picks?: menu_item[];
+  student_verified?: boolean;
 };
 
 export default function combo_builder({
@@ -32,11 +34,17 @@ export default function combo_builder({
   on_close,
   on_confirm,
   initial_picks,
+  student_verified = false,
 }: props) {
   const slots = get_combo_drink_count(combo) ?? 0;
   const drinks = useMemo(() => combo_selectable_drinks(all_items), [all_items]);
-  const combo_price =
+  const combo_full =
     all_items.find((m) => m.id === combo?.id)?.price ?? combo?.price ?? 0;
+  const combo_price = student_line_price(
+    combo_full,
+    { category: combo?.category, id: combo?.id },
+    student_verified
+  );
   const [picks, set_picks] = useState<menu_item[]>([]);
   const [sheet_visible, set_sheet_visible] = useState(false);
   const [sheet_open, set_sheet_open] = useState(false);
