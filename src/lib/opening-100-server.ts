@@ -9,6 +9,7 @@ import type { opening_100_entry, order, order_item } from '@/lib/types';
 
 export const OPENING_100_LIMIT = 100;
 const store_key = 'opening-100';
+const override_key = 'opening-100-override';
 
 let write_chain: Promise<unknown> = Promise.resolve();
 
@@ -44,6 +45,42 @@ async function mutate_entries(
   });
 }
 
+/**
+ * Ручная правка счётчика из админки: лимит акции и поправка к числу выдач,
+ * чтобы не пробивать кассой каждый телефон.
+ */
+export type opening_100_override = {
+  limit: number;
+  manual_redeemed: number;
+  updated_at: string | null;
+  updated_by: string | null;
+};
+
+function empty_override(): opening_100_override {
+  return {
+    limit: OPENING_100_LIMIT,
+    manual_redeemed: 0,
+    updated_at: null,
+    updated_by: null,
+  };
+}
+
+function to_int(value: unknown, fallback: number) {
+  const n = Math.round(Number(value));
+  return Number.isFinite(n) ? n : fallback;
+}
+
+async function load_override(): Promise<opening_100_override> {
+  const raw = await read_json_store<opening_100_override | null>(override_key, null);
+  if (!raw) return empty_override();
+  return {
+    limit: Math.max(0, to_int(raw.limit, OPENING_100_LIMIT)),
+    manual_redeemed: to_int(raw.manual_redeemed, 0),
+    updated_at: typeof raw.updated_at === 'string' ? raw.updated_at : null,
+    updated_by: typeof raw.updated_by === 'string' ? raw.updated_by : null,
+  };
+}
+
 export type opening_100_status = {
   limit: number;
   redeemed_count: number;
@@ -52,27 +89,76 @@ export type opening_100_status = {
   phone: string | null;
   already_redeemed: boolean;
   entry: opening_100_entry | null;
+  /** сколько выдач добавлено вручную из админки */
+  manual_redeemed: number;
+  /** сколько выдач пробито кассой */
+  punched_count: number;
+  manual_updated_at: string | null;
+  manual_updated_by: string | null;
 };
 
 export async function get_opening_100_status(phone?: string | null): Promise<opening_100_status> {
   await write_chain.catch(() => undefined);
   const rows = await load_entries();
+  const override = await load_override();
   const normalized = phone ? normalize_phone(phone) : null;
   const entry =
     normalized != null
       ? rows.find((row) => row.phone === normalized) || null
       : null;
-  const redeemed_count = rows.length;
-  const remaining = Math.max(0, OPENING_100_LIMIT - redeemed_count);
+  const redeemed_count = Math.max(0, rows.length + override.manual_redeemed);
+  const remaining = Math.max(0, override.limit - redeemed_count);
   return {
-    limit: OPENING_100_LIMIT,
+    limit: override.limit,
     redeemed_count,
     remaining,
     sold_out: remaining <= 0,
     phone: normalized,
     already_redeemed: Boolean(entry),
     entry,
+    manual_redeemed: override.manual_redeemed,
+    punched_count: rows.length,
+    manual_updated_at: override.updated_at,
+    manual_updated_by: override.updated_by,
   };
+}
+
+/**
+ * Выставляет остаток (и при желании лимит) вручную. Поправка живёт отдельно
+ * от списка выдач, поэтому кассовые выдачи продолжают уменьшать остаток.
+ */
+export async function set_opening_100_counter(input: {
+  remaining?: number | null;
+  limit?: number | null;
+  by?: string | null;
+}): Promise<opening_100_status> {
+  await with_lock(async () => {
+    const rows = await load_entries();
+    const current = await load_override();
+
+    const limit =
+      input.limit == null
+        ? current.limit
+        : Math.max(0, Math.min(100_000, to_int(input.limit, current.limit)));
+
+    let manual_redeemed = current.manual_redeemed;
+    if (input.remaining != null) {
+      const remaining = Math.max(0, Math.min(limit, to_int(input.remaining, 0)));
+      manual_redeemed = limit - remaining - rows.length;
+    }
+    // счётчик выдач не может уйти в минус
+    manual_redeemed = Math.max(manual_redeemed, -rows.length);
+
+    const next: opening_100_override = {
+      limit,
+      manual_redeemed,
+      updated_at: new Date().toISOString(),
+      updated_by: (input.by || '').trim() || null,
+    };
+    await write_json_store(override_key, next);
+  });
+
+  return get_opening_100_status();
 }
 
 async function find_profile_id_by_phone(phone: string): Promise<string | null> {
@@ -241,8 +327,9 @@ export async function redeem_opening_100(
     if (rows.some((row) => row.phone === phone)) {
       throw new Error('этот номер уже получал бесплатный напиток');
     }
-    if (rows.length >= OPENING_100_LIMIT) {
-      throw new Error('все 100 напитков уже розданы');
+    const override = await load_override();
+    if (rows.length + override.manual_redeemed >= override.limit) {
+      throw new Error(`все ${override.limit} напитков уже розданы`);
     }
 
     const order = await create_promo_order({

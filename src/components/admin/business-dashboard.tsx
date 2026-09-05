@@ -12,6 +12,7 @@ import {
   YAxis,
 } from 'recharts';
 import online_counter from '@/components/admin/online-counter';
+import opening_100_manage from '@/components/admin/opening-100-manage';
 import live_carts from '@/components/admin/live-carts';
 import push_form from '@/components/admin/push-form';
 import { createElement } from 'react';
@@ -136,7 +137,10 @@ export default function business_dashboard() {
       </div>
 
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-        {createElement(online_counter)}
+        <div className="space-y-4">
+          {createElement(online_counter)}
+          {createElement(opening_100_manage)}
+        </div>
         <div>{createElement(live_carts)}</div>
         <div className="md:col-span-2 lg:col-span-1">{createElement(push_form)}</div>
       </div>
