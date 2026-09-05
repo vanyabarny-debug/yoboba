@@ -13,7 +13,7 @@ type props = {
   edit_mode?: boolean;
   on_edit_promo?: (promo: promo_banner) => void;
   on_add_promo?: () => void;
-  /** home: кружки на мобилке, карточки на пк; cards: карточки везде (страница «все акции») */
+  /** home: квадраты на мобилке, карточки на пк; cards: карточки везде (страница «все акции») */
   layout?: 'home' | 'cards';
 };
 
@@ -360,7 +360,7 @@ export default function promo_banners({
                       }
                       className="flex w-[136px] flex-col items-center gap-2 text-center"
                     >
-                      <span className="block size-[128px] overflow-hidden rounded-full bg-neutral-200 shadow-[0_0_0_3px_#f4f5f6,0_0_0_7px_#ff6b6b]">
+                      <span className="block size-[128px] overflow-hidden rounded-[24px] bg-neutral-200 shadow-[0_2px_14px_rgba(0,0,0,0.06),0_0_0_3px_#f4f5f6,0_0_0_7px_#ff6b6b]">
                         <img
                           src={promo.image_url}
                           alt=""
@@ -386,7 +386,7 @@ export default function promo_banners({
                   onClick={on_add_promo}
                   className="flex w-[136px] flex-shrink-0 flex-col items-center gap-2 text-center"
                 >
-                  <span className="flex size-[128px] items-center justify-center rounded-full border-2 border-dashed border-surface bg-white text-2xl text-neutral-400">
+                  <span className="flex size-[128px] items-center justify-center rounded-[24px] border-2 border-dashed border-surface bg-white text-2xl text-neutral-400 shadow-[0_2px_14px_rgba(0,0,0,0.06)]">
                     +
                   </span>
                   <span className="w-full text-sm font-extrabold text-neutral-500">
@@ -394,7 +394,7 @@ export default function promo_banners({
                   </span>
                 </button>
               )}
-              {/* хвостик, чтобы последний кружок можно было доскроллить; обрезка в покое — по правому краю экрана */}
+              {/* хвостик, чтобы последнюю плашку можно было доскроллить; обрезка в покое — по правому краю экрана */}
               <div className="w-[var(--page-gutter)] flex-shrink-0" aria-hidden />
             </div>
           </div>

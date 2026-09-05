@@ -13,7 +13,7 @@ type status = {
 const DIGITS = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9] as const;
 
 type props = {
-  /** page — на странице акции; story — кружок в ленте; card — карточка 2:3 */
+  /** page — на странице акции; story — квадратная плашка в ленте; card — карточка 2:3 */
   variant?: 'page' | 'story' | 'card';
 };
 
