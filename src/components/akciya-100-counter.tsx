@@ -148,10 +148,10 @@ export default function akciya_100_counter({ variant = 'page' }: props) {
     target === null
       ? 'считаем остаток'
       : sold_out
-        ? 'бесплатные напитки закончились'
+        ? 'бесплатные баблти закончились'
         : `осталось ${target} бесплатных бабл ти`;
 
-  const label = sold_out ? 'закончились' : 'осталось бесплатных бабл ти';
+  const label = sold_out ? 'бесплатные баблти закончились' : 'осталось бесплатных бабл ти';
 
   const reels = (
     <span className="flex items-start leading-none text-neutral-900" aria-hidden>

@@ -5,6 +5,7 @@ import edit_pencil from '@/components/admin/edit-pencil';
 import {
   default_news_ticker,
   get_news_ticker_settings,
+  hydrate_news_ticker_from_server,
   subscribe_news_ticker_store,
   type news_ticker_settings,
 } from '@/lib/news-ticker-store';
@@ -52,6 +53,9 @@ export default function news_ticker({ edit_mode = false, on_edit, embedded = fal
       set_settings(get_news_ticker_settings());
     }
     reload();
+    void hydrate_news_ticker_from_server().then((next) => {
+      set_settings(next);
+    });
     return subscribe_news_ticker_store(reload);
   }, []);
 

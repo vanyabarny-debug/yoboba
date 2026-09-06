@@ -103,14 +103,46 @@ export function get_news_ticker_settings(): news_ticker_settings {
   return get_news_ticker_store().settings;
 }
 
-export function save_news_ticker_settings(settings: news_ticker_settings) {
+function write_local(settings: news_ticker_settings) {
   const next: news_ticker_store = {
     version: news_ticker_store_version,
     settings: normalize_news_ticker(settings),
   };
-  localStorage.setItem(storage_key, JSON.stringify(next));
+  if (typeof window !== 'undefined') {
+    localStorage.setItem(storage_key, JSON.stringify(next));
+  }
   emit_update();
   return next.settings;
+}
+
+export function publish_news_ticker_now(settings: news_ticker_settings = get_news_ticker_settings()) {
+  if (typeof window === 'undefined') return;
+  void fetch('/api/admin/news-ticker', {
+    method: 'PUT',
+    credentials: 'same-origin',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(normalize_news_ticker(settings)),
+  });
+}
+
+/** тянет актуальный текст с сервера — для всех устройств */
+export function hydrate_news_ticker_from_server(): Promise<news_ticker_settings> {
+  if (typeof window === 'undefined') {
+    return Promise.resolve(get_news_ticker_settings());
+  }
+  return fetch('/api/news-ticker', { cache: 'no-store' })
+    .then((r) => r.json())
+    .then((body: { settings?: Partial<news_ticker_settings> | null }) => {
+      if (!body?.settings) return get_news_ticker_settings();
+      return write_local(normalize_news_ticker(body.settings));
+    })
+    .catch(() => get_news_ticker_settings());
+}
+
+export function save_news_ticker_settings(settings: news_ticker_settings) {
+  const next = write_local(settings);
+  publish_news_ticker_now(next);
+  return next;
 }
 
 export function reset_news_ticker_settings() {

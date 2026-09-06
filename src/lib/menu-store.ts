@@ -449,6 +449,20 @@ export function save_menu_store(store: menu_store) {
   schedule_publish(next);
 }
 
+/** применить меню с сервера на всех устройствах (без повторной публикации) */
+export function apply_published_menu_store(store: menu_store) {
+  if (typeof window === 'undefined') return null;
+  if (!store?.items?.length) return null;
+  const repaired = repair_menu_store({
+    ...store,
+    version: store_version,
+  });
+  localStorage.setItem(storage_key, JSON.stringify(repaired));
+  apply_published_heading_styles(repaired.category_heading_styles);
+  emit_update();
+  return repaired;
+}
+
 export function reset_menu_store() {
   save_menu_store(get_default_store());
 }

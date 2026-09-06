@@ -30,6 +30,7 @@ import top_bar_edit_sheet from '@/components/admin/top-bar-edit-sheet';
 import brand_edit_sheet from '@/components/admin/brand-edit-sheet';
 import {
   get_news_ticker_settings,
+  publish_news_ticker_now,
   save_news_ticker_settings,
   type news_ticker_settings,
 } from '@/lib/news-ticker-store';
@@ -83,6 +84,7 @@ import type { store_spot } from '@/lib/types';
 import {
   add_category,
   apply_published_heading_styles,
+  apply_published_menu_store,
   delete_category,
   delete_menu_item,
   get_menu_store,
@@ -765,6 +767,7 @@ export default function home_client({
   useEffect(() => {
     if (!admin_edit_mode) return;
     publish_menu_now();
+    publish_news_ticker_now();
   }, [admin_edit_mode]);
 
   useEffect(() => {
@@ -793,9 +796,10 @@ export default function home_client({
         const store = body.store;
         if (cancelled || !store?.items?.length) return;
         if (typeof store.version === 'number' && store.version < store_version) return;
-        apply_published_heading_styles(store.category_heading_styles);
-        set_categories(store.categories);
-        set_menu(store.items.filter((i) => i.is_available));
+        const applied = apply_published_menu_store(store) ?? store;
+        apply_published_heading_styles(applied.category_heading_styles);
+        set_categories(applied.categories);
+        set_menu(applied.items.filter((i) => i.is_available));
       })
       .catch(() => {});
     return () => {
