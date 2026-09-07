@@ -31,6 +31,7 @@ import {
   load_brand_google_fonts,
   type brand_font_weight,
 } from '@/lib/brand-font-catalog';
+import { schedule_publish_catalog } from '@/lib/published-client';
 
 export type { brand_font_id, brand_font_weight, heading_style };
 export {
@@ -240,11 +241,19 @@ export function get_brand_settings(): brand_settings {
 }
 
 export function save_brand_settings(settings: brand_settings) {
+  const next = persist_brand_settings(settings);
+  schedule_publish_catalog('brand', next);
+  return next;
+}
+
+function persist_brand_settings(settings: brand_settings) {
   const next = normalize_settings({
     ...settings,
     version: brand_store_version,
   });
-  localStorage.setItem(storage_key, JSON.stringify(next));
+  if (typeof window !== 'undefined') {
+    localStorage.setItem(storage_key, JSON.stringify(next));
+  }
   load_brand_google_fonts(
     next.font_sans,
     next.font_display,
@@ -254,6 +263,20 @@ export function save_brand_settings(settings: brand_settings) {
   apply_brand_theme(next);
   emit_update();
   return next;
+}
+
+export function apply_published_brand_settings(settings: brand_settings) {
+  if (typeof window === 'undefined' || !settings) return null;
+  return persist_brand_settings(settings);
+}
+
+export function publish_brand_settings_now(
+  settings: brand_settings = get_brand_settings()
+) {
+  schedule_publish_catalog('brand', {
+    ...settings,
+    version: brand_store_version,
+  });
 }
 
 export function reset_brand_settings() {

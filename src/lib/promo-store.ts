@@ -1,4 +1,5 @@
 import type { promo_banner } from '@/lib/types';
+import { schedule_publish_catalog } from '@/lib/published-client';
 
 import {
   default_promo_title_layout,
@@ -118,6 +119,8 @@ type promo_store = {
   removed_ids?: string[];
 };
 
+export type { promo_store };
+
 function emit_update() {
   if (typeof window !== 'undefined') {
     window.dispatchEvent(new Event(update_event));
@@ -219,11 +222,27 @@ export function get_promo_store(): promo_store {
 }
 
 export function save_promo_store(store: promo_store) {
-  localStorage.setItem(
-    storage_key,
-    JSON.stringify({ ...store, version: promo_store_version })
-  );
+  const next = { ...store, version: promo_store_version };
+  localStorage.setItem(storage_key, JSON.stringify(next));
   emit_update();
+  schedule_publish_catalog('promos', next);
+}
+
+/** меню акций с сервера — без повторной публикации */
+export function apply_published_promo_store(store: promo_store) {
+  if (typeof window === 'undefined') return null;
+  if (!store?.promos) return null;
+  const merged = merge_with_code_defaults({
+    ...store,
+    version: promo_store_version,
+  });
+  localStorage.setItem(storage_key, JSON.stringify(merged));
+  emit_update();
+  return merged;
+}
+
+export function publish_promo_store_now(store: promo_store = get_promo_store()) {
+  schedule_publish_catalog('promos', { ...store, version: promo_store_version });
 }
 
 export function reset_promo_store() {

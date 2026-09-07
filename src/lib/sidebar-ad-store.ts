@@ -1,4 +1,5 @@
 import type { sidebar_ad_slide } from '@/lib/types';
+import { schedule_publish_catalog } from '@/lib/published-client';
 
 export const sidebar_ad_store_version = 11;
 
@@ -22,6 +23,8 @@ type sidebar_ad_store = {
   interval_ms: number;
   slides: sidebar_ad_slide[];
 };
+
+export type { sidebar_ad_store };
 
 function emit_update() {
   if (typeof window !== 'undefined') {
@@ -111,11 +114,31 @@ export function get_sidebar_ad_store(): sidebar_ad_store {
 }
 
 export function save_sidebar_ad_store(store: sidebar_ad_store) {
-  localStorage.setItem(
-    storage_key,
-    JSON.stringify({ ...store, version: sidebar_ad_store_version })
-  );
+  const next = { ...store, version: sidebar_ad_store_version };
+  localStorage.setItem(storage_key, JSON.stringify(next));
   emit_update();
+  schedule_publish_catalog('sidebar-ads', next);
+}
+
+export function apply_published_sidebar_ad_store(store: sidebar_ad_store) {
+  if (typeof window === 'undefined') return null;
+  if (!store?.slides) return null;
+  const repaired = repair_sidebar_store({
+    ...store,
+    version: sidebar_ad_store_version,
+  });
+  localStorage.setItem(storage_key, JSON.stringify(repaired));
+  emit_update();
+  return repaired;
+}
+
+export function publish_sidebar_ad_store_now(
+  store: sidebar_ad_store = get_sidebar_ad_store()
+) {
+  schedule_publish_catalog('sidebar-ads', {
+    ...store,
+    version: sidebar_ad_store_version,
+  });
 }
 
 export function reset_sidebar_ad_store() {

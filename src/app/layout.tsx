@@ -8,6 +8,7 @@ import auth_bootstrap from '@/components/auth-bootstrap';
 import brand_theme from '@/components/brand-theme';
 import pwa_register from '@/components/pwa-register';
 import app_splash from '@/components/app-splash';
+import published_hydrate from '@/components/published-hydrate';
 import active_order_widget from '@/components/active-order-widget';
 import notify_permission_gate from '@/components/notify-permission-gate';
 
@@ -59,6 +60,7 @@ export default function root_layout({
         ) : null}
         {createElement(pwa_register)}
         {createElement(brand_theme)}
+        {createElement(published_hydrate)}
         {createElement(auth_bootstrap)}
         {createElement(app_splash)}
         {children}

@@ -1,4 +1,5 @@
 import type { store_spot } from '@/lib/types';
+import { schedule_publish_catalog } from '@/lib/published-client';
 
 export const spot_store_version = 1;
 
@@ -19,6 +20,8 @@ type spot_store = {
   version: number;
   spots: store_spot[];
 };
+
+export type { spot_store };
 
 function emit_update() {
   if (typeof window !== 'undefined') {
@@ -94,8 +97,22 @@ export function get_active_spots(): store_spot[] {
 }
 
 export function save_spot_store(store: spot_store) {
-  localStorage.setItem(storage_key, JSON.stringify({ ...store, version: spot_store_version }));
+  const next = { ...store, version: spot_store_version };
+  localStorage.setItem(storage_key, JSON.stringify(next));
   emit_update();
+  schedule_publish_catalog('spots', next);
+}
+
+export function apply_published_spot_store(store: spot_store) {
+  if (typeof window === 'undefined' || !store?.spots) return null;
+  const repaired = repair_spot_store({ ...store, version: spot_store_version });
+  localStorage.setItem(storage_key, JSON.stringify(repaired));
+  emit_update();
+  return repaired;
+}
+
+export function publish_spot_store_now(store: spot_store = get_spot_store()) {
+  schedule_publish_catalog('spots', { ...store, version: spot_store_version });
 }
 
 export function reset_spot_store() {

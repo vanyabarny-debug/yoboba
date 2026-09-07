@@ -1,3 +1,5 @@
+import { schedule_publish_catalog } from '@/lib/published-client';
+
 export type product_addon = {
   id: string;
   name: string;
@@ -480,11 +482,27 @@ export function get_site_content_store(): site_content_store {
 }
 
 export function save_site_content_store(store: site_content_store) {
-  localStorage.setItem(
-    storage_key,
-    JSON.stringify({ ...store, version: site_content_version })
-  );
+  const next = { ...store, version: site_content_version };
+  localStorage.setItem(storage_key, JSON.stringify(next));
   emit_update();
+  schedule_publish_catalog('site-content', next);
+}
+
+export function apply_published_site_content_store(store: site_content_store) {
+  if (typeof window === 'undefined' || !store) return null;
+  const next = { ...store, version: site_content_version };
+  localStorage.setItem(storage_key, JSON.stringify(next));
+  emit_update();
+  return next;
+}
+
+export function publish_site_content_store_now(
+  store: site_content_store = get_site_content_store()
+) {
+  schedule_publish_catalog('site-content', {
+    ...store,
+    version: site_content_version,
+  });
 }
 
 export function reset_site_content_store() {

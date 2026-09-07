@@ -5,8 +5,7 @@ import { usePathname } from 'next/navigation';
 import BrandWordmark from '@/components/brand-wordmark';
 
 // тайминги композиции:
-const SWAP_AT = 3100; // текст свапается: логотип уезжает влево, справа въезжает слоган
-const EXIT_AT = 4900; // вся заставка растворяется в прозрачность
+const EXIT_AT = 4300; // вся заставка растворяется в прозрачность
 const REMOVE_AT = 5600; // убираем из DOM
 const SPLASH_SEEN_KEY = 'yoboba_splash_seen';
 const SQUAD_SPLASH_SEEN_KEY = 'yosquad_splash_seen';
@@ -74,7 +73,6 @@ export default function app_splash() {
       /* private mode */
     }
 
-    const t_swap = setTimeout(() => set_phase('swap'), SWAP_AT);
     const t_exit = setTimeout(() => set_phase('exit'), EXIT_AT);
     const t_remove = setTimeout(() => {
       try {
@@ -86,7 +84,6 @@ export default function app_splash() {
     }, REMOVE_AT);
 
     return () => {
-      clearTimeout(t_swap);
       clearTimeout(t_exit);
       clearTimeout(t_remove);
     };
@@ -411,11 +408,6 @@ export default function app_splash() {
             className={`text-[72px] ${is_squad ? '!text-[#0039a6]' : '!text-[#FF6B6B]'}`}
           />
         </div>
-        <p className="app-splash-slogan">
-          радость,
-          <br />
-          которую ты заслуживаешь
-        </p>
       </div>
     </div>
   );
