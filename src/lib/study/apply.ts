@@ -54,6 +54,29 @@ export function save_apply(apply: Apply) {
 export const intern_phone = '8(996)270-96-00'
 export const intern_phone_tel = '+79962709600'
 
+const months_of = [
+  'января',
+  'февраля',
+  'марта',
+  'апреля',
+  'мая',
+  'июня',
+  'июля',
+  'августа',
+  'сентября',
+  'октября',
+  'ноября',
+  'декабря',
+]
+
+export function format_intern_when(date: string, time: string) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(date)
+  if (!m || !/^\d{2}:\d{2}$/.test(time)) return ''
+  const month = Number(m[2]) - 1
+  if (month < 0 || month > 11) return ''
+  return `${Number(m[3])} ${months_of[month]} в ${time}`
+}
+
 export type Step =
   | { id: keyof Apply; kind: 'text'; kicker: string; title: string; note?: string; placeholder: string; input: 'text' | 'tel' }
   | { id: keyof Apply; kind: 'single'; kicker: string; title: string; note?: string; options: string[] }

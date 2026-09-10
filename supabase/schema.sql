@@ -259,3 +259,4 @@ alter publication supabase_realtime add table public.orders;
 -- дневная нумерация заказов: выполни supabase/order-daily-number.sql
 
 -- заявки yoStudy / стажёры: выполни supabase/study-interns.sql
+-- отзыв после второго теста: выполни supabase/study-feedback.sql

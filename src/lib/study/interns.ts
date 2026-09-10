@@ -17,7 +17,13 @@ export type intern = {
   status: intern_status;
   created_at: string;
   updated_at: string;
+  feedback_mood: number | null;
+  feedback_liked: string;
+  feedback_disliked: string;
+  feedback_at: string | null;
 };
+
+export const mood_faces = ['😞', '🙁', '😐', '🙂', '😄'] as const;
 
 export const intern_status_label: Record<intern_status, string> = {
   new: 'новая',

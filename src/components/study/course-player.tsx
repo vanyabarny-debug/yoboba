@@ -4,10 +4,13 @@ import { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Topbar from '@/components/study/topbar'
 import { course, type Block, type Card } from '@/lib/study/course'
+import { format_intern_when, intern_phone, intern_phone_tel, load_apply } from '@/lib/study/apply'
+import { mood_faces } from '@/lib/study/interns'
 import { load_student, type Student } from '@/lib/study/student'
 
 const progress_key = 'yostudy-progress'
 const results_key = 'yostudy-results'
+const feedback_key = 'yostudy-feedback'
 const playable_blocks = course.blocks.filter((b) => !b.locked)
 
 type Progress = { block: number; card: number }
@@ -47,6 +50,7 @@ export default function CoursePlayer() {
   const [results, set_results] = useState<Results>({})
   const [done, set_done] = useState(false)
   const [ready, set_ready] = useState(false)
+  const [feedback, set_feedback] = useState({ mood: 0, liked: '', disliked: '', sending: false, error: '' })
 
   const block: Block | undefined = blocks[block_i]
   const card: Card | undefined = block?.cards[card_i]
@@ -59,6 +63,21 @@ export default function CoursePlayer() {
     }
     set_student(s)
     set_results(load_results())
+    try {
+      const raw = localStorage.getItem(feedback_key)
+      if (raw) {
+        const parsed = JSON.parse(raw) as { mood?: number; liked?: string; disliked?: string }
+        const mood = Number(parsed.mood)
+        set_feedback((f) => ({
+          ...f,
+          mood: mood >= 1 && mood <= 5 ? mood : f.mood,
+          liked: typeof parsed.liked === 'string' ? parsed.liked : f.liked,
+          disliked: typeof parsed.disliked === 'string' ? parsed.disliked : f.disliked,
+        }))
+      }
+    } catch {
+      /* ignore */
+    }
     const p = load_progress()
     if (p && p.block < blocks.length) {
       set_block_i(p.block)
@@ -78,7 +97,12 @@ export default function CoursePlayer() {
 
   const solved = useMemo(() => (card?.type === 'quiz' ? quiz_solved(card, quiz.rights) : true), [card, quiz])
   const checking = card?.type === 'quiz' && !solved
-  const can_next = checking ? quiz.picks.length > 0 : true
+  const can_next =
+    card?.type === 'feedback'
+      ? feedback.mood >= 1 && !feedback.sending
+      : checking
+        ? quiz.picks.length > 0
+        : true
 
   function check_quiz() {
     if (card?.type !== 'quiz') return
@@ -97,9 +121,45 @@ export default function CoursePlayer() {
     }
   }
 
-  function go_next() {
+  async function persist_feedback() {
+    const apply = load_apply()
+    const payload = {
+      mood: feedback.mood,
+      liked: feedback.liked.trim(),
+      disliked: feedback.disliked.trim(),
+      name: apply?.name || student?.name || '',
+      phone: apply?.phone || '',
+      at: new Date().toISOString(),
+    }
+    localStorage.setItem(feedback_key, JSON.stringify(payload))
+    const res = await fetch('/api/study/feedback', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(payload),
+    })
+    if (!res.ok) {
+      const data = (await res.json().catch(() => ({}))) as { error?: string }
+      throw new Error(data.error || 'отзыв не ушёл — попробуй ещё раз')
+    }
+  }
+
+  async function go_next() {
     if (!block || !can_next) return
     if (checking) return check_quiz()
+    if (card?.type === 'feedback') {
+      set_feedback((f) => ({ ...f, sending: true, error: '' }))
+      try {
+        await persist_feedback()
+      } catch (e) {
+        set_feedback((f) => ({
+          ...f,
+          sending: false,
+          error: e instanceof Error ? e.message : 'не отправилось',
+        }))
+        return
+      }
+      set_feedback((f) => ({ ...f, sending: false }))
+    }
     if (card_i < block.cards.length - 1) return set_card_i(card_i + 1)
     if (block_i < blocks.length - 1) {
       set_block_i(block_i + 1)
@@ -133,32 +193,18 @@ export default function CoursePlayer() {
 
   if (done || !block || !card) {
     return (
-      <div className="shell">
-        <Topbar title="готово" />
-        <main className="flex flex-1 flex-col items-center justify-center px-6 py-12 text-center">
-          <div className="max-w-xl">
-            <h1 className="font-heading-soft text-4xl leading-tight sm:text-5xl">
-              {student.name}, разделы пройдены
-            </h1>
-            <p className="mt-4 text-base font-medium leading-relaxed text-neutral-600 sm:text-lg">
-              следующий шаг — позвонить и прийти на стажировку. среда откроется позже.
-            </p>
-            <button
-              type="button"
-              className="btn btn-ghost mt-10"
-              onClick={() => {
-                set_done(false)
-                set_results({})
-                localStorage.removeItem(results_key)
-                set_block_i(0)
-                set_card_i(0)
-              }}
-            >
-              пройти ещё раз
-            </button>
-          </div>
-        </main>
-      </div>
+      <Finish
+        name={student.name}
+        blocks={blocks}
+        results={results}
+        on_retry={() => {
+          set_done(false)
+          set_results({})
+          localStorage.removeItem(results_key)
+          set_block_i(0)
+          set_card_i(0)
+        }}
+      />
     )
   }
 
@@ -200,6 +246,18 @@ export default function CoursePlayer() {
               }
             />
           ) : null}
+          {card.type === 'feedback' ? (
+            <FeedbackForm
+              card={card}
+              mood={feedback.mood}
+              liked={feedback.liked}
+              disliked={feedback.disliked}
+              error={feedback.error}
+              on_mood={(mood) => set_feedback((f) => ({ ...f, mood }))}
+              on_liked={(liked) => set_feedback((f) => ({ ...f, liked }))}
+              on_disliked={(disliked) => set_feedback((f) => ({ ...f, disliked }))}
+            />
+          ) : null}
         </div>
       </main>
 
@@ -228,7 +286,17 @@ export default function CoursePlayer() {
               назад
             </button>
             <button type="button" className="btn btn-primary min-w-40" onClick={go_next} disabled={!can_next}>
-              {checking ? 'проверить' : is_last_card ? (is_last_block ? 'завершить' : 'следующий раздел') : 'дальше'}
+              {checking
+                ? 'проверить'
+                : card.type === 'feedback'
+                  ? feedback.sending
+                    ? 'отправляем'
+                    : 'отправить'
+                  : is_last_card
+                    ? is_last_block
+                      ? 'завершить'
+                      : 'следующий раздел'
+                    : 'дальше'}
             </button>
           </>
         )}
@@ -429,5 +497,215 @@ function Quiz({ card, state, on_toggle }: { card: QuizCard; state: QuizState; on
         {solved ? card.explain : state.tries > 0 ? 'не совсем — попробуй ещё раз' : ''}
       </p>
     </>
+  )
+}
+
+function FeedbackForm({
+  card,
+  mood,
+  liked,
+  disliked,
+  error,
+  on_mood,
+  on_liked,
+  on_disliked,
+}: {
+  card: Extract<Card, { type: 'feedback' }>
+  mood: number
+  liked: string
+  disliked: string
+  error: string
+  on_mood: (mood: number) => void
+  on_liked: (value: string) => void
+  on_disliked: (value: string) => void
+}) {
+  return (
+    <>
+      <p className="text-xs font-bold uppercase tracking-[0.25em] text-accent">{card.kicker ?? 'опрос'}</p>
+      <h2 className="font-heading-soft mt-4 text-3xl leading-tight sm:text-5xl">{card.title}</h2>
+      {card.note ? (
+        <p className="mx-auto mt-4 max-w-xl text-base font-medium leading-relaxed text-neutral-500 sm:text-lg">
+          {card.note}
+        </p>
+      ) : null}
+      <div className="mt-8 flex justify-center gap-2 sm:gap-3">
+        {mood_faces.map((face, i) => {
+          const value = i + 1
+          return (
+            <button
+              key={face}
+              type="button"
+              aria-label={`${value} из 5`}
+              onClick={() => on_mood(value)}
+              className={
+                'flex h-14 w-14 items-center justify-center rounded-full text-3xl transition sm:h-16 sm:w-16 ' +
+                (mood === value ? 'bg-neutral-900 scale-110' : 'bg-neutral-100')
+              }
+            >
+              {face}
+            </button>
+          )
+        })}
+      </div>
+      <div className="mx-auto mt-8 flex w-full max-w-md flex-col gap-4 text-left">
+        <label className="block">
+          <span className="text-sm font-medium text-neutral-500">что понравилось</span>
+          <textarea
+            className="mt-2 w-full rounded-[22px] border border-neutral-200 px-4 py-3 text-base font-medium outline-none focus:border-neutral-900"
+            rows={3}
+            value={liked}
+            onChange={(e) => on_liked(e.target.value)}
+            placeholder="можно коротко"
+          />
+        </label>
+        <label className="block">
+          <span className="text-sm font-medium text-neutral-500">что нет</span>
+          <textarea
+            className="mt-2 w-full rounded-[22px] border border-neutral-200 px-4 py-3 text-base font-medium outline-none focus:border-neutral-900"
+            rows={3}
+            value={disliked}
+            onChange={(e) => on_disliked(e.target.value)}
+            placeholder="тоже честно"
+          />
+        </label>
+      </div>
+      <p className="mt-4 min-h-6 text-sm font-medium text-accent">{error}</p>
+    </>
+  )
+}
+
+function recap_points(block: Block) {
+  return block.cards
+    .filter((c): c is Extract<Card, { type: 'key' }> => c.type === 'key' && (c.kicker ?? '').startsWith('коротко'))
+    .map((c) => c.text)
+}
+
+function PhoneBlock() {
+  return (
+    <>
+      <p className="mt-6 text-base font-medium text-neutral-500">чтобы прийти на стажировку — позвони</p>
+      <a href={`tel:${intern_phone_tel}`} className="font-heading-soft mt-2 inline-block text-2xl sm:text-3xl">
+        {intern_phone}
+      </a>
+    </>
+  )
+}
+
+function Finish({
+  name,
+  blocks,
+  results,
+  on_retry,
+}: {
+  name: string
+  blocks: Block[]
+  results: Results
+  on_retry: () => void
+}) {
+  const [when, set_when] = useState('')
+  const [open, set_open] = useState<string | null>(null)
+
+  useEffect(() => {
+    const a = load_apply()
+    if (a) set_when(format_intern_when(a.intern_date, a.intern_time))
+  }, [])
+
+  return (
+    <div className="shell">
+      <Topbar title="готово" />
+      <main className="flex flex-1 flex-col items-center overflow-y-auto px-6 py-10 text-center">
+        <div className="w-full max-w-xl pb-8">
+          <p className="text-xs font-bold uppercase tracking-[0.25em] text-accent">готово</p>
+          <h1 className="font-heading-soft mt-4 text-3xl leading-tight sm:text-5xl">{name}, обучение пройдено</h1>
+          {when ? <p className="mt-6 text-lg font-medium leading-relaxed sm:text-xl">ждём тебя {when}.</p> : null}
+          <PhoneBlock />
+
+          <p className="mt-12 text-xs font-bold uppercase tracking-[0.25em] text-accent">что изучили</p>
+          <div className="mt-6 space-y-8 text-left">
+            {blocks.map((block) => {
+              const points = recap_points(block)
+              if (points.length === 0) return null
+              return (
+                <div key={block.id}>
+                  <p className="font-heading-soft text-xl">{block.title}</p>
+                  <ol className="mt-3 list-decimal space-y-2 pl-5 text-sm font-medium leading-snug text-neutral-700 sm:text-base">
+                    {points.map((p) => (
+                      <li key={p}>{p}</li>
+                    ))}
+                  </ol>
+                </div>
+              )
+            })}
+          </div>
+
+          <p className="mt-12 text-xs font-bold uppercase tracking-[0.25em] text-accent">результаты</p>
+          <div className="mt-6 space-y-8 text-left">
+            {blocks.map((block, block_i) => {
+              const quizzes = block_quizzes(block)
+              if (quizzes.length === 0) return null
+              const { clean, total } = block_score(block, block_i, results)
+              return (
+                <div key={block.id}>
+                  <p className="font-heading-soft text-xl">{block.title}</p>
+                  <p className="mt-1 text-sm font-medium text-neutral-500">
+                    {clean} из {total} — с первой попытки
+                  </p>
+                  <ul className="mt-3 text-sm font-medium leading-snug">
+                    {quizzes.map(({ c, i }) => {
+                      const id = `${block_i}:${i}`
+                      const wrongs = results[id] ?? []
+                      const ok = wrongs.length === 0
+                      const correct = correct_set(c)
+                      const is_open = open === id
+                      return (
+                        <li key={id} className="border-b border-neutral-200 last:border-0">
+                          <button
+                            type="button"
+                            className="flex w-full items-start gap-3 py-2.5 text-left"
+                            onClick={() => set_open(is_open ? null : id)}
+                          >
+                            <span className={'mt-0.5 shrink-0 font-bold ' + (ok ? 'text-[#2fa36b]' : 'text-accent')}>
+                              {ok ? '✓' : '✗'}
+                            </span>
+                            <span className="flex-1 text-neutral-700">{c.question}</span>
+                            <span className="mt-0.5 shrink-0 text-neutral-300">{is_open ? '–' : '+'}</span>
+                          </button>
+                          {is_open ? (
+                            <ul className="mb-3 ml-6 space-y-1 text-xs sm:text-sm">
+                              {c.options.map((o, oi) => {
+                                const cls = correct.includes(oi)
+                                  ? 'text-[#2fa36b]'
+                                  : wrongs.includes(oi)
+                                    ? 'text-accent line-through'
+                                    : 'text-neutral-400'
+                                return (
+                                  <li key={o} className={cls}>
+                                    {o}
+                                  </li>
+                                )
+                              })}
+                            </ul>
+                          ) : null}
+                        </li>
+                      )
+                    })}
+                  </ul>
+                </div>
+              )
+            })}
+          </div>
+
+          {when ? <p className="mt-12 text-base font-medium leading-relaxed">ждём тебя {when}.</p> : null}
+          <p className="mt-4 text-base font-medium text-neutral-500">ещё раз — позвони</p>
+          <a href={`tel:${intern_phone_tel}`} className="font-heading-soft mt-2 inline-block text-2xl sm:text-3xl">
+            {intern_phone}
+          </a>
+
+          <button type="button" className="btn btn-ghost mt-10" onClick={on_retry}>
+            пройти ещё раз
+          </button>
+        </div>
+      </main>
+    </div>
   )
 }

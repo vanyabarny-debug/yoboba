@@ -5,6 +5,7 @@ import { format_phone_display } from '@/lib/phone';
 import {
   intern_status_label,
   intern_statuses,
+  mood_faces,
   type intern,
   type intern_status,
 } from '@/lib/study/interns';
@@ -129,7 +130,10 @@ export default function InternsManage() {
                     className="min-w-0 text-left"
                     onClick={() => set_open(opened ? null : row.id)}
                   >
-                    <p className="font-medium">{row.name}</p>
+                    <p className="font-medium">
+                      {row.name}
+                      {row.feedback_mood ? ` ${mood_faces[row.feedback_mood - 1]}` : ''}
+                    </p>
                     <p className="text-sm text-neutral-700 mt-0.5">{visit_label(row.intern_date, row.intern_time)}</p>
                     <p className="text-xs text-neutral-500 mt-1">
                       {format_phone_display(row.phone)} · {row.city}
@@ -174,6 +178,28 @@ export default function InternsManage() {
                       <span className="text-neutral-400">любит готовить </span>
                       {row.cook || '—'}
                     </p>
+                    {row.feedback_mood ? (
+                      <>
+                        <p>
+                          <span className="text-neutral-400">настроение </span>
+                          {mood_faces[row.feedback_mood - 1]}
+                        </p>
+                        {row.feedback_liked ? (
+                          <p>
+                            <span className="text-neutral-400">зашло </span>
+                            {row.feedback_liked}
+                          </p>
+                        ) : null}
+                        {row.feedback_disliked ? (
+                          <p>
+                            <span className="text-neutral-400">не зашло </span>
+                            {row.feedback_disliked}
+                          </p>
+                        ) : null}
+                      </>
+                    ) : (
+                      <p className="text-neutral-400">отзыв ещё не оставил</p>
+                    )}
 
                     <div className="flex flex-wrap gap-1.5 pt-1">
                       {intern_statuses.map((status) => (

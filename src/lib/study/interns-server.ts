@@ -64,6 +64,13 @@ function parse_intern(raw: Record<string, unknown>): intern {
     status: is_status(raw.status) ? raw.status : 'new',
     created_at: as_string(raw.created_at) || new Date().toISOString(),
     updated_at: as_string(raw.updated_at) || new Date().toISOString(),
+    feedback_mood: (() => {
+      const n = Number(raw.feedback_mood);
+      return n >= 1 && n <= 5 ? n : null;
+    })(),
+    feedback_liked: as_string(raw.feedback_liked),
+    feedback_disliked: as_string(raw.feedback_disliked),
+    feedback_at: as_string(raw.feedback_at) || null,
   };
 }
 
@@ -84,6 +91,10 @@ function to_row(intern: intern) {
     status: intern.status,
     created_at: intern.created_at,
     updated_at: intern.updated_at,
+    feedback_mood: intern.feedback_mood,
+    feedback_liked: intern.feedback_liked,
+    feedback_disliked: intern.feedback_disliked,
+    feedback_at: intern.feedback_at,
   };
 }
 
@@ -150,6 +161,10 @@ export function parse_apply_input(body: intern_apply_input): intern | { error: s
     status: 'new',
     created_at: now,
     updated_at: now,
+    feedback_mood: null,
+    feedback_liked: '',
+    feedback_disliked: '',
+    feedback_at: null,
   };
 }
 
@@ -179,12 +194,16 @@ export async function upsert_intern(input: intern_apply_input): Promise<intern> 
         status: prev.status,
         created_at: prev.created_at,
         updated_at: new Date().toISOString(),
+        feedback_mood: prev.feedback_mood,
+        feedback_liked: prev.feedback_liked,
+        feedback_disliked: prev.feedback_disliked,
+        feedback_at: prev.feedback_at,
       };
       const { error } = await admin.from('study_interns').update(to_row(saved)).eq('id', prev.id);
-      if (error && !is_missing_table(error.message)) throw new Error(error.message);
+      if (error && !is_missing_table(error.message) && !/feedback_mood/i.test(error.message)) throw new Error(error.message);
     } else if (!read_error) {
       const { error } = await admin.from('study_interns').insert(to_row(parsed));
-      if (error && !is_missing_table(error.message)) throw new Error(error.message);
+      if (error && !is_missing_table(error.message) && !/feedback_mood/i.test(error.message)) throw new Error(error.message);
     }
   }
 
@@ -265,4 +284,41 @@ export async function delete_intern(id: string): Promise<boolean> {
     removed = true;
   }
   return removed;
+}
+
+export async function save_intern_feedback(input: {
+  name?: string;
+  phone?: string;
+  mood: number;
+  liked?: string;
+  disliked?: string;
+}): Promise<intern | null> {
+  const mood = Math.round(Number(input.mood));
+  if (mood < 1 || mood > 5) throw new Error('выбери смайлик');
+  const phone = normalize_phone(input.phone);
+  const now = new Date().toISOString();
+  const patch = {
+    feedback_mood: mood,
+    feedback_liked: as_string(input.liked),
+    feedback_disliked: as_string(input.disliked),
+    feedback_at: now,
+    updated_at: now,
+  };
+
+  if (is_supabase_configured() && phone) {
+    const admin = create_service_client();
+    const { error } = await admin.from('study_interns').update(patch).eq('phone', phone);
+    if (error && !is_missing_table(error.message) && !/feedback_mood|schema cache|does not exist/i.test(error.message)) {
+      throw new Error(error.message);
+    }
+  }
+
+  const rows = await load_local();
+  const idx = rows.findIndex((row) => phone && row.phone === phone);
+  if (idx >= 0) {
+    rows[idx] = { ...rows[idx], ...patch };
+    await save_local(rows);
+    return rows[idx];
+  }
+  return null;
 }

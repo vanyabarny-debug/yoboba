@@ -35,7 +35,14 @@ export type ResultsCard = {
   pass?: number // доля вопросов с первой попытки, чтобы сдать. по умолчанию 0.7
 }
 
-export type Card = StoryCard | ImageCard | KeyCard | QuizCard | ResultsCard
+export type FeedbackCard = {
+  type: 'feedback'
+  kicker?: string
+  title: string
+  note?: string
+}
+
+export type Card = StoryCard | ImageCard | KeyCard | QuizCard | ResultsCard | FeedbackCard
 
 export type Block = {
   id: string
@@ -516,6 +523,12 @@ export const course = {
         {
           type: 'results',
           title: 'второй раздел пройден',
+        },
+        {
+          type: 'feedback',
+          kicker: 'опрос',
+          title: 'как прошла история?',
+          note: 'честно. что зашло, что нет. это не оценка тебя — это про текст.',
         },
         {
           type: 'story',
