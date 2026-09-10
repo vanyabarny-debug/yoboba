@@ -9,7 +9,7 @@ function new_seller_id() {
   return `seller-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
 }
 
-export default function sellers_manage() {
+export default function sellers_manage({ bare = false }: { bare?: boolean } = {}) {
   const [sellers, set_sellers] = useState<seller[]>([]);
   const [spots, set_spots] = useState<store_spot[]>([]);
   const [editing, set_editing] = useState<seller | null>(null);
@@ -123,11 +123,10 @@ export default function sellers_manage() {
       .join(' · ');
   }
 
-  return (
-    <AdminShell>
+  const body = (
       <div className="max-w-3xl mx-auto space-y-4">
         <div>
-          <h2 className="text-lg font-semibold text-neutral-900">персонал</h2>
+          <h2 className="text-lg font-semibold text-neutral-900">{bare ? 'кассиры' : 'персонал'}</h2>
           <p className="text-sm text-neutral-500">бариста / касса · привязка к точкам</p>
         </div>
 
@@ -274,6 +273,8 @@ export default function sellers_manage() {
           </div>
         )}
       </div>
-    </AdminShell>
   );
+
+  if (bare) return body;
+  return <AdminShell>{body}</AdminShell>;
 }

@@ -23,6 +23,7 @@ const seeds: Record<string, unknown> = {
   'published-site-content': null,
   'published-spots': null,
   'student-status': [],
+  'study-interns': [],
   'push-subscriptions': [],
   'vapid-keys': null,
   'seller-prep-state': {},

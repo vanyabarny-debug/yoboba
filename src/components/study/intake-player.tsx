@@ -12,6 +12,7 @@ export default function IntakePlayer() {
   const [i, set_i] = useState(0)
   const [error, set_error] = useState('')
   const [ready, set_ready] = useState(false)
+  const [sending, set_sending] = useState(false)
 
   const done = i >= steps.length
   const step = steps[i]
@@ -64,7 +65,17 @@ export default function IntakePlayer() {
     return null
   }
 
-  function go_next() {
+  async function submit_apply(payload: Apply) {
+    const res = await fetch('/api/study/apply', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(payload),
+    })
+    const data = (await res.json().catch(() => ({}))) as { error?: string }
+    if (!res.ok) throw new Error(data.error || 'заявка не ушла — попробуй ещё раз')
+  }
+
+  async function go_next() {
     if (done) {
       router.push('/study/learn')
       return
@@ -81,6 +92,17 @@ export default function IntakePlayer() {
       set_apply(next)
     }
     save_apply(next)
+    if (i === steps.length - 1) {
+      set_sending(true)
+      try {
+        await submit_apply(next)
+      } catch (e) {
+        set_error(e instanceof Error ? e.message : 'заявка не ушла — попробуй ещё раз')
+        set_sending(false)
+        return
+      }
+      set_sending(false)
+    }
     set_i(i + 1)
   }
 
@@ -188,8 +210,8 @@ export default function IntakePlayer() {
         <button type="button" className="btn btn-ghost" onClick={go_prev} disabled={i === 0}>
           назад
         </button>
-        <button type="button" className="btn btn-primary min-w-40" onClick={go_next} disabled={!can_next}>
-          {done ? 'к обучению' : 'дальше'}
+        <button type="button" className="btn btn-primary min-w-40" onClick={go_next} disabled={!can_next || sending}>
+          {sending ? 'отправляем' : done ? 'к обучению' : 'дальше'}
         </button>
       </footer>
     </div>

@@ -257,3 +257,5 @@ alter publication supabase_realtime add table public.orders;
 -- alter table public.menu add column if not exists badge_color text check (badge_color is null or badge_color in ('pink', 'accent', 'orange', 'green', 'purple', 'dark'));
 
 -- дневная нумерация заказов: выполни supabase/order-daily-number.sql
+
+-- заявки yoStudy / стажёры: выполни supabase/study-interns.sql
