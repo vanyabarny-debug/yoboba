@@ -3,12 +3,14 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { usePathname } from 'next/navigation';
 import BrandWordmark from '@/components/brand-wordmark';
+import { STUDY_NAME } from '@/lib/brand';
 
 // тайминги композиции:
 const EXIT_AT = 4300; // вся заставка растворяется в прозрачность
 const REMOVE_AT = 5600; // убираем из DOM
 const SPLASH_SEEN_KEY = 'yoboba_splash_seen';
 const SQUAD_SPLASH_SEEN_KEY = 'yosquad_splash_seen';
+const STUDY_SPLASH_SEEN_KEY = 'yostudy_splash_seen';
 
 type pearl = { x: number; y: number; vx: number; vy: number; r: number };
 type rect = { left: number; right: number; top: number; bottom: number };
@@ -28,10 +30,15 @@ function is_squad_path(path: string | null) {
   return path.startsWith('/seller') || path.startsWith('/admin');
 }
 
+function is_study_path(path: string | null) {
+  return Boolean(path?.startsWith('/study'));
+}
+
 export default function app_splash() {
   const pathname = usePathname();
   const is_squad = is_squad_path(pathname);
-  const seen_key = is_squad ? SQUAD_SPLASH_SEEN_KEY : SPLASH_SEEN_KEY;
+  const is_study = is_study_path(pathname);
+  const seen_key = is_study ? STUDY_SPLASH_SEEN_KEY : is_squad ? SQUAD_SPLASH_SEEN_KEY : SPLASH_SEEN_KEY;
 
   const [removed, set_removed] = useState(false);
   const [phase, set_phase] = useState<'run' | 'swap' | 'exit'>('run');
@@ -388,13 +395,13 @@ export default function app_splash() {
       window.removeEventListener('resize', on_resize);
       window.visualViewport?.removeEventListener('resize', on_resize);
     };
-  }, [removed, is_squad]);
+  }, [removed, is_squad, is_study]);
 
   if (removed) return null;
 
   return (
     <div
-      className={`app-splash ${is_squad ? 'is-squad' : ''} ${phase !== 'run' ? 'is-swap' : ''} ${phase === 'exit' ? 'is-exit' : ''}`}
+      className={`app-splash ${is_squad ? 'is-squad' : ''} ${is_study ? 'is-study' : ''} ${phase !== 'run' ? 'is-swap' : ''} ${phase === 'exit' ? 'is-exit' : ''}`}
       role="status"
       aria-label="загрузка приложения"
       aria-hidden={phase !== 'run'}
@@ -403,10 +410,24 @@ export default function app_splash() {
 
       <div className="app-splash-content">
         <div ref={logo_ref} className="app-splash-logo">
-          {/* yomoyo: коралл на синем; yoSquad: синий на коралле */}
-          <BrandWordmark
-            className={`text-[72px] ${is_squad ? '!text-[#0039a6]' : '!text-[#FF6B6B]'}`}
-          />
+          {/* yomoyo: коралл на синем; yoSquad: синий на коралле; yoStudy: коралл на белом */}
+          {is_study ? (
+            <span
+              className="block text-left leading-none !text-[#FF6B6B] text-[72px]"
+              style={{
+                fontFamily: 'Fredoka, system-ui, sans-serif',
+                fontWeight: 600,
+                letterSpacing: '0.04em',
+                fontSynthesis: 'none',
+              }}
+            >
+              {STUDY_NAME}
+            </span>
+          ) : (
+            <BrandWordmark
+              className={`text-[72px] ${is_squad ? '!text-[#0039a6]' : '!text-[#FF6B6B]'}`}
+            />
+          )}
         </div>
       </div>
     </div>

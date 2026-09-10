@@ -11,6 +11,13 @@ export const SQUAD_TAGLINE = 'команда точки';
 export const SQUAD_ICON_192 = '/icons/yosquad-192.png';
 export const SQUAD_ICON_512 = '/icons/yosquad-512.png';
 
+/** hiring / training PWA brand */
+export const STUDY_NAME = 'yoStudy';
+export const STUDY_SHORT = 'yoStudy';
+export const STUDY_TAGLINE = 'обучение для смены';
+export const STUDY_ICON_192 = '/icons/yostudy-192.png';
+export const STUDY_ICON_512 = '/icons/yostudy-512.png';
+
 /** coral / energy — основной CTA и акцент */
 export const BRAND_COLOR_ACCENT = '#FF6B6B';
 export const BRAND_COLOR_ACCENT_DARK = '#002D7A';

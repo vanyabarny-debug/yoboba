@@ -18,7 +18,8 @@ function staff_path(pathname: string | null) {
     pathname.startsWith('/admin') ||
     pathname.startsWith('/seller') ||
     pathname.startsWith('/barista') ||
-    pathname.startsWith('/squad')
+    pathname.startsWith('/squad') ||
+    pathname.startsWith('/study')
   );
 }
 

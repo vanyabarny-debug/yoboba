@@ -15,6 +15,7 @@ const staff_prefixes = [
   '/seller',
   '/barista',
   '/squad',
+  '/study',
   '/manage',
   '/auth',
   '/orders',

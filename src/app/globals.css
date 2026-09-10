@@ -352,6 +352,133 @@ body {
   background: linear-gradient(180deg, #ff8585 0%, #ff6b6b 45%, #f25555 100%);
 }
 
+/* yoStudy: белый фон, коралловый логотип */
+.app-splash.is-study {
+  background: #ffffff;
+}
+
+.study-app {
+  min-height: 100dvh;
+  background: #ffffff;
+  color: #20181b;
+}
+
+.study-app .shell {
+  display: flex;
+  flex-direction: column;
+  min-height: 100dvh;
+  padding-top: var(--safe-top);
+  padding-bottom: var(--safe-bottom);
+  background: #ffffff;
+}
+
+.study-app .topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 1rem 1.5rem;
+  border-bottom: 1px solid rgba(32, 24, 27, 0.08);
+}
+
+.study-app .scroll-fade {
+  overflow-y: auto;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+  -webkit-mask-image: linear-gradient(to bottom, transparent, #000 1.5rem, #000 calc(100% - 1.5rem), transparent);
+  mask-image: linear-gradient(to bottom, transparent, #000 1.5rem, #000 calc(100% - 1.5rem), transparent);
+}
+
+.study-app .scroll-fade::-webkit-scrollbar {
+  display: none;
+}
+
+.study-app .progress {
+  height: 2px;
+  background: rgba(32, 24, 27, 0.08);
+}
+
+.study-app .progress > span {
+  display: block;
+  height: 100%;
+  background: #ff6b6b;
+  transition: width 0.3s ease;
+}
+
+.study-app .field {
+  width: 100%;
+  border: 1px solid rgba(32, 24, 27, 0.16);
+  border-radius: 999px;
+  padding: 0.9rem 1.25rem;
+  text-align: center;
+  font: inherit;
+  font-weight: 600;
+  background: #fff;
+  outline: none;
+}
+
+.study-app .field:focus {
+  border-color: #20181b;
+}
+
+.study-app .btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  padding: 0.9rem 2rem;
+  font: inherit;
+  font-weight: 700;
+  transition: opacity 0.15s ease;
+}
+
+.study-app .btn:disabled {
+  opacity: 0.3;
+}
+
+.study-app .btn-primary {
+  background: #20181b;
+  color: #fff;
+}
+
+.study-app .btn-ghost {
+  color: var(--brand-mute);
+}
+
+.study-app .option {
+  width: 100%;
+  border: 1px solid rgba(32, 24, 27, 0.16);
+  border-radius: 999px;
+  padding: 0.85rem 1.25rem;
+  text-align: center;
+  font: inherit;
+  font-weight: 600;
+  background: #fff;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+
+.study-app .option:disabled {
+  cursor: default;
+}
+
+.study-app .option.is-picked {
+  border-color: #20181b;
+  background: #20181b;
+  color: #fff;
+}
+
+.study-app .option.is-right {
+  border-color: #2fa36b;
+  background: #2fa36b;
+  color: #fff;
+}
+
+.study-app .option.is-wrong {
+  border-color: #ff6b6b;
+  background: #fff1f1;
+  color: #ff6b6b;
+}
+
 /* финал — вся заставка красиво растворяется в прозрачность */
 .app-splash.is-exit {
   opacity: 0;

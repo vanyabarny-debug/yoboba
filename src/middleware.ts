@@ -78,6 +78,10 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(new URL(target, request.url));
   }
 
+  if (path === '/' && request.nextUrl.searchParams.get('app') === 'study') {
+    return NextResponse.redirect(new URL('/study', request.url));
+  }
+
   const is_admin_route = path.startsWith('/admin');
   const is_barista_route = path.startsWith('/barista');
   const is_seller_route = path.startsWith('/seller');
