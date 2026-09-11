@@ -24,11 +24,22 @@ export type intern = {
   quiz_results: intern_quiz_block[];
 };
 
+export type intern_quiz_pick = {
+  text: string;
+  ok: boolean;
+};
+
+export type intern_quiz_attempt = {
+  picks: intern_quiz_pick[];
+};
+
 export type intern_quiz_item = {
   question: string;
   ok: boolean;
+  tries: number;
   correct: string[];
   wrong: string[];
+  attempts: intern_quiz_attempt[];
 };
 
 export type intern_quiz_block = {

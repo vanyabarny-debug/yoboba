@@ -57,11 +57,38 @@ function parse_quiz_item(raw: unknown): intern_quiz_item | null {
   const row = raw as Record<string, unknown>;
   const question = as_string(row.question);
   if (!question) return null;
+  const attempts = Array.isArray(row.attempts)
+    ? row.attempts
+        .map((attempt) => {
+          if (!attempt || typeof attempt !== 'object') return null;
+          const picks_raw = (attempt as { picks?: unknown }).picks;
+          const picks = Array.isArray(picks_raw)
+            ? picks_raw
+                .map((pick) => {
+                  if (!pick || typeof pick !== 'object') return null;
+                  const text = as_string((pick as { text?: unknown }).text);
+                  if (!text) return null;
+                  return { text, ok: (pick as { ok?: unknown }).ok === true };
+                })
+                .filter((x): x is { text: string; ok: boolean } => Boolean(x))
+            : [];
+          return picks.length ? { picks } : null;
+        })
+        .filter((x): x is { picks: { text: string; ok: boolean }[] } => Boolean(x))
+    : [];
+  const wrong = as_schedule(row.wrong);
+  const correct = as_schedule(row.correct);
+  if (attempts.length === 0 && wrong.length) {
+    attempts.push({ picks: wrong.map((text) => ({ text, ok: false })) });
+    if (correct.length) attempts.push({ picks: correct.map((text) => ({ text, ok: true })) });
+  }
   return {
     question,
     ok: row.ok === true,
-    correct: as_schedule(row.correct),
-    wrong: as_schedule(row.wrong),
+    tries: Number.isFinite(Number(row.tries)) ? Number(row.tries) : Math.max(attempts.length, 1),
+    correct,
+    wrong,
+    attempts,
   };
 }
 

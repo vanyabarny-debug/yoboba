@@ -46,23 +46,40 @@ function submitted_label(iso: string) {
   }
 }
 
-function quiz_line(blocks: intern_quiz_block[]) {
-  if (!blocks.length) return '';
-  return blocks.map((b) => `${b.title} ${b.clean}/${b.total}`).join(' · ');
-}
-
 function QuizBlock({ block }: { block: intern_quiz_block }) {
   return (
     <div>
       <p className="font-medium">
         {block.title}: {block.clean} из {block.total} с первой попытки
       </p>
-      <ul className="mt-1 space-y-1">
+      <ul className="mt-2 space-y-3">
         {block.items.map((item) => (
           <li key={item.question}>
-            <span className={item.ok ? 'text-[#2fa36b]' : 'text-accent'}>{item.ok ? '✓' : '✗'}</span>{' '}
-            <span className="text-neutral-700">{item.question}</span>
-            {!item.ok && item.wrong.length ? (
+            <p>
+              <span className={item.ok ? 'text-[#2fa36b]' : 'text-accent'}>{item.ok ? '✓' : '✗'}</span>{' '}
+              <span className="text-neutral-700">{item.question}</span>
+              <span className="text-neutral-400">
+                {' '}
+                · {item.tries} {tries_word(item.tries)}
+              </span>
+            </p>
+            {item.attempts.length ? (
+              <ol className="mt-1 space-y-0.5 pl-5 text-xs text-neutral-500">
+                {item.attempts.map((attempt, i) => (
+                  <li key={`${item.question}-${i}`}>
+                    попытка {i + 1}:{' '}
+                    {attempt.picks.map((pick, pi) => (
+                      <span key={`${pick.text}-${pi}`}>
+                        {pi > 0 ? ', ' : ''}
+                        <span className={pick.ok ? 'text-[#2fa36b]' : 'text-accent'}>
+                          {pick.text} {pick.ok ? '✓' : '✗'}
+                        </span>
+                      </span>
+                    ))}
+                  </li>
+                ))}
+              </ol>
+            ) : item.wrong.length ? (
               <span className="block pl-5 text-xs text-neutral-400">ошибка: {item.wrong.join(', ')}</span>
             ) : null}
           </li>
@@ -70,6 +87,14 @@ function QuizBlock({ block }: { block: intern_quiz_block }) {
       </ul>
     </div>
   );
+}
+
+function tries_word(n: number) {
+  const mod10 = n % 10;
+  const mod100 = n % 100;
+  if (mod10 === 1 && mod100 !== 11) return 'попытка';
+  if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) return 'попытки';
+  return 'попыток';
 }
 
 export default function InternsManage() {
@@ -165,8 +190,12 @@ export default function InternsManage() {
                     <p className="text-xs text-neutral-500 mt-1">
                       {format_phone_display(row.phone)} · {row.city}
                     </p>
-                    {quiz_line(row.quiz_results) ? (
-                      <p className="text-xs text-neutral-600 mt-1">{quiz_line(row.quiz_results)}</p>
+                    {row.quiz_results.length > 0 ? (
+                      <div className="mt-3 space-y-3 text-sm">
+                        {row.quiz_results.map((block) => (
+                          <QuizBlock key={block.id} block={block} />
+                        ))}
+                      </div>
                     ) : null}
                     {row.feedback_liked ? (
                       <p className="text-sm text-neutral-800 mt-2">зашло: {row.feedback_liked}</p>
@@ -235,16 +264,9 @@ export default function InternsManage() {
                     ) : (
                       <p className="text-neutral-400">отзыв ещё не оставил</p>
                     )}
-                    {row.quiz_results.length > 0 ? (
-                      <div className="rounded-xl bg-neutral-50 p-3 space-y-3">
-                        <p className="text-xs font-semibold uppercase tracking-wider text-neutral-400">тесты</p>
-                        {row.quiz_results.map((block) => (
-                          <QuizBlock key={block.id} block={block} />
-                        ))}
-                      </div>
-                    ) : (
+                    {row.quiz_results.length === 0 ? (
                       <p className="text-neutral-400">тесты ещё не пришли</p>
-                    )}
+                    ) : null}
 
                     <div className="flex flex-wrap gap-1.5 pt-1">
                       {intern_statuses.map((status) => (

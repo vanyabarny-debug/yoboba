@@ -16,7 +16,68 @@ const playable_blocks = course.blocks.filter((b) => !b.locked)
 type Progress = { block: number; card: number }
 
 // ключ — `${block}:${card}`, значение — индексы неверных вариантов, выбранных до верного ответа
-type Results = Record<string, number[]>
+type QuizPickLog = { option: number; ok: boolean }
+type QuizAttemptLog = { picks: QuizPickLog[] }
+type ResultLog = { wrongs: number[]; attempts: QuizAttemptLog[]; solved: boolean }
+type Results = Record<string, ResultLog | number[]>
+
+function read_log(entry: ResultLog | number[] | undefined): ResultLog {
+  if (Array.isArray(entry)) return { wrongs: entry, attempts: [], solved: true }
+  if (entry && typeof entry === 'object' && Array.isArray(entry.wrongs)) {
+    return {
+      wrongs: entry.wrongs,
+      attempts: Array.isArray(entry.attempts) ? entry.attempts : [],
+      solved: typeof entry.solved === 'boolean' ? entry.solved : true,
+    }
+  }
+  return { wrongs: [], attempts: [], solved: false }
+}
+
+function first_try_ok(entry: ResultLog | number[] | undefined) {
+  if (entry == null) return false
+  const log = read_log(entry)
+  return log.solved && log.wrongs.length === 0
+}
+
+function first_completion_ok(attempts: QuizAttemptLog[], correct: number[]) {
+  if (!attempts.length) return false
+  const got = new Set<number>()
+  for (const attempt of attempts) {
+    for (const pick of attempt.picks) {
+      if (!pick.ok) return false
+      got.add(pick.option)
+    }
+    if (correct.every((i) => got.has(i))) return true
+  }
+  return false
+}
+
+function AttemptLines({ attempts, options }: { attempts: QuizAttemptLog[]; options: string[] }) {
+  if (!attempts.length) return null
+  return (
+    <li className="pt-2 text-neutral-500">
+      <ol className="space-y-0.5">
+        {attempts.map((attempt, ai) => (
+          <li key={ai}>
+            попытка {ai + 1}:{' '}
+            {attempt.picks.map((pick, pi) => {
+              const name = options[pick.option] || ''
+              if (!name) return null
+              return (
+                <span key={`${name}-${pi}`}>
+                  {pi > 0 ? ', ' : ''}
+                  <span className={pick.ok ? 'text-[#2fa36b]' : 'text-accent'}>
+                    {name} {pick.ok ? '✓' : '✗'}
+                  </span>
+                </span>
+              )
+            })}
+          </li>
+        ))}
+      </ol>
+    </li>
+  )
+}
 
 function build_quiz_report(blocks: Block[], results: Results): intern_quiz_block[] {
   return blocks
@@ -26,13 +87,23 @@ function build_quiz_report(blocks: Block[], results: Results): intern_quiz_block
         .filter((x): x is { c: Extract<Card, { type: 'quiz' }>; i: number } => x.c.type === 'quiz')
         .map(({ c, i }) => {
           const entry = results[`${block_i}:${i}`]
+          const log = read_log(entry)
           const correct = Array.isArray(c.correct) ? c.correct : [c.correct]
-          const wrongs = Array.isArray(entry) ? entry : []
+          const attempts = log.attempts.map((attempt) => ({
+            picks: attempt.picks
+              .map((pick) => ({
+                text: c.options[pick.option] || '',
+                ok: pick.ok,
+              }))
+              .filter((pick) => pick.text),
+          }))
           return {
             question: c.question,
-            ok: Array.isArray(entry) && entry.length === 0,
+            ok: log.attempts.length ? first_completion_ok(log.attempts, correct) : first_try_ok(entry),
+            tries: Math.max(log.attempts.length, log.wrongs.length ? log.wrongs.length + 1 : entry ? 1 : 0),
             correct: correct.map((oi) => c.options[oi]).filter(Boolean),
-            wrong: wrongs.map((oi) => c.options[oi]).filter(Boolean),
+            wrong: log.wrongs.map((oi) => c.options[oi]).filter(Boolean),
+            attempts,
           }
         })
       if (items.length === 0) return null
@@ -51,7 +122,9 @@ function load_results(): Results {
   try {
     const raw = localStorage.getItem(results_key)
     const parsed = raw ? (JSON.parse(raw) as Record<string, unknown>) : {}
-    return Object.fromEntries(Object.entries(parsed).filter(([, v]) => Array.isArray(v))) as Results
+    return Object.fromEntries(
+      Object.entries(parsed).filter(([, v]) => Array.isArray(v) || (v && typeof v === 'object'))
+    ) as Results
   } catch {
     return {}
   }
@@ -133,6 +206,21 @@ export default function CoursePlayer() {
         ? quiz.picks.length > 0
         : true
 
+  function persist_quizzes(next_results: Results) {
+    const apply = load_apply()
+    const phone = apply?.phone || ''
+    if (!phone) return
+    void fetch('/api/study/feedback', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        name: apply?.name || student?.name || '',
+        phone,
+        quizzes: build_quiz_report(blocks, next_results),
+      }),
+    })
+  }
+
   function check_quiz() {
     if (card?.type !== 'quiz') return
     const correct = correct_set(card)
@@ -143,11 +231,25 @@ export default function CoursePlayer() {
       tries: quiz.tries + 1,
     }
     set_quiz(next)
-    if (quiz_solved(card, next.rights)) {
-      const r = { ...results, [`${block_i}:${card_i}`]: next.wrongs }
-      set_results(r)
-      localStorage.setItem(results_key, JSON.stringify(r))
+    const key = `${block_i}:${card_i}`
+    const prev = read_log(results[key])
+    const log: ResultLog = {
+      wrongs: prev.solved ? prev.wrongs : next.wrongs,
+      attempts: [
+        ...prev.attempts,
+        {
+          picks: quiz.picks.map((option) => ({
+            option,
+            ok: correct.includes(option),
+          })),
+        },
+      ],
+      solved: prev.solved || quiz_solved(card, next.rights),
     }
+    const r = { ...results, [key]: log }
+    set_results(r)
+    localStorage.setItem(results_key, JSON.stringify(r))
+    persist_quizzes(r)
   }
 
   async function persist_feedback() {
@@ -218,11 +320,16 @@ export default function CoursePlayer() {
     }
   }
 
-  // сброс результатов теста текущего раздела и переход к карточке
   function retry_block(to_card: number) {
-    const r = Object.fromEntries(Object.entries(results).filter(([k]) => !k.startsWith(`${block_i}:`)))
-    set_results(r)
-    localStorage.setItem(results_key, JSON.stringify(r))
+    const next: Results = { ...results }
+    for (const key of Object.keys(next)) {
+      if (!key.startsWith(`${block_i}:`)) continue
+      const log = read_log(next[key])
+      next[key] = { wrongs: [], attempts: log.attempts, solved: false }
+    }
+    set_results(next)
+    localStorage.setItem(results_key, JSON.stringify(next))
+    persist_quizzes(next)
     set_card_i(to_card)
   }
 
@@ -407,7 +514,7 @@ function block_quizzes(block: Block) {
 
 function block_score(block: Block, block_i: number, results: Results) {
   const quizzes = block_quizzes(block)
-  const clean = quizzes.filter(({ i }) => results[`${block_i}:${i}`]?.length === 0).length
+  const clean = quizzes.filter(({ i }) => first_try_ok(results[`${block_i}:${i}`])).length
   return { clean, total: quizzes.length }
 }
 
@@ -446,8 +553,8 @@ function ResultsView({
       <div className="scroll-fade mx-auto mt-2 max-h-[40vh] max-w-md">
         <ul className="py-5 text-left text-sm font-medium leading-snug">
           {quizzes.map(({ c, i }) => {
-            const wrongs = results[`${block_i}:${i}`] ?? []
-            const ok = wrongs.length === 0
+            const log = read_log(results[`${block_i}:${i}`])
+            const ok = first_try_ok(results[`${block_i}:${i}`])
             const correct = correct_set(c)
             const is_open = open === i
             return (
@@ -468,7 +575,7 @@ function ResultsView({
                     {c.options.map((o, oi) => {
                       const cls = correct.includes(oi)
                         ? 'text-[#2fa36b]'
-                        : wrongs.includes(oi)
+                        : log.wrongs.includes(oi)
                           ? 'text-accent line-through'
                           : 'text-neutral-400'
                       return (
@@ -477,6 +584,7 @@ function ResultsView({
                         </li>
                       )
                     })}
+                    <AttemptLines attempts={log.attempts} options={c.options} />
                   </ul>
                 ) : null}
               </li>
@@ -693,8 +801,8 @@ function Finish({
                   <ul className="mt-3 text-sm font-medium leading-snug">
                     {quizzes.map(({ c, i }) => {
                       const id = `${block_i}:${i}`
-                      const wrongs = results[id] ?? []
-                      const ok = wrongs.length === 0
+                      const log = read_log(results[id])
+                      const ok = first_try_ok(results[id])
                       const correct = correct_set(c)
                       const is_open = open === id
                       return (
@@ -715,7 +823,7 @@ function Finish({
                               {c.options.map((o, oi) => {
                                 const cls = correct.includes(oi)
                                   ? 'text-[#2fa36b]'
-                                  : wrongs.includes(oi)
+                                  : log.wrongs.includes(oi)
                                     ? 'text-accent line-through'
                                     : 'text-neutral-400'
                                 return (
@@ -724,6 +832,7 @@ function Finish({
                                   </li>
                                 )
                               })}
+                              <AttemptLines attempts={log.attempts} options={c.options} />
                             </ul>
                           ) : null}
                         </li>
