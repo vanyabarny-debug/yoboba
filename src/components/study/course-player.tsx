@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation'
 import Topbar from '@/components/study/topbar'
 import { course, type Block, type Card } from '@/lib/study/course'
 import { format_intern_when, intern_phone, intern_phone_tel, load_apply } from '@/lib/study/apply'
-import { mood_faces } from '@/lib/study/interns'
+import { mood_faces, type intern_quiz_block } from '@/lib/study/interns'
 import { load_student, type Student } from '@/lib/study/student'
 
 const progress_key = 'yostudy-progress'
@@ -17,6 +17,35 @@ type Progress = { block: number; card: number }
 
 // ключ — `${block}:${card}`, значение — индексы неверных вариантов, выбранных до верного ответа
 type Results = Record<string, number[]>
+
+function build_quiz_report(blocks: Block[], results: Results): intern_quiz_block[] {
+  return blocks
+    .map((block, block_i) => {
+      const items = block.cards
+        .map((c, i) => ({ c, i }))
+        .filter((x): x is { c: Extract<Card, { type: 'quiz' }>; i: number } => x.c.type === 'quiz')
+        .map(({ c, i }) => {
+          const entry = results[`${block_i}:${i}`]
+          const correct = Array.isArray(c.correct) ? c.correct : [c.correct]
+          const wrongs = Array.isArray(entry) ? entry : []
+          return {
+            question: c.question,
+            ok: Array.isArray(entry) && entry.length === 0,
+            correct: correct.map((oi) => c.options[oi]).filter(Boolean),
+            wrong: wrongs.map((oi) => c.options[oi]).filter(Boolean),
+          }
+        })
+      if (items.length === 0) return null
+      return {
+        id: block.id,
+        title: block.title,
+        clean: items.filter((x) => x.ok).length,
+        total: items.length,
+        items,
+      }
+    })
+    .filter((x): x is intern_quiz_block => Boolean(x))
+}
 
 function load_results(): Results {
   try {
@@ -130,6 +159,7 @@ export default function CoursePlayer() {
       name: apply?.name || student?.name || '',
       phone: apply?.phone || '',
       at: new Date().toISOString(),
+      quizzes: build_quiz_report(blocks, results),
     }
     localStorage.setItem(feedback_key, JSON.stringify(payload))
     const res = await fetch('/api/study/feedback', {
@@ -168,6 +198,16 @@ export default function CoursePlayer() {
     }
     set_done(true)
     localStorage.removeItem(progress_key)
+    const apply = load_apply()
+    void fetch('/api/study/feedback', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        name: apply?.name || student?.name || '',
+        phone: apply?.phone || '',
+        quizzes: build_quiz_report(blocks, results),
+      }),
+    })
   }
 
   function go_prev() {

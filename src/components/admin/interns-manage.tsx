@@ -7,6 +7,7 @@ import {
   intern_statuses,
   mood_faces,
   type intern,
+  type intern_quiz_block,
   type intern_status,
 } from '@/lib/study/interns';
 
@@ -43,6 +44,32 @@ function submitted_label(iso: string) {
   } catch {
     return iso;
   }
+}
+
+function quiz_line(blocks: intern_quiz_block[]) {
+  if (!blocks.length) return '';
+  return blocks.map((b) => `${b.title} ${b.clean}/${b.total}`).join(' · ');
+}
+
+function QuizBlock({ block }: { block: intern_quiz_block }) {
+  return (
+    <div>
+      <p className="font-medium">
+        {block.title}: {block.clean} из {block.total} с первой попытки
+      </p>
+      <ul className="mt-1 space-y-1">
+        {block.items.map((item) => (
+          <li key={item.question}>
+            <span className={item.ok ? 'text-[#2fa36b]' : 'text-accent'}>{item.ok ? '✓' : '✗'}</span>{' '}
+            <span className="text-neutral-700">{item.question}</span>
+            {!item.ok && item.wrong.length ? (
+              <span className="block pl-5 text-xs text-neutral-400">ошибка: {item.wrong.join(', ')}</span>
+            ) : null}
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
 }
 
 export default function InternsManage() {
@@ -138,6 +165,15 @@ export default function InternsManage() {
                     <p className="text-xs text-neutral-500 mt-1">
                       {format_phone_display(row.phone)} · {row.city}
                     </p>
+                    {quiz_line(row.quiz_results) ? (
+                      <p className="text-xs text-neutral-600 mt-1">{quiz_line(row.quiz_results)}</p>
+                    ) : null}
+                    {row.feedback_liked ? (
+                      <p className="text-sm text-neutral-800 mt-2">зашло: {row.feedback_liked}</p>
+                    ) : null}
+                    {row.feedback_disliked ? (
+                      <p className="text-sm text-neutral-800 mt-1">не зашло: {row.feedback_disliked}</p>
+                    ) : null}
                     <p className="text-xs text-neutral-400 mt-1">
                       {intern_status_label[row.status]} · анкета {submitted_label(row.created_at)}
                     </p>
@@ -178,27 +214,36 @@ export default function InternsManage() {
                       <span className="text-neutral-400">любит готовить </span>
                       {row.cook || '—'}
                     </p>
-                    {row.feedback_mood ? (
-                      <>
+                    {row.feedback_mood || row.feedback_liked || row.feedback_disliked ? (
+                      <div className="rounded-xl bg-neutral-50 p-3 space-y-2">
+                        <p className="text-xs font-semibold uppercase tracking-wider text-neutral-400">отзыв</p>
+                        {row.feedback_mood ? (
+                          <p>
+                            <span className="text-neutral-400">настроение </span>
+                            {mood_faces[row.feedback_mood - 1]}
+                          </p>
+                        ) : null}
                         <p>
-                          <span className="text-neutral-400">настроение </span>
-                          {mood_faces[row.feedback_mood - 1]}
+                          <span className="text-neutral-400">зашло </span>
+                          {row.feedback_liked || '—'}
                         </p>
-                        {row.feedback_liked ? (
-                          <p>
-                            <span className="text-neutral-400">зашло </span>
-                            {row.feedback_liked}
-                          </p>
-                        ) : null}
-                        {row.feedback_disliked ? (
-                          <p>
-                            <span className="text-neutral-400">не зашло </span>
-                            {row.feedback_disliked}
-                          </p>
-                        ) : null}
-                      </>
+                        <p>
+                          <span className="text-neutral-400">не зашло </span>
+                          {row.feedback_disliked || '—'}
+                        </p>
+                      </div>
                     ) : (
                       <p className="text-neutral-400">отзыв ещё не оставил</p>
+                    )}
+                    {row.quiz_results.length > 0 ? (
+                      <div className="rounded-xl bg-neutral-50 p-3 space-y-3">
+                        <p className="text-xs font-semibold uppercase tracking-wider text-neutral-400">тесты</p>
+                        {row.quiz_results.map((block) => (
+                          <QuizBlock key={block.id} block={block} />
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="text-neutral-400">тесты ещё не пришли</p>
                     )}
 
                     <div className="flex flex-wrap gap-1.5 pt-1">

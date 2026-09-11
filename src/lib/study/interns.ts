@@ -21,6 +21,22 @@ export type intern = {
   feedback_liked: string;
   feedback_disliked: string;
   feedback_at: string | null;
+  quiz_results: intern_quiz_block[];
+};
+
+export type intern_quiz_item = {
+  question: string;
+  ok: boolean;
+  correct: string[];
+  wrong: string[];
+};
+
+export type intern_quiz_block = {
+  id: string;
+  title: string;
+  clean: number;
+  total: number;
+  items: intern_quiz_item[];
 };
 
 export const mood_faces = ['😞', '🙁', '😐', '🙂', '😄'] as const;
