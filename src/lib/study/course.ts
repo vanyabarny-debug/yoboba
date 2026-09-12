@@ -525,12 +525,6 @@ export const course = {
           title: 'второй раздел пройден',
         },
         {
-          type: 'feedback',
-          kicker: 'опрос',
-          title: 'как прошла история?',
-          note: 'честно. что зашло, что нет. это не оценка тебя — это про текст.',
-        },
-        {
           type: 'story',
           kicker: 'дальше',
           title: 'не только стакан',
@@ -546,7 +540,6 @@ export const course = {
       index: '2',
       title: 'среда',
       subtitle: 'зал смотрит. смена одна.',
-      locked: true,
       cards: [
         {
           type: 'story',
@@ -681,6 +674,12 @@ export const course = {
         {
           type: 'results',
           title: 'третий раздел пройден',
+        },
+        {
+          type: 'feedback',
+          kicker: 'опрос',
+          title: 'как прошла история?',
+          note: 'честно. что зашло, что нет. это не оценка тебя — это про текст.',
         },
       ],
     },
