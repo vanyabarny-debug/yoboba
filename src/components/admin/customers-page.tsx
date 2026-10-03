@@ -5,13 +5,31 @@ import AdminShell from '@/components/admin/admin-shell';
 import avatar_circle from '@/components/avatar-circle';
 import { format_phone_display } from '@/lib/phone';
 
+type order_line = {
+  menu_id?: string;
+  name: string;
+  quantity: number;
+  price: number;
+  volume?: string;
+  kind?: 'sale' | 'staff';
+};
+
+type line_draft = {
+  menu_id: string;
+  name: string;
+  quantity: string;
+  price: string;
+  volume?: string;
+  kind?: 'sale' | 'staff';
+};
+
 type customer_order = {
   id: string;
   created_at: string;
   status: 'new' | 'preparing' | 'ready' | 'completed' | 'cancelled';
   total_price: number;
   payment_type: 'cash' | 'card' | 'online' | 'bonus';
-  items: { name: string; quantity: number; price: number }[];
+  items: order_line[];
 };
 
 type customer_row = {
@@ -73,6 +91,31 @@ function format_when(iso: string | null) {
   }
 }
 
+function recount_customer(c: customer_row, orders: customer_order[]): customer_row {
+  const active = orders.filter((o) => o.status !== 'cancelled');
+  const qty = new Map<string, number>();
+  for (const o of active) {
+    for (const item of o.items) {
+      qty.set(item.name, (qty.get(item.name) || 0) + item.quantity);
+    }
+  }
+  const last = orders.reduce<string | null>(
+    (best, o) => (!best || o.created_at > best ? o.created_at : best),
+    null
+  );
+  return {
+    ...c,
+    orders,
+    orders_count: active.length,
+    spent: Math.round(active.reduce((sum, o) => sum + o.total_price, 0)),
+    last_order_at: last,
+    top_items: [...qty.entries()]
+      .map(([name, quantity]) => ({ name, quantity }))
+      .sort((a, b) => b.quantity - a.quantity)
+      .slice(0, 5),
+  };
+}
+
 function orders_word(n: number) {
   const mod10 = n % 10;
   const mod100 = n % 100;
@@ -90,6 +133,9 @@ export default function customers_page() {
   const [student_busy, set_student_busy] = useState<string | null>(null);
   const [bonus_draft, set_bonus_draft] = useState<Record<string, string>>({});
   const [bonus_busy, set_bonus_busy] = useState<string | null>(null);
+  const [edit_id, set_edit_id] = useState<string | null>(null);
+  const [line_draft, set_line_draft] = useState<line_draft[]>([]);
+  const [order_busy, set_order_busy] = useState<string | null>(null);
 
   useEffect(() => {
     fetch('/api/admin/customers', { credentials: 'same-origin' })
@@ -164,6 +210,122 @@ export default function customers_page() {
       set_error('не удалось обновить статус студента');
     } finally {
       set_student_busy(null);
+    }
+  }
+
+  function start_edit(o: customer_order) {
+    set_edit_id(o.id);
+    set_line_draft(
+      o.items.map((item) => ({
+        menu_id: item.menu_id || '',
+        name: item.name,
+        quantity: String(item.quantity),
+        price: String(item.price),
+        volume: item.volume,
+        kind: item.kind,
+      }))
+    );
+    set_error('');
+  }
+
+  function apply_orders(customer_id: string, orders: customer_order[]) {
+    set_data((prev) => {
+      if (!prev) return prev;
+      const customers = prev.customers.map((row) =>
+        row.id === customer_id ? recount_customer(row, orders) : row
+      );
+      return {
+        ...prev,
+        customers,
+        totals: {
+          ...prev.totals,
+          with_orders: customers.filter((row) => row.orders.length > 0).length,
+          orders: customers.reduce((n, row) => n + row.orders.length, 0),
+          spent: customers.reduce((n, row) => n + row.spent, 0),
+        },
+      };
+    });
+  }
+
+  async function save_order(c: customer_row, o: customer_order) {
+    const items = line_draft.map((line) => ({
+      menu_id: line.menu_id,
+      name: line.name.trim(),
+      quantity: Number(line.quantity),
+      price: Number(line.price),
+      ...(line.volume ? { volume: line.volume } : {}),
+      ...(line.kind ? { kind: line.kind } : {}),
+    }));
+    set_order_busy(o.id);
+    set_error('');
+    try {
+      const res = await fetch('/api/admin/customers/orders', {
+        method: 'PATCH',
+        credentials: 'same-origin',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ id: o.id, items, status: o.status }),
+      });
+      const body = (await res.json()) as {
+        error?: string;
+        order?: { items?: order_line[]; total_price?: number; status?: customer_order['status'] };
+      };
+      if (!res.ok || !body.order) {
+        set_error(body.error || 'не удалось сохранить покупку');
+        return;
+      }
+      const saved = body.order;
+      const next_items = Array.isArray(saved.items) ? saved.items : items;
+      const next_orders = c.orders.map((row) =>
+        row.id === o.id
+          ? {
+              ...row,
+              items: next_items.map((item) => ({
+                menu_id: item.menu_id || '',
+                name: item.name,
+                quantity: Number(item.quantity) || 0,
+                price: Number(item.price) || 0,
+                ...(item.volume ? { volume: item.volume } : {}),
+                ...(item.kind ? { kind: item.kind } : {}),
+              })),
+              total_price: Number(saved.total_price) || 0,
+              status: saved.status || row.status,
+            }
+          : row
+      );
+      apply_orders(c.id, next_orders);
+      set_edit_id(null);
+    } catch {
+      set_error('не удалось сохранить покупку');
+    } finally {
+      set_order_busy(null);
+    }
+  }
+
+  async function remove_order(c: customer_row, o: customer_order) {
+    if (!window.confirm('убрать эту покупку? бобаллы гостя останутся как есть')) return;
+    set_order_busy(o.id);
+    set_error('');
+    try {
+      const res = await fetch('/api/admin/customers/orders', {
+        method: 'DELETE',
+        credentials: 'same-origin',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ id: o.id }),
+      });
+      const body = (await res.json()) as { error?: string };
+      if (!res.ok) {
+        set_error(body.error || 'не удалось убрать покупку');
+        return;
+      }
+      apply_orders(
+        c.id,
+        c.orders.filter((row) => row.id !== o.id)
+      );
+      if (edit_id === o.id) set_edit_id(null);
+    } catch {
+      set_error('не удалось убрать покупку');
+    } finally {
+      set_order_busy(null);
     }
   }
 
@@ -473,34 +635,155 @@ export default function customers_page() {
                       <p className="text-sm text-neutral-400">заказов ещё не было</p>
                     ) : (
                       <ul className="space-y-3">
-                        {c.orders.map((o) => (
-                          <li key={o.id} className="rounded-xl bg-page px-3 py-2.5">
-                            <div className="flex items-start justify-between gap-3">
-                              <div>
-                                <p className="text-sm font-medium text-neutral-900">
-                                  {format_when(o.created_at)}
-                                </p>
-                                <p className="text-xs text-neutral-500">
-                                  {status_label[o.status] || o.status} ·{' '}
-                                  {payment_label[o.payment_type] || o.payment_type}
-                                </p>
+                        {c.orders.map((o) => {
+                          const editing = edit_id === o.id;
+                          const draft_total = line_draft.reduce(
+                            (sum, line) => sum + (Number(line.price) || 0) * (Number(line.quantity) || 0),
+                            0
+                          );
+                          return (
+                            <li key={o.id} className="rounded-xl bg-page px-3 py-2.5">
+                              <div className="flex items-start justify-between gap-3">
+                                <div>
+                                  <p className="text-sm font-medium text-neutral-900">
+                                    {format_when(o.created_at)}
+                                  </p>
+                                  <p className="text-xs text-neutral-500">
+                                    {status_label[o.status] || o.status} ·{' '}
+                                    {payment_label[o.payment_type] || o.payment_type}
+                                  </p>
+                                </div>
+                                <div className="flex shrink-0 items-center gap-2">
+                                  <p className="text-sm font-semibold tabular-nums">
+                                    {(editing ? draft_total : o.total_price).toLocaleString('ru-RU')} ₽
+                                  </p>
+                                  {!editing ? (
+                                    <button
+                                      type="button"
+                                      disabled={order_busy === o.id}
+                                      onClick={() => start_edit(o)}
+                                      className="text-xs font-medium text-neutral-500 hover:text-neutral-900"
+                                    >
+                                      править
+                                    </button>
+                                  ) : null}
+                                </div>
                               </div>
-                              <p className="shrink-0 text-sm font-semibold tabular-nums">
-                                {o.total_price.toLocaleString('ru-RU')} ₽
-                              </p>
-                            </div>
-                            <ul className="mt-2 space-y-0.5 text-sm text-neutral-700">
-                              {o.items.map((item, i) => (
-                                <li key={`${o.id}-${i}`} className="flex justify-between gap-3">
-                                  <span>{item.name}</span>
-                                  <span className="shrink-0 tabular-nums text-neutral-500">
-                                    ×{item.quantity}
-                                  </span>
-                                </li>
-                              ))}
-                            </ul>
-                          </li>
-                        ))}
+                              {editing ? (
+                                <div className="mt-2 space-y-2">
+                                  {line_draft.map((line, i) => (
+                                    <div key={`${o.id}-${i}`} className="flex items-center gap-1.5">
+                                      <input
+                                        value={line.name}
+                                        aria-label="название"
+                                        onChange={(e) =>
+                                          set_line_draft((prev) =>
+                                            prev.map((row, idx) =>
+                                              idx === i ? { ...row, name: e.target.value } : row
+                                            )
+                                          )
+                                        }
+                                        className="min-w-0 flex-1 rounded-lg border border-neutral-200 bg-white px-2 py-1 text-sm outline-none focus:ring-2 focus:ring-highlight"
+                                      />
+                                      <input
+                                        value={line.quantity}
+                                        inputMode="numeric"
+                                        aria-label="количество"
+                                        onChange={(e) =>
+                                          set_line_draft((prev) =>
+                                            prev.map((row, idx) =>
+                                              idx === i
+                                                ? { ...row, quantity: e.target.value.replace(/[^\d]/g, '') }
+                                                : row
+                                            )
+                                          )
+                                        }
+                                        className="w-12 rounded-lg border border-neutral-200 bg-white px-1.5 py-1 text-right text-sm tabular-nums outline-none focus:ring-2 focus:ring-highlight"
+                                      />
+                                      <input
+                                        value={line.price}
+                                        inputMode="numeric"
+                                        aria-label="цена"
+                                        onChange={(e) =>
+                                          set_line_draft((prev) =>
+                                            prev.map((row, idx) =>
+                                              idx === i
+                                                ? { ...row, price: e.target.value.replace(/[^\d]/g, '') }
+                                                : row
+                                            )
+                                          )
+                                        }
+                                        className="w-16 rounded-lg border border-neutral-200 bg-white px-1.5 py-1 text-right text-sm tabular-nums outline-none focus:ring-2 focus:ring-highlight"
+                                      />
+                                      <button
+                                        type="button"
+                                        aria-label="убрать позицию"
+                                        onClick={() =>
+                                          set_line_draft((prev) => prev.filter((_, idx) => idx !== i))
+                                        }
+                                        className="px-1 text-sm text-neutral-400 hover:text-red-500"
+                                      >
+                                        ×
+                                      </button>
+                                    </div>
+                                  ))}
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      set_line_draft((prev) => [
+                                        ...prev,
+                                        { menu_id: '', name: '', quantity: '1', price: '0' },
+                                      ])
+                                    }
+                                    className="text-xs font-medium text-neutral-500 hover:text-neutral-900"
+                                  >
+                                    + позиция
+                                  </button>
+                                  <p className="text-[11px] text-neutral-400">
+                                    бобаллы при правке не меняются
+                                  </p>
+                                  <div className="flex flex-wrap gap-2">
+                                    <button
+                                      type="button"
+                                      disabled={order_busy === o.id || line_draft.length === 0}
+                                      onClick={() => void save_order(c, o)}
+                                      className="rounded-lg bg-accent px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-40"
+                                    >
+                                      {order_busy === o.id ? '…' : 'сохранить'}
+                                    </button>
+                                    <button
+                                      type="button"
+                                      disabled={order_busy === o.id}
+                                      onClick={() => set_edit_id(null)}
+                                      className="rounded-lg border border-neutral-200 bg-white px-3 py-1.5 text-xs font-semibold text-neutral-700 disabled:opacity-40"
+                                    >
+                                      отмена
+                                    </button>
+                                    <button
+                                      type="button"
+                                      disabled={order_busy === o.id}
+                                      onClick={() => void remove_order(c, o)}
+                                      className="rounded-lg px-3 py-1.5 text-xs font-semibold text-red-500 disabled:opacity-40"
+                                    >
+                                      удалить покупку
+                                    </button>
+                                  </div>
+                                </div>
+                              ) : (
+                                <ul className="mt-2 space-y-0.5 text-sm text-neutral-700">
+                                  {o.items.map((item, i) => (
+                                    <li key={`${o.id}-${i}`} className="flex justify-between gap-3">
+                                      <span>{item.name}</span>
+                                      <span className="shrink-0 tabular-nums text-neutral-500">
+                                        ×{item.quantity}
+                                      </span>
+                                    </li>
+                                  ))}
+                                </ul>
+                              )}
+                            </li>
+                          );
+                        })}
                       </ul>
                     )}
                   </div>

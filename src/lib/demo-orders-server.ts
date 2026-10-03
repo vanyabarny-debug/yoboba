@@ -65,6 +65,16 @@ export async function add_demo_order(input: Omit<order, 'id' | 'created_at'>): P
   });
 }
 
+export async function delete_demo_order(id: string): Promise<boolean> {
+  return with_orders_lock(async () => {
+    const orders = await load_orders();
+    const next = orders.filter((o) => o.id !== id);
+    if (next.length === orders.length) return false;
+    await save_orders(next);
+    return true;
+  });
+}
+
 export async function update_demo_order(
   id: string,
   patch: Partial<order>

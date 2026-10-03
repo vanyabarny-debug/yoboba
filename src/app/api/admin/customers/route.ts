@@ -33,7 +33,14 @@ type customer_order = {
   status: order['status'];
   total_price: number;
   payment_type: order['payment_type'];
-  items: { name: string; quantity: number; price: number }[];
+  items: {
+    menu_id?: string;
+    name: string;
+    quantity: number;
+    price: number;
+    volume?: string;
+    kind?: 'sale' | 'staff';
+  }[];
 };
 
 type customer_row = {
@@ -117,9 +124,12 @@ function to_customer_order(o: order): customer_order {
     total_price: Number(o.total_price) || 0,
     payment_type: o.payment_type,
     items: order_items(o.items).map((item) => ({
+      menu_id: item.menu_id || '',
       name: item.name,
       quantity: Number(item.quantity) || 0,
       price: Number(item.price) || 0,
+      ...(item.volume ? { volume: item.volume } : {}),
+      ...(item.kind ? { kind: item.kind } : {}),
     })),
   };
 }
