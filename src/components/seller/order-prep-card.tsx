@@ -390,7 +390,7 @@ export default function order_prep_card({
       ) : null}
 
       <div className="flex min-h-0 flex-1 flex-col items-center justify-center px-2 pb-2 pt-3">
-        <div className="aspect-square h-[min(100%,78%)] max-w-full">
+        <div className="aspect-square w-[min(100%,68cqh)] shrink-0">
           {createElement(circular_timer, {
             progress: ring_progress,
             label: title,

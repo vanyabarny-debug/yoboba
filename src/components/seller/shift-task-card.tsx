@@ -98,8 +98,7 @@ function task_ring_shell({
     <Tag
       type={on_click ? 'button' : undefined}
       onClick={on_click}
-      className="relative block h-full w-full max-h-full max-w-full rounded-full transition active:scale-[0.97]"
-      style={{ backgroundColor: fill }}
+      className="relative block h-full w-full rounded-full transition active:scale-[0.97]"
     >
       <svg viewBox={`0 0 ${size} ${size}`} className="-rotate-90 h-full w-full" aria-hidden>
         <circle
@@ -153,8 +152,7 @@ function pause_split({
 
   return (
     <div
-      className="relative block h-full w-full max-h-full max-w-full rounded-full"
-      style={{ backgroundColor: fill }}
+      className="relative block h-full w-full overflow-hidden rounded-full"
     >
       <svg viewBox={`0 0 ${size} ${size}`} className="h-full w-full" aria-hidden>
         <circle
@@ -226,7 +224,7 @@ function circle_wrap({
 }) {
   return (
     <div className="flex min-h-0 flex-1 flex-col items-center justify-center px-2 pb-2 pt-3">
-      <div className="aspect-square h-[min(100%,78%)] max-w-full">{children}</div>
+      <div className="aspect-square w-[min(100%,68cqh)] shrink-0">{children}</div>
       <p
         className={`mt-1.5 max-w-[92%] truncate text-center text-[clamp(0.65rem,2.8cqw,0.82rem)] font-semibold leading-snug opacity-90 ${
           under ? '' : 'invisible'

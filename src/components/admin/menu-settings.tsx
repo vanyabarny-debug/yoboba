@@ -174,8 +174,8 @@ function editor({
 
         <div className="mt-4 space-y-2">
           {toggle_row({
-            label: 'в меню',
-            hint: 'выключить — позиция в стопе',
+            label: 'видно гостям',
+            hint: 'выключить — позиция пропадает с сайта и с кассы, в админке остаётся',
             on: draft.is_available,
             on_change: (on) => set_draft({ ...draft, is_available: on }),
           })}
@@ -562,11 +562,11 @@ export default function menu_settings() {
             <li className="px-4 py-10 text-center text-sm text-neutral-400">пусто</li>
           )}
           {visible.map((item) => (
-            <li key={item.id} className="border-t border-neutral-100 first:border-t-0">
+            <li key={item.id} className="flex items-center border-t border-neutral-100 first:border-t-0">
               <button
                 type="button"
                 onClick={() => set_selected(item)}
-                className="flex w-full items-center gap-3 px-3 py-2.5 text-left hover:bg-neutral-50"
+                className="flex min-w-0 flex-1 items-center gap-3 px-3 py-2.5 text-left hover:bg-neutral-50"
               >
                 <span className="h-12 w-12 shrink-0 overflow-hidden rounded-xl bg-neutral-100">
                   {createElement(menu_image, { item, className: 'h-full w-full', variant: 'thumb' })}
@@ -575,7 +575,7 @@ export default function menu_settings() {
                   <span className="block truncate text-sm font-medium text-neutral-900">{item.name}</span>
                   <span className="mt-0.5 block text-xs text-neutral-400">
                     {item_categories(item).join(' · ')}
-                    {!item.is_available ? ' · архив / снято с меню' : ''}
+                    {!item.is_available ? ' · скрыто' : ''}
                     {item_has_volumes(item)
                       ? ` · ${get_item_volumes(item).map((v) => v.ml).join('/')} мл`
                       : ' · без объёма'}
@@ -583,6 +583,40 @@ export default function menu_settings() {
                   </span>
                 </span>
                 <span className="shrink-0 text-sm tabular-nums text-neutral-700">{item.price} ₽</span>
+              </button>
+              <button
+                type="button"
+                aria-label={
+                  item.is_available ? `скрыть «${item.name}» из меню` : `показать «${item.name}» в меню`
+                }
+                aria-pressed={item.is_available}
+                onClick={() => upsert_menu_item({ ...item, is_available: !item.is_available })}
+                className={`mr-3 flex h-9 w-9 shrink-0 items-center justify-center rounded-full ${
+                  item.is_available
+                    ? 'bg-neutral-100 text-neutral-800'
+                    : 'bg-neutral-900 text-white'
+                }`}
+              >
+                {item.is_available ? (
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                    <path
+                      d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Z"
+                      stroke="currentColor"
+                      strokeWidth="1.8"
+                    />
+                    <circle cx="12" cy="12" r="3" stroke="currentColor" strokeWidth="1.8" />
+                  </svg>
+                ) : (
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                    <path d="M4 4l16 16" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+                    <path
+                      d="M9.5 5.6A11 11 0 0 1 12 5c6.5 0 10 7 10 7a18 18 0 0 1-3.4 4.1M6.2 6.3C3.5 8 2 12 2 12s3.5 7 10 7c1.5 0 2.8-.4 4-1"
+                      stroke="currentColor"
+                      strokeWidth="1.8"
+                      strokeLinecap="round"
+                    />
+                  </svg>
+                )}
               </button>
             </li>
           ))}

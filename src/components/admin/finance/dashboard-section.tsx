@@ -17,9 +17,12 @@ import {
 } from 'recharts';
 import {
   compute_month_tax,
+  days_in_month,
   format_period,
   format_rub,
+  moscow_today,
   stock_levels,
+  warehouse_money,
   summarize_month,
   summarize_period,
   tax_label,
@@ -28,7 +31,7 @@ import {
   type sales_cell,
 } from '@/lib/finance/model';
 import type { section_props } from '@/components/admin/finance/use-finance';
-import { BreakEvenCard, Card, EmptyState } from '@/components/admin/finance/ui';
+import { BusinessStatusCard, Card, EmptyState, type business_tone } from '@/components/admin/finance/ui';
 
 const PIE_COLORS = ['#FF6B6B', '#20181B', '#F4A261', '#2A9D8F', '#E9C46A', '#7C6FF7', '#9CA3AF'];
 
@@ -50,6 +53,76 @@ export type pulse_stats = {
   items_today: number;
   avg_check_week: number;
 };
+
+const month_title = [
+  'январь',
+  'февраль',
+  'март',
+  'апрель',
+  'май',
+  'июнь',
+  'июль',
+  'август',
+  'сентябрь',
+  'октябрь',
+  'ноябрь',
+  'декабрь',
+];
+
+function day_word(n: number) {
+  const mod10 = n % 10;
+  const mod100 = n % 100;
+  if (mod100 >= 11 && mod100 <= 14) return 'дней';
+  if (mod10 === 1) return 'день';
+  if (mod10 >= 2 && mod10 <= 4) return 'дня';
+  return 'дней';
+}
+
+function month_status(input: {
+  month_name: string;
+  revenue: number;
+  profit: number;
+  break_even: number;
+  elapsed: number;
+  days: number;
+  recent_daily: number;
+  prev_daily: number | null;
+}): { tone: business_tone; detail: string } {
+  const elapsed = Math.max(1, input.elapsed);
+  const closed = elapsed >= input.days;
+  const projected_revenue = closed ? input.revenue : (input.revenue / elapsed) * input.days;
+  const projected_profit = closed ? input.profit : (input.profit / elapsed) * input.days;
+  const gap = input.break_even > 0 ? (projected_revenue - input.break_even) / input.break_even : null;
+
+  let tone: business_tone;
+  if (gap != null) {
+    if (gap < -0.03) tone = 'minus';
+    else if (gap <= 0.03) tone = 'zero';
+    else if (gap < 0.15) tone = 'plus';
+    else if (gap < 0.4) tone = 'ok';
+    else tone = 'great';
+  } else if (projected_profit < -1000) {
+    tone = 'minus';
+  } else if (Math.abs(projected_profit) <= 1000) {
+    tone = 'zero';
+  } else {
+    const margin = projected_revenue > 0 ? projected_profit / projected_revenue : 0;
+    tone = margin < 0.08 ? 'plus' : margin < 0.18 ? 'ok' : 'great';
+  }
+
+  let trend = '';
+  if (input.prev_daily != null && input.prev_daily > 0) {
+    if (input.recent_daily > input.prev_daily * 1.08) trend = 'последняя неделя быстрее · ';
+    else if (input.recent_daily < input.prev_daily * 0.92) trend = 'последняя неделя тише · ';
+  }
+
+  const rounded = Math.round(projected_profit);
+  const money = `${rounded > 0 ? '+' : ''}${format_rub(rounded)}`;
+  const when = closed
+    ? `${input.month_name} закрывается`
+    : `по темпу ${elapsed} ${day_word(elapsed)} ${input.month_name} выйдет`;
+  return { tone, detail: `${trend}${when} на ${money}` };
+}
 
 function Kpi({
   label,
@@ -83,9 +156,14 @@ export default function DashboardSection({
 }: section_props & { pulse?: pulse_stats | null; on_open_model?: () => void }) {
   const period = format_period(from, to);
   const stock = useMemo(() => stock_levels(state), [state]);
+  const warehouse = useMemo(() => warehouse_money(state, to), [state, to]);
   const low = stock.filter((s) => s.low);
 
   const [fact, set_fact] = useState<fact_response | null>(null);
+  const [month_fact, set_month_fact] = useState<fact_response | null>(null);
+  const today = moscow_today();
+  const month_id = today.slice(0, 7);
+  const month_from = `${month_id}-01`;
 
   useEffect(() => {
     let cancelled = false;
@@ -101,6 +179,21 @@ export default function DashboardSection({
       cancelled = true;
     };
   }, [from, to]);
+
+  useEffect(() => {
+    let cancelled = false;
+    set_month_fact(null);
+    fetch(`/api/admin/finance/sales?from=${month_from}&to=${today}`, { credentials: 'same-origin' })
+      .then((r) => r.json())
+      .then((body: fact_response & { error?: string }) => {
+        if (cancelled || body.error) return;
+        set_month_fact(body);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [month_from, today]);
 
   const live = useMemo(
     () =>
@@ -125,12 +218,37 @@ export default function DashboardSection({
     return rows;
   }, [fact, state.techCards]);
 
-  const month = to.slice(0, 7);
-  const md = state.monthsData.find((m) => m.month === month);
-  const mtd = from === `${month}-01`;
-  const break_even = md
-    ? with_fact_revenue(summarize_month(state, md), mtd ? fact?.revenue ?? 0 : 0, state).break_even
-    : live.break_even;
+  const month_md = state.monthsData.find((m) => m.month === month_id);
+  const month_live = useMemo(
+    () =>
+      summarize_period(state, month_from, today, {
+        revenue: month_fact?.revenue ?? 0,
+        sales: month_fact?.sales,
+      }),
+    [state, month_from, today, month_fact]
+  );
+  const break_even = month_md
+    ? with_fact_revenue(summarize_month(state, month_md), month_fact?.revenue ?? 0, state).break_even
+    : month_live.break_even;
+  const elapsed = Number(today.slice(8)) || 1;
+  const dim = days_in_month(month_id);
+  const month_days = month_fact?.from === month_from && month_fact?.to === today ? month_fact.by_day ?? [] : [];
+  const recent = month_days.slice(-7);
+  const prev = month_days.slice(-14, -7);
+  const avg = (rows: day_row[]) =>
+    rows.length ? rows.reduce((s, d) => s + d.revenue, 0) / rows.length : 0;
+  const status = month_fact
+    ? month_status({
+        month_name: month_title[Number(month_id.slice(5, 7)) - 1] || 'месяц',
+        revenue: month_live.revenue,
+        profit: month_live.net_profit,
+        break_even,
+        elapsed,
+        days: dim,
+        recent_daily: avg(recent),
+        prev_daily: prev.length >= 5 ? avg(prev) : null,
+      })
+    : null;
 
   const rent = live.revenue > 0 ? (live.net_profit / live.revenue) * 100 : 0;
   const days = fact?.from === from && fact?.to === to ? fact.by_day ?? [] : [];
@@ -168,7 +286,12 @@ export default function DashboardSection({
 
       <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
         <Kpi label="выручка" value={format_rub(live.revenue)} hint={fact ? `${fact.orders} заказов` : undefined} bar="#3B82F6" />
-        <Kpi label="закупки (сырьё)" value={format_rub(-live.cogs)} bar="#FF6B6B" />
+        <Kpi
+          label="закупки"
+          value={format_rub(warehouse.spent)}
+          hint={`на складе ${format_rub(warehouse.on_hand)} · в напитках ${format_rub(warehouse.realized)}`}
+          bar="#FF6B6B"
+        />
         <Kpi label="пост. расходы" value={format_rub(-live.opex)} bar="#F4A261" />
         <Kpi label={tax_label(state)} value={format_rub(-live.tax)} bar="#2A9D8F" />
         <Kpi label="ндфл с зарплат" value={format_rub(-live.ndfl)} bar="#7C6FF7" />
@@ -181,20 +304,38 @@ export default function DashboardSection({
       </div>
 
       <div className="grid gap-4 lg:grid-cols-[minmax(16rem,20rem)_1fr]">
-        <BreakEvenCard
-          value={break_even}
-          action={
-            on_open_model ? (
+        <div className="flex flex-col gap-3">
+          {status ? (
+            <BusinessStatusCard tone={status.tone} detail={status.detail} />
+          ) : (
+            <div className="rounded-3xl bg-[#20181B] px-6 py-7 text-white shadow-soft">
+              <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-white/45">статус бизнеса</p>
+              <p className="mt-3 font-heading-soft text-3xl text-white/70">считаем месяц</p>
+            </div>
+          )}
+          <div className="rounded-2xl border border-neutral-200/80 bg-white px-4 py-3 shadow-soft">
+            <div className="flex items-baseline justify-between gap-3">
+              <p className="text-[11px] font-medium text-neutral-400">точка безубыточности</p>
+              <p className="font-heading-soft text-lg tabular-nums text-neutral-900">
+                {break_even > 0 ? format_rub(break_even) : '—'}
+              </p>
+            </div>
+            <p className="mt-1 text-xs leading-snug text-neutral-400">
+              {break_even > 0
+                ? `выручка в месяц, ниже которой ${month_title[Number(month_id.slice(5, 7)) - 1] || 'месяц'} уходит в минус`
+                : 'задайте постоянные расходы — появится порог'}
+            </p>
+            {on_open_model ? (
               <button
                 type="button"
                 onClick={on_open_model}
-                className="rounded-pill bg-white/10 px-3 py-1.5 text-sm text-white/90 transition-colors hover:bg-white/15"
+                className="mt-3 text-xs font-medium text-neutral-500 underline-offset-2 hover:text-neutral-900 hover:underline"
               >
-                {live.opex > 0 || live.amortization > 0 ? 'настроить модель' : 'задать расходы и налог'}
+                {month_live.opex > 0 || month_live.amortization > 0 ? 'настроить модель' : 'задать расходы и налог'}
               </button>
-            ) : null
-          }
-        />
+            ) : null}
+          </div>
+        </div>
 
         <Card title="динамика выручки и чистой прибыли" hint={`по дням · ${period}`}>
           {chart.length ? (

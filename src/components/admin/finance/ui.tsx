@@ -47,6 +47,53 @@ export function DrinkThumb({
   );
 }
 
+export type business_tone = 'minus' | 'zero' | 'plus' | 'ok' | 'great';
+
+const status_word: Record<business_tone, string> = {
+  minus: 'в минус',
+  zero: 'в ноль',
+  plus: 'в плюс',
+  ok: 'нормально',
+  great: 'очень охуенно',
+};
+
+const status_ink: Record<business_tone, string> = {
+  minus: '#FF8B8B',
+  zero: 'rgba(255,255,255,0.72)',
+  plus: '#F4C7A1',
+  ok: '#D7F5EA',
+  great: '#FFE08A',
+};
+
+export function BusinessStatusCard({
+  tone,
+  detail,
+  className = '',
+}: {
+  tone: business_tone;
+  detail: string;
+  className?: string;
+}) {
+  return (
+    <div className={`relative overflow-hidden rounded-3xl bg-[#20181B] px-6 py-7 text-white shadow-soft ${className}`}>
+      <div className="pointer-events-none absolute -right-8 -top-10 h-44 w-44 opacity-80" aria-hidden>
+        <span className="absolute inset-0 rounded-full border border-white/10" />
+        <span className="absolute inset-8 rounded-full border border-white/10" />
+        <span className="absolute inset-16 rounded-full border border-white/[0.14]" />
+        <span className="absolute left-1/2 top-1/2 h-3 w-3 -translate-x-1/2 -translate-y-1/2 rounded-full bg-white/25" />
+      </div>
+      <p className="relative text-[11px] font-medium uppercase tracking-[0.16em] text-white/45">статус бизнеса</p>
+      <p
+        className="relative mt-3 font-heading-soft text-4xl tracking-tight sm:text-5xl"
+        style={{ color: status_ink[tone] }}
+      >
+        {status_word[tone]}
+      </p>
+      <p className="relative mt-3 max-w-[18rem] text-sm leading-snug text-white/60">{detail}</p>
+    </div>
+  );
+}
+
 export function BreakEvenCard({
   value,
   empty_hint,

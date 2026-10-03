@@ -33,6 +33,29 @@ function pad_row(list: menu_item[]): (menu_item | null)[] {
   return out;
 }
 
+function visibility_eye({ open }: { open: boolean }) {
+  return open ? (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <path
+        d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Z"
+        stroke="currentColor"
+        strokeWidth="1.8"
+      />
+      <circle cx="12" cy="12" r="3" stroke="currentColor" strokeWidth="1.8" />
+    </svg>
+  ) : (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <path d="M4 4l16 16" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+      <path
+        d="M9.5 5.6A11 11 0 0 1 12 5c6.5 0 10 7 10 7a18 18 0 0 1-3.4 4.1M6.2 6.3C3.5 8 2 12 2 12s3.5 7 10 7c1.5 0 2.8-.4 4-1"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+      />
+    </svg>
+  );
+}
+
 function admin_dish_card({
   item,
   on_item_click,
@@ -109,6 +132,19 @@ function admin_dish_card({
               ×
             </button>
           </div>
+          <button
+            type="button"
+            aria-label={
+              item.is_available ? `скрыть «${item.name}» из меню` : `показать «${item.name}» в меню`
+            }
+            aria-pressed={item.is_available}
+            onClick={() => on_update_item({ ...item, is_available: !item.is_available })}
+            className={`absolute top-2 left-2 z-10 flex h-7 w-7 items-center justify-center rounded-full shadow-[0_2px_8px_rgba(0,0,0,0.12)] ${
+              item.is_available ? 'bg-white/95 text-neutral-800' : 'bg-neutral-900 text-white'
+            }`}
+          >
+            {visibility_eye({ open: item.is_available })}
+          </button>
           <div className="absolute top-2 right-2 z-10 flex gap-1">
             {createElement(product_photo_picker, {
               label: 'загрузить фото',
@@ -118,7 +154,7 @@ function admin_dish_card({
           </div>
           {!item.is_available && (
             <span className="absolute bottom-2 left-2 z-10 rounded-pill bg-neutral-900/80 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-white">
-              стоп
+              скрыто
             </span>
           )}
         </div>
@@ -196,15 +232,6 @@ function admin_dish_card({
         </div>
       </div>
 
-      <button
-        type="button"
-        onClick={() => on_update_item({ ...item, is_available: !item.is_available })}
-        className={`mt-2 text-[11px] px-2 py-0.5 rounded-pill ${
-          item.is_available ? 'bg-emerald-100 text-emerald-700' : 'bg-neutral-200 text-neutral-600'
-        }`}
-      >
-        {item.is_available ? 'в меню' : 'в стоп'}
-      </button>
     </div>
   );
 }

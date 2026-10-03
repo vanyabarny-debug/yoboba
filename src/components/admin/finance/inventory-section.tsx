@@ -19,6 +19,7 @@ import {
   remove_stock_movement,
   stock_category_for,
   stock_levels,
+  warehouse_money,
   unit_labels,
   type material,
   type stock_actor,
@@ -217,8 +218,25 @@ export default function InventorySection({ state, set_state }: section_props) {
   const stock = useMemo(() => stock_levels(state, range_to), [state, range_to]);
   const period_mv = useMemo(() => movements_in_range(state, range_from, range_to), [state, range_from, range_to]);
   const stock_value = stock.reduce((s, r) => s + r.value, 0);
-  const receipts = period_mv.filter((m) => m.type === 'in');
-  const receipts_sum = receipts.reduce((s, m) => s + (m.total ?? 0), 0);
+  const money = useMemo(() => warehouse_money(state, range_to), [state, range_to]);
+  const [earned_revenue, set_earned_revenue] = useState<number | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    set_earned_revenue(null);
+    fetch(`/api/admin/finance/sales?from=2024-01-01&to=${range_to}`, { credentials: 'same-origin' })
+      .then((r) => r.json())
+      .then((body: { revenue?: number; error?: string }) => {
+        if (cancelled || body.error) return;
+        set_earned_revenue(Number(body.revenue) || 0);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [range_to]);
+
+  const earned = earned_revenue == null ? null : earned_revenue - money.realized;
   const writeoffs_sum = period_mv
     .filter((m) => m.type === 'writeoff')
     .reduce((s, m) => {
@@ -345,13 +363,23 @@ export default function InventorySection({ state, set_state }: section_props) {
     <div className="space-y-4">
       <div className="flex flex-wrap items-end justify-end gap-x-6 gap-y-3">
         <div className="flex flex-wrap items-baseline gap-x-6 gap-y-1 text-sm">
-          <p className="text-neutral-500">
-            склад{' '}
+          <p className="text-neutral-500" title="сколько ещё лежит, по цене закупки">
+            на складе{' '}
             <span className="font-heading-soft text-lg tabular-nums text-neutral-900">{format_rub(stock_value)}</span>
           </p>
-          <p className="text-neutral-500">
-            поступления{' '}
-            <span className="font-heading-soft text-lg tabular-nums text-neutral-900">{format_rub(receipts_sum)}</span>
+          <p className="text-neutral-500" title="граммы и поступления, пересчитанные в рубли закупки">
+            потрачено{' '}
+            <span className="font-heading-soft text-lg tabular-nums text-neutral-900">{format_rub(money.spent)}</span>
+          </p>
+          <p className="text-neutral-500" title="себестоимость сырья, которое уже ушло в напитки">
+            реализовано{' '}
+            <span className="font-heading-soft text-lg tabular-nums text-neutral-900">{format_rub(money.realized)}</span>
+          </p>
+          <p className="text-neutral-500" title="выручка напитков минус себестоимость сырья">
+            заработано{' '}
+            <span className="font-heading-soft text-lg tabular-nums text-neutral-900">
+              {earned == null ? '…' : format_rub(earned)}
+            </span>
           </p>
           {writeoffs_sum > 0 ? (
             <p className="text-neutral-500">

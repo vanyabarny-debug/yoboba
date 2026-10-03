@@ -153,7 +153,7 @@ export const default_menu_items: menu_item[] = [
     hot: true,
     recommendations: ['original-black-led', 'jasmine-green'],
   }),
-  item('jasmine-green', 'зелёный жасмин', 390, WARM_DRINKS_CATEGORY, local('jasmine-green'), {
+  item('jasmine-green', 'зелёный жасмин', 390, WARM_DRINKS_CATEGORY, `${local('jasmine-green')}?v=2`, {
     composition: 'зелёный чай с жасмином, молоко, тапиока, сироп «чёрный сахар»',
     volumes: vols(390, 450),
     cold: false,
@@ -336,8 +336,14 @@ function resolve_image_url(item: menu_item, fallback?: menu_item): string {
     return url;
   }
 
-  // актуальный локальный PNG
+  // актуальный локальный PNG; ?v= на дефолте сбрасывает кэш старого файла
   if (url.startsWith('/images/menu/') && !is_stale_menu_placeholder(url)) {
+    if (fallback?.image_url) {
+      const strip = (value: string) => value.split('?')[0];
+      if (strip(url) === strip(fallback.image_url) && fallback.image_url.includes('?')) {
+        return fallback.image_url;
+      }
+    }
     return url;
   }
 

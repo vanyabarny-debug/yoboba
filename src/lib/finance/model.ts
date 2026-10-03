@@ -1536,6 +1536,65 @@ export function stock_qty_map(state: finance_state, as_of?: string): Map<string,
   return qty;
 }
 
+export type warehouse_money = {
+  /** деньги, которые ещё лежат на складе */
+  on_hand: number;
+  /** всё, что зашло: поступления и граммы инвентаризации по цене закупки */
+  spent: number;
+  /** себестоимость сырья, которое ушло в напитки */
+  realized: number;
+  /** списания и ужатие остатка при пересчёте */
+  lost: number;
+};
+
+/**
+ * граммы и литры переводятся в деньги по цене закупки.
+ * инвентаризация без накладной тоже считается тратой: вбитые граммы стоят своих рублей.
+ */
+export function warehouse_money(state: finance_state, as_of?: string): warehouse_money {
+  const cutoff = as_of ? day_key(as_of) : null;
+  const mats = new Map(state.materials.map((m) => [m.id, m]));
+  const qty = new Map<string, number>();
+  let spent = 0;
+  let realized = 0;
+  let lost = 0;
+
+  const sorted = [...state.stockMovements].sort((a, b) => a.date.localeCompare(b.date) || a.id.localeCompare(b.id));
+  for (const mv of sorted) {
+    if (cutoff && day_key(mv.date) > cutoff) continue;
+    const mat = mats.get(mv.materialId);
+    if (!mat || material_is_infinite(mat)) continue;
+    const cost = cost_per_base_unit(mat);
+    const prev = qty.get(mv.materialId) ?? 0;
+    if (mv.type === 'in') {
+      qty.set(mv.materialId, prev + mv.qty);
+      const priced = Number(mv.total) > 0 ? Number(mv.total) : mv.qty * cost;
+      spent += priced;
+    } else if (mv.type === 'adjust') {
+      const delta = mv.qty - prev;
+      qty.set(mv.materialId, mv.qty);
+      if (delta > 0) spent += delta * cost;
+      else lost += -delta * cost;
+    } else if (mv.type === 'sale' || mv.type === 'staff') {
+      qty.set(mv.materialId, prev - mv.qty);
+      realized += mv.qty * cost;
+    } else {
+      qty.set(mv.materialId, prev - mv.qty);
+      lost += mv.qty * cost;
+    }
+  }
+
+  let on_hand = 0;
+  for (const [id, q] of qty) {
+    const mat = mats.get(id);
+    if (!mat || q <= 0) continue;
+    on_hand += q * cost_per_base_unit(mat);
+  }
+
+  const round = (n: number) => Math.round(n);
+  return { on_hand: round(on_hand), spent: round(spent), realized: round(realized), lost: round(lost) };
+}
+
 export function stock_levels(state: finance_state, as_of?: string): stock_row[] {
   const qty = stock_qty_map(state, as_of);
   const last_in = new Map<string, string>();
