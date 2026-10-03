@@ -21,6 +21,7 @@ type customer_row = {
   role: string;
   via: 'vk' | 'телефон' | 'vk и телефон';
   bonus_balance: number;
+  has_profile: boolean;
   created_at: string | null;
   avatar_emoji: string | null;
   avatar_url: string | null;
@@ -87,6 +88,8 @@ export default function customers_page() {
   const [only_buyers, set_only_buyers] = useState(false);
   const [open_id, set_open_id] = useState<string | null>(null);
   const [student_busy, set_student_busy] = useState<string | null>(null);
+  const [bonus_draft, set_bonus_draft] = useState<Record<string, string>>({});
+  const [bonus_busy, set_bonus_busy] = useState<string | null>(null);
 
   useEffect(() => {
     fetch('/api/admin/customers', { credentials: 'same-origin' })
@@ -164,6 +167,63 @@ export default function customers_page() {
     }
   }
 
+  function bonus_value(c: customer_row) {
+    return bonus_draft[c.id] ?? String(c.bonus_balance);
+  }
+
+  async function save_bonus(c: customer_row) {
+    const raw = bonus_value(c).trim();
+    const next = Number(raw);
+    if (!/^\d+$/.test(raw) || !Number.isInteger(next) || next < 0 || next > 100_000) {
+      set_error('укажите целое число от 0 до 100000');
+      return;
+    }
+    if (next === c.bonus_balance) {
+      set_bonus_draft((prev) => {
+        if (!(c.id in prev)) return prev;
+        const copy = { ...prev };
+        delete copy[c.id];
+        return copy;
+      });
+      return;
+    }
+    set_bonus_busy(c.id);
+    set_error('');
+    try {
+      const res = await fetch('/api/admin/customers', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ user_id: c.id, bonus_balance: next }),
+      });
+      const body = (await res.json()) as { error?: string; bonus_balance?: number };
+      if (!res.ok || typeof body.bonus_balance !== 'number') {
+        set_error(body.error || 'не удалось сохранить бобаллы');
+        return;
+      }
+      set_data((prev) =>
+        prev
+          ? {
+              ...prev,
+              customers: prev.customers.map((row) =>
+                row.id === c.id ? { ...row, bonus_balance: body.bonus_balance ?? next } : row
+              ),
+            }
+          : prev
+      );
+      set_bonus_draft((prev) => {
+        if (!(c.id in prev)) return prev;
+        const copy = { ...prev };
+        delete copy[c.id];
+        return copy;
+      });
+    } catch {
+      set_error('не удалось сохранить бобаллы');
+    } finally {
+      set_bonus_busy(null);
+    }
+  }
+
   return (
     <AdminShell>
       <div className="space-y-4">
@@ -238,11 +298,12 @@ export default function customers_page() {
                 key={c.id}
                 className="overflow-hidden rounded-2xl border border-neutral-200/80 bg-white shadow-sm"
               >
-                <button
-                  type="button"
-                  onClick={() => set_open_id(open ? null : c.id)}
-                  className="flex w-full items-start gap-3 px-4 py-3 text-left"
-                >
+                <div className="flex items-start gap-3 px-4 py-3">
+                  <button
+                    type="button"
+                    onClick={() => set_open_id(open ? null : c.id)}
+                    className="flex min-w-0 flex-1 items-start gap-3 text-left"
+                  >
                   <span className="shrink-0">
                     {c.vk_url ? (
                       <a
@@ -314,10 +375,58 @@ export default function customers_page() {
                           : ''}
                     </span>
                   </span>
-                  <span className="shrink-0 text-xs text-neutral-400">
-                    {open ? 'свернуть' : 'покупки'}
-                  </span>
-                </button>
+                  </button>
+                  <div className="flex shrink-0 flex-col items-end gap-1 pt-0.5">
+                    {c.has_profile ? (
+                      <>
+                        <label className="flex items-center gap-1">
+                          <input
+                            type="text"
+                            inputMode="numeric"
+                            aria-label={`бобаллы ${c.name}`}
+                            value={bonus_value(c)}
+                            disabled={bonus_busy === c.id}
+                            onChange={(e) =>
+                              set_bonus_draft((prev) => ({
+                                ...prev,
+                                [c.id]: e.target.value.replace(/[^\d]/g, ''),
+                              }))
+                            }
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') {
+                                e.preventDefault();
+                                void save_bonus(c);
+                              }
+                            }}
+                            className="w-16 rounded-lg border border-neutral-200 bg-page px-2 py-1 text-right text-sm font-bold tabular-nums text-neutral-900 outline-none focus:ring-2 focus:ring-highlight disabled:opacity-50"
+                          />
+                          <span className="text-xs font-semibold text-neutral-500">бб</span>
+                        </label>
+                        {bonus_value(c) !== String(c.bonus_balance) && (
+                          <button
+                            type="button"
+                            disabled={bonus_busy === c.id}
+                            onClick={() => void save_bonus(c)}
+                            className="rounded-lg bg-accent px-2 py-1 text-[11px] font-semibold text-white disabled:opacity-40"
+                          >
+                            {bonus_busy === c.id ? '…' : 'сохранить'}
+                          </button>
+                        )}
+                      </>
+                    ) : (
+                      <span className="text-sm font-bold tabular-nums text-neutral-400">
+                        {c.bonus_balance} бб
+                      </span>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => set_open_id(open ? null : c.id)}
+                      className="text-xs text-neutral-400"
+                    >
+                      {open ? 'свернуть' : 'покупки'}
+                    </button>
+                  </div>
+                </div>
 
                 {open && (
                   <div className="border-t border-neutral-100 px-4 py-3 space-y-3">
@@ -393,11 +502,6 @@ export default function customers_page() {
                           </li>
                         ))}
                       </ul>
-                    )}
-                    {c.bonus_balance > 0 && (
-                      <p className="mt-3 text-xs text-neutral-400">
-                        бобаллы: {c.bonus_balance}
-                      </p>
                     )}
                   </div>
                 )}

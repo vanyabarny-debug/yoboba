@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 import { session_cookie } from '@/lib/session';
+import { adjust_bonus_balance } from '@/lib/bonus-server';
 import { is_supabase_configured } from '@/lib/supabase/config';
 import { create_service_client } from '@/lib/supabase/service';
 import { get_demo_orders } from '@/lib/demo-orders-server';
@@ -42,6 +43,7 @@ type customer_row = {
   role: string;
   via: 'vk' | 'телефон' | 'vk и телефон';
   bonus_balance: number;
+  has_profile: boolean;
   created_at: string | null;
   avatar_emoji: string | null;
   avatar_url: string | null;
@@ -129,6 +131,7 @@ function empty_customer(input: {
   role?: string | null;
   via?: customer_row['via'];
   bonus_balance?: number | null;
+  has_profile?: boolean;
   created_at?: string | null;
   avatar_emoji?: string | null;
   avatar_url?: string | null;
@@ -145,6 +148,7 @@ function empty_customer(input: {
     role: input.role || 'user',
     via: input.via || 'телефон',
     bonus_balance: Number(input.bonus_balance) || 0,
+    has_profile: input.has_profile === true,
     created_at: input.created_at || null,
     avatar_emoji: input.avatar_emoji || null,
     avatar_url: input.avatar_url?.trim() || null,
@@ -331,6 +335,7 @@ export async function GET() {
             role: p.role,
             via: via_label(Boolean(auth?.is_vk), phone),
             bonus_balance: p.bonus_balance,
+            has_profile: true,
             created_at: p.created_at,
             avatar_emoji: p.avatar_emoji,
             avatar_url: auth?.avatar_url,
@@ -441,4 +446,54 @@ export async function GET() {
       spent: customers.reduce((n, c) => n + c.spent, 0),
     },
   });
+}
+
+export async function POST(request: Request) {
+  if (!(await is_admin())) {
+    return NextResponse.json({ error: 'доступ запрещён' }, { status: 403 });
+  }
+  if (!is_supabase_configured()) {
+    return NextResponse.json({ error: 'supabase не настроен' }, { status: 500 });
+  }
+
+  const body = (await request.json().catch(() => ({}))) as {
+    user_id?: string;
+    bonus_balance?: number;
+  };
+  const user_id = typeof body.user_id === 'string' ? body.user_id.trim() : '';
+  const next = Number(body.bonus_balance);
+  if (!/^[0-9a-f-]{36}$/i.test(user_id)) {
+    return NextResponse.json({ error: 'у этого гостя нет профиля с баллами' }, { status: 400 });
+  }
+  if (!Number.isInteger(next) || next < 0 || next > 100_000) {
+    return NextResponse.json({ error: 'укажите целое число от 0 до 100000' }, { status: 400 });
+  }
+
+  const admin = create_service_client();
+  const { data, error } = await admin
+    .from('profiles')
+    .select('bonus_balance')
+    .eq('id', user_id)
+    .maybeSingle();
+  if (error) {
+    return NextResponse.json({ error: error.message }, { status: 500 });
+  }
+  if (!data) {
+    return NextResponse.json({ error: 'гость не найден' }, { status: 404 });
+  }
+
+  const current = Number(data.bonus_balance) || 0;
+  const result = await adjust_bonus_balance(admin, {
+    user_id,
+    delta: next - current,
+    reason: 'правка в клиентах',
+    actor: 'админ',
+  });
+  if (!result.ok) {
+    return NextResponse.json(
+      { error: result.error, bonus_balance: result.bonus_balance },
+      { status: result.status }
+    );
+  }
+  return NextResponse.json({ ok: true, bonus_balance: result.bonus_balance });
 }
