@@ -11,7 +11,7 @@ import { load_student, type Student } from '@/lib/study/student'
 const progress_key = 'yostudy-progress'
 const results_key = 'yostudy-results'
 const feedback_key = 'yostudy-feedback'
-const playable_blocks = course.blocks.filter((b) => !b.locked)
+const playable_blocks = course.blocks.filter((b) => !('locked' in b && b.locked))
 
 type Progress = { block: number; card: number }
 

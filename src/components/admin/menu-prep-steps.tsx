@@ -10,7 +10,7 @@ export default function MenuPrepSteps({ menu_item_id }: { menu_item_id: string }
   const [status, set_status] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
   const [size_key, set_size_key] = useState<string>('');
   const latest = useRef<finance_state | null>(null);
-  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const timer = useRef<number | null>(null);
 
   useEffect(() => {
     latest.current = state;
