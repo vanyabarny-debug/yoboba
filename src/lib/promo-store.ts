@@ -10,25 +10,15 @@ import {
   standard_promo_vignette,
 } from '@/lib/promo-image-vignette';
 
-export const promo_store_version = 44;
+export const promo_store_version = 45;
 
 const storage_key = 'yoboba_promo_store';
 const update_event = 'yoboba-promo-update';
 
+/** удалённые из продукта дефолтные акции — вычищаем при апгрейде стора */
+const retired_promo_ids = new Set(['promo-13']);
+
 export const default_promos: promo_banner[] = [
-  {
-    id: 'promo-13',
-    title: 'бесплатно нальём\nсамым быстрым',
-    subtitle: '100 напитков · подписка, лайк, репост',
-    badge: '100 шт',
-    image_url: '/images/promos/promo13.png?v=9',
-    link_url: '/akciya-pervye-100',
-    cta_label: 'условия',
-    title_in_image: false,
-    title_layout: standard_promo_title_layout({ font_size: 16 }),
-    image_vignette: standard_promo_vignette(),
-    is_active: true,
-  },
   {
     id: 'promo-14',
     title: 'студентам и\nшкольникам −30%',
@@ -150,10 +140,15 @@ function merge_with_code_defaults(parsed: promo_store): promo_store {
   // при апгрейде вернуть дефолтные акции, если их случайно удалили/выключили
   if (upgrading) {
     for (const id of default_ids) removed.delete(id);
+    for (const id of retired_promo_ids) removed.add(id);
   }
 
   const saved = (parsed.promos ?? []).filter(
-    (promo) => promo?.id && !removed.has(promo.id)
+    (promo) =>
+      promo?.id &&
+      !removed.has(promo.id) &&
+      !retired_promo_ids.has(promo.id) &&
+      promo.link_url !== '/akciya-pervye-100'
   );
 
   function merge_one(def: promo_banner, prev: promo_banner): promo_banner {

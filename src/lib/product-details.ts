@@ -126,6 +126,7 @@ export function get_topping_portion_price_value(): number {
 export const topping_portion_price = 60;
 
 const category_topping: Record<string, string> = {
+  'тёплые напитки': 'тапиока',
   классика: 'тапиока',
   'матча & таро': 'тапиока',
   молочные: 'джус-боллы',

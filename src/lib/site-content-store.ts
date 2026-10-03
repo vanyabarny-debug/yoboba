@@ -8,7 +8,7 @@ export type product_addon = {
   tint: string;
 };
 
-export const site_content_version = 30;
+export const site_content_version = 31;
 
 export type category_nutrition = {
   kcal: number;
@@ -57,6 +57,7 @@ export type site_content_store = {
 };
 
 const default_category_nutrition: Record<string, category_nutrition> = {
+  'тёплые напитки': { kcal: 64, protein: 1.5, fat: 1.7, carb: 11 },
   классика: { kcal: 64, protein: 1.4, fat: 1.6, carb: 11.5 },
   'матча & таро': { kcal: 60, protein: 1.8, fat: 1.9, carb: 9.5 },
   молочные: { kcal: 68, protein: 1.5, fat: 1.8, carb: 12 },
@@ -69,6 +70,7 @@ const default_category_nutrition: Record<string, category_nutrition> = {
 const fallback_nutrition: category_nutrition = { kcal: 55, protein: 1.2, fat: 1.3, carb: 10 };
 
 const default_compositions: Record<string, string> = {
+  'тёплые напитки': 'чай, матча или таро, молоко, какао, тапиока или сырная шапка',
   классика: 'чай, молоко, тапиока, сироп «чёрный сахар» (лёд)',
   'матча & таро': 'матча или таро, сырная шапка, тапиока (лёд)',
   молочные: 'молоко, джус-боллы, сироп или концентрат, лёд',
@@ -79,6 +81,7 @@ const default_compositions: Record<string, string> = {
 };
 
 const default_descriptions: Record<string, string> = {
+  'тёплые напитки': 'классика, матча, таро и какао — можно тёплыми.',
   классика: 'молочные бабл ти с тапиокой и сиропом «чёрный сахар».',
   'матча & таро': 'матча и таро с сырной шапкой и тапиокой.',
   молочные: 'молочные напитки с джус-боллами.',
@@ -200,35 +203,6 @@ kanji: 模様
     slug: 'akcii',
     title: 'акции',
     body: 'текущие акции yomoyo — открой карточку, чтобы прочитать условия.',
-  },
-  {
-    slug: 'akciya-pervye-100',
-    title: 'бесплатно нальём самым быстрым',
-    body: `сто первых гостей получают напиток бесплатно. чтобы участвовать — зайди в пост вк и сделай три шага.
-
-## три шага
-
-1. подпишись
-на наше сообщество вконтакте
-
-2. поставь лайк
-записи с акцией
-
-3. сделай репост
-себе на стену и в историю
-
-## правила
-
-1. 1 репост = 1 напиток = 1 рука
-один репост — один напиток
-
-2. напиток выбрать нельзя
-на кассе скажут, какой именно идёт в подарок
-
-3. всего 100 бесплатных напитков
-кто успел к открытию — тот и забрал
-
-участие только через запись: https://vk.ru/wall-240740999_1`,
   },
   {
     slug: 'akciya-studentam',
@@ -453,8 +427,11 @@ export function get_site_content_store(): site_content_store {
         body: /баблтишн/i.test(existing.body) ? seed_page.body : existing.body,
       };
     });
+    const retired_page_slugs = new Set(['akciya-pervye-100']);
     const extra_pages = (parsed.pages ?? []).filter(
-      (page) => !seed.pages.some((seed_page) => seed_page.slug === page.slug)
+      (page) =>
+        !seed.pages.some((seed_page) => seed_page.slug === page.slug) &&
+        !retired_page_slugs.has(page.slug)
     );
     const merged = {
       ...seed,
@@ -463,6 +440,14 @@ export function get_site_content_store(): site_content_store {
       pages: [...seed_pages, ...extra_pages],
       top_bar_links,
       topping_portion_price: parsed.topping_portion_price ?? 60,
+      category_compositions: {
+        ...default_compositions,
+        ...(parsed.category_compositions ?? {}),
+      },
+      category_descriptions: {
+        ...default_descriptions,
+        ...(parsed.category_descriptions ?? {}),
+      },
       category_nutrition: {
         ...default_category_nutrition,
         ...parsed.category_nutrition,
@@ -490,7 +475,12 @@ export function save_site_content_store(store: site_content_store) {
 
 export function apply_published_site_content_store(store: site_content_store) {
   if (typeof window === 'undefined' || !store) return null;
-  const next = { ...store, version: site_content_version };
+  const retired_page_slugs = new Set(['akciya-pervye-100']);
+  const next = {
+    ...store,
+    version: site_content_version,
+    pages: (store.pages ?? []).filter((p) => !retired_page_slugs.has(p.slug)),
+  };
   localStorage.setItem(storage_key, JSON.stringify(next));
   emit_update();
   return next;

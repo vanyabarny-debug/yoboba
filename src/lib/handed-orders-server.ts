@@ -1,4 +1,4 @@
-import { read_json_store, write_json_store } from '@/lib/data-store';
+import { read_durable_json, write_durable_json, keep_since_day } from '@/lib/durable-json';
 import type { order } from '@/lib/types';
 
 const store_key = 'handed-orders';
@@ -13,11 +13,20 @@ export type handed_order_row = {
 };
 
 async function load_all(): Promise<handed_order_row[]> {
-  return read_json_store<handed_order_row[]>(store_key, []);
+  const raw = await read_durable_json<handed_order_row[]>(store_key, []);
+  const all = Array.isArray(raw) ? raw : [];
+  const since = keep_since_day();
+  const kept = all.filter((r) => r.shift_date >= since);
+  if (kept.length !== all.length) {
+    await write_durable_json(store_key, kept).catch(() => {});
+  }
+  return kept;
 }
 
 async function save_all(rows: handed_order_row[]) {
-  await write_json_store(store_key, rows);
+  const since = keep_since_day();
+  const kept = rows.filter((r) => r.shift_date >= since);
+  await write_durable_json(store_key, kept);
 }
 
 /** записать выдачу; повтор по order_id+shift_date не дублирует */
@@ -46,8 +55,7 @@ export async function record_handed_order(input: {
   } else {
     all.unshift(row);
   }
-  // храним разумный хвост
-  await save_all(all.slice(0, 500));
+  await save_all(all);
   return row;
 }
 
@@ -61,7 +69,6 @@ export async function get_handed_orders(input: {
     if (input.seller_id && r.seller_id !== input.seller_id) return false;
     return true;
   });
-  // уникальные по order_id, свежие первые
   const seen = new Set<string>();
   const orders: order[] = [];
   for (const r of rows) {

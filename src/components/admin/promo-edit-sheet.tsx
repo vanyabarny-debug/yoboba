@@ -238,7 +238,7 @@ export default function promo_edit_sheet({ promo, categories, on_close, on_save,
                   const slug = slug_from_href(link_url);
                   set_draft_page(slug ? get_page_by_slug(slug) ?? null : null);
                 }}
-                placeholder="/akciya-pervye-100"
+                placeholder="/akciya-studentam"
                 className={`w-full rounded-xl border px-3 py-2 text-sm ${
                   link_invalid ? 'border-accent' : 'border-surface'
                 }`}
@@ -247,7 +247,7 @@ export default function promo_edit_sheet({ promo, categories, on_close, on_save,
                 <p className="text-xs text-accent">{link_check.ok ? '' : link_check.reason}</p>
               ) : (
                 <p className="text-xs text-neutral-400">
-                  внутренние ссылки (/akciya-pervye-100) или: {allowed_platform_labels.join(', ')}
+                  внутренние ссылки (/akciya-studentam) или: {allowed_platform_labels.join(', ')}
                 </p>
               )}
             </div>

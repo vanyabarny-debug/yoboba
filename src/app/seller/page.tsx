@@ -20,6 +20,9 @@ import type { cash_transaction, order, store_spot } from '@/lib/types';
 import cash_register_modal from '@/components/seller/cash-register-modal';
 import barista_analytics_panel from '@/components/seller/barista-analytics';
 import pos_panel from '@/components/seller/pos-panel';
+import seller_inventory from '@/components/seller/seller-inventory';
+import drink_cook_guide from '@/components/seller/drink-cook-guide';
+import task_guide from '@/components/seller/task-guide';
 import shift_task_card from '@/components/seller/shift-task-card';
 import order_prep_card, {
   type drink_row,
@@ -27,6 +30,7 @@ import order_prep_card, {
 } from '@/components/seller/order-prep-card';
 import {
   advance_day_task,
+  ensure_task_running,
   get_board_tasks,
   load_day_tasks,
   mark_appeared,
@@ -34,7 +38,7 @@ import {
 } from '@/lib/seller-day-tasks';
 import { board_tile_grid } from '@/lib/seller-tile-grid';
 
-const tab_order = ['work', 'ready', 'pos', 'analytics'] as const;
+const tab_order = ['work', 'ready', 'pos', 'stock', 'analytics'] as const;
 type tab = (typeof tab_order)[number];
 
 type schedule_line = {
@@ -64,8 +68,8 @@ const handed_key = 'yoboba_seller_handed';
 const paid_key = 'yoboba_seller_paid';
 const NEW_ORDER_BLINK_MS = 2200;
 
-function shift_day(shift_date?: string | null) {
-  return shift_date || moscow_today_iso();
+function board_day() {
+  return moscow_today_iso();
 }
 
 function load_paid_ids(day: string): Set<string> {
@@ -198,6 +202,7 @@ function expand_drinks(o: order, lines: schedule_line[]): drink_row[] {
         name: item.name,
         menu_id: item.menu_id,
         prep_minutes: prep_by_menu.get(item.menu_id) || DEFAULT_PREP_MINUTES,
+        volume: item.volume,
       });
     }
   }
@@ -286,10 +291,13 @@ export default function seller_board() {
   const [prep_map, set_prep_map] = useState<Record<string, Record<string, prep_state>>>({});
   const [order_starts, set_order_starts] = useState<Record<string, number>>({});
   const [handed, set_handed] = useState<order[]>([]);
+  const [cook, set_cook] = useState<{ order: order; drink_key: string } | null>(null);
+  const [task_guide_id, set_task_guide_id] = useState<string | null>(null);
   const [day_tasks, set_day_tasks] = useState<day_task[]>([]);
   const [fresh_ids, set_fresh_ids] = useState<Set<string>>(new Set());
   const [unread_new, set_unread_new] = useState(0);
   const [pos_depth, set_pos_depth] = useState(false);
+  const [stock_depth, set_stock_depth] = useState(false);
   const known_ids = useRef<Set<string> | null>(null);
   const pending_blink_ref = useRef<Set<string>>(new Set());
   const seller_ref = useRef({ id: '', name: 'бариста' });
@@ -302,14 +310,15 @@ export default function seller_board() {
   const load_inflight = useRef<Promise<void> | null>(null);
   const load_queued = useRef(false);
   const empty_board_streak = useRef(0);
+  const handed_day_ref = useRef(moscow_today_iso());
   shift_date_ref.current = shift?.shift_date;
   seller_id_ref.current = seller_id;
   const tab_index = tab_order.indexOf(tab);
 
-  const { viewport_ref, page_style } = use_page_swipe({
+  const { viewport_ref, page_style, width: board_w, height: board_h } = use_page_swipe({
     index: Math.max(0, tab_index),
     count: tab_order.length,
-    enabled: !paying && !need_shift && !(tab === 'pos' && pos_depth),
+    enabled: !paying && !cook && !task_guide_id && !need_shift && !(tab === 'pos' && pos_depth) && !(tab === 'stock' && stock_depth),
     on_index: (next) => set_tab(tab_order[next] ?? 'work'),
   });
 
@@ -319,6 +328,7 @@ export default function seller_board() {
 
   useEffect(() => {
     if (tab !== 'pos') set_pos_depth(false);
+    if (tab !== 'stock') set_stock_depth(false);
   }, [tab]);
 
   function stop_order_alarm() {
@@ -399,6 +409,15 @@ export default function seller_board() {
       let lines: schedule_line[] = [];
       let board_ok = false;
 
+      const sid = seller_ref.current.id || seller_id_ref.current || '';
+      const day = board_day();
+      const completed_req = sid
+        ? fetch(
+            `/api/seller/orders?${new URLSearchParams({ completed: '1', day, seller_id: sid })}`,
+            { credentials: 'same-origin' }
+          ).catch(() => null)
+        : Promise.resolve(null);
+
       try {
         const sched_res = await fetch('/api/kitchen/schedule', { credentials: 'same-origin' });
         if (sched_res.ok) {
@@ -474,7 +493,6 @@ export default function seller_board() {
 
       schedule_ref.current = lines;
       set_schedule_lines(lines);
-      const day = shift_day(shift_date_ref.current);
       set_orders((prev) => {
         // краткий пустой ответ при гонке записи — не мигаем доской и не спамим пушами
         if (
@@ -486,34 +504,22 @@ export default function seller_board() {
         }
         return with_sticky_paid(list, day);
       });
-      await hydrate_prep(list, lines);
-      if (gen !== load_gen.current) return;
 
-      const sid = seller_ref.current.id || seller_id_ref.current || '';
+      const prep_done = hydrate_prep(list, lines);
       const completed: order[] = [];
       const seen_done = new Set<string>();
       let from_server = false;
-
-      if (sid) {
-        try {
-          const qs = new URLSearchParams({ completed: '1', day, seller_id: sid });
-          const res = await fetch(`/api/seller/orders?${qs}`, {
-            credentials: 'same-origin',
-          });
-          if (res.ok) {
-            from_server = true;
-            const body = (await res.json()) as { orders?: order[] };
-            for (const o of body.orders || []) {
-              if (seen_done.has(o.id)) continue;
-              seen_done.add(o.id);
-              completed.push(o);
-            }
-          }
-        } catch {
-          /* offline */
+      const completed_res = await completed_req;
+      if (completed_res?.ok) {
+        from_server = true;
+        const body = (await completed_res.json()) as { orders?: order[] };
+        for (const o of body.orders || []) {
+          if (seen_done.has(o.id)) continue;
+          seen_done.add(o.id);
+          completed.push(o);
         }
       }
-
+      await prep_done;
       if (gen !== load_gen.current) return;
 
       if (!from_server) {
@@ -545,7 +551,7 @@ export default function seller_board() {
   useEffect(() => {
     set_prep_map(load_prep_map());
     set_order_starts(load_order_starts());
-    set_handed(load_handed(shift_day()));
+    set_handed(load_handed(board_day()));
     const user = get_demo_user();
     if (user) {
       set_seller_id(user.id);
@@ -669,19 +675,33 @@ export default function seller_board() {
     }
     const spot = shift.spot_id;
     function sync() {
-      const loaded = load_day_tasks(spot);
-      set_day_tasks(mark_appeared(spot, loaded));
+      const today = moscow_today_iso();
+      const loaded = load_day_tasks(spot, today);
+      set_day_tasks(mark_appeared(spot, loaded, new Date(), today));
+      if (handed_day_ref.current !== today) {
+        handed_day_ref.current = today;
+        set_handed([]);
+        save_handed(today, []);
+        void load();
+      }
     }
+    handed_day_ref.current = moscow_today_iso();
     sync();
     const id = window.setInterval(sync, 30_000);
     return () => window.clearInterval(id);
-  }, [shift?.spot_id]);
+  }, [shift?.spot_id, load]);
 
   function advance_task(task_id: string, choice?: 'continue' | 'complete') {
     if (!shift?.spot_id) return;
     const next = advance_day_task(shift.spot_id, task_id, moscow_today_iso(), choice);
     const advanced = next.find((t) => t.id === task_id);
     if (advanced?.phase === 'running') play_start_chime();
+    set_day_tasks(next);
+  }
+
+  function start_task_timer(task_id: string) {
+    if (!shift?.spot_id) return;
+    const next = ensure_task_running(shift.spot_id, task_id, moscow_today_iso());
     set_day_tasks(next);
   }
 
@@ -729,7 +749,7 @@ export default function seller_board() {
     }
 
     if (patch.is_paid) {
-      mark_order_paid_local(id, shift_day(shift?.shift_date));
+      mark_order_paid_local(id, board_day());
     }
 
     const server = body?.order;
@@ -741,7 +761,7 @@ export default function seller_board() {
           ...(server || {}),
           ...patch,
         };
-        if (patch.is_paid || load_paid_ids(shift_day(shift?.shift_date)).has(id) || o.is_paid || server?.is_paid) {
+        if (patch.is_paid || load_paid_ids(board_day()).has(id) || o.is_paid || server?.is_paid) {
           merged.is_paid = true;
         }
         return merged;
@@ -810,7 +830,7 @@ export default function seller_board() {
             started_at: new Date(meta.started_at).toISOString(),
             finished_at: new Date().toISOString(),
             pickup_at: o?.pickup_time || new Date().toISOString(),
-            shift_date: shift?.shift_date || moscow_today_iso(),
+            shift_date: board_day(),
           },
         }),
       });
@@ -872,7 +892,7 @@ export default function seller_board() {
       items_summary: (paying.items as order['items'])
         .map((i) => `${i.name} ×${i.quantity}`)
         .join('; '),
-      shift_date: shift?.shift_date || moscow_today_iso(),
+      shift_date: board_day(),
       created_at: new Date().toISOString(),
       spot_id: shift?.spot_id || null,
       spot_address: shift?.address || null,
@@ -899,10 +919,10 @@ export default function seller_board() {
 
     try {
       await patch_order(paying.id, patch_payment);
-      mark_order_paid_local(paying.id, shift_day(shift?.shift_date));
+      mark_order_paid_local(paying.id, board_day());
     } catch (e) {
       // касса уже провела оплату — держим «выдать» локально даже если PATCH частично упал
-      mark_order_paid_local(paying.id, shift_day(shift?.shift_date));
+      mark_order_paid_local(paying.id, board_day());
       set_orders((prev) =>
         prev.map((o) => (o.id === paying.id ? { ...o, ...patch_payment } : o))
       );
@@ -934,57 +954,58 @@ export default function seller_board() {
 
     const sid = seller_id || seller_ref.current.id || 'seller';
     const sname = seller_name || seller_ref.current.name || 'бариста';
-    const day = shift_day(shift?.shift_date);
+    const day = board_day();
     const done: order = { ...o, status: 'completed', is_paid: o.is_paid ?? true };
 
-    const fulfill_res = await fetch('/api/seller/prep-stats', {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      credentials: 'same-origin',
-      body: JSON.stringify({
-        kind: 'fulfillment',
-        order: done,
-        event: {
-          seller_id: sid,
-          seller_name: sname,
-          order_id: o.id,
-          started_at: new Date(started).toISOString(),
-          finished_at: new Date().toISOString(),
-          pickup_at: o.pickup_time,
-          shift_date: day,
-        },
-      }),
-    });
-    if (!fulfill_res.ok) {
-      const body = (await fulfill_res.json().catch(() => null)) as { error?: string } | null;
-      alert(body?.error || 'не удалось записать выдачу');
-      return;
-    }
-
-    try {
-      await patch_order(o.id, { status: 'completed' });
-    } catch (e) {
-      alert(e instanceof Error ? e.message : 'не удалось выдать заказ');
-      return;
-    }
-
-    clear_prep_on_server(o.id);
-    const map = load_prep_map();
-    delete map[o.id];
-    save_prep_map(map);
-    set_prep_map(map);
-
     play_handout_chime();
-
     set_handed((prev) => {
       const next = [done, ...prev.filter((x) => x.id !== o.id)].slice(0, 50);
       save_handed(day, next);
       return next;
     });
     set_orders((prev) => prev.filter((row) => row.id !== o.id));
+    clear_prep_on_server(o.id);
+    const map = load_prep_map();
+    delete map[o.id];
+    save_prep_map(map);
+    set_prep_map(map);
+
+    try {
+      await Promise.all([
+        fetch('/api/seller/prep-stats', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          credentials: 'same-origin',
+          body: JSON.stringify({
+            kind: 'fulfillment',
+            order: done,
+            event: {
+              seller_id: sid,
+              seller_name: sname,
+              order_id: o.id,
+              started_at: new Date(started).toISOString(),
+              finished_at: new Date().toISOString(),
+              pickup_at: o.pickup_time,
+              shift_date: day,
+            },
+          }),
+        }).then(async (fulfill_res) => {
+          if (!fulfill_res.ok) {
+            const body = (await fulfill_res.json().catch(() => null)) as { error?: string } | null;
+            console.warn(body?.error || 'не удалось записать выдачу в журнал');
+          }
+        }),
+        patch_order(o.id, { status: 'completed' }),
+      ]);
+    } catch (e) {
+      alert(e instanceof Error ? e.message : 'не удалось выдать заказ');
+      set_orders((prev) => (prev.some((row) => row.id === o.id) ? prev : [o, ...prev]));
+      set_handed((prev) => prev.filter((row) => row.id !== o.id));
+    }
   }
 
   function on_final_action(o: order) {
+    set_cook(null);
     if (!order_is_paid(o)) {
       set_paying(o);
       return;
@@ -1026,18 +1047,24 @@ export default function seller_board() {
     { id: 'work', label: 'в работе' },
     { id: 'ready', label: 'готовые' },
     { id: 'pos', label: 'касса' },
+    { id: 'stock', label: 'склад' },
     { id: 'analytics', label: 'аналитика' },
   ];
 
   const { open: open_tasks, done: done_tasks } = get_board_tasks(day_tasks);
   const work_board_count = in_work.length + open_tasks.length;
   const ready_board_count = handed_out.length + done_tasks.length;
+  const guided_task = day_tasks.find((t) => t.id === task_guide_id) ?? null;
   /** бейдж «готовые» = число выдач, как в аналитике (задачи смены не считаем) */
   const ready_handout_count = handed_out.length;
 
   function render_fill_grid(count: number, children: ReactNode) {
     if (count === 0) return null;
-    const { cols, rows } = board_tile_grid(count);
+    const { cols, rows } = board_tile_grid(
+      count,
+      Math.max(0, board_w - 16),
+      Math.max(0, board_h - 16),
+    );
     return (
       <div
         className="grid flex-1 min-h-0 gap-2 overflow-hidden h-full content-start transition-[grid-template-columns,grid-template-rows] duration-500 ease-out"
@@ -1069,6 +1096,7 @@ export default function seller_board() {
             task: t,
             mode: 'work',
             on_advance: advance_task,
+            on_open_guide: () => set_task_guide_id(t.id),
           })
         )}
         {in_work.map((o) =>
@@ -1082,6 +1110,8 @@ export default function seller_board() {
             on_start_drink: start_drink,
             on_mark_drink_done: mark_drink_done,
             on_final_action,
+            on_open_cook: (drink) => set_cook({ order: o, drink_key: drink.key }),
+            guide_open: cook?.order.id === o.id,
           })
         )}
       </>
@@ -1106,6 +1136,7 @@ export default function seller_board() {
             task: t,
             mode: 'done',
             on_advance: advance_task,
+            on_open_guide: () => set_task_guide_id(t.id),
           })
         )}
         {handed_out.map((o) =>
@@ -1122,6 +1153,8 @@ export default function seller_board() {
             on_start_drink: start_drink,
             on_mark_drink_done: mark_drink_done,
             on_final_action: () => {},
+            on_open_cook: (drink) => set_cook({ order: o, drink_key: drink.key }),
+            guide_open: cook?.order.id === o.id,
           })
         )}
       </>
@@ -1215,7 +1248,7 @@ export default function seller_board() {
             </button>
           </div>
 
-          <div className="mt-1.5 grid grid-cols-4 gap-0.5 rounded-xl bg-surface p-0.5">
+          <div className="mt-1.5 grid grid-cols-5 gap-0.5 rounded-xl bg-surface p-0.5">
             {tabs.map((t) => (
               <button
                 key={t.id}
@@ -1271,21 +1304,27 @@ export default function seller_board() {
             seller_id,
             seller_name,
             shift_id: shift?.id || null,
-            shift_date: shift?.shift_date,
+            shift_date: board_day(),
             spot_id: shift?.spot_id || null,
             spot_address: shift?.address || null,
           })}
         </div>
         <div
-          className="absolute inset-0 max-w-3xl mx-auto px-4 py-4 overflow-y-auto"
+          className="absolute inset-0 px-2 py-2 flex flex-col overflow-hidden"
           style={page_style(3)}
+        >
+          {createElement(seller_inventory, { on_nav_depth: set_stock_depth, active: tab === 'stock' })}
+        </div>
+        <div
+          className="absolute inset-0 max-w-3xl mx-auto px-4 py-4 overflow-y-auto"
+          style={page_style(4)}
         >
           {createElement(barista_analytics_panel, {
             seller_id,
             seller_name,
             spot_id: shift?.spot_id,
             shift_id: shift?.id,
-            shift_date: shift?.shift_date,
+            shift_date: board_day(),
           })}
         </div>
       </main>
@@ -1296,6 +1335,39 @@ export default function seller_board() {
         on_close: () => set_paying(null),
         on_complete: complete_payment,
       })}
+      {cook
+        ? createElement(drink_cook_guide, {
+            drinks: drinks_for(cook.order).map((d) => ({
+              ...d,
+              done: Boolean(prep_map[cook.order.id]?.[d.key]?.done),
+              started: Boolean(prep_map[cook.order.id]?.[d.key]?.started_at),
+            })),
+            start_key: cook.drink_key,
+            on_start_drink: (drink) => {
+              const st = prep_map[cook.order.id]?.[drink.key];
+              if (st?.done || st?.started_at) return;
+              start_drink(cook.order.id, drink);
+            },
+            on_mark_drink_done: (drink) => {
+              if (prep_map[cook.order.id]?.[drink.key]?.done) return;
+              const started =
+                prep_map[cook.order.id]?.[drink.key]?.started_at || Date.now();
+              mark_drink_done(cook.order.id, drink, {
+                actual_ms: Math.max(1000, Date.now() - started),
+                expected_ms: drink.prep_minutes * 60_000,
+                started_at: started,
+              });
+            },
+            on_close: () => set_cook(null),
+          })
+        : null}
+      {guided_task
+        ? createElement(task_guide, {
+            task: guided_task,
+            on_start: () => start_task_timer(guided_task.id),
+            on_close: () => set_task_guide_id(null),
+          })
+        : null}
     </div>
   );
 }

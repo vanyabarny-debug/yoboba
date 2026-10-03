@@ -309,10 +309,12 @@ export default function profile_page() {
       const cached = peek_header_user();
       const cache_bal =
         cached?.id === auth.user_id ? Number(cached.bonus_balance) || 0 : 0;
+      // баланс всегда с сервера: кэш только пока профиль не загрузился,
+      // иначе после списания на кассе гость видит старую цифру
       const resolved: profile = auth.profile
         ? {
             ...auth.profile,
-            bonus_balance: Math.max(Number(auth.profile.bonus_balance) || 0, cache_bal),
+            bonus_balance: Number(auth.profile.bonus_balance) || 0,
           }
         : {
             id: auth.user_id,

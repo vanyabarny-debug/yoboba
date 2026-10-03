@@ -6,6 +6,7 @@ import {
   default_categories,
   apply_menu_item_badges,
   default_menu_items,
+  fold_warm_drink_categories,
   get_default_store,
   merge_menu_item_catalog,
   store_version,
@@ -24,9 +25,17 @@ export const dynamic = 'force-dynamic';
 async function resolve_live_menu() {
   const stored = await read_published_menu();
   if (stored && stored.version >= store_version && stored.items?.length) {
+    const merged_items = merge_menu_item_catalog(stored.items);
+    const merged_store = {
+      ...stored,
+      items: merged_items,
+    };
+    await write_published_menu(merged_store);
     return {
-      items: apply_menu_item_badges(merge_menu_item_catalog(stored.items)),
-      categories: stored.categories?.length ? stored.categories : default_categories,
+      items: apply_menu_item_badges(merged_items),
+      categories: fold_warm_drink_categories(
+        stored.categories?.length ? stored.categories : default_categories
+      ),
       demo_mode: false,
     };
   }

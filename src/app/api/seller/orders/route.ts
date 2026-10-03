@@ -11,6 +11,8 @@ import { create_service_client } from '@/lib/supabase/service';
 import { clear_order_prep } from '@/lib/seller-prep-server';
 import type { order, order_item } from '@/lib/types';
 import { student_line_price } from '@/lib/student-discount';
+import { discounted_unit, parse_discount } from '@/lib/pos-pricing';
+import { record_order_stock, release_order_stock } from '@/lib/finance/order-stock';
 import {
   read_student_status,
   set_student_verified,
@@ -76,45 +78,107 @@ async function customer_payload(profile: {
     student_verified_by: student.student_verified_by || profile.student_verified_by || null,
   };
 }
+
+const POS_WALKIN_EMAIL = 'walkin@yoboba.internal';
+const WALKIN_STORE = 'pos-walkin-user';
+let walkin_user: Promise<string> | null = null;
+
+async function pos_guest_user_id(): Promise<string> {
+  if (!walkin_user) {
+    walkin_user = (async () => {
+      const { read_json_store, write_json_store } = await import('@/lib/data-store');
+      const stored = await read_json_store<string | null>(WALKIN_STORE, null);
+      if (stored) return stored;
+
+      const admin = create_service_client();
+      const created = await admin.auth.admin.createUser({
+        email: POS_WALKIN_EMAIL,
+        email_confirm: true,
+        user_metadata: { name: 'гость' },
+      });
+      let uid = created.data?.user?.id || '';
+      if (!uid && /already|registered|exists|duplicate/i.test(created.error?.message || '')) {
+        const { data: existing } = await admin
+          .from('profiles')
+          .select('id')
+          .eq('name', 'гость')
+          .is('phone', null)
+          .limit(1)
+          .maybeSingle();
+        uid = existing?.id || '';
+      }
+      if (!uid) throw new Error(created.error?.message || 'не удалось создать гостя точки');
+      await admin.from('profiles').upsert(
+        {
+          id: uid,
+          name: 'гость',
+          phone: null,
+          bonus_balance: 0,
+          role: 'user',
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: 'id' }
+      );
+      await write_json_store(WALKIN_STORE, uid).catch(() => {});
+      return uid;
+    })().catch((e) => {
+      walkin_user = null;
+      throw e;
+    });
+  }
+  return walkin_user;
+}
+
 async function resolve_walk_in_user_id(
   customer_name: string,
   customer_phone: string | null
 ): Promise<{ user_id: string; bonus_earned_base: boolean }> {
-  const admin = create_service_client();
-
   if (customer_phone) {
     const existing = await find_profile_by_phone(customer_phone);
     if (existing) return { user_id: existing.id, bonus_earned_base: true };
+
+    const admin = create_service_client();
+    const email = `walkin-${crypto.randomUUID()}@yoboba.internal`;
+    const { data: created, error } = await admin.auth.admin.createUser({
+      email,
+      email_confirm: true,
+      user_metadata: {
+        name: customer_name,
+        phone: customer_phone,
+      },
+    });
+
+    if (error || !created.user) {
+      throw new Error(error?.message || 'не удалось создать гостя точки');
+    }
+
+    const user_id = created.user.id;
+    const { error: profile_err } = await admin.from('profiles').upsert(
+      {
+        id: user_id,
+        name: customer_name,
+        phone: customer_phone,
+        bonus_balance: 0,
+        role: 'user',
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: 'id' }
+    );
+
+    if (profile_err) {
+      const existing_phone = await find_profile_by_phone(customer_phone);
+      if (existing_phone) {
+        await admin.auth.admin.deleteUser(user_id).catch(() => {});
+        return { user_id: existing_phone.id, bonus_earned_base: true };
+      }
+      await admin.auth.admin.deleteUser(user_id).catch(() => {});
+      throw new Error(`не удалось создать профиль гостя: ${profile_err.message}`);
+    }
+
+    return { user_id, bonus_earned_base: true };
   }
 
-  const email = `walkin-${crypto.randomUUID()}@yoboba.internal`;
-  const { data: created, error } = await admin.auth.admin.createUser({
-    email,
-    email_confirm: true,
-    user_metadata: {
-      name: customer_name,
-      phone: customer_phone || undefined,
-    },
-  });
-
-  if (error || !created.user) {
-    throw new Error(error?.message || 'не удалось создать гостя точки');
-  }
-
-  const user_id = created.user.id;
-  await admin.from('profiles').upsert(
-    {
-      id: user_id,
-      name: customer_name,
-      phone: customer_phone,
-      bonus_balance: 0,
-      role: 'user',
-      updated_at: new Date().toISOString(),
-    },
-    { onConflict: 'id' }
-  );
-
-  return { user_id, bonus_earned_base: Boolean(customer_phone) };
+  return { user_id: await pos_guest_user_id(), bonus_earned_base: false };
 }
 
 export async function GET(request: Request) {
@@ -124,14 +188,16 @@ export async function GET(request: Request) {
 
   const url = new URL(request.url);
   if (url.searchParams.get('completed') === '1') {
-    const day = url.searchParams.get('day') || moscow_today_iso();
+    const day = moscow_today_iso();
     const seller_id = url.searchParams.get('seller_id') || undefined;
 
     // тот же фильтр, что аналитика: уникальные fulfillment за shift_date (+ seller)
     const { get_fulfillment_order_ids } = await import('@/lib/prep-stats-server');
     const { get_handed_orders } = await import('@/lib/handed-orders-server');
-    const ids = await get_fulfillment_order_ids({ shift_date: day, seller_id });
-    const handed_snapshots = await get_handed_orders({ shift_date: day, seller_id });
+    const [ids, handed_snapshots] = await Promise.all([
+      get_fulfillment_order_ids({ shift_date: day, seller_id }),
+      get_handed_orders({ shift_date: day, seller_id }),
+    ]);
     const by_id = new Map<string, order>();
     for (const o of handed_snapshots) {
       by_id.set(o.id, { ...o, status: 'completed' });
@@ -203,8 +269,9 @@ export async function GET(request: Request) {
     });
   }
 
+  // демо-баланс только без supabase: иначе касса покажет цифру из локального файла
   const { get_demo_bonus } = await import('@/lib/demo-bonus-server');
-  const demo = await get_demo_bonus(phone);
+  const demo = is_supabase_configured() ? null : await get_demo_bonus(phone);
   if (demo) {
     const student = await read_student_status({ phone });
     return NextResponse.json({
@@ -249,16 +316,36 @@ export async function POST(request: Request) {
     student_verified = student.student_verified;
   }
 
-  const items: order_item[] = raw_items.map((row) => {
-    const m = menu.get(row.menu_id);
-    const base = m?.price ?? row.price;
-    return {
-      menu_id: row.menu_id,
-      name: m?.name || row.name,
-      price: student_line_price(base, { category: m?.category, menu_id: row.menu_id }, student_verified),
-      quantity: Math.max(1, Math.round(Number(row.quantity) || 1)),
-    };
-  });
+  const staff = Boolean(body.staff);
+  const discount = staff ? null : parse_discount(body.discount);
+  const items: order_item[] = (() => {
+    const configured = raw_items.map((row) => {
+      const m = menu.get(row.menu_id);
+      const qty = Math.max(1, Math.round(Number(row.quantity) || 1));
+      const configured_unit = Math.max(0, Math.round(Number(row.price) || m?.price || 0));
+      const volume = typeof row.volume === 'string' && /^\d+$/.test(row.volume) ? row.volume : undefined;
+      return {
+        menu_id: row.menu_id,
+        name: row.name || m?.name || 'напиток',
+        configured_unit,
+        quantity: qty,
+        volume,
+        category: m?.category,
+      };
+    });
+    const lines = configured.map((c) => ({
+      unit: student_line_price(c.configured_unit, { category: c.category, menu_id: c.menu_id }, student_verified && !staff),
+      qty: c.quantity,
+    }));
+    return configured.map((c, i) => ({
+      menu_id: c.menu_id,
+      name: c.name,
+      price: discounted_unit(lines, i, discount, staff),
+      quantity: c.quantity,
+      ...(c.volume ? { volume: c.volume } : {}),
+      kind: staff ? ('staff' as const) : ('sale' as const),
+    }));
+  })();
 
   const total_price = items.reduce((s, i) => s + i.price * i.quantity, 0);
   const pickup_minutes = Math.max(5, Math.min(60, Number(body.pickup_minutes) || 10));
@@ -272,42 +359,69 @@ export async function POST(request: Request) {
 
   let customer_name =
     (body.customer_name as string | undefined)?.trim() || 'гость точки';
+  if (staff) {
+    customer_name = (body.seller_name as string | undefined)?.trim() || 'персонал';
+  }
   let user_id: string | null = null;
   let bonus_earned = 0;
   let can_earn_bonus = false;
   let bonus_redeemed = 0;
   let bonus_balance: number | null = null;
   let final_total = total_price;
+  const bonus_for_items = calc_order_bonus(
+    items.map((i) => ({
+      menu_id: i.menu_id,
+      quantity: i.quantity,
+      category: menu.get(i.menu_id)?.category,
+    }))
+  );
 
   if (customer_phone) {
     const profile = await find_profile_by_phone(customer_phone);
     if (profile) {
       user_id = profile.id;
-      can_earn_bonus = true;
       const profile_name = (profile.name || '').trim();
       if (profile_name) customer_name = profile_name;
       bonus_balance = profile.bonus_balance ?? 0;
-      bonus_earned = calc_order_bonus(
-        items.map((i) => ({
-          menu_id: i.menu_id,
-          quantity: i.quantity,
-          category: menu.get(i.menu_id)?.category,
-        }))
-      );
     }
+    // баллы копятся на телефон: и найденному гостю, и новому (профиль создадим ниже)
+    can_earn_bonus = true;
+    bonus_earned = bonus_for_items;
+  }
+  if (staff) {
+    customer_name = (body.seller_name as string | undefined)?.trim() || 'персонал';
+    can_earn_bonus = false;
+    bonus_earned = 0;
   }
 
+  const { redeem_bonus_points, refund_bonus_points, earn_bonus_points, ensure_demo_bonus_row } =
+    await import('@/lib/bonus-server');
+  const { FREE_DRINK_BONUS_THRESHOLD } = await import('@/lib/cart-summary');
+  const actor = await staff_actor_name();
+  // если после списания заказ не создался — баллы возвращаем, а не теряем
+  let redeemed_from_user: string | null = null;
+  const refund_redeemed = async (why: string) => {
+    if (!redeemed_from_user || bonus_redeemed <= 0) return;
+    const back = await refund_bonus_points({
+      user_id: redeemed_from_user,
+      amount: bonus_redeemed,
+      reason: `refund:${why}`,
+      actor,
+    });
+    if (back.ok) bonus_balance = back.bonus_balance;
+    redeemed_from_user = null;
+  };
+
   if (redeem_bonus) {
+    if (staff) {
+      return NextResponse.json({ error: 'напиток персонала нельзя оплатить бобаллами' }, { status: 400 });
+    }
     if (!customer_phone) {
       return NextResponse.json(
         { error: 'нужен телефон гостя, чтобы списать бобаллы' },
         { status: 400 }
       );
     }
-    const { redeem_bonus_points, ensure_demo_bonus_row } = await import(
-      '@/lib/bonus-server'
-    );
-    const { FREE_DRINK_BONUS_THRESHOLD } = await import('@/lib/cart-summary');
     if (!is_supabase_configured()) {
       await ensure_demo_bonus_row({
         phone: customer_phone,
@@ -319,6 +433,7 @@ export async function POST(request: Request) {
       user_id,
       phone: customer_phone,
       amount: FREE_DRINK_BONUS_THRESHOLD,
+      actor,
     });
     if (!result.ok) {
       return NextResponse.json(
@@ -328,6 +443,10 @@ export async function POST(request: Request) {
     }
     bonus_redeemed = result.redeemed;
     bonus_balance = result.bonus_balance;
+    if (is_supabase_configured()) {
+      redeemed_from_user = result.customer.id;
+      if (!user_id) user_id = result.customer.id;
+    }
     final_total = 0;
     is_paid = true;
     payment_type = 'bonus';
@@ -341,6 +460,7 @@ export async function POST(request: Request) {
       if (!user_id) {
         const resolved = await resolve_walk_in_user_id(customer_name, customer_phone);
         user_id = resolved.user_id;
+        can_earn_bonus = can_earn_bonus && resolved.bonus_earned_base;
       }
 
       const daily = await allocate_daily_order_number(admin);
@@ -379,46 +499,58 @@ export async function POST(request: Request) {
         error = retry.error;
       }
 
-      if (error) {
-        return NextResponse.json({ error: error.message }, { status: 500 });
+      if (error || !data) {
+        await refund_redeemed('order_insert_failed');
+        return NextResponse.json(
+          { error: error?.message || 'не удалось создать заказ', bonus_balance },
+          { status: 500 }
+        );
       }
 
-      if (data) {
-        if (bonus_earned > 0 && can_earn_bonus && user_id) {
-          const { data: profile } = await admin
-            .from('profiles')
-            .select('bonus_balance')
-            .eq('id', user_id)
-            .maybeSingle();
-          const current = (profile?.bonus_balance as number | null) ?? 0;
-          bonus_balance = current + bonus_earned;
-          await admin
-            .from('profiles')
-            .update({
-              bonus_balance,
-              updated_at: new Date().toISOString(),
-            })
-            .eq('id', user_id);
-        }
-        return NextResponse.json({
-          order: {
-            ...data,
-            customer_name,
-            customer_phone,
-            is_paid,
-            payment_type,
-            total_price: final_total,
-          },
-          bonus_earned: can_earn_bonus ? bonus_earned : 0,
-          bonus_redeemed,
-          bonus_balance,
+      let earned_now = 0;
+      if (bonus_earned > 0 && can_earn_bonus && user_id) {
+        const earned = await earn_bonus_points({
+          user_id,
+          amount: bonus_earned,
+          order_id: (data as { id?: string }).id ?? null,
+          actor,
         });
+        if (earned.ok) {
+          bonus_balance = earned.bonus_balance;
+          earned_now = bonus_earned;
+        } else {
+          console.error('seller order: bonus earn failed', user_id, earned.error);
+        }
       }
+
+      void record_order_stock({
+        orderId: String((data as { id?: string }).id || ''),
+        items,
+        kind: staff ? 'staff' : 'sale',
+      });
+
+      return NextResponse.json({
+        order: {
+          ...data,
+          customer_name,
+          customer_phone,
+          is_paid,
+          payment_type,
+          total_price: final_total,
+        },
+        bonus_earned: earned_now,
+        bonus_redeemed,
+        bonus_balance,
+        bonus_warning: bonus_earned > 0 && can_earn_bonus && !earned_now
+          ? 'заказ создан, но бобаллы не начислились — проверьте гостя'
+          : undefined,
+      });
     } catch (e) {
+      // supabase настроен — в демо-стор не уходим: баллы там не сохраняются
       const message = e instanceof Error ? e.message : 'не удалось создать заказ';
-      if (!message.includes('гостя точки') && !/auth/i.test(message)) {
-        return NextResponse.json({ error: message }, { status: 500 });
-      }
+      await refund_redeemed('order_failed');
+      console.error('seller order failed', message);
+      return NextResponse.json({ error: message, bonus_balance }, { status: 500 });
     }
   }
 
@@ -457,9 +589,15 @@ export async function POST(request: Request) {
     bonus_balance = next.bonus_balance;
   }
 
+  void record_order_stock({
+    orderId: order.id,
+    items,
+    kind: staff ? 'staff' : 'sale',
+  });
+
   return NextResponse.json({
     order,
-    bonus_earned,
+    bonus_earned: staff ? 0 : bonus_earned,
     bonus_redeemed,
     bonus_balance,
   });
@@ -484,6 +622,9 @@ export async function PATCH(request: Request) {
     }
     if (patch.status === 'completed') {
       await clear_order_prep(id);
+    }
+    if (patch.status === 'cancelled') {
+      await release_order_stock(id);
     }
     return NextResponse.json({ order: updated });
   }
@@ -523,6 +664,9 @@ export async function PATCH(request: Request) {
 
   if (patch.status === 'completed') {
     await clear_order_prep(id);
+  }
+  if (patch.status === 'cancelled') {
+    await release_order_stock(id);
   }
 
   if (patch.status && data) {

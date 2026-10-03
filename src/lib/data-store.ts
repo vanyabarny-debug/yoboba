@@ -14,8 +14,6 @@ const seeds: Record<string, unknown> = {
   'handed-orders': [],
   'demo-bonuses': [],
   gifts: [],
-  'opening-100': [],
-  'opening-100-override': null,
   'news-ticker': null,
   'published-promos': null,
   'published-sidebar-ads': null,

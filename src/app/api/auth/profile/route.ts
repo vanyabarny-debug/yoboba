@@ -2,6 +2,7 @@ import { createServerClient } from '@supabase/ssr';
 import { createClient } from '@supabase/supabase-js';
 import { NextResponse, type NextRequest } from 'next/server';
 import { normalize_phone } from '@/lib/phone';
+import { claim_phone_for_user } from '@/lib/bonus-server';
 import { read_profile, update_profile_row } from '@/lib/profile-row';
 import { read_student_status, set_student_claimed } from '@/lib/student-server';
 
@@ -53,14 +54,18 @@ export async function GET(request: NextRequest) {
   if (profile && !profile.phone && meta_phone) {
     resolved_profile = { ...profile, phone: meta_phone };
     if (process.env.SUPABASE_SERVICE_ROLE_KEY) {
-      const admin = createClient(
-        process.env.NEXT_PUBLIC_SUPABASE_URL!,
-        process.env.SUPABASE_SERVICE_ROLE_KEY
-      );
-      await admin
-        .from('profiles')
-        .update({ phone: meta_phone, updated_at: new Date().toISOString() })
-        .eq('id', user.id);
+      // номер мог уже копить баллы как «гость точки» с кассы — забираем их себе
+      const claimed = await claim_phone_for_user({
+        user_id: user.id,
+        phone: meta_phone,
+        actor: 'profile_sync',
+      });
+      if (claimed.ok && typeof claimed.bonus_balance === 'number') {
+        resolved_profile = { ...resolved_profile, bonus_balance: claimed.bonus_balance };
+      } else if (!claimed.ok) {
+        // номер у другого настоящего аккаунта — не показываем его как свой
+        resolved_profile = profile;
+      }
     }
   }
 
@@ -198,6 +203,22 @@ export async function PATCH(request: NextRequest) {
     return res;
   }
 
+  let merged_bonus: number | null = null;
+  if (updates.phone && process.env.SUPABASE_SERVICE_ROLE_KEY) {
+    // если номер уже копил баллы на кассе как «гость точки» — переносим их сюда
+    const claimed = await claim_phone_for_user({
+      user_id: user.id,
+      phone: updates.phone,
+      actor: 'profile_patch',
+    });
+    if (!claimed.ok) {
+      const res = NextResponse.json({ error: claimed.error }, { status: claimed.status });
+      merge_cookies(cookie_response, res);
+      return res;
+    }
+    merged_bonus = claimed.merged_from ? claimed.bonus_balance : null;
+  }
+
   const { data: profile, error } = await update_profile_row(
     supabase,
     user.id,
@@ -237,6 +258,9 @@ export async function PATCH(request: NextRequest) {
   }
 
   let resolved = profile;
+  if (merged_bonus != null) {
+    resolved = { ...resolved, bonus_balance: merged_bonus };
+  }
   if (typeof updates.student_claimed === 'boolean') {
     const student = await set_student_claimed({
       user_id: user.id,

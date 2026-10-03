@@ -37,57 +37,66 @@ export async function POST(request: Request) {
   const body = await request.json();
   const kind = body.kind as 'prep' | 'fulfillment';
 
-  if (kind === 'prep') {
-    const event = body.event as Omit<prep_event, 'id' | 'drink_pace' | 'shift_date'> & {
-      id?: string;
-      drink_pace?: prep_event['drink_pace'];
-      shift_date?: string;
-    };
-    if (!event?.seller_id || !event.order_id || !event.drink_name) {
-      return NextResponse.json({ error: 'неполные данные' }, { status: 400 });
+  try {
+    if (kind === 'prep') {
+      const event = body.event as Omit<prep_event, 'id' | 'drink_pace' | 'shift_date'> & {
+        id?: string;
+        drink_pace?: prep_event['drink_pace'];
+        shift_date?: string;
+      };
+      if (!event?.seller_id || !event.order_id || !event.drink_name) {
+        return NextResponse.json({ error: 'неполные данные' }, { status: 400 });
+      }
+      const saved = await add_prep_event(event);
+      return NextResponse.json({ event: saved });
     }
-    const saved = await add_prep_event(event);
-    return NextResponse.json({ event: saved });
-  }
 
-  if (kind === 'fulfillment') {
-    const event = body.event as Omit<
-      fulfillment_event,
-      'id' | 'timing' | 'shift_date' | 'duration_ms'
-    > & {
-      id?: string;
-      timing?: fulfillment_event['timing'];
-      shift_date?: string;
-      duration_ms?: number;
-    };
-    if (!event?.seller_id || !event.order_id) {
-      return NextResponse.json({ error: 'неполные данные' }, { status: 400 });
+    if (kind === 'fulfillment') {
+      const event = body.event as Omit<
+        fulfillment_event,
+        'id' | 'timing' | 'shift_date' | 'duration_ms'
+      > & {
+        id?: string;
+        timing?: fulfillment_event['timing'];
+        shift_date?: string;
+        duration_ms?: number;
+      };
+      if (!event?.seller_id || !event.order_id) {
+        return NextResponse.json({ error: 'неполные данные' }, { status: 400 });
+      }
+      const finished_at = event.finished_at || new Date().toISOString();
+      const shift_date = event.shift_date || moscow_today_iso();
+      const snapshot = body.order as order | undefined;
+      const [saved] = await Promise.all([
+        add_fulfillment_event({ ...event, finished_at, shift_date }),
+        record_handed_order({
+          order:
+            snapshot && snapshot.id
+              ? snapshot
+              : {
+                  id: event.order_id,
+                  user_id: '',
+                  items: [],
+                  total_price: 0,
+                  status: 'completed',
+                  payment_type: 'cash',
+                  is_paid: true,
+                  pickup_time: event.pickup_at || finished_at,
+                  created_at: finished_at,
+                },
+          seller_id: event.seller_id,
+          seller_name: event.seller_name || 'бариста',
+          shift_date,
+          handed_at: finished_at,
+        }),
+      ]);
+
+      return NextResponse.json({ event: saved });
     }
-    const saved = await add_fulfillment_event(event);
-
-    const snapshot = body.order as order | undefined;
-    await record_handed_order({
-      order:
-        snapshot && snapshot.id
-          ? snapshot
-          : {
-              id: event.order_id,
-              user_id: '',
-              items: [],
-              total_price: 0,
-              status: 'completed',
-              payment_type: 'cash',
-              is_paid: true,
-              pickup_time: event.pickup_at || saved.finished_at,
-              created_at: saved.finished_at,
-            },
-      seller_id: event.seller_id,
-      seller_name: event.seller_name || 'бариста',
-      shift_date: saved.shift_date,
-      handed_at: saved.finished_at,
-    });
-
-    return NextResponse.json({ event: saved });
+  } catch (e) {
+    const message = e instanceof Error ? e.message : 'не удалось записать';
+    console.error('prep-stats POST', message);
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 
   return NextResponse.json({ error: 'неизвестный kind' }, { status: 400 });

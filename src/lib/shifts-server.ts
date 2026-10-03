@@ -42,13 +42,18 @@ export async function open_or_resume_shift(input: {
   seller_name: string;
 }): Promise<seller_shift_record> {
   const all = await load_shifts();
-  const existing = all.find(
+  const today = moscow_today_iso();
+  const existing_idx = all.findIndex(
     (s) =>
       !s.closed_at &&
       s.spot_id === input.spot_id &&
       s.seller_id === input.seller_id
   );
-  if (existing) return existing;
+  if (existing_idx >= 0) {
+    const existing = all[existing_idx];
+    if (existing.shift_date === today) return existing;
+    all[existing_idx] = { ...existing, closed_at: new Date().toISOString() };
+  }
 
   const record: seller_shift_record = {
     id: `shift-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,

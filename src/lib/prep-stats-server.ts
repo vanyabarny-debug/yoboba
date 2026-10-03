@@ -1,4 +1,4 @@
-import { read_json_store, write_json_store } from '@/lib/data-store';
+import { keep_since_day, read_durable_json, write_durable_json } from '@/lib/durable-json';
 import { moscow_today_iso } from '@/lib/order-number';
 import type {
   barista_analytics,
@@ -29,11 +29,41 @@ export function classify_order_timing(
 }
 
 async function load_prep(): Promise<prep_event[]> {
-  return read_json_store<prep_event[]>(prep_key, []);
+  const raw = await read_durable_json<prep_event[]>(prep_key, []);
+  const all = Array.isArray(raw) ? raw : [];
+  const since = keep_since_day();
+  const kept = all.filter((e) => e.shift_date >= since);
+  if (kept.length !== all.length) {
+    await write_durable_json(prep_key, kept).catch(() => {});
+  }
+  return kept;
+}
+
+async function save_prep(all: prep_event[]) {
+  const since = keep_since_day();
+  await write_durable_json(
+    prep_key,
+    all.filter((e) => e.shift_date >= since)
+  );
 }
 
 async function load_fulfill(): Promise<fulfillment_event[]> {
-  return read_json_store<fulfillment_event[]>(fulfill_key, []);
+  const raw = await read_durable_json<fulfillment_event[]>(fulfill_key, []);
+  const all = Array.isArray(raw) ? raw : [];
+  const since = keep_since_day();
+  const kept = all.filter((e) => e.shift_date >= since);
+  if (kept.length !== all.length) {
+    await write_durable_json(fulfill_key, kept).catch(() => {});
+  }
+  return kept;
+}
+
+async function save_fulfill(all: fulfillment_event[]) {
+  const since = keep_since_day();
+  await write_durable_json(
+    fulfill_key,
+    all.filter((e) => e.shift_date >= since)
+  );
 }
 
 export async function add_prep_event(
@@ -52,7 +82,7 @@ export async function add_prep_event(
     shift_date: event.shift_date || moscow_today_iso(),
   };
   all.push(record);
-  await write_json_store(prep_key, all);
+  await save_prep(all);
   return record;
 }
 
@@ -76,7 +106,7 @@ export async function add_fulfillment_event(
     shift_date: event.shift_date || moscow_today_iso(),
   };
   all.push(record);
-  await write_json_store(fulfill_key, all);
+  await save_fulfill(all);
   return record;
 }
 

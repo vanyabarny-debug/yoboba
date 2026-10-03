@@ -2,7 +2,11 @@ import { NextResponse } from 'next/server';
 import { create_server_client } from '@/lib/supabase/server';
 import { create_service_client } from '@/lib/supabase/service';
 import { calc_order_bonus, FREE_DRINK_BONUS_THRESHOLD } from '@/lib/cart-summary';
-import { redeem_bonus_points } from '@/lib/bonus-server';
+import {
+  earn_bonus_points,
+  redeem_bonus_points,
+  refund_bonus_points,
+} from '@/lib/bonus-server';
 import { normalize_phone } from '@/lib/phone';
 import { allocate_daily_order_number } from '@/lib/order-number';
 import { is_pickup_feasible } from '@/lib/kitchen-queue';
@@ -10,6 +14,7 @@ import { load_active_orders, load_menu_map } from '@/lib/kitchen-server';
 import type { order_item } from '@/lib/types';
 import { student_line_price } from '@/lib/student-discount';
 import { read_student_status } from '@/lib/student-server';
+import { record_order_stock } from '@/lib/finance/order-stock';
 
 export async function GET() {
   const supabase = await create_server_client();
@@ -145,11 +150,25 @@ export async function POST(request: Request) {
   let final_payment = payment_type;
   let is_paid = false;
 
+  // если после списания заказ не создался — возвращаем баллы
+  const refund_redeemed = async (why: string) => {
+    if (redeemed <= 0) return;
+    const back = await refund_bonus_points({
+      user_id: user.id,
+      amount: redeemed,
+      reason: `refund:${why}`,
+      actor: 'app',
+    });
+    if (back.ok) bonus_balance_after = back.bonus_balance;
+    redeemed = 0;
+  };
+
   if (redeem_bonus) {
     const result = await redeem_bonus_points({
       user_id: user.id,
       phone: profile_phone,
       amount: FREE_DRINK_BONUS_THRESHOLD,
+      actor: 'app',
     });
     if (!result.ok) {
       return NextResponse.json(
@@ -169,7 +188,11 @@ export async function POST(request: Request) {
     daily_number = await allocate_daily_order_number(admin);
   } catch (err) {
     const message = err instanceof Error ? err.message : 'не удалось выдать номер заказа';
-    return NextResponse.json({ error: message }, { status: 500 });
+    await refund_redeemed('order_number_failed');
+    return NextResponse.json(
+      { error: message, bonus_balance: bonus_balance_after },
+      { status: 500 }
+    );
   }
 
   const order_payload = {
@@ -210,33 +233,43 @@ export async function POST(request: Request) {
   }
 
   if (error || !data) {
+    await refund_redeemed('order_insert_failed');
     return NextResponse.json(
-      { error: error?.message || 'не удалось создать заказ' },
+      { error: error?.message || 'не удалось создать заказ', bonus_balance: bonus_balance_after },
       { status: 500 }
     );
   }
+
+  await record_order_stock({
+    orderId: String((data as { id?: string }).id || ''),
+    items: priced_items,
+    kind: 'sale',
+  });
 
   await supabase.from('cart_items').delete().eq('user_id', user.id);
 
   let earned = 0;
   if (!redeem_bonus && final_total > 0 && !user.is_anonymous) {
-    earned = calc_order_bonus(
+    const to_earn = calc_order_bonus(
       priced_items.map((i) => ({
         menu_id: i.menu_id,
         quantity: i.quantity,
         category: menu_by_id.get(i.menu_id)?.category,
       }))
     );
-    if (earned > 0) {
-      const current = bonus_balance_after;
-      bonus_balance_after = current + earned;
-      await admin
-        .from('profiles')
-        .update({
-          bonus_balance: bonus_balance_after,
-          updated_at: new Date().toISOString(),
-        })
-        .eq('id', user.id);
+    if (to_earn > 0) {
+      const result = await earn_bonus_points({
+        user_id: user.id,
+        amount: to_earn,
+        order_id: (data as { id?: string }).id ?? null,
+        actor: 'app',
+      });
+      if (result.ok) {
+        earned = to_earn;
+        bonus_balance_after = result.bonus_balance;
+      } else {
+        console.error('order: bonus earn failed', user.id, result.error);
+      }
     }
   }
 

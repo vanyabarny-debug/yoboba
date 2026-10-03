@@ -1,14 +1,25 @@
-import { read_json_store, write_json_store } from '@/lib/data-store';
+import { keep_since_day, read_durable_json, write_durable_json } from '@/lib/durable-json';
 import type { cash_transaction, day_summary } from '@/lib/types';
 
 const store_key = 'cash-transactions';
 
 async function load_transactions(): Promise<cash_transaction[]> {
-  return read_json_store<cash_transaction[]>(store_key, []);
+  const raw = await read_durable_json<cash_transaction[]>(store_key, []);
+  const all = Array.isArray(raw) ? raw : [];
+  const since = keep_since_day();
+  const kept = all.filter((t) => t.shift_date >= since);
+  if (kept.length !== all.length) {
+    await write_durable_json(store_key, kept).catch(() => {});
+  }
+  return kept;
 }
 
 async function save_transactions(transactions: cash_transaction[]) {
-  await write_json_store(store_key, transactions);
+  const since = keep_since_day();
+  await write_durable_json(
+    store_key,
+    transactions.filter((t) => t.shift_date >= since)
+  );
 }
 
 export type cash_filters = {

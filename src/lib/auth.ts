@@ -258,12 +258,35 @@ function auth_site_origin() {
   return '';
 }
 
+function is_email_already_registered(error: {
+  message?: string;
+  code?: string;
+} | null) {
+  if (!error) return false;
+  const code = (error.code || '').toLowerCase();
+  const msg = (error.message || '').toLowerCase();
+  return (
+    code === 'email_exists' ||
+    code === 'user_already_exists' ||
+    msg.includes('already been registered') ||
+    msg.includes('already registered')
+  );
+}
+
 export async function sign_in_with_email(email: string, return_path = '/') {
   const supabase = get_client();
   const normalized = email.trim().toLowerCase();
   const safe_return = sanitize_auth_return_path(return_path);
   const origin = auth_site_origin();
   const redirect_to = `${origin}/auth/callback?next=${encodeURIComponent(safe_return)}`;
+
+  // Гостевая сессия не должна мешать входу в существующий аккаунт
+  const {
+    data: { user: current },
+  } = await supabase.auth.getUser();
+  if (current && (current.is_anonymous || is_guest_user(current))) {
+    await supabase.auth.signOut({ scope: 'local' });
+  }
 
   const { error } = await supabase.auth.signInWithOtp({
     email: normalized,
@@ -272,6 +295,20 @@ export async function sign_in_with_email(email: string, return_path = '/') {
       emailRedirectTo: redirect_to,
     },
   });
+
+  if (!error) return { error: null };
+
+  // Аккаунт уже есть, но email ещё не подтверждён: OTP идёт в Signup и
+  // отдаёт "already been registered". Resend шлёт письмо подтверждения
+  // (в нём тот же magic link).
+  if (is_email_already_registered(error)) {
+    const { error: resend_error } = await supabase.auth.resend({
+      type: 'signup',
+      email: normalized,
+      options: { emailRedirectTo: redirect_to },
+    });
+    return { error: resend_error };
+  }
 
   return { error };
 }

@@ -4,6 +4,7 @@ import { createElement, useEffect, useMemo, useState } from 'react';
 import type { menu_item, menu_nutrition } from '@/lib/types';
 import {
   add_category,
+  apply_published_menu_store,
   delete_category,
   delete_menu_item,
   get_menu_store,
@@ -16,6 +17,7 @@ import AdminShell from '@/components/admin/admin-shell';
 import menu_image from '@/components/menu-image';
 import { product_photo_button } from '@/components/admin/product-photo-picker';
 import category_multi_pick from '@/components/admin/category-multi-pick';
+import MenuPrepSteps from '@/components/admin/menu-prep-steps';
 import { item_categories, item_in_category } from '@/lib/menu-item-categories';
 import { item_has_toppings, item_has_volumes } from '@/lib/cart-summary';
 import {
@@ -298,6 +300,10 @@ function editor({
           />
         </label>
 
+        {draft.category !== 'комбо' && draft.category !== 'закуски' && draft.category !== 'добавки' ? (
+          <MenuPrepSteps menu_item_id={draft.id} />
+        ) : null}
+
         <div className="mt-5">
           <p className="text-xs font-medium text-neutral-500">
             {item_has_volumes(draft) ? 'кбжу на 100 мл' : 'кбжу на порцию'}
@@ -415,6 +421,7 @@ export default function menu_settings() {
   const [items, set_items] = useState<menu_item[]>([]);
   const [category, set_category] = useState<string>('все');
   const [query, set_query] = useState('');
+  const [show_archived, set_show_archived] = useState(true);
   const [selected, set_selected] = useState<menu_item | null>(null);
 
   function reload() {
@@ -425,7 +432,14 @@ export default function menu_settings() {
 
   useEffect(() => {
     reload();
-    publish_menu_now();
+    void fetch('/api/menu', { cache: 'no-store' })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((body: { store?: ReturnType<typeof get_menu_store> | null } | null) => {
+        if (!body?.store?.items?.length) return;
+        apply_published_menu_store(body.store);
+        reload();
+      })
+      .catch(() => {});
     return subscribe_menu_store(reload);
   }, []);
 
@@ -434,9 +448,10 @@ export default function menu_settings() {
     return items.filter((item) => {
       if (category !== 'все' && !item_in_category(item, category)) return false;
       if (q && !item.name.toLowerCase().includes(q)) return false;
+      if (!show_archived && !item.is_available) return false;
       return true;
     });
-  }, [items, category, query]);
+  }, [items, category, query, show_archived]);
 
   function handle_add() {
     const cat = category === 'все' ? categories[0] : category;
@@ -472,6 +487,13 @@ export default function menu_settings() {
               правки сразу уходят на сайт
             </p>
           </div>
+          <button
+            type="button"
+            onClick={() => set_show_archived((value) => !value)}
+            className="rounded-pill border border-neutral-200 px-3 py-2 text-sm text-neutral-600"
+          >
+            {show_archived ? 'скрыть архив' : 'показать архив'}
+          </button>
           <button
             type="button"
             onClick={handle_add}
@@ -553,7 +575,7 @@ export default function menu_settings() {
                   <span className="block truncate text-sm font-medium text-neutral-900">{item.name}</span>
                   <span className="mt-0.5 block text-xs text-neutral-400">
                     {item_categories(item).join(' · ')}
-                    {!item.is_available ? ' · стоп' : ''}
+                    {!item.is_available ? ' · архив / снято с меню' : ''}
                     {item_has_volumes(item)
                       ? ` · ${get_item_volumes(item).map((v) => v.ml).join('/')} мл`
                       : ' · без объёма'}

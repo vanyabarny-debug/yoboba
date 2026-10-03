@@ -102,6 +102,10 @@ export type order_item = {
   name: string;
   price: number;
   quantity: number;
+  /** объём в мл — чтобы склад списал нужный размер техкарты */
+  volume?: string;
+  /** напиток персонала — расход сырья, без выручки */
+  kind?: 'sale' | 'staff';
 };
 
 export type gift_status =
@@ -131,18 +135,6 @@ export type gift = {
   paid_at: string | null;
   claimed_at: string | null;
   expires_at: string | null;
-};
-
-/** выдача бесплатного напитка по акции «100 первым» — один номер = один напиток */
-export type opening_100_entry = {
-  id: string;
-  phone: string;
-  items: order_item[];
-  order_id: string;
-  seller_id: string | null;
-  seller_name: string | null;
-  shift_id: string | null;
-  created_at: string;
 };
 
 export type order = {

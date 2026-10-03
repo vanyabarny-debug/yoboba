@@ -9,6 +9,7 @@ import {
   random_avatar_emoji,
 } from '@/lib/avatar-emoji';
 import { is_supabase_configured } from '@/lib/supabase/config';
+import { adjust_bonus_balance } from '@/lib/bonus-server';
 import { read_profile, update_profile_row } from '@/lib/profile-row';
 
 function merge_cookies(from: NextResponse, to: NextResponse) {
@@ -127,21 +128,29 @@ export async function POST(request: NextRequest) {
     return res;
   }
 
-  let next_balance = Number(profile.bonus_balance) || 0;
   let cost = 0;
-  if (emoji_changed) {
-    if (next_balance < AVATAR_EMOJI_CHANGE_COST) {
+  if (emoji_changed && AVATAR_EMOJI_CHANGE_COST > 0) {
+    // списываем атомарно — не перезаписываем баланс прочитанным значением
+    const charged = await adjust_bonus_balance(admin, {
+      user_id: user.id,
+      delta: -AVATAR_EMOJI_CHANGE_COST,
+      reason: 'avatar_emoji',
+      actor: 'app',
+    });
+    if (!charged.ok) {
       const res = NextResponse.json(
         {
-          error: `нужно ${AVATAR_EMOJI_CHANGE_COST} бобаллов, у вас ${next_balance}`,
-          bonus_balance: next_balance,
+          error:
+            charged.status === 400
+              ? `нужно ${AVATAR_EMOJI_CHANGE_COST} бобаллов, у вас ${charged.bonus_balance ?? 0}`
+              : charged.error,
+          bonus_balance: charged.bonus_balance,
         },
-        { status: 400 }
+        { status: charged.status }
       );
       merge_cookies(cookie_response, res);
       return res;
     }
-    next_balance -= AVATAR_EMOJI_CHANGE_COST;
     cost = AVATAR_EMOJI_CHANGE_COST;
   }
 
@@ -150,7 +159,6 @@ export async function POST(request: NextRequest) {
   };
   if (emoji_changed) {
     updates.avatar_emoji = emoji;
-    updates.bonus_balance = next_balance;
   }
   if (bg_changed && !missing_avatar_bg) {
     updates.avatar_bg = next_bg;

@@ -96,7 +96,14 @@ export default function login_client() {
     set_loading(false);
 
     if (err) {
-      set_error(err.message);
+      const msg = (err.message || '').toLowerCase();
+      set_error(
+        msg.includes('rate') || msg.includes('security')
+          ? 'слишком много попыток — подождите минуту'
+          : msg.includes('invalid') && msg.includes('email')
+            ? 'введите корректный email'
+            : 'не удалось отправить ссылку — попробуйте ещё раз'
+      );
       return;
     }
 

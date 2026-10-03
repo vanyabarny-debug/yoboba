@@ -13,19 +13,40 @@ export function tile_grid(count: number): { cols: number; rows: number } {
   return { cols, rows: Math.ceil(n / cols) };
 }
 
+const BOARD_GAP = 8;
+const BOARD_MIN_COL = 168;
+const BOARD_MAX_COLS = 4;
+const BOARD_SLOT_ROWS = 3;
+
 /**
- * сетка доски «в работе» / «готовые»:
- * до 12 карточек — фиксированные ячейки 4×3 (не растягивать 1–2 на весь экран);
- * больше — подстраиваем cols/rows под количество.
+ * сетка доски «в работе» / «готовые».
+ * на широком экране держим слоты 4×3, чтобы 1–2 карточки не раздувались;
+ * когда панель узкая — меньше колонок, чтобы плитки оставались ближе к квадрату.
  */
-export function board_tile_grid(count: number): { cols: number; rows: number } {
+export function board_tile_grid(
+  count: number,
+  width = 0,
+  height = 0,
+): { cols: number; rows: number } {
   const n = Math.max(1, count);
-  if (n <= 12) return { cols: 4, rows: 3 };
-  if (n <= 16) return { cols: 4, rows: 4 };
-  if (n <= 20) return { cols: 5, rows: 4 };
-  if (n <= 25) return { cols: 5, rows: 5 };
-  const cols = Math.min(6, Math.ceil(Math.sqrt(n)));
-  return { cols, rows: Math.ceil(n / cols) };
+  if (n > 12) {
+    if (n <= 16) return { cols: 4, rows: 4 };
+    if (n <= 20) return { cols: 5, rows: 4 };
+    if (n <= 25) return { cols: 5, rows: 5 };
+    const cols = Math.min(6, Math.ceil(Math.sqrt(n)));
+    return { cols, rows: Math.ceil(n / cols) };
+  }
+
+  const w = width > 0 ? width : 960;
+  const h = height > 0 ? height : 720;
+  const fit = Math.max(1, Math.floor((w + BOARD_GAP) / (BOARD_MIN_COL + BOARD_GAP)));
+  const cols = Math.max(1, Math.min(BOARD_MAX_COLS, fit));
+  const min_rows = Math.ceil(n / cols);
+  const cell_w = (w - BOARD_GAP * (cols - 1)) / cols;
+  const square_rows =
+    cell_w > 0 ? Math.max(1, Math.round((h + BOARD_GAP) / (cell_w + BOARD_GAP))) : BOARD_SLOT_ROWS;
+  const rows = Math.max(min_rows, Math.min(BOARD_SLOT_ROWS, square_rows));
+  return { cols, rows };
 }
 
 export type tile_color = { bg: string; fg: string; border: string };

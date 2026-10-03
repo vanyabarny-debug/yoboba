@@ -19,6 +19,16 @@ export const admin_tabs = [
   },
   { href: '/admin/menu', label: 'меню', match: (p: string) => p.startsWith('/admin/menu') },
   {
+    href: '/admin/techcards',
+    label: 'техкарты',
+    match: (p: string) => p.startsWith('/admin/techcards'),
+  },
+  {
+    href: '/admin/sklad',
+    label: 'склад',
+    match: (p: string) => p.startsWith('/admin/sklad'),
+  },
+  {
     href: '/admin/edit',
     label: 'редактирование',
     match: (p: string) => p.startsWith('/admin/edit'),
@@ -31,7 +41,7 @@ export const admin_tabs = [
   { href: '/admin/spots', label: 'точки', match: (p: string) => p.startsWith('/admin/spots') },
 ] as const;
 
-export function AdminHeader({ actions }: { actions?: React.ReactNode }) {
+export function AdminHeader({ actions, wide = false }: { actions?: React.ReactNode; wide?: boolean }) {
   const pathname = usePathname() || '/admin';
   const router = useRouter();
 
@@ -42,24 +52,24 @@ export function AdminHeader({ actions }: { actions?: React.ReactNode }) {
 
   return (
     <header className="sticky top-0 z-50 border-b border-neutral-200/80 bg-white/95 backdrop-blur">
-      <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-x-4 gap-y-2 px-4 py-2.5">
+      <div className={`mx-auto flex items-center gap-x-3 px-4 py-2.5 ${wide ? 'max-w-7xl' : 'max-w-6xl'}`}>
         <Link href="/admin" className="shrink-0 flex items-center">
           <span className="text-sm font-bold tracking-tight text-accent" style={{ fontFamily: 'Fredoka, var(--font-sans), system-ui, sans-serif' }}>
             yoSquad
           </span>
         </Link>
 
-        <nav className="flex min-w-0 flex-1 gap-0.5 overflow-x-auto">
+        <nav className="flex min-w-0 flex-1 gap-0.5 overflow-x-auto stories-scroll">
           {admin_tabs.map((tab) => {
             const active = tab.match(pathname);
             return (
               <Link
                 key={tab.href}
                 href={tab.href}
-                className={`shrink-0 rounded-lg px-3 py-1.5 text-sm font-medium transition-colors ${
+                className={`shrink-0 rounded-pill px-2.5 py-1.5 text-sm font-medium transition-colors ${
                   active
-                    ? 'bg-neutral-900 text-white'
-                    : 'text-neutral-500 hover:bg-neutral-100 hover:text-neutral-800'
+                    ? 'bg-accent text-white'
+                    : 'text-neutral-500 hover:bg-accent/10 hover:text-neutral-800'
                 }`}
               >
                 {tab.label}
@@ -96,8 +106,8 @@ export default function AdminShell({
   wide?: boolean;
 }) {
   return (
-    <div className="min-h-screen bg-[#f4f5f6]">
-      <AdminHeader actions={actions} />
+    <div className="min-h-screen bg-page">
+      <AdminHeader actions={actions} wide={wide} />
       <main className={`mx-auto px-4 py-6 ${wide ? 'max-w-7xl' : 'max-w-6xl'}`}>{children}</main>
     </div>
   );

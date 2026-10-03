@@ -117,6 +117,19 @@ function bubbles_icon(props: icon_props) {
   });
 }
 
+function steam_cup_icon(props: icon_props) {
+  return icon_wrap({
+    ...props,
+    children: (
+      <>
+        <path d="M8 9h8a1 1 0 0 1 1 1v6.5a3.5 3.5 0 0 1-3.5 3.5h-3A3.5 3.5 0 0 1 7 16.5V10a1 1 0 0 1 1-1z" />
+        <path d="M17 11.5h1.4a2.2 2.2 0 0 1 0 4.4H17" />
+        <path d="M10 4.5c.3.8.3 1.6 0 2.4M12.5 4c.4.9.4 1.8 0 2.7M15 4.5c.3.8.3 1.6 0 2.4" />
+      </>
+    ),
+  });
+}
+
 function glass_icon(props: icon_props) {
   return icon_wrap({
     ...props,
@@ -202,6 +215,7 @@ type rule = {
 };
 
 const rules: rule[] = [
+  { test: (c) => c.includes('тёпл'), icon: steam_cup_icon, color_i: 2 },
   { test: (c) => c.includes('классическ') || (c.includes('бабл ти') && !c.includes('газирован') && !c.includes('джус')), icon: boba_classic_icon, color_i: 0 },
   { test: (c) => c.includes('джусбол'), icon: pearl_icon, color_i: 1 },
   { test: (c) => c.includes('матча'), icon: leaf_icon, color_i: 3 },

@@ -7,12 +7,15 @@ export const dynamic = 'force-dynamic';
 export async function GET() {
   const stored = await read_published_menu();
   if (stored && stored.version >= store_version && stored.items?.length) {
-    const store = {
+    const merged_items = merge_menu_item_catalog(stored.items);
+    const merged_store = {
       ...stored,
-      items: merge_menu_item_catalog(stored.items),
+      items: merged_items,
     };
+    // миграция: снимок из старого каталога сохраняется в постоянную историю
+    await write_published_menu(merged_store);
     return NextResponse.json(
-      { store },
+      { store: merged_store },
       { headers: { 'cache-control': 'private, no-store, max-age=0' } }
     );
   }

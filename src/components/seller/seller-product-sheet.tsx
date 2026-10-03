@@ -21,6 +21,7 @@ import {
 } from '@/lib/cart-summary';
 import { create_client } from '@/lib/supabase/client';
 import { is_supabase_configured } from '@/lib/supabase/config';
+import { FLOATING_CLOSE_BTN_CLASS } from '@/lib/drawer-ui';
 
 type props = {
   item: menu_item | null;
@@ -152,36 +153,39 @@ export default function seller_product_sheet({
   }
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center p-0 sm:p-4">
+    <div className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center p-0 sm:p-6">
       <button
         type="button"
         aria-label="закрыть"
         className="absolute inset-0 bg-black/40"
         onClick={on_close}
       />
+      <div className="relative w-full max-w-md">
+        <button
+          type="button"
+          onClick={on_close}
+          className={FLOATING_CLOSE_BTN_CLASS}
+          aria-label="закрыть"
+        >
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+            <path d="M6 6l12 12M18 6L6 18" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" />
+          </svg>
+        </button>
       <div
-        className="relative flex w-full max-w-md flex-col overflow-hidden rounded-t-3xl bg-white shadow-xl sm:rounded-3xl"
+        className="relative flex w-full flex-col overflow-hidden rounded-t-3xl bg-white shadow-xl sm:rounded-3xl"
         style={{
           maxHeight: 'min(92dvh, calc(100dvh - var(--safe-top) - var(--safe-bottom) - 1rem))',
         }}
       >
         <div className="mx-auto mt-2 h-1 w-10 shrink-0 rounded-full bg-neutral-200 sm:hidden" />
 
-        <div className="relative mx-4 mt-2 aspect-[16/9] max-h-[28vh] w-auto shrink-0 overflow-hidden rounded-2xl bg-white self-stretch border border-neutral-100">
+        <div className="relative mx-4 mt-2 aspect-[16/9] max-h-[28vh] w-auto shrink-0 overflow-hidden rounded-2xl bg-white self-stretch">
           {createElement(menu_image, {
             item: active,
             className: 'h-full w-full',
             variant: 'fill',
             fit: 'contain',
           })}
-          <button
-            type="button"
-            onClick={on_close}
-            className="absolute top-2 right-2 h-8 w-8 rounded-full bg-white/95 text-base font-bold text-neutral-700 shadow"
-            aria-label="закрыть"
-          >
-            ×
-          </button>
         </div>
 
         <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-hidden px-4 pb-4 pt-3">
@@ -344,6 +348,7 @@ export default function seller_product_sheet({
             </button>
           </div>
         </div>
+      </div>
       </div>
     </div>
   );

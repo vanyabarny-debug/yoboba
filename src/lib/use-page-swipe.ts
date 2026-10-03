@@ -36,6 +36,7 @@ export function use_page_swipe({
   const [drag_x, set_drag_x] = useState(0);
   const [snapping, set_snapping] = useState(false);
   const [width, set_width] = useState(0);
+  const [height, set_height] = useState(0);
   const [viewport, set_viewport] = useState<HTMLDivElement | null>(null);
 
   const start_ref = useRef<{ x: number; y: number } | null>(null);
@@ -57,8 +58,10 @@ export function use_page_swipe({
 
   const measure = useCallback(() => {
     const w = viewport?.clientWidth ?? 0;
+    const h = viewport?.clientHeight ?? 0;
     width_ref.current = w;
     set_width(w);
+    set_height(h);
   }, [viewport]);
 
   useEffect(() => {
@@ -222,5 +225,7 @@ export function use_page_swipe({
     viewport_ref: set_viewport as Ref<HTMLDivElement>,
     page_style,
     dragging: Math.abs(drag_x) > 1 || snapping,
+    width,
+    height,
   };
 }

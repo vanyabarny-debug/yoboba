@@ -6,6 +6,7 @@ import business_dashboard from '@/components/admin/business-dashboard';
 
 export default function admin_dashboard() {
   return createElement(AdminShell, {
+    wide: true,
     children: createElement(business_dashboard),
   });
 }

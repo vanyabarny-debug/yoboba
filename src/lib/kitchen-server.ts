@@ -6,45 +6,28 @@ import { read_published_menu } from '@/lib/menu-catalog-server';
 import { DEFAULT_PREP_MINUTES } from '@/lib/kitchen-queue';
 import type { menu_item, order } from '@/lib/types';
 
-export async function load_menu_map(): Promise<Map<string, menu_item>> {
-  const map = new Map<string, menu_item>();
+let menu_map_cache: { at: number; map: Map<string, menu_item> } | null = null;
 
-  for (const item of default_menu_items) {
+export async function load_menu_map(): Promise<Map<string, menu_item>> {
+  if (menu_map_cache && Date.now() - menu_map_cache.at < 15_000) {
+    return menu_map_cache.map;
+  }
+
+  const map = new Map<string, menu_item>();
+  const published = await read_published_menu();
+  const source = published?.items?.length ? published.items : default_menu_items;
+
+  for (const item of source) {
     map.set(item.id, {
       ...item,
-      prep_minutes: item.prep_minutes ?? DEFAULT_PREP_MINUTES,
+      prep_minutes:
+        typeof item.prep_minutes === 'number' && item.prep_minutes > 0
+          ? item.prep_minutes
+          : DEFAULT_PREP_MINUTES,
     });
   }
 
-  if (is_supabase_configured()) {
-    const supabase = create_service_client();
-    const { data } = await supabase.from('menu').select('*');
-    for (const row of (data as menu_item[]) || []) {
-      const fallback = map.get(row.id);
-      map.set(row.id, {
-        ...row,
-        prep_minutes:
-          typeof row.prep_minutes === 'number' && row.prep_minutes > 0
-            ? row.prep_minutes
-            : fallback?.prep_minutes ?? DEFAULT_PREP_MINUTES,
-      });
-    }
-  }
-
-  const published = await read_published_menu();
-  if (published?.items?.length) {
-    map.clear();
-    for (const item of published.items) {
-      map.set(item.id, {
-        ...item,
-        prep_minutes:
-          typeof item.prep_minutes === 'number' && item.prep_minutes > 0
-            ? item.prep_minutes
-            : DEFAULT_PREP_MINUTES,
-      });
-    }
-  }
-
+  menu_map_cache = { at: Date.now(), map };
   return map;
 }
 

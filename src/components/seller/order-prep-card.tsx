@@ -19,6 +19,9 @@ export type drink_row = {
   name: string;
   menu_id: string;
   prep_minutes: number;
+  volume?: string;
+  done?: boolean;
+  started?: boolean;
 };
 
 export type prep_state = {
@@ -58,6 +61,8 @@ type props = {
     meta: { actual_ms: number; expected_ms: number; started_at: number }
   ) => void;
   on_final_action: (o: order) => void;
+  on_open_cook?: (drink: drink_row) => void;
+  guide_open?: boolean;
 };
 
 function pickup_label(pickup_time: string) {
@@ -107,6 +112,8 @@ export default function order_prep_card({
   on_start_drink,
   on_mark_drink_done,
   on_final_action,
+  on_open_cook,
+  guide_open = false,
 }: props) {
   const [now, set_now] = useState(Date.now());
   const [show_info, set_show_info] = useState(false);
@@ -129,7 +136,7 @@ export default function order_prep_card({
   }, []);
 
   useEffect(() => {
-    if (mode !== 'work' || !current || !current_st?.started_at || current_st.done) return;
+    if (mode !== 'work' || guide_open || !current || !current_st?.started_at || current_st.done) return;
 
     const expected_ms = current.prep_minutes * 60_000;
     const ends = current_st.started_at + expected_ms;
@@ -152,7 +159,7 @@ export default function order_prep_card({
         started_at: current_st.started_at,
       });
     }
-  }, [now, mode, current, current_st, o.id, on_mark_drink_done]);
+  }, [now, mode, guide_open, current, current_st, o.id, on_mark_drink_done]);
 
   useEffect(() => {
     warned_sec.current = null;
@@ -160,7 +167,7 @@ export default function order_prep_card({
 
   useEffect(() => {
     set_show_info(false);
-  }, [o.id, mode]);
+  }, [o.id, mode, guide_open]);
 
   const expected_ms = current ? current.prep_minutes * 60_000 : 0;
   const ends_at =
@@ -169,29 +176,19 @@ export default function order_prep_card({
   const progress = cooking && expected_ms > 0 ? left / expected_ms : 1;
   const urgent = cooking && left > 0 && left <= 5000;
 
+  const can_finalize = all_done || (mode === 'ready' && paid);
+
   function handle_circle() {
     if (mode === 'done') return;
 
-    if (mode === 'ready') {
-      if (!all_done) return;
+    if (can_finalize) {
       on_final_action(o);
       return;
     }
 
-    if (mode === 'work' && all_done) {
-      on_final_action(o);
-      return;
-    }
+    if (mode === 'ready') return;
 
-    if (!current) return;
-
-    if (!current_st?.started_at) {
-      play_start_chime();
-      on_start_drink(o.id, current);
-      return;
-    }
-
-    if (!current_st.done) {
+    if (current && current_st?.started_at && !current_st.done) {
       const started = current_st.started_at;
       const actual = Math.max(1000, Date.now() - started);
       play_drink_ready_chime();
@@ -200,7 +197,18 @@ export default function order_prep_card({
         expected_ms: current.prep_minutes * 60_000,
         started_at: started,
       });
+      return;
     }
+
+    if (on_open_cook && current) {
+      on_open_cook(current);
+      return;
+    }
+
+    if (!current) return;
+
+    play_start_chime();
+    on_start_drink(o.id, current);
   }
 
   let tone: 'idle' | 'cooking' | 'ready' | 'pay' | 'handout' | 'done' = 'idle';
@@ -273,7 +281,19 @@ export default function order_prep_card({
     <article
       className={`relative flex h-full min-h-0 flex-col overflow-hidden rounded-2xl border transition ${
         is_new ? 'seller-order-new' : ''
-      } ${mode === 'done' ? 'opacity-80' : ''}`}
+      } ${mode === 'done' ? 'opacity-80' : ''} ${
+        mode !== 'done' ? 'cursor-pointer' : ''
+      }`}
+      onClick={() => {
+        if (mode === 'done') return;
+        if (can_finalize) {
+          on_final_action(o);
+          return;
+        }
+        if (mode === 'work' && !cooking && on_open_cook && current) {
+          on_open_cook(current);
+        }
+      }}
       style={{
         backgroundColor: tint.bg,
         borderColor: is_new ? undefined : tint.border,
@@ -291,6 +311,7 @@ export default function order_prep_card({
         <div
           className="absolute inset-0 z-10 flex flex-col overflow-hidden px-3 py-3 pt-9 text-left backdrop-blur-[2px]"
           style={{ backgroundColor: `${tint.bg}f5` }}
+          onClick={(e) => e.stopPropagation()}
         >
           <div className="min-h-0 flex-1 overflow-y-auto">
             <p className="text-[10px] font-bold uppercase tracking-wide opacity-55">
@@ -316,9 +337,8 @@ export default function order_prep_card({
                 const st = prep[d.key];
                 const is_current = current?.key === d.key && mode === 'work';
                 const is_flying = flying_key === d.key;
-                return (
-                  <li
-                    key={d.key}
+                const row = (
+                  <div
                     className={`flex items-center justify-between gap-1 rounded-lg px-1.5 py-1 text-[clamp(0.65rem,2.5cqw,0.78rem)] ${
                       is_flying ? 'bg-white/50' : is_current ? 'bg-white/40 font-semibold' : 'bg-white/25'
                     }`}
@@ -329,11 +349,43 @@ export default function order_prep_card({
                     <span className="shrink-0 text-[9px] font-medium uppercase tracking-wide opacity-55">
                       {st?.done ? 'ok' : is_current && cooking ? 'сейчас' : '…'}
                     </span>
+                  </div>
+                );
+                return (
+                  <li key={d.key}>
+                    {on_open_cook ? (
+                      <button
+                        type="button"
+                        className="w-full text-left"
+                        onClick={() => {
+                          set_show_info(false);
+                          on_open_cook(d);
+                        }}
+                      >
+                        {row}
+                      </button>
+                    ) : (
+                      row
+                    )}
                   </li>
                 );
               })}
             </ul>
           </div>
+          {on_open_cook && (current || drinks[0]) ? (
+            <button
+              type="button"
+              className="mt-2 w-full shrink-0 rounded-xl bg-white/70 py-2 text-[clamp(0.7rem,2.8cqw,0.85rem)] font-semibold"
+              onClick={() => {
+                const drink = current || drinks[0];
+                if (!drink) return;
+                set_show_info(false);
+                on_open_cook(drink);
+              }}
+            >
+              посмотреть рецепт
+            </button>
+          ) : null}
         </div>
       ) : null}
 
@@ -350,7 +402,7 @@ export default function order_prep_card({
             colors: timer_colors,
             fill: true,
             hero: title_hero,
-            disabled: mode === 'done' || (mode === 'ready' && !all_done),
+            disabled: mode === 'done' || (mode === 'ready' && !can_finalize),
             on_click: handle_circle,
           })}
         </div>

@@ -1,4 +1,4 @@
-/** ежедневные задачи смены — появляются по расписанию (МСК) */
+/** ежедневные задачи смены — только на этом устройстве, в supabase не пишем */
 
 import { moscow_today_iso } from '@/lib/order-number';
 
@@ -10,6 +10,11 @@ export type day_task_phase =
   | 'running'
   | 'stopped'
   | 'done';
+
+export type day_task_step = {
+  title: string;
+  hint?: string;
+};
 
 export type day_task = {
   id: string;
@@ -35,6 +40,7 @@ type day_task_template = {
   hint: string;
   appear_at: string;
   expected_minutes: number;
+  steps: day_task_step[];
 };
 
 /** расписание на день (МСК) — не все сразу */
@@ -45,6 +51,11 @@ export const day_task_templates: day_task_template[] = [
     hint: 'расписаться в журналах смены',
     appear_at: '10:00',
     expected_minutes: 5,
+    steps: [
+      { hint: 'взять', title: 'журналы смены с полки' },
+      { hint: 'расписаться', title: 'открытие, уборка, касса' },
+      { hint: 'вернуть', title: 'журналы на место' },
+    ],
   },
   {
     id: 'showcase',
@@ -52,6 +63,11 @@ export const day_task_templates: day_task_template[] = [
     hint: 'протереть стекло и полки',
     appear_at: '11:30',
     expected_minutes: 10,
+    steps: [
+      { hint: 'протереть', title: 'стекло витрины' },
+      { hint: 'протереть', title: 'полки внутри' },
+      { hint: 'поправить', title: 'выкладку' },
+    ],
   },
   {
     id: 'floor',
@@ -59,6 +75,11 @@ export const day_task_templates: day_task_template[] = [
     hint: 'подмести / протереть зону выдачи',
     appear_at: '13:00',
     expected_minutes: 8,
+    steps: [
+      { hint: 'подмести', title: 'зону выдачи' },
+      { hint: 'протереть', title: 'пол у кассы' },
+      { hint: 'убрать', title: 'мусор с пола' },
+    ],
   },
   {
     id: 'oil-change',
@@ -66,6 +87,12 @@ export const day_task_templates: day_task_template[] = [
     hint: 'замена / сдача отработки',
     appear_at: '15:00',
     expected_minutes: 15,
+    steps: [
+      { hint: 'выключить', title: 'фритюр и дать остыть' },
+      { hint: 'слить', title: 'отработку' },
+      { hint: 'залить', title: 'свежее масло' },
+      { hint: 'отметить', title: 'в журнале' },
+    ],
   },
   {
     id: 'fryer-clean',
@@ -73,6 +100,12 @@ export const day_task_templates: day_task_template[] = [
     hint: 'слить, протереть, собрать',
     appear_at: '17:00',
     expected_minutes: 20,
+    steps: [
+      { hint: 'слить', title: 'масло' },
+      { hint: 'снять', title: 'корзины и протереть' },
+      { hint: 'промыть', title: 'чашу' },
+      { hint: 'собрать', title: 'и вернуть масло' },
+    ],
   },
   {
     id: 'trash',
@@ -80,8 +113,17 @@ export const day_task_templates: day_task_template[] = [
     hint: 'вынести пакеты, сменить мешки',
     appear_at: '18:30',
     expected_minutes: 5,
+    steps: [
+      { hint: 'собрать', title: 'пакеты из урн' },
+      { hint: 'вынести', title: 'на площадку' },
+      { hint: 'сменить', title: 'мешки' },
+    ],
   },
 ];
+
+export function steps_for_task(task: day_task): day_task_step[] {
+  return day_task_templates.find((t) => t.id === task.template_id)?.steps ?? [];
+}
 
 /** единый цвет задач дня */
 export const day_task_color = {
@@ -270,6 +312,27 @@ export function advance_day_task(
       default:
         return t;
     }
+  });
+  save_day_tasks(spot_id, tasks, day);
+  return tasks;
+}
+
+/** с иконки / инфо сразу в таймер, уже запущенные не трогаем */
+export function ensure_task_running(
+  spot_id: string,
+  task_id: string,
+  day = moscow_today_iso()
+): day_task[] {
+  const now = Date.now();
+  const tasks = load_day_tasks(spot_id, day).map((t) => {
+    if (t.id !== task_id) return t;
+    if (t.phase === 'done' || t.phase === 'running' || t.phase === 'stopped') return t;
+    return {
+      ...t,
+      phase: 'running' as const,
+      run_started_at: now,
+      appeared_at: t.appeared_at || new Date().toISOString(),
+    };
   });
   save_day_tasks(spot_id, tasks, day);
   return tasks;

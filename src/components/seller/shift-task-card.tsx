@@ -14,6 +14,7 @@ type props = {
   task: day_task;
   mode: 'work' | 'done';
   on_advance: (id: string, choice?: 'continue' | 'complete') => void;
+  on_open_guide?: () => void;
 };
 
 function task_icon({ className, color }: { className?: string; color: string }) {
@@ -38,10 +39,12 @@ function info_button({
   open,
   on_toggle,
   color,
+  guide = false,
 }: {
   open: boolean;
   on_toggle: () => void;
   color: string;
+  guide?: boolean;
 }) {
   return (
     <button
@@ -52,10 +55,10 @@ function info_button({
       }}
       className="absolute right-1.5 top-1.5 z-20 flex h-7 w-7 items-center justify-center rounded-full bg-white/80 text-[11px] font-bold leading-none backdrop-blur-sm active:scale-95"
       style={{ color }}
-      aria-label={open ? 'скрыть детали' : 'детали задачи'}
-      aria-pressed={open}
+      aria-label={guide ? 'инструкция' : open ? 'скрыть детали' : 'детали задачи'}
+      aria-pressed={guide ? undefined : open}
     >
-      {open ? '×' : 'i'}
+      {guide ? 'i' : open ? '×' : 'i'}
     </button>
   );
 }
@@ -235,7 +238,7 @@ function circle_wrap({
   );
 }
 
-export default function shift_task_card({ task, mode, on_advance }: props) {
+export default function shift_task_card({ task, mode, on_advance, on_open_guide }: props) {
   const [now, set_now] = useState(Date.now());
   const [show_info, set_show_info] = useState(false);
   const [exiting, set_exiting] = useState(false);
@@ -267,6 +270,14 @@ export default function shift_task_card({ task, mode, on_advance }: props) {
     on_advance(task.id, choice);
   }
 
+  function open_guide() {
+    if (on_open_guide) {
+      on_open_guide();
+      return;
+    }
+    go();
+  }
+
   function complete_with_anim() {
     if (exiting || mode === 'done' || task.phase === 'done') return;
     set_exiting(true);
@@ -290,11 +301,12 @@ export default function shift_task_card({ task, mode, on_advance }: props) {
         }}
       >
         {createElement(info_button, {
-          open: show_info,
-          on_toggle: () => set_show_info((v) => !v),
+          open: false,
+          guide: Boolean(on_open_guide),
+          on_toggle: () => (on_open_guide ? on_open_guide() : set_show_info((v) => !v)),
           color: color.fg,
         })}
-        {show_info ? (
+        {show_info && !on_open_guide ? (
           <div
             className="absolute inset-0 z-10 flex flex-col items-center justify-center px-3 text-center"
             style={{ backgroundColor: `${color.bg}f5` }}
@@ -356,7 +368,7 @@ export default function shift_task_card({ task, mode, on_advance }: props) {
       ring: color.fg,
       track: color.border,
       progress: 1,
-      on_click: () => go(),
+      on_click: () => open_guide(),
       children: createElement(task_icon, {
         className: 'h-[42%] w-[42%]',
         color: color.fg,
@@ -370,7 +382,7 @@ export default function shift_task_card({ task, mode, on_advance }: props) {
       colors: timer_colors,
       fill: true,
       hero: false,
-      on_click: () => go(),
+      on_click: () => open_guide(),
     });
   } else if (task.phase === 'armed') {
     circle = createElement(circular_timer, {
@@ -379,7 +391,7 @@ export default function shift_task_card({ task, mode, on_advance }: props) {
       tone: 'handout',
       colors: timer_colors,
       fill: true,
-      on_click: () => go(),
+      on_click: () => open_guide(),
     });
   } else {
     circle = createElement(circular_timer, {
@@ -413,11 +425,12 @@ export default function shift_task_card({ task, mode, on_advance }: props) {
     >
       {createElement(info_button, {
         open: show_info,
-        on_toggle: () => set_show_info((v) => !v),
+        guide: Boolean(on_open_guide),
+        on_toggle: () => (on_open_guide ? on_open_guide() : set_show_info((v) => !v)),
         color: color.fg,
       })}
 
-      {show_info ? (
+      {show_info && !on_open_guide ? (
         <div
           className="absolute inset-0 z-10 flex flex-col items-center justify-center px-3 text-center backdrop-blur-[2px]"
           style={{ backgroundColor: `${color.bg}f5` }}

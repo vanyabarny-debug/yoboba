@@ -127,7 +127,10 @@ export default function circular_timer({
     <button
       type="button"
       disabled={disabled}
-      onClick={on_click}
+      onClick={(e) => {
+        e.stopPropagation();
+        on_click();
+      }}
       className={`relative block shrink-0 rounded-full transition active:scale-[0.97] disabled:opacity-45 ${
         fill ? 'h-full w-full max-h-full max-w-full' : 'mx-auto'
       } ${urgent ? 'animate-[pulse_0.55s_ease-in-out_infinite]' : ''}`}

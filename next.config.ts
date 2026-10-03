@@ -28,7 +28,6 @@ const next_config: NextConfig = {
     },
     { source: '/', headers: no_store },
     { source: '/akcii', headers: no_store },
-    { source: '/akciya-pervye-100', headers: no_store },
     { source: '/akciya-studentam', headers: no_store },
     { source: '/akciya-podari-napitok', headers: no_store },
     { source: '/napitok-mesyaca-subzero', headers: no_store },
