@@ -44,6 +44,7 @@ export const admin_tabs = [
     match: (p: string) => p.startsWith('/admin/personnel') || p.startsWith('/admin/sellers'),
   },
   { href: '/admin/spots', label: 'точки', match: (p: string) => p.startsWith('/admin/spots') },
+  { href: '/admin/account', label: 'аккаунт', match: (p: string) => p.startsWith('/admin/account') },
 ] as const;
 
 export function AdminHeader({ actions, wide = false }: { actions?: React.ReactNode; wide?: boolean }) {

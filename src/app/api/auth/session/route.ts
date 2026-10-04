@@ -3,12 +3,12 @@ import { join } from 'path';
 import { NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 import {
-  check_admin_credentials,
   session_cookie,
   seller_id_cookie,
   seller_name_cookie,
   type user_role,
 } from '@/lib/session';
+import { record_admin_login, verify_admin_login } from '@/lib/admin-account-server';
 import { find_seller_by_credentials } from '@/lib/sellers-server';
 
 const allowed_roles: user_role[] = ['guest', 'user', 'admin', 'barista', 'seller'];
@@ -74,7 +74,10 @@ export async function POST(request: Request) {
     const login = String(body.login).trim();
     const password = String(body.password);
 
-    if (check_admin_credentials(login, password)) {
+    if (await verify_admin_login(login, password)) {
+      await record_admin_login(request).catch((error) =>
+        console.error('admin login history', error instanceof Error ? error.message : error)
+      );
       const res = NextResponse.json({ ok: true, role: 'admin' as user_role, name: 'админ' });
       res.cookies.set(session_cookie, 'admin', cookie_opts);
       res.cookies.set(seller_id_cookie, '', { ...cookie_opts, maxAge: 0 });

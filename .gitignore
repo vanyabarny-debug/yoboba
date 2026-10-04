@@ -44,6 +44,7 @@ next-env.d.ts
 /data/day-tasks.json
 /data/day-task-proofs.json
 /data/day-task-media/
+/data/admin-account.json
 
 # OpenNext
 .open-next
