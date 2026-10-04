@@ -30,6 +30,7 @@ import {
   warehouse_money,
   summarize_month,
   summarize_period,
+  tech_card_cost,
   tax_label,
   tax_regime_of,
   with_fact_revenue,
@@ -144,21 +145,38 @@ function Kpi({
   value,
   hint,
   bar,
+  on_click,
+  open,
 }: {
   label: string;
   value: string;
   hint?: string;
   bar: string;
+  on_click?: () => void;
+  open?: boolean;
 }) {
-  return (
-    <div className="overflow-hidden rounded-2xl border border-neutral-200/80 bg-white shadow-soft">
+  const body = (
+    <>
       <div className="h-1" style={{ background: bar }} />
       <div className="px-4 py-3.5">
         <p className="text-[11px] font-medium text-neutral-400">{label}</p>
         <p className="mt-1 font-heading-soft text-xl tabular-nums text-neutral-900 sm:text-2xl">{value}</p>
         {hint ? <p className="mt-0.5 text-[11px] text-neutral-400">{hint}</p> : null}
       </div>
-    </div>
+    </>
+  );
+  if (!on_click) {
+    return <div className="overflow-hidden rounded-2xl border border-neutral-200/80 bg-white shadow-soft">{body}</div>;
+  }
+  return (
+    <button
+      type="button"
+      onClick={on_click}
+      aria-expanded={open}
+      className="overflow-hidden rounded-2xl border border-neutral-200/80 bg-white text-left shadow-soft"
+    >
+      {body}
+    </button>
   );
 }
 
@@ -253,6 +271,7 @@ export default function DashboardSection({
   const warehouse = useMemo(() => warehouse_money(state, to), [state, to]);
   const low = stock.filter((s) => s.low);
 
+  const [drinks_open, set_drinks_open] = useState(false);
   const [fact, set_fact] = useState<fact_response | null>(null);
   const [month_fact, set_month_fact] = useState<fact_response | null>(null);
   const today = moscow_today();
@@ -297,6 +316,27 @@ export default function DashboardSection({
       }),
     [state, from, to, fact]
   );
+
+  const drink_costs = useMemo(() => {
+    const rows: { name: string; qty: number; cost: number }[] = [];
+    const source = fact?.sales;
+    if (!source) return rows;
+    for (const card of state.techCards) {
+      const by_size = source[card.id];
+      if (!by_size) continue;
+      let qty = 0;
+      let cost = 0;
+      for (const [size, cell] of Object.entries(by_size)) {
+        if (!cell?.qty) continue;
+        qty += cell.qty;
+        cost += tech_card_cost(state, card, size) * cell.qty;
+      }
+      if (qty > 0) rows.push({ name: card.name, qty, cost: Math.round(cost) });
+    }
+    rows.sort((a, b) => b.cost - a.cost || a.name.localeCompare(b.name, 'ru'));
+    return rows;
+  }, [fact, state]);
+  const drink_spent = drink_costs.reduce((sum, row) => sum + row.cost, 0);
 
   const mix = useMemo(() => {
     const rows: { name: string; value: number }[] = [];
@@ -410,9 +450,17 @@ export default function DashboardSection({
       <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
         <Kpi label="выручка" value={format_rub(live.revenue)} hint={fact ? `${fact.orders} заказов` : undefined} bar="#3B82F6" />
         <Kpi
+          label="на напитки"
+          value={format_rub(drink_spent)}
+          hint={drinks_open ? 'скрыть по напиткам' : 'по техкартам · развернуть'}
+          bar="#E85D4C"
+          on_click={() => set_drinks_open((v) => !v)}
+          open={drinks_open}
+        />
+        <Kpi
           label="закупки"
           value={format_rub(warehouse.spent)}
-          hint={`на складе ${format_rub(warehouse.on_hand)} · в напитках ${format_rub(warehouse.realized)}`}
+          hint={`на складе ${format_rub(warehouse.on_hand)}`}
           bar="#FF6B6B"
         />
         <Kpi label="пост. расходы" value={format_rub(-live.opex)} bar="#F4A261" />
@@ -421,10 +469,29 @@ export default function DashboardSection({
         <Kpi
           label="чистая прибыль"
           value={format_rub(live.net_profit)}
-          hint={`${rent.toFixed(0)}% рент.`}
+          hint={`минус сырьё со склада ${format_rub(Math.round(live.cogs + live.cogs_staff + live.cogs_writeoff))} · ${rent.toFixed(0)}%`}
           bar="#20181B"
         />
       </div>
+
+      {drinks_open ? (
+        <div className="rounded-2xl border border-neutral-200/80 bg-white px-4 py-3 shadow-soft">
+          <p className="text-[11px] font-medium text-neutral-400">себестоимость каждого напитка · {period}</p>
+          {drink_costs.length ? (
+            <ul className="mt-2 divide-y divide-neutral-100">
+              {drink_costs.map((row) => (
+                <li key={row.name} className="flex items-baseline justify-between gap-3 py-2 text-sm">
+                  <span className="min-w-0 truncate text-neutral-800">{row.name}</span>
+                  <span className="shrink-0 tabular-nums text-neutral-400">×{row.qty}</span>
+                  <span className="shrink-0 tabular-nums text-neutral-900">{format_rub(row.cost)}</span>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="mt-2 text-sm text-neutral-400">за период продаж с техкартой нет</p>
+          )}
+        </div>
+      ) : null}
 
       <PayrollRoom
         pool={month_pool}

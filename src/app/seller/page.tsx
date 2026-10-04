@@ -6,7 +6,7 @@ import { is_supabase_configured } from '@/lib/supabase/config';
 import { get_demo_user, clear_session } from '@/lib/demo-auth';
 import { useRouter } from 'next/navigation';
 import { DEFAULT_PREP_MINUTES } from '@/lib/kitchen-queue';
-import { moscow_today_iso } from '@/lib/order-number';
+import { format_order_number, moscow_today_iso } from '@/lib/order-number';
 import {
   play_drink_ready_chime,
   play_handout_chime,
@@ -17,7 +17,7 @@ import {
 } from '@/lib/order-chime';
 import { get_active_spots, get_spots } from '@/lib/spot-store';
 import { use_page_swipe } from '@/lib/use-page-swipe';
-import type { cash_transaction, order, store_spot } from '@/lib/types';
+import type { cash_transaction, order, order_item, store_spot } from '@/lib/types';
 import cash_register_modal from '@/components/seller/cash-register-modal';
 import barista_analytics_panel from '@/components/seller/barista-analytics';
 import pos_panel from '@/components/seller/pos-panel';
@@ -29,6 +29,7 @@ import order_prep_card, {
   type drink_row,
   type prep_state,
 } from '@/components/seller/order-prep-card';
+import order_revise_sheet from '@/components/seller/order-revise-sheet';
 import type { day_task_template } from '@/lib/day-task-templates';
 import {
   apply_day_templates,
@@ -305,6 +306,9 @@ export default function seller_board() {
   const [order_starts, set_order_starts] = useState<Record<string, number>>({});
   const [handed, set_handed] = useState<order[]>([]);
   const [cook, set_cook] = useState<{ order: order; drink_key: string } | null>(null);
+  const [revising, set_revising] = useState<order | null>(null);
+  const [revise_busy, set_revise_busy] = useState(false);
+  const [revise_error, set_revise_error] = useState('');
   const [task_guide_id, set_task_guide_id] = useState<string | null>(null);
   const [day_tasks, set_day_tasks] = useState<day_task[]>([]);
   const [task_templates, set_task_templates] = useState<day_task_template[] | null>(null);
@@ -334,7 +338,7 @@ export default function seller_board() {
   const { viewport_ref, page_style, width: board_w, height: board_h } = use_page_swipe({
     index: Math.max(0, tab_index),
     count: Math.max(1, panes.length),
-    enabled: !paying && !cook && !task_guide_id && !need_shift && !(tab === 'pos' && pos_depth) && !(tab === 'stock' && stock_depth),
+    enabled: !paying && !cook && !revising && !task_guide_id && !need_shift && !(tab === 'pos' && pos_depth) && !(tab === 'stock' && stock_depth),
     on_index: (next) => set_tab(panes[next]?.id ?? panes[0]?.id ?? 'work'),
   });
 
@@ -1089,6 +1093,84 @@ export default function seller_board() {
     void hand_out(o);
   }
 
+  function drop_order_locally(id: string) {
+    set_orders((prev) => prev.filter((row) => row.id !== id));
+    set_handed((prev) => {
+      const next = prev.filter((row) => row.id !== id);
+      save_handed(board_day(), next);
+      return next;
+    });
+    set_prep_map((prev) => {
+      if (!(id in prev)) return prev;
+      const next = { ...prev };
+      delete next[id];
+      save_prep_map(next);
+      return next;
+    });
+    if (cook?.order.id === id) set_cook(null);
+    if (paying?.id === id) set_paying(null);
+  }
+
+  function replace_order_locally(next: order) {
+    set_orders((prev) => prev.map((row) => (row.id === next.id ? { ...row, ...next } : row)));
+    set_handed((prev) => {
+      const list = prev.map((row) =>
+        row.id === next.id ? { ...row, ...next, status: row.status } : row
+      );
+      save_handed(board_day(), list);
+      return list;
+    });
+  }
+
+  async function delete_order_card(o: order) {
+    if (!window.confirm(`удалить заказ №${format_order_number(o)} из системы?`)) return;
+    set_revise_busy(true);
+    try {
+      const res = await fetch('/api/seller/orders/revise', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ action: 'delete', id: o.id }),
+      });
+      const body = (await res.json().catch(() => ({}))) as { error?: string };
+      if (!res.ok) {
+        window.alert(body.error || 'не удалось удалить заказ');
+        return;
+      }
+      drop_order_locally(o.id);
+      set_revising(null);
+    } catch {
+      window.alert('не удалось удалить заказ');
+    } finally {
+      set_revise_busy(false);
+    }
+  }
+
+  async function save_order_card(items: order_item[]) {
+    if (!revising) return;
+    set_revise_busy(true);
+    set_revise_error('');
+    try {
+      const res = await fetch('/api/seller/orders/revise', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ action: 'update', id: revising.id, items }),
+      });
+      const body = (await res.json().catch(() => ({}))) as { error?: string; order?: order };
+      if (!res.ok || !body.order) {
+        set_revise_error(body.error || 'не удалось сохранить заказ');
+        return;
+      }
+      replace_order_locally(body.order);
+      set_revising(null);
+    } catch {
+      set_revise_error('не удалось сохранить заказ');
+    } finally {
+      set_revise_busy(false);
+    }
+  }
+
   const lines_by_order = new Map<string, schedule_line[]>();
   for (const line of schedule_lines) {
     const list = lines_by_order.get(line.order_id) ?? [];
@@ -1180,6 +1262,11 @@ export default function seller_board() {
             on_mark_drink_done: mark_drink_done,
             on_final_action,
             on_open_cook: (drink) => set_cook({ order: o, drink_key: drink.key }),
+            on_edit: (order) => {
+              set_revise_error('');
+              set_revising(order);
+            },
+            on_delete: (order) => void delete_order_card(order),
             guide_open: cook?.order.id === o.id,
           })
         )}
@@ -1222,6 +1309,11 @@ export default function seller_board() {
             on_mark_drink_done: mark_drink_done,
             on_final_action: () => {},
             on_open_cook: (drink) => set_cook({ order: o, drink_key: drink.key }),
+            on_edit: (order) => {
+              set_revise_error('');
+              set_revising(order);
+            },
+            on_delete: (order) => void delete_order_card(order),
             guide_open: cook?.order.id === o.id,
           })
         )}
@@ -1429,6 +1521,19 @@ export default function seller_board() {
               });
             },
             on_close: () => set_cook(null),
+          })
+        : null}
+      {revising
+        ? createElement(order_revise_sheet, {
+            key: revising.id,
+            order: revising,
+            busy: revise_busy,
+            error: revise_error,
+            on_close: () => {
+              if (revise_busy) return;
+              set_revising(null);
+            },
+            on_save: (items) => void save_order_card(items),
           })
         : null}
       {guided_task

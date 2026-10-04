@@ -12,6 +12,15 @@ import type {
 const prep_key = 'prep-events';
 const fulfill_key = 'fulfillment-events';
 
+export async function forget_order_activity(order_id: string) {
+  const prep = await load_prep();
+  const fulfill = await load_fulfill();
+  const next_prep = prep.filter((row) => row.order_id !== order_id);
+  const next_fulfill = fulfill.filter((row) => row.order_id !== order_id);
+  if (next_prep.length !== prep.length) await save_prep(next_prep);
+  if (next_fulfill.length !== fulfill.length) await save_fulfill(next_fulfill);
+}
+
 export function classify_drink_pace(actual_ms: number, expected_ms: number): prep_event['drink_pace'] {
   if (expected_ms <= 0) return 'normal';
   const ratio = actual_ms / expected_ms;

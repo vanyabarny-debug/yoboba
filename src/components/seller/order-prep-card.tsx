@@ -62,6 +62,8 @@ type props = {
   ) => void;
   on_final_action: (o: order) => void;
   on_open_cook?: (drink: drink_row) => void;
+  on_edit?: (order: order) => void;
+  on_delete?: (order: order) => void;
   guide_open?: boolean;
 };
 
@@ -113,6 +115,8 @@ export default function order_prep_card({
   on_mark_drink_done,
   on_final_action,
   on_open_cook,
+  on_edit,
+  on_delete,
   guide_open = false,
 }: props) {
   const [now, set_now] = useState(Date.now());
@@ -372,6 +376,28 @@ export default function order_prep_card({
               })}
             </ul>
           </div>
+          {on_edit || on_delete ? (
+            <div className="mt-2 flex shrink-0 gap-1.5">
+              {on_edit ? (
+                <button
+                  type="button"
+                  className="flex-1 rounded-xl bg-white/80 py-2 text-[clamp(0.65rem,2.6cqw,0.8rem)] font-semibold"
+                  onClick={() => on_edit(o)}
+                >
+                  изменить
+                </button>
+              ) : null}
+              {on_delete ? (
+                <button
+                  type="button"
+                  className="flex-1 rounded-xl bg-white/80 py-2 text-[clamp(0.65rem,2.6cqw,0.8rem)] font-semibold text-red-600"
+                  onClick={() => on_delete(o)}
+                >
+                  удалить
+                </button>
+              ) : null}
+            </div>
+          ) : null}
           {on_open_cook && (current || drinks[0]) ? (
             <button
               type="button"

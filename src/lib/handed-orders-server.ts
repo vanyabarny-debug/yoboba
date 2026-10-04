@@ -57,6 +57,27 @@ export async function list_handed_rows(seller_id?: string): Promise<handed_order
   return all.filter((r) => r.seller_id === seller_id);
 }
 
+export async function forget_handed_order(order_id: string) {
+  const all = await load_all();
+  const next = all.filter((row) => row.order_id !== order_id);
+  if (next.length === all.length) return;
+  await save_all(next);
+}
+
+export async function replace_handed_snapshot(order: order) {
+  const all = await load_all();
+  let changed = false;
+  for (const row of all) {
+    if (row.order_id !== order.id) continue;
+    row.order = {
+      ...order,
+      status: row.order.status === 'completed' ? 'completed' : order.status,
+    };
+    changed = true;
+  }
+  if (changed) await save_all(all);
+}
+
 export async function get_handed_orders(input: {
   shift_date: string;
   seller_id?: string;

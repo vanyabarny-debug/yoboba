@@ -83,6 +83,25 @@ export async function record_cash_for_order(
   return record;
 }
 
+export async function forget_cash_for_order(order_id: string) {
+  const all = await load_transactions();
+  const next = all.filter((row) => row.order_id !== order_id);
+  if (next.length === all.length) return;
+  await save_transactions(next);
+}
+
+export async function retitle_cash_for_order(order_id: string, total: number, items_summary: string) {
+  const all = await load_transactions();
+  let changed = false;
+  for (const row of all) {
+    if (row.order_id !== order_id) continue;
+    row.order_total = row.payment_method === 'bonus' ? 0 : total;
+    row.items_summary = items_summary;
+    changed = true;
+  }
+  if (changed) await save_transactions(all);
+}
+
 export async function add_transaction(tx: cash_transaction): Promise<cash_transaction> {
   return record_cash_for_order(tx);
 }

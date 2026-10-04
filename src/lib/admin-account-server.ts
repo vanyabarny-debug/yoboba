@@ -1,5 +1,6 @@
 import { randomBytes, scryptSync, timingSafeEqual } from 'crypto';
 import { read_durable_json, write_durable_json } from '@/lib/durable-json';
+import { audit_keep_ms } from '@/lib/order-audit-server';
 import { get_sellers } from '@/lib/sellers-server';
 
 const store_key = 'admin-account';
@@ -46,6 +47,11 @@ function parse_account(raw: unknown): stored_account {
 
 async function read_account() {
   return parse_account(await read_durable_json<unknown>(store_key, null));
+}
+
+function within_month(at: string) {
+  const time = new Date(at).getTime();
+  return Number.isFinite(time) && Date.now() - time <= audit_keep_ms;
 }
 
 function hash_password(password: string, salt: string) {
@@ -108,14 +114,19 @@ export async function record_admin_login(request: Request) {
     browser: client.browser,
     ip: client.ip,
   };
-  account.logins = [event, ...account.logins].slice(0, history_limit);
+  account.logins = [event, ...account.logins.filter((row) => within_month(row.at))].slice(0, history_limit);
   await write_durable_json(store_key, account);
   return event;
 }
 
 export async function read_admin_account_public() {
   const account = await read_account();
-  return { login: account.login, logins: account.logins };
+  const logins = account.logins.filter((row) => within_month(row.at));
+  if (logins.length !== account.logins.length) {
+    account.logins = logins;
+    await write_durable_json(store_key, account);
+  }
+  return { login: account.login, logins };
 }
 
 export async function update_admin_account(input: {
