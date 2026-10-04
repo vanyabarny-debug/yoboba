@@ -2,11 +2,12 @@
 
 import { useState } from 'react';
 import AdminShell from '@/components/admin/admin-shell';
+import DayTasksManage from '@/components/admin/day-tasks-manage';
 import InternsManage from '@/components/admin/interns-manage';
 import SellersManage from '@/components/admin/sellers-manage';
 
 export default function personnel_page() {
-  const [tab, set_tab] = useState<'interns' | 'staff'>('interns');
+  const [tab, set_tab] = useState<'interns' | 'staff' | 'tasks'>('interns');
 
   return (
     <AdminShell>
@@ -27,10 +28,19 @@ export default function personnel_page() {
             tab === 'staff' ? 'bg-neutral-900 text-white' : 'text-neutral-500'
           }`}
         >
-          кассиры
+          сотрудники
+        </button>
+        <button
+          type="button"
+          onClick={() => set_tab('tasks')}
+          className={`rounded-lg px-3 py-1.5 text-sm font-medium ${
+            tab === 'tasks' ? 'bg-neutral-900 text-white' : 'text-neutral-500'
+          }`}
+        >
+          задачи
         </button>
       </div>
-      {tab === 'interns' ? <InternsManage /> : <SellersManage bare />}
+      {tab === 'interns' ? <InternsManage /> : tab === 'staff' ? <SellersManage bare /> : <DayTasksManage />}
     </AdminShell>
   );
 }

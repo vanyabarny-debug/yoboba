@@ -19,8 +19,13 @@ import {
   compute_month_tax,
   days_in_month,
   format_period,
+  affordable_payroll,
   format_rub,
+  insurance_from_net,
+  is_salary_opex,
   moscow_today,
+  ndfl_from_net,
+  update_month,
   stock_levels,
   warehouse_money,
   summarize_month,
@@ -31,7 +36,7 @@ import {
   type sales_cell,
 } from '@/lib/finance/model';
 import type { section_props } from '@/components/admin/finance/use-finance';
-import { BusinessStatusCard, Card, EmptyState, type business_tone } from '@/components/admin/finance/ui';
+import { BusinessStatusCard, Card, EmptyState, NumInput, cell_input_class, type business_tone } from '@/components/admin/finance/ui';
 
 const PIE_COLORS = ['#FF6B6B', '#20181B', '#F4A261', '#2A9D8F', '#E9C46A', '#7C6FF7', '#9CA3AF'];
 
@@ -82,6 +87,9 @@ function month_status(input: {
   month_name: string;
   revenue: number;
   profit: number;
+  /** уже на весь месяц, второй раз не растягивать */
+  projected_profit?: number;
+  salary: number;
   break_even: number;
   elapsed: number;
   days: number;
@@ -91,8 +99,13 @@ function month_status(input: {
   const elapsed = Math.max(1, input.elapsed);
   const closed = elapsed >= input.days;
   const projected_revenue = closed ? input.revenue : (input.revenue / elapsed) * input.days;
-  const projected_profit = closed ? input.profit : (input.profit / elapsed) * input.days;
-  const gap = input.break_even > 0 ? (projected_revenue - input.break_even) / input.break_even : null;
+  const projected_profit =
+    input.projected_profit != null
+      ? input.projected_profit
+      : closed
+        ? input.profit
+        : (input.profit / elapsed) * input.days;
+  const gap = input.salary > 0 && input.break_even > 0 ? (projected_revenue - input.break_even) / input.break_even : null;
 
   let tone: business_tone;
   if (gap != null) {
@@ -109,6 +122,7 @@ function month_status(input: {
     const margin = projected_revenue > 0 ? projected_profit / projected_revenue : 0;
     tone = margin < 0.08 ? 'plus' : margin < 0.18 ? 'ok' : 'great';
   }
+  if (input.salary <= 0 && (tone === 'great' || tone === 'ok')) tone = 'plus';
 
   let trend = '';
   if (input.prev_daily != null && input.prev_daily > 0) {
@@ -121,7 +135,8 @@ function month_status(input: {
   const when = closed
     ? `${input.month_name} закрывается`
     : `по темпу ${elapsed} ${day_word(elapsed)} ${input.month_name} выйдет`;
-  return { tone, detail: `${trend}${when} на ${money}` };
+  const wage = input.salary > 0 ? '' : ' · без фот';
+  return { tone, detail: `${trend}${when} на ${money}${wage}` };
 }
 
 function Kpi({
@@ -147,8 +162,87 @@ function Kpi({
   );
 }
 
+function PayrollRoom({
+  pool,
+  fot,
+  on_fot,
+  ndfl_rate,
+  insurance_rate,
+  month_name,
+  elapsed,
+  days,
+}: {
+  pool: number;
+  fot: number;
+  on_fot: (v: number) => void;
+  ndfl_rate: number;
+  insurance_rate: number;
+  month_name: string;
+  elapsed: number;
+  days: number;
+}) {
+  const tax = ndfl_from_net(fot, ndfl_rate) + insurance_from_net(fot, insurance_rate);
+  const clean_without = pool - fot;
+  const clean_with = pool - fot - tax;
+  const tax_bits = [
+    ndfl_rate > 0 ? `ндфл ${ndfl_rate}%` : '',
+    insurance_rate > 0 ? `взносы ${insurance_rate}%` : '',
+  ].filter(Boolean);
+  const closed = elapsed >= days;
+  return (
+    <Card
+      title="фот"
+      hint={
+        closed
+          ? `${month_name} целиком. чистая — это остаток после зарплаты`
+          : `весь ${month_name} по темпу ${elapsed} ${day_word(elapsed)}. чистая уменьшается на зарплату`
+      }
+    >
+      <label className="mb-3 flex flex-wrap items-center justify-between gap-3 text-sm text-neutral-600">
+        фот на руки в месяц
+        <NumInput
+          value={fot}
+          min={0}
+          placeholder="0"
+          className={`${cell_input_class} w-36`}
+          on_change={(v) => on_fot(Math.max(0, Math.round(v)))}
+        />
+      </label>
+      <div className="grid gap-3 sm:grid-cols-2">
+        <div className="rounded-2xl bg-neutral-50 px-4 py-3">
+          <p className="text-[11px] font-medium text-neutral-400">без налога</p>
+          <p className="mt-1 font-heading-soft text-xl tabular-nums text-neutral-900">
+            {format_rub(Math.round(clean_without))}
+          </p>
+          <p className="mt-0.5 text-[11px] text-neutral-400">чистая после {format_rub(Math.round(fot))}</p>
+        </div>
+        <div className="rounded-2xl bg-neutral-50 px-4 py-3">
+          <p className="text-[11px] font-medium text-neutral-400">с налогом</p>
+          <p className="mt-1 font-heading-soft text-xl tabular-nums text-neutral-900">
+            {format_rub(Math.round(clean_with))}
+          </p>
+          <p className="mt-0.5 text-[11px] text-neutral-400">
+            {tax_bits.length
+              ? `чистая после зарплаты и ${format_rub(Math.round(tax))} · ${tax_bits.join(' · ')}`
+              : 'чистая после зарплаты'}
+          </p>
+        </div>
+      </div>
+    </Card>
+  );
+}
+
+function month_salary(state: section_props['state'], month_id: string) {
+  const md = state.monthsData.find((m) => m.month === month_id);
+  if (!md) return 0;
+  return Object.entries(md.opex ?? {})
+    .filter(([id]) => is_salary_opex(id))
+    .reduce((sum, [, v]) => sum + (Number(v) || 0), 0);
+}
+
 export default function DashboardSection({
   state,
+  set_state,
   from,
   to,
   pulse,
@@ -237,11 +331,27 @@ export default function DashboardSection({
   const prev = month_days.slice(-14, -7);
   const avg = (rows: day_row[]) =>
     rows.length ? rows.reduce((s, d) => s + d.revenue, 0) / rows.length : 0;
+  const fot = month_salary(state, month_id);
+  const month_pool = (() => {
+    const base = affordable_payroll({
+      net_profit: month_live.net_profit,
+      salary: month_live.salary,
+      ndfl: month_live.ndfl,
+      insurance: month_live.insurance,
+      ndfl_rate: state.ndflRate,
+      insurance_rate: state.insuranceRate,
+    }).pool;
+    return elapsed >= dim ? base : (base / Math.max(1, elapsed)) * dim;
+  })();
+  const fot_tax = ndfl_from_net(fot, state.ndflRate) + insurance_from_net(fot, state.insuranceRate);
+  const month_name = month_title[Number(month_id.slice(5, 7)) - 1] || 'месяц';
   const status = month_fact
     ? month_status({
-        month_name: month_title[Number(month_id.slice(5, 7)) - 1] || 'месяц',
+        month_name,
         revenue: month_live.revenue,
         profit: month_live.net_profit,
+        projected_profit: month_pool - fot - fot_tax,
+        salary: fot,
         break_even,
         elapsed,
         days: dim,
@@ -249,6 +359,19 @@ export default function DashboardSection({
         prev_daily: prev.length >= 5 ? avg(prev) : null,
       })
     : null;
+
+  function set_fot(v: number) {
+    set_state((prev) => {
+      const id = prev.opexCategories.find((c) => is_salary_opex(c.id))?.id ?? 'salary';
+      const cats = prev.opexCategories.some((c) => c.id === id)
+        ? prev.opexCategories
+        : [...prev.opexCategories, { id, name: 'зарплатный фонд (ФОТ)' }];
+      return update_month({ ...prev, opexCategories: cats }, month_id, (m) => ({
+        ...m,
+        opex: { ...m.opex, [id]: v },
+      }));
+    });
+  }
 
   const rent = live.revenue > 0 ? (live.net_profit / live.revenue) * 100 : 0;
   const days = fact?.from === from && fact?.to === to ? fact.by_day ?? [] : [];
@@ -302,6 +425,17 @@ export default function DashboardSection({
           bar="#20181B"
         />
       </div>
+
+      <PayrollRoom
+        pool={month_pool}
+        fot={fot}
+        on_fot={set_fot}
+        ndfl_rate={state.ndflRate}
+        insurance_rate={state.insuranceRate}
+        month_name={month_name}
+        elapsed={elapsed}
+        days={dim}
+      />
 
       <div className="grid gap-4 lg:grid-cols-[minmax(16rem,20rem)_1fr]">
         <div className="flex flex-col gap-3">

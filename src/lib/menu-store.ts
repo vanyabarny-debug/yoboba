@@ -336,15 +336,17 @@ function resolve_image_url(item: menu_item, fallback?: menu_item): string {
     return url;
   }
 
-  // актуальный локальный PNG; ?v= на дефолте сбрасывает кэш старого файла
-  if (url.startsWith('/images/menu/') && !is_stale_menu_placeholder(url)) {
-    if (fallback?.image_url) {
+  // актуальный локальный PNG; ?v= на дефолте сбрасывает кэш старого файла.
+  // своё фото новой позиции не из дефолтного списка тоже оставляем.
+  if (url.startsWith('/images/menu/') && !url.endsWith('.svg')) {
+    const known = !is_stale_menu_placeholder(url);
+    if (known && fallback?.image_url) {
       const strip = (value: string) => value.split('?')[0];
       if (strip(url) === strip(fallback.image_url) && fallback.image_url.includes('?')) {
         return fallback.image_url;
       }
     }
-    return url;
+    if (known || !fallback?.image_url) return url;
   }
 
   // дефолт по id/названию — надёжнее битых https из БД

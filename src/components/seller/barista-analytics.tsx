@@ -149,14 +149,47 @@ export default function barista_analytics_panel({
                   <td className="px-3 py-2">{d.name}</td>
                   <td className="px-3 py-2 text-right tabular-nums">{d.count}</td>
                   <td className="px-3 py-2 text-right tabular-nums text-neutral-600">
-                    {format_duration(d.avg_ms)}
+                    {d.avg_ms > 0 ? format_duration(d.avg_ms) : '—'}
                   </td>
                   <td className="px-3 py-2 text-right tabular-nums text-emerald-600">
-                    {format_duration(d.fastest_ms)}
+                    {d.fastest_ms > 0 ? format_duration(d.fastest_ms) : '—'}
                   </td>
                   <td className="px-3 py-2 text-right tabular-nums text-accent">
-                    {format_duration(d.slowest_ms)}
+                    {d.slowest_ms > 0 ? format_duration(d.slowest_ms) : '—'}
                   </td>
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
+      </div>
+
+      <div className="rounded-2xl bg-white border border-neutral-100 overflow-hidden">
+        <div className="px-4 py-3 border-b border-neutral-50">
+          <p className="text-sm font-semibold text-neutral-900">за всё время</p>
+          <p className="text-xs text-neutral-500 mt-0.5">
+            {data?.history_orders ?? 0} выдач · топ напитков
+          </p>
+        </div>
+        <table className="w-full text-sm">
+          <thead className="bg-surface text-neutral-500 text-xs">
+            <tr>
+              <th className="text-left px-3 py-2">напиток</th>
+              <th className="text-right px-3 py-2">шт</th>
+            </tr>
+          </thead>
+          <tbody>
+            {!data?.history_drinks.length ? (
+              <tr>
+                <td colSpan={2} className="px-3 py-6 text-center text-neutral-400">
+                  история появится после первых выдач
+                </td>
+              </tr>
+            ) : (
+              data.history_drinks.map((d) => (
+                <tr key={d.menu_id} className="border-t border-surface">
+                  <td className="px-3 py-2">{d.name}</td>
+                  <td className="px-3 py-2 text-right tabular-nums">{d.count}</td>
                 </tr>
               ))
             )}

@@ -1,33 +1,29 @@
 import { NextResponse } from 'next/server';
-import { cookies } from 'next/headers';
-import { session_cookie } from '@/lib/session';
 import { is_supabase_configured } from '@/lib/supabase/config';
 import { staff_actor } from '@/lib/staff-actor';
 import { read_finance_state, write_finance_state } from '@/lib/finance/finance-server';
+import { current_seller_access } from '@/lib/seller-access-server';
+import { sum_order_revenue } from '@/lib/finance/order-revenue';
 import {
   apply_adjust,
   apply_inventory_count,
   material_is_infinite,
   merge_stock_categories,
+  moscow_today,
   needs_stock_count,
   stock_levels,
+  warehouse_money,
   type finance_state,
   type stock_category,
 } from '@/lib/finance/model';
 
 export const dynamic = 'force-dynamic';
 
-async function is_staff() {
-  const store = await cookies();
-  const role = store.get(session_cookie)?.value;
-  return role === 'admin' || role === 'seller';
-}
-
 function public_cats(state: finance_state): stock_category[] {
   return merge_stock_categories(state.stockCategories ?? []);
 }
 
-function public_rows(state: finance_state) {
+function public_rows(state: finance_state, with_money: boolean) {
   const cats = public_cats(state);
   const order = cats.map((c) => c.id);
   return stock_levels(state)
@@ -47,24 +43,38 @@ function public_rows(state: finance_state) {
       unit: r.material.unit,
       qty: r.qty,
       low: r.low,
+      ...(with_money ? { value: Math.round(r.value) } : {}),
     }));
 }
 
-function payload(state: finance_state) {
+async function payload(state: finance_state, with_money: boolean) {
+  const today = moscow_today();
+  let earned: number | null = null;
+  if (with_money) {
+    try {
+      const fact = await sum_order_revenue('2024-01-01', today);
+      earned = fact.revenue - warehouse_money(state, today).realized;
+    } catch {
+      earned = null;
+    }
+  }
+  const money = with_money ? { ...warehouse_money(state, today), earned } : null;
   return {
     must_count: needs_stock_count(state),
     counted_at: state.stockCountedAt ?? null,
     categories: public_cats(state).map((c) => ({ id: c.id, name: c.name, color: c.color })),
-    rows: public_rows(state),
+    rows: public_rows(state, with_money),
+    money,
   };
 }
 
 export async function GET() {
-  if (!(await is_staff())) {
+  const access = await current_seller_access();
+  if (!access?.stock) {
     return NextResponse.json({ error: 'доступ запрещён' }, { status: 403 });
   }
   const state = await read_finance_state();
-  return NextResponse.json(payload(state), {
+  return NextResponse.json(await payload(state, access.stock_money), {
     headers: { 'cache-control': 'private, no-store, max-age=0' },
   });
 }
@@ -82,7 +92,8 @@ type inventory_body = {
 };
 
 export async function POST(request: Request) {
-  if (!(await is_staff())) {
+  const access = await current_seller_access();
+  if (!access?.stock) {
     return NextResponse.json({ error: 'доступ запрещён' }, { status: 403 });
   }
   if (!is_supabase_configured()) {
@@ -137,5 +148,5 @@ export async function POST(request: Request) {
     );
   }
 
-  return NextResponse.json({ ok: true, ...payload(next) });
+  return NextResponse.json({ ok: true, ...(await payload(next, access.stock_money)) });
 }

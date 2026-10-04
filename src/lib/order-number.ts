@@ -18,6 +18,11 @@ export function moscow_day_start_iso(day = moscow_today_iso()): string {
   return new Date(`${day}T00:00:00+03:00`).toISOString();
 }
 
+/** следующие сутки по календарю Москвы */
+export function moscow_next_day_iso(day: string): string {
+  return moscow_today_iso(new Date(new Date(`${day}T00:00:00+03:00`).getTime() + 86_400_000));
+}
+
 export type daily_order_number = {
   order_day: string;
   order_number: number;

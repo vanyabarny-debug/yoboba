@@ -77,12 +77,12 @@ export default function SalesSection({ state, set_state, month, menu }: section_
 
   const cards = useMemo(
     () =>
-      [...state.techCards].sort((a, b) => {
-        const ia = a.menu_item_id ? menu_by_id.get(a.menu_item_id) : undefined;
-        const ib = b.menu_item_id ? menu_by_id.get(b.menu_item_id) : undefined;
-        const arch = (ia?.is_available === false ? 1 : 0) - (ib?.is_available === false ? 1 : 0);
-        return arch || a.name.localeCompare(b.name, 'ru');
-      }),
+      [...state.techCards]
+        .filter((card) => {
+          const item = card.menu_item_id ? menu_by_id.get(card.menu_item_id) : undefined;
+          return !!item && item.is_available;
+        })
+        .sort((a, b) => a.name.localeCompare(b.name, 'ru')),
     [state.techCards, menu_by_id]
   );
 
@@ -193,7 +193,6 @@ export default function SalesSection({ state, set_state, month, menu }: section_
                     <DrinkThumb item={item} />
                     <div>
                       <p className="font-heading-soft text-sm text-neutral-900">{card.name}</p>
-                      {item?.is_available === false && <p className="text-[11px] font-normal text-neutral-400">архив</p>}
                     </div>
                   </div>
                 }

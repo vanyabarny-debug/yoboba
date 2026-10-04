@@ -1,4 +1,5 @@
 import { read_json_store, write_json_store } from '@/lib/data-store';
+import { parse_seller_access } from '@/lib/seller-access';
 import type { seller } from '@/lib/types';
 
 const store_key = 'sellers';
@@ -36,6 +37,8 @@ export async function upsert_seller(
   const record: seller = {
     ...input,
     login: input.login.trim().toLowerCase(),
+    role_title: (input.role_title || 'бариста').trim().slice(0, 40) || 'бариста',
+    access: parse_seller_access(input.access),
     created_at: input.created_at || new Date().toISOString(),
   };
   if (idx >= 0) sellers[idx] = record;

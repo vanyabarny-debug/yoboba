@@ -1,129 +1,26 @@
-/** ежедневные задачи смены — только на этом устройстве, в supabase не пишем */
+/** прогресс задач дня — только на этом устройстве, шаблоны приходят с сервера */
 
 import { moscow_today_iso } from '@/lib/order-number';
+import type { day_task_block, day_task_proof, day_task_template } from '@/lib/day-task-templates';
 
-/** шаги карточки: иконка → что сделать → кнопка начать → таймер → стоп → сделано */
-export type day_task_phase =
-  | 'icon'
-  | 'info'
-  | 'armed'
-  | 'running'
-  | 'stopped'
-  | 'done';
-
-export type day_task_step = {
-  title: string;
-  hint?: string;
-};
+/** одно нажатие кнопки: начать → пауза → готово */
+export type day_task_phase = 'pending' | 'running' | 'paused' | 'done';
 
 export type day_task = {
   id: string;
   template_id: string;
   title: string;
   hint: string;
-  /** HH:MM по Москве — когда карточка впервые появляется на доске */
   appear_at: string;
-  /** ориентир длительности, мин */
   expected_minutes: number;
+  proof: day_task_proof;
+  blocks: day_task_block[];
   phase: day_task_phase;
-  /** накопленное время таймера (мс), без текущего отрезка */
   elapsed_ms: number;
-  /** старт текущего отрезка running */
   run_started_at: number | null;
   appeared_at: string | null;
   done_at: string | null;
 };
-
-type day_task_template = {
-  id: string;
-  title: string;
-  hint: string;
-  appear_at: string;
-  expected_minutes: number;
-  steps: day_task_step[];
-};
-
-/** расписание на день (МСК) — не все сразу */
-export const day_task_templates: day_task_template[] = [
-  {
-    id: 'journals',
-    title: 'журналы',
-    hint: 'расписаться в журналах смены',
-    appear_at: '10:00',
-    expected_minutes: 5,
-    steps: [
-      { hint: 'взять', title: 'журналы смены с полки' },
-      { hint: 'расписаться', title: 'открытие, уборка, касса' },
-      { hint: 'вернуть', title: 'журналы на место' },
-    ],
-  },
-  {
-    id: 'showcase',
-    title: 'витрина',
-    hint: 'протереть стекло и полки',
-    appear_at: '11:30',
-    expected_minutes: 10,
-    steps: [
-      { hint: 'протереть', title: 'стекло витрины' },
-      { hint: 'протереть', title: 'полки внутри' },
-      { hint: 'поправить', title: 'выкладку' },
-    ],
-  },
-  {
-    id: 'floor',
-    title: 'пол у кассы',
-    hint: 'подмести / протереть зону выдачи',
-    appear_at: '13:00',
-    expected_minutes: 8,
-    steps: [
-      { hint: 'подмести', title: 'зону выдачи' },
-      { hint: 'протереть', title: 'пол у кассы' },
-      { hint: 'убрать', title: 'мусор с пола' },
-    ],
-  },
-  {
-    id: 'oil-change',
-    title: 'сдать масло',
-    hint: 'замена / сдача отработки',
-    appear_at: '15:00',
-    expected_minutes: 15,
-    steps: [
-      { hint: 'выключить', title: 'фритюр и дать остыть' },
-      { hint: 'слить', title: 'отработку' },
-      { hint: 'залить', title: 'свежее масло' },
-      { hint: 'отметить', title: 'в журнале' },
-    ],
-  },
-  {
-    id: 'fryer-clean',
-    title: 'уборка фритюра',
-    hint: 'слить, протереть, собрать',
-    appear_at: '17:00',
-    expected_minutes: 20,
-    steps: [
-      { hint: 'слить', title: 'масло' },
-      { hint: 'снять', title: 'корзины и протереть' },
-      { hint: 'промыть', title: 'чашу' },
-      { hint: 'собрать', title: 'и вернуть масло' },
-    ],
-  },
-  {
-    id: 'trash',
-    title: 'мусор',
-    hint: 'вынести пакеты, сменить мешки',
-    appear_at: '18:30',
-    expected_minutes: 5,
-    steps: [
-      { hint: 'собрать', title: 'пакеты из урн' },
-      { hint: 'вынести', title: 'на площадку' },
-      { hint: 'сменить', title: 'мешки' },
-    ],
-  },
-];
-
-export function steps_for_task(task: day_task): day_task_step[] {
-  return day_task_templates.find((t) => t.id === task.template_id)?.steps ?? [];
-}
 
 /** единый цвет задач дня */
 export const day_task_color = {
@@ -168,7 +65,9 @@ function blank_task(day: string, t: day_task_template): day_task {
     hint: t.hint,
     appear_at: t.appear_at,
     expected_minutes: t.expected_minutes,
-    phase: 'icon',
+    proof: t.proof,
+    blocks: t.blocks,
+    phase: 'pending',
     elapsed_ms: 0,
     run_started_at: null,
     appeared_at: null,
@@ -176,51 +75,22 @@ function blank_task(day: string, t: day_task_template): day_task {
   };
 }
 
-function migrate_task(day: string, raw: Partial<day_task> & { template_id: string; status?: string }): day_task | null {
-  const tpl = day_task_templates.find((t) => t.id === raw.template_id);
-  if (!tpl) return null;
-  const base = blank_task(day, tpl);
-  const allowed: day_task_phase[] = ['icon', 'info', 'armed', 'running', 'stopped', 'done'];
-  let phase: day_task_phase = 'icon';
-  if (raw.phase && allowed.includes(raw.phase)) phase = raw.phase;
-  else if (raw.status === 'done') phase = 'done';
-  else if (raw.status === 'in_progress') phase = 'running';
-  return {
-    ...base,
-    id: raw.id || base.id,
-    phase,
-    elapsed_ms: typeof raw.elapsed_ms === 'number' ? raw.elapsed_ms : 0,
-    run_started_at: typeof raw.run_started_at === 'number' ? raw.run_started_at : null,
-    appeared_at: raw.appeared_at ?? null,
-    done_at: raw.done_at ?? null,
-  };
+function normalize_phase(raw: string | undefined): day_task_phase {
+  if (raw === 'done') return 'done';
+  if (raw === 'running' || raw === 'in_progress') return 'running';
+  if (raw === 'paused' || raw === 'stopped') return 'paused';
+  return 'pending';
 }
 
-function build_all(day: string): day_task[] {
-  return day_task_templates.map((t) => blank_task(day, t));
-}
-
-export function load_day_tasks(spot_id: string, day = moscow_today_iso()): day_task[] {
-  if (typeof window === 'undefined') return build_all(day);
+function read_saved(spot_id: string, day: string): day_task[] {
+  if (typeof window === 'undefined') return [];
   try {
     const raw = localStorage.getItem(storage_key(spot_id, day));
-    if (!raw) {
-      const tasks = build_all(day);
-      save_day_tasks(spot_id, tasks, day);
-      return tasks;
-    }
+    if (!raw) return [];
     const parsed = JSON.parse(raw) as store;
-    const by_tpl = new Map(
-      (parsed.tasks || [])
-        .map((t) => migrate_task(day, t))
-        .filter(Boolean)
-        .map((t) => [t!.template_id, t!])
-    );
-    const merged = day_task_templates.map((tpl) => by_tpl.get(tpl.id) || blank_task(day, tpl));
-    save_day_tasks(spot_id, merged, day);
-    return merged;
+    return Array.isArray(parsed.tasks) ? parsed.tasks : [];
   } catch {
-    return build_all(day);
+    return [];
   }
 }
 
@@ -229,15 +99,48 @@ export function save_day_tasks(spot_id: string, tasks: day_task[], day = moscow_
   localStorage.setItem(storage_key(spot_id, day), JSON.stringify({ day, spot_id, tasks } satisfies store));
 }
 
-/** задачи, уже вышедшие по расписанию или начатые / завершённые */
+/** подмешивает свежие тексты админа, прогресс смены оставляет */
+export function apply_day_templates(
+  spot_id: string,
+  templates: day_task_template[],
+  day = moscow_today_iso()
+): day_task[] {
+  const saved = read_saved(spot_id, day);
+  const by_tpl = new Map(saved.map((t) => [t.template_id, t]));
+  const tasks = templates.map((tpl) => {
+    const prev = by_tpl.get(tpl.id);
+    const base = blank_task(day, tpl);
+    if (!prev) return base;
+    const phase = normalize_phase(prev.phase || (prev as { status?: string }).status);
+    return {
+      ...base,
+      id: prev.id || base.id,
+      phase,
+      elapsed_ms: typeof prev.elapsed_ms === 'number' ? prev.elapsed_ms : 0,
+      run_started_at:
+        phase === 'running'
+          ? typeof prev.run_started_at === 'number'
+            ? prev.run_started_at
+            : Date.now()
+          : null,
+      appeared_at: prev.appeared_at ?? null,
+      done_at: prev.done_at ?? null,
+    };
+  });
+  save_day_tasks(spot_id, tasks, day);
+  return tasks;
+}
+
 export function get_board_tasks(tasks: day_task[], now = new Date()) {
-  const due = tasks.filter(
-    (t) =>
-      t.phase === 'done' ||
-      t.phase !== 'icon' ||
-      Boolean(t.appeared_at) ||
-      is_task_due(t.appear_at, now)
-  );
+  const due = tasks
+    .filter(
+      (t) =>
+        t.phase === 'done' ||
+        t.phase !== 'pending' ||
+        Boolean(t.appeared_at) ||
+        is_task_due(t.appear_at, now)
+    )
+    .sort((a, b) => a.appear_at.localeCompare(b.appear_at));
   return {
     open: due.filter((t) => t.phase !== 'done'),
     done: due.filter((t) => t.phase === 'done'),
@@ -264,75 +167,37 @@ export function live_elapsed_ms(task: day_task, now = Date.now()): number {
   return base;
 }
 
-/** один шаг взаимодействия с карточкой */
-export function advance_day_task(
-  spot_id: string,
-  task_id: string,
-  day = moscow_today_iso(),
-  choice?: 'continue' | 'complete'
-): day_task[] {
+/** начать → пауза → выполнено */
+export function press_day_task(spot_id: string, task_id: string, day = moscow_today_iso()): day_task[] {
   const now = Date.now();
-  const tasks = load_day_tasks(spot_id, day).map((t) => {
+  const tasks = read_saved(spot_id, day).map((t) => {
     if (t.id !== task_id) return t;
-
-    switch (t.phase) {
-      case 'icon':
-        return { ...t, phase: 'info' as const, appeared_at: t.appeared_at || new Date().toISOString() };
-      case 'info':
-        return { ...t, phase: 'armed' as const };
-      case 'armed':
-        return {
-          ...t,
-          phase: 'running' as const,
-          run_started_at: now,
-        };
-      case 'running': {
-        const add = t.run_started_at ? Math.max(0, now - t.run_started_at) : 0;
-        return {
-          ...t,
-          phase: 'stopped' as const,
-          elapsed_ms: (t.elapsed_ms || 0) + add,
-          run_started_at: null,
-        };
-      }
-      case 'stopped':
-        if (choice === 'continue') {
-          return {
-            ...t,
-            phase: 'running' as const,
-            run_started_at: now,
-          };
-        }
-        return {
-          ...t,
-          phase: 'done' as const,
-          run_started_at: null,
-          done_at: new Date().toISOString(),
-        };
-      default:
-        return t;
+    if (t.phase === 'pending') {
+      return {
+        ...t,
+        phase: 'running' as const,
+        run_started_at: now,
+        appeared_at: t.appeared_at || new Date().toISOString(),
+      };
     }
-  });
-  save_day_tasks(spot_id, tasks, day);
-  return tasks;
-}
-
-/** с иконки / инфо сразу в таймер, уже запущенные не трогаем */
-export function ensure_task_running(
-  spot_id: string,
-  task_id: string,
-  day = moscow_today_iso()
-): day_task[] {
-  const now = Date.now();
-  const tasks = load_day_tasks(spot_id, day).map((t) => {
-    if (t.id !== task_id) return t;
-    if (t.phase === 'done' || t.phase === 'running' || t.phase === 'stopped') return t;
-    return {
-      ...t,
-      phase: 'running' as const,
-      run_started_at: now,
-      appeared_at: t.appeared_at || new Date().toISOString(),
-    };
+    if (t.phase === 'running') {
+      const add = t.run_started_at ? Math.max(0, now - t.run_started_at) : 0;
+      return {
+        ...t,
+        phase: 'paused' as const,
+        elapsed_ms: (t.elapsed_ms || 0) + add,
+        run_started_at: null,
+      };
+    }
+    if (t.phase === 'paused') {
+      return {
+        ...t,
+        phase: 'done' as const,
+        run_started_at: null,
+        done_at: new Date().toISOString(),
+      };
+    }
+    return t;
   });
   save_day_tasks(spot_id, tasks, day);
   return tasks;

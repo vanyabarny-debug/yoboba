@@ -24,6 +24,11 @@ export const admin_tabs = [
     match: (p: string) => p.startsWith('/admin/techcards'),
   },
   {
+    href: '/admin/craft',
+    label: 'крафт',
+    match: (p: string) => p.startsWith('/admin/craft'),
+  },
+  {
     href: '/admin/sklad',
     label: 'склад',
     match: (p: string) => p.startsWith('/admin/sklad'),

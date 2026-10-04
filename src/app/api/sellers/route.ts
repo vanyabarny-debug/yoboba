@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 import { session_cookie } from '@/lib/session';
 import { delete_seller, get_sellers, upsert_seller } from '@/lib/sellers-server';
+import { parse_seller_access } from '@/lib/seller-access';
 import type { seller } from '@/lib/types';
 
 async function is_admin() {
@@ -39,6 +40,8 @@ export async function POST(request: Request) {
     login: body.login.trim().toLowerCase(),
     password: body.password,
     name: body.name.trim(),
+    role_title: (body.role_title || 'бариста').trim().slice(0, 40) || 'бариста',
+    access: parse_seller_access(body.access),
     is_active: body.is_active !== false,
     spot_ids: Array.isArray(body.spot_ids) ? body.spot_ids : [],
   });

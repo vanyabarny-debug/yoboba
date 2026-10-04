@@ -4,12 +4,21 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import InventoryCount from '@/components/admin/finance/inventory-count';
 import {
   format_base_qty,
+  format_rub,
   type material,
   type material_unit,
   type stock_category,
   type stock_row,
 } from '@/lib/finance/model';
 import { entered_from_base, parse_qty, to_base_qty, weigh_kind_of, weigh_unit } from '@/lib/finance/weigh';
+
+type stock_money = {
+  on_hand: number;
+  spent: number;
+  realized: number;
+  lost: number;
+  earned: number | null;
+};
 
 type public_row = {
   id: string;
@@ -18,6 +27,7 @@ type public_row = {
   unit: material_unit;
   qty: number;
   low: boolean;
+  value?: number;
 };
 
 type public_cat = { id: string; name: string; color: string };
@@ -45,6 +55,7 @@ export default function SellerInventory({
   active?: boolean;
 }) {
   const [rows, set_rows] = useState<public_row[]>([]);
+  const [money, set_money] = useState<stock_money | null>(null);
   const [cats, set_cats] = useState<public_cat[]>([]);
   const [must_count, set_must_count] = useState(false);
   const [loading, set_loading] = useState(true);
@@ -63,6 +74,7 @@ export default function SellerInventory({
       must_count?: boolean;
       categories?: public_cat[];
       rows?: public_row[];
+      money?: stock_money | null;
     } | null;
     if (!res.ok) {
       throw new Error(body?.error || 'не удалось загрузить склад');
@@ -70,6 +82,7 @@ export default function SellerInventory({
     set_must_count(Boolean(body?.must_count));
     set_cats(body?.categories ?? []);
     set_rows(body?.rows ?? []);
+    set_money(body?.money ?? null);
     set_error('');
   }, []);
 
@@ -121,6 +134,7 @@ export default function SellerInventory({
       must_count?: boolean;
       categories?: public_cat[];
       rows?: public_row[];
+      money?: stock_money | null;
     } | null;
     if (!res.ok) throw new Error(body?.error || 'не удалось сохранить');
     set_must_count(Boolean(body?.must_count));
@@ -140,6 +154,7 @@ export default function SellerInventory({
       must_count?: boolean;
       categories?: public_cat[];
       rows?: public_row[];
+      money?: stock_money | null;
     } | null;
     if (!res.ok) throw new Error(body?.error || 'не удалось записать инвентаризацию');
     set_must_count(Boolean(body?.must_count));
@@ -191,6 +206,22 @@ export default function SellerInventory({
         ))}
       </div>
 
+      {money ? (
+        <div className="grid grid-cols-2 gap-2 text-center">
+          {[
+            ['на складе', format_rub(money.on_hand)],
+            ['потрачено', format_rub(money.spent)],
+            ['реализовано', format_rub(money.realized)],
+            ['заработано', money.earned == null ? '…' : format_rub(money.earned)],
+          ].map(([label, value]) => (
+            <div key={label} className="rounded-xl border border-neutral-200 bg-white px-2 py-2">
+              <p className="text-[11px] text-neutral-400">{label}</p>
+              <p className="text-sm font-semibold tabular-nums">{value}</p>
+            </div>
+          ))}
+        </div>
+      ) : null}
+
       {error ? <p className="text-sm text-red-500">{error}</p> : null}
       {loading ? <p className="text-sm text-neutral-400">загрузка склада…</p> : null}
 
@@ -217,6 +248,9 @@ export default function SellerInventory({
                   }`}
                 >
                   {format_base_qty(mat, row.qty)}
+                  {row.value != null ? (
+                    <span className="ml-1 text-neutral-400">{format_rub(row.value)}</span>
+                  ) : null}
                 </button>
               </li>
             );

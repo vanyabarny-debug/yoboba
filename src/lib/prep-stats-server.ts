@@ -1,9 +1,11 @@
-import { keep_since_day, read_durable_json, write_durable_json } from '@/lib/durable-json';
+import { read_durable_json, write_durable_json } from '@/lib/durable-json';
+import { list_handed_rows } from '@/lib/handed-orders-server';
 import { moscow_today_iso } from '@/lib/order-number';
 import type {
   barista_analytics,
   drink_stat,
   fulfillment_event,
+  order,
   prep_event,
 } from '@/lib/types';
 
@@ -30,40 +32,20 @@ export function classify_order_timing(
 
 async function load_prep(): Promise<prep_event[]> {
   const raw = await read_durable_json<prep_event[]>(prep_key, []);
-  const all = Array.isArray(raw) ? raw : [];
-  const since = keep_since_day();
-  const kept = all.filter((e) => e.shift_date >= since);
-  if (kept.length !== all.length) {
-    await write_durable_json(prep_key, kept).catch(() => {});
-  }
-  return kept;
+  return Array.isArray(raw) ? raw : [];
 }
 
 async function save_prep(all: prep_event[]) {
-  const since = keep_since_day();
-  await write_durable_json(
-    prep_key,
-    all.filter((e) => e.shift_date >= since)
-  );
+  await write_durable_json(prep_key, all);
 }
 
 async function load_fulfill(): Promise<fulfillment_event[]> {
   const raw = await read_durable_json<fulfillment_event[]>(fulfill_key, []);
-  const all = Array.isArray(raw) ? raw : [];
-  const since = keep_since_day();
-  const kept = all.filter((e) => e.shift_date >= since);
-  if (kept.length !== all.length) {
-    await write_durable_json(fulfill_key, kept).catch(() => {});
-  }
-  return kept;
+  return Array.isArray(raw) ? raw : [];
 }
 
 async function save_fulfill(all: fulfillment_event[]) {
-  const since = keep_since_day();
-  await write_durable_json(
-    fulfill_key,
-    all.filter((e) => e.shift_date >= since)
-  );
+  await write_durable_json(fulfill_key, all);
 }
 
 export async function add_prep_event(
@@ -127,11 +109,68 @@ export async function get_fulfillment_order_ids(input: {
   return ids;
 }
 
+function drinks_from_orders(orders: order[], times: Map<string, number[]>): drink_stat[] {
+  const by_drink = new Map<string, { name: string; count: number; times: number[] }>();
+  for (const order of orders) {
+    for (const item of order.items || []) {
+      if (!item?.name) continue;
+      const key = item.menu_id || item.name;
+      const row = by_drink.get(key) || { name: item.name, count: 0, times: [] };
+      row.name = item.name;
+      row.count += Number(item.quantity) || 1;
+      by_drink.set(key, row);
+    }
+  }
+  for (const [key, samples] of times) {
+    const row = by_drink.get(key);
+    if (row) row.times.push(...samples);
+  }
+  return [...by_drink.entries()]
+    .map(([menu_id, row]) => ({
+      menu_id,
+      name: row.name,
+      count: row.count,
+      avg_ms: row.times.length ? row.times.reduce((a, b) => a + b, 0) / row.times.length : 0,
+      fastest_ms: row.times.length ? Math.min(...row.times) : 0,
+      slowest_ms: row.times.length ? Math.max(...row.times) : 0,
+    }))
+    .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name, 'ru'));
+}
+
+function drinks_from_prep(preps: prep_event[]): drink_stat[] {
+  const by_drink = new Map<string, { name: string; times: number[] }>();
+  for (const prep of preps) {
+    const key = prep.menu_id || prep.drink_name;
+    const row = by_drink.get(key) || { name: prep.drink_name, times: [] };
+    row.name = prep.drink_name;
+    row.times.push(prep.actual_ms);
+    by_drink.set(key, row);
+  }
+  return [...by_drink.entries()]
+    .map(([menu_id, row]) => {
+      const sum = row.times.reduce((a, b) => a + b, 0);
+      return {
+        menu_id,
+        name: row.name,
+        count: row.times.length,
+        avg_ms: sum / row.times.length,
+        fastest_ms: Math.min(...row.times),
+        slowest_ms: Math.max(...row.times),
+      };
+    })
+    .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name, 'ru'));
+}
+
 export async function get_barista_analytics(input: {
   shift_date: string;
   seller_id?: string;
 }): Promise<barista_analytics> {
   const { shift_date, seller_id } = input;
+  const handed = await list_handed_rows(seller_id);
+  const day_orders = handed
+    .filter((row) => row.shift_date === shift_date)
+    .map((row) => row.order);
+  const history_orders_list = handed.map((row) => row.order);
   const preps = (await load_prep()).filter((e) => {
     if (e.shift_date !== shift_date) return false;
     if (seller_id && e.seller_id !== seller_id) return false;
@@ -153,37 +192,26 @@ export async function get_barista_analytics(input: {
   }
   const fulfills = [...by_order.values()];
 
-  const by_drink = new Map<string, { name: string; times: number[] }>();
-  for (const p of preps) {
-    const key = p.menu_id || p.drink_name;
-    const row = by_drink.get(key) || { name: p.drink_name, times: [] };
-    row.name = p.drink_name;
-    row.times.push(p.actual_ms);
-    by_drink.set(key, row);
+  const prep_times = new Map<string, number[]>();
+  for (const prep of preps) {
+    const key = prep.menu_id || prep.drink_name;
+    const list = prep_times.get(key) || [];
+    list.push(prep.actual_ms);
+    prep_times.set(key, list);
   }
-
-  const drinks: drink_stat[] = [...by_drink.entries()].map(([menu_id, row]) => {
-    const sum = row.times.reduce((a, b) => a + b, 0);
-    return {
-      menu_id,
-      name: row.name,
-      count: row.times.length,
-      avg_ms: sum / row.times.length,
-      fastest_ms: Math.min(...row.times),
-      slowest_ms: Math.max(...row.times),
-    };
-  });
-
-  drinks.sort((a, b) => b.count - a.count);
+  const sold = drinks_from_orders(day_orders, prep_times);
+  const drinks = sold.length > 0 ? sold : drinks_from_prep(preps);
+  const history_drinks = drinks_from_orders(history_orders_list, new Map());
 
   const most_cooked = drinks[0] ?? null;
+  const timed = drinks.filter((drink) => drink.avg_ms > 0);
   const fastest_drink =
-    drinks.length > 0
-      ? [...drinks].sort((a, b) => a.avg_ms - b.avg_ms || b.count - a.count)[0]
+    timed.length > 0
+      ? [...timed].sort((a, b) => a.avg_ms - b.avg_ms || b.count - a.count)[0]
       : null;
   const slowest_drink =
-    drinks.length > 0
-      ? [...drinks].sort((a, b) => b.avg_ms - a.avg_ms || b.count - a.count)[0]
+    timed.length > 0
+      ? [...timed].sort((a, b) => b.avg_ms - a.avg_ms || b.count - a.count)[0]
       : null;
 
   const avg_fulfillment_ms =
@@ -195,7 +223,7 @@ export async function get_barista_analytics(input: {
     shift_date,
     seller_id: seller_id ?? null,
     avg_fulfillment_ms,
-    fulfillment_count: fulfills.length,
+    fulfillment_count: Math.max(fulfills.length, day_orders.length),
     early_count: fulfills.filter((f) => f.timing === 'early').length,
     on_time_count: fulfills.filter((f) => f.timing === 'on_time').length,
     overdue_count: fulfills.filter((f) => f.timing === 'overdue').length,
@@ -203,6 +231,8 @@ export async function get_barista_analytics(input: {
     most_cooked,
     fastest_drink,
     slowest_drink,
-    prep_count: preps.length,
+    prep_count: Math.max(preps.length, drinks.reduce((sum, drink) => sum + drink.count, 0)),
+    history_orders: history_orders_list.length,
+    history_drinks,
   };
 }

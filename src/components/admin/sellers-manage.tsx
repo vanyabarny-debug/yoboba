@@ -4,6 +4,13 @@ import { useEffect, useState } from 'react';
 import type { seller, store_spot } from '@/lib/types';
 import AdminShell from '@/components/admin/admin-shell';
 import { get_spots, subscribe_spot_store } from '@/lib/spot-store';
+import {
+  default_seller_access,
+  parse_seller_access,
+  seller_right_ids,
+  seller_right_label,
+  type seller_access,
+} from '@/lib/seller-access';
 
 function new_seller_id() {
   return `seller-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
@@ -13,7 +20,14 @@ export default function sellers_manage({ bare = false }: { bare?: boolean } = {}
   const [sellers, set_sellers] = useState<seller[]>([]);
   const [spots, set_spots] = useState<store_spot[]>([]);
   const [editing, set_editing] = useState<seller | null>(null);
-  const [form, set_form] = useState({ login: '', password: '', name: '', spot_ids: [] as string[] });
+  const [form, set_form] = useState({
+    login: '',
+    password: '',
+    name: '',
+    role_title: 'бариста',
+    spot_ids: [] as string[],
+    access: default_seller_access(),
+  });
   const [error, set_error] = useState('');
   const [saving, set_saving] = useState(false);
   const [loading, set_loading] = useState(true);
@@ -49,9 +63,17 @@ export default function sellers_manage({ bare = false }: { bare?: boolean } = {}
       name: '',
       is_active: true,
       created_at: '',
+      role_title: 'бариста',
       spot_ids: [],
     });
-    set_form({ login: '', password: '', name: '', spot_ids: [] });
+    set_form({
+      login: '',
+      password: '',
+      name: '',
+      role_title: 'бариста',
+      spot_ids: [],
+      access: default_seller_access(),
+    });
     set_error('');
   }
 
@@ -61,7 +83,9 @@ export default function sellers_manage({ bare = false }: { bare?: boolean } = {}
       login: s.login,
       password: s.password,
       name: s.name,
+      role_title: s.role_title?.trim() || 'бариста',
       spot_ids: s.spot_ids ?? [],
+      access: parse_seller_access(s.access),
     });
     set_error('');
   }
@@ -89,7 +113,9 @@ export default function sellers_manage({ bare = false }: { bare?: boolean } = {}
           login: form.login,
           password: form.password,
           name: form.name,
+          role_title: form.role_title,
           spot_ids: form.spot_ids,
+          access: form.access,
         }),
       });
       const data = await res.json();
@@ -104,7 +130,7 @@ export default function sellers_manage({ bare = false }: { bare?: boolean } = {}
   }
 
   async function handle_delete(id: string) {
-    if (!confirm('удалить кассира?')) return;
+    if (!confirm('удалить сотрудника?')) return;
     set_error('');
     try {
       const res = await fetch(`/api/sellers?id=${encodeURIComponent(id)}`, { method: 'DELETE' });
@@ -126,8 +152,8 @@ export default function sellers_manage({ bare = false }: { bare?: boolean } = {}
   const body = (
       <div className="max-w-3xl mx-auto space-y-4">
         <div>
-          <h2 className="text-lg font-semibold text-neutral-900">{bare ? 'кассиры' : 'персонал'}</h2>
-          <p className="text-sm text-neutral-500">бариста / касса · привязка к точкам</p>
+          <h2 className="text-lg font-semibold text-neutral-900">{bare ? 'сотрудники' : 'персонал'}</h2>
+          <p className="text-sm text-neutral-500">должность пишется своими словами · привязка к точкам</p>
         </div>
 
         <button
@@ -135,7 +161,7 @@ export default function sellers_manage({ bare = false }: { bare?: boolean } = {}
           onClick={open_create}
           className="w-full rounded-xl bg-accent text-accent-foreground py-3 font-semibold text-sm"
         >
-          + добавить кассира
+          + добавить сотрудника
         </button>
 
         {error && !editing && (
@@ -147,7 +173,7 @@ export default function sellers_manage({ bare = false }: { bare?: boolean } = {}
         {loading ? (
           <p className="text-sm text-neutral-400 text-center py-8">загрузка...</p>
         ) : sellers.length === 0 ? (
-          <p className="text-sm text-neutral-400 text-center py-8">кассиров пока нет</p>
+          <p className="text-sm text-neutral-400 text-center py-8">сотрудников пока нет</p>
         ) : (
           <ul className="space-y-2">
             {sellers.map((s) => (
@@ -156,8 +182,16 @@ export default function sellers_manage({ bare = false }: { bare?: boolean } = {}
                 className="bg-white rounded-xl border border-surface p-4 flex items-start justify-between gap-3"
               >
                 <div className="min-w-0">
-                  <p className="font-medium">бариста {s.name}</p>
+                  <p className="font-medium">
+                    {s.role_title?.trim() || 'бариста'} {s.name}
+                  </p>
                   <p className="text-xs text-neutral-500">логин: {s.login}</p>
+                  <p className="text-xs text-neutral-400 mt-1">
+                    {seller_right_ids
+                      .filter((id) => parse_seller_access(s.access)[id])
+                      .map((id) => seller_right_label[id])
+                      .join(' · ')}
+                  </p>
                   <p className="text-xs text-neutral-400 mt-1 truncate">{spot_labels(s.spot_ids)}</p>
                 </div>
                 <div className="flex gap-2 shrink-0">
@@ -194,8 +228,18 @@ export default function sellers_manage({ bare = false }: { bare?: boolean } = {}
               className="relative w-full max-w-sm bg-white rounded-2xl p-6 shadow-soft space-y-4 max-h-[90vh] overflow-y-auto"
             >
               <h2 className="text-lg font-semibold">
-                {sellers.some((s) => s.id === editing.id) ? 'изменить' : 'новый'} кассир
+                {sellers.some((s) => s.id === editing.id) ? 'изменить сотрудника' : 'новый сотрудник'}
               </h2>
+              <label className="block">
+                <span className="text-sm text-neutral-600">должность</span>
+                <input
+                  value={form.role_title}
+                  onChange={(e) => set_form({ ...form, role_title: e.target.value })}
+                  placeholder="бариста, менеджер"
+                  className="mt-1 w-full rounded-xl border border-surface px-4 py-2.5 text-sm"
+                  required
+                />
+              </label>
               <label className="block">
                 <span className="text-sm text-neutral-600">имя</span>
                 <input
@@ -226,6 +270,31 @@ export default function sellers_manage({ bare = false }: { bare?: boolean } = {}
                   required
                 />
               </label>
+
+              <div>
+                <p className="text-sm text-neutral-600 mb-2">что видит на кассе</p>
+                <ul className="grid grid-cols-2 gap-1.5">
+                  {seller_right_ids.map((id) => (
+                    <li key={id}>
+                      <label className="flex items-center gap-2 rounded-xl border border-surface px-3 py-2 text-sm cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={form.access[id]}
+                          onChange={() =>
+                            set_form((prev) => {
+                              const access: seller_access = { ...prev.access, [id]: !prev.access[id] };
+                              if (id === 'stock' && !access.stock) access.stock_money = false;
+                              if (id === 'stock_money' && access.stock_money) access.stock = true;
+                              return { ...prev, access };
+                            })
+                          }
+                        />
+                        <span>{seller_right_label[id]}</span>
+                      </label>
+                    </li>
+                  ))}
+                </ul>
+              </div>
 
               <div>
                 <p className="text-sm text-neutral-600 mb-2">точки смены</p>

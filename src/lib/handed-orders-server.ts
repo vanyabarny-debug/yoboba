@@ -1,4 +1,4 @@
-import { read_durable_json, write_durable_json, keep_since_day } from '@/lib/durable-json';
+import { read_durable_json, write_durable_json } from '@/lib/durable-json';
 import type { order } from '@/lib/types';
 
 const store_key = 'handed-orders';
@@ -14,19 +14,11 @@ export type handed_order_row = {
 
 async function load_all(): Promise<handed_order_row[]> {
   const raw = await read_durable_json<handed_order_row[]>(store_key, []);
-  const all = Array.isArray(raw) ? raw : [];
-  const since = keep_since_day();
-  const kept = all.filter((r) => r.shift_date >= since);
-  if (kept.length !== all.length) {
-    await write_durable_json(store_key, kept).catch(() => {});
-  }
-  return kept;
+  return Array.isArray(raw) ? raw : [];
 }
 
 async function save_all(rows: handed_order_row[]) {
-  const since = keep_since_day();
-  const kept = rows.filter((r) => r.shift_date >= since);
-  await write_durable_json(store_key, kept);
+  await write_durable_json(store_key, rows);
 }
 
 /** записать выдачу; повтор по order_id+shift_date не дублирует */
@@ -57,6 +49,12 @@ export async function record_handed_order(input: {
   }
   await save_all(all);
   return row;
+}
+
+export async function list_handed_rows(seller_id?: string): Promise<handed_order_row[]> {
+  const all = await load_all();
+  if (!seller_id) return all;
+  return all.filter((r) => r.seller_id === seller_id);
 }
 
 export async function get_handed_orders(input: {

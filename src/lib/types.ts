@@ -1,5 +1,6 @@
 import type { promo_title_layout } from '@/lib/promo-title-layout';
 import type { promo_image_vignette } from '@/lib/promo-image-vignette';
+import type { seller_access } from '@/lib/seller-access';
 
 export type store_spot = {
   id: string;
@@ -161,9 +162,13 @@ export type seller = {
   login: string;
   password: string;
   name: string;
+  /** должность своими словами: бариста, менеджер, кассир */
+  role_title?: string;
+  /** какие вкладки кассы ему открыты */
+  access?: Partial<seller_access>;
   is_active: boolean;
   created_at: string;
-  /** точки, на которых кассир может открыть смену */
+  /** точки, на которых сотрудник может открыть смену */
   spot_ids?: string[];
 };
 
@@ -266,6 +271,9 @@ export type barista_analytics = {
   fastest_drink: drink_stat | null;
   slowest_drink: drink_stat | null;
   prep_count: number;
+  /** все смены этого кассира: заказы и топ напитков */
+  history_orders: number;
+  history_drinks: drink_stat[];
 };
 
 export type live_cart_row = {

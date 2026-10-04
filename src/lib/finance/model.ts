@@ -253,6 +253,34 @@ export function insurance_from_net(salary: number, insurance_rate: number) {
   return Math.max(0, salary) * (Math.max(0, insurance_rate) / 100);
 }
 
+/** Сколько зарплаты можно заложить и сколько чистой при этом останется.
+ *  Пул — прибыль до ФОТ. keep — чистая, которую не трогаем.
+ *  Без налога остаток пула уходит на руки. С налогом из остатка ещё платится НДФЛ и взносы. */
+export function affordable_payroll(input: {
+  net_profit: number;
+  salary: number;
+  ndfl: number;
+  insurance: number;
+  ndfl_rate: number;
+  insurance_rate: number;
+  keep?: number;
+}) {
+  const pool = input.net_profit + input.salary + input.ndfl + input.insurance;
+  const keep = Math.min(Math.max(0, input.keep ?? 0), Math.max(0, pool));
+  const budget = pool - keep;
+  const ndfl_rate = Math.min(99, Math.max(0, input.ndfl_rate));
+  const insurance_rate = Math.max(0, input.insurance_rate) / 100;
+  const load = ndfl_rate / (100 - ndfl_rate) + insurance_rate;
+  const with_tax = load > 0 ? budget / (1 + load) : budget;
+  return {
+    pool,
+    keep,
+    without_tax: budget,
+    with_tax,
+    tax: budget - with_tax,
+  };
+}
+
 export function compute_month_tax(state: finance_state, revenue: number, deductible: number) {
   const r = tax_regime_of(state);
   if (r.kind === 'patent') return Math.max(0, Number(state.taxPatentMonthly) || 0);

@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
-import { session_cookie } from '@/lib/session';
+import { seller_id_cookie, seller_name_cookie, session_cookie } from '@/lib/session';
 import {
   add_fulfillment_event,
   add_prep_event,
@@ -14,6 +14,14 @@ async function is_staff() {
   const store = await cookies();
   const role = store.get(session_cookie)?.value;
   return role === 'admin' || role === 'seller';
+}
+
+async function cashier_from_cookie() {
+  const store = await cookies();
+  return {
+    seller_id: store.get(seller_id_cookie)?.value || '',
+    seller_name: store.get(seller_name_cookie)?.value || 'бариста',
+  };
 }
 
 export async function GET(request: Request) {
@@ -35,9 +43,28 @@ export async function POST(request: Request) {
   }
 
   const body = await request.json();
-  const kind = body.kind as 'prep' | 'fulfillment';
+  const kind = body.kind as 'prep' | 'fulfillment' | 'sales';
 
   try {
+    if (kind === 'sales') {
+      const cashier = await cashier_from_cookie();
+      if (!cashier.seller_id) {
+        return NextResponse.json({ ok: true, skipped: true });
+      }
+      const shift_date = (body.shift_date as string) || moscow_today_iso();
+      const { completed_orders_for_day, remember_cashier_sales } = await import(
+        '@/lib/cashier-sales-server'
+      );
+      const orders = await completed_orders_for_day(shift_date);
+      await remember_cashier_sales({
+        seller_id: cashier.seller_id,
+        seller_name: cashier.seller_name,
+        shift_date,
+        orders,
+      });
+      return NextResponse.json({ ok: true, count: orders.length });
+    }
+
     if (kind === 'prep') {
       const event = body.event as Omit<prep_event, 'id' | 'drink_pace' | 'shift_date'> & {
         id?: string;
