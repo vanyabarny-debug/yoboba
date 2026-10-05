@@ -25,6 +25,9 @@ import seller_inventory from '@/components/seller/seller-inventory';
 import drink_cook_guide from '@/components/seller/drink-cook-guide';
 import task_guide from '@/components/seller/task-guide';
 import shift_task_card from '@/components/seller/shift-task-card';
+import opening_task_card from '@/components/seller/opening-task-card';
+import opening_task_guide from '@/components/seller/opening-task-guide';
+import { should_show_opening_task, type opening_task } from '@/lib/opening-checklist';
 import order_prep_card, {
   type drink_row,
   type prep_state,
@@ -312,6 +315,8 @@ export default function seller_board() {
   const [task_guide_id, set_task_guide_id] = useState<string | null>(null);
   const [day_tasks, set_day_tasks] = useState<day_task[]>([]);
   const [task_templates, set_task_templates] = useState<day_task_template[] | null>(null);
+  const [opening_task_state, set_opening_task_state] = useState<opening_task | null>(null);
+  const [opening_guide_open, set_opening_guide_open] = useState(false);
   const [fresh_ids, set_fresh_ids] = useState<Set<string>>(new Set());
   const [unread_new, set_unread_new] = useState(0);
   const [pos_depth, set_pos_depth] = useState(false);
@@ -728,6 +733,37 @@ export default function seller_board() {
   useEffect(() => {
     return () => stop_order_alarm();
   }, []);
+
+  // Загрузка задачи открытия
+  useEffect(() => {
+    if (!shift?.spot_id) {
+      set_opening_task_state(null);
+      return;
+    }
+
+    async function load_opening_task() {
+      try {
+        const res = await fetch(
+          `/api/seller/opening-task?${new URLSearchParams({
+            spot_id: shift!.spot_id,
+            shift_date: board_day(),
+          })}`,
+          { credentials: 'same-origin' }
+        );
+
+        if (res.ok) {
+          const data = (await res.json()) as { task: opening_task };
+          set_opening_task_state(data.task);
+        }
+      } catch {
+        // задача открытия не критична
+      }
+    }
+
+    void load_opening_task();
+    const poll = window.setInterval(() => void load_opening_task(), 30_000);
+    return () => window.clearInterval(poll);
+  }, [shift?.spot_id, shift?.shift_date]);
 
   useEffect(() => {
     let stop = false;
@@ -1204,8 +1240,13 @@ export default function seller_board() {
   const tabs = panes;
 
   const { open: open_tasks, done: done_tasks } = get_board_tasks(day_tasks);
-  const work_board_count = in_work.length + open_tasks.length;
-  const ready_board_count = handed_out.length + done_tasks.length;
+  
+  // Добавить задачу открытия, если время пришло и она не завершена
+  const show_opening = opening_task_state && should_show_opening_task() && !opening_task_state.completed_at;
+  const opening_is_done = opening_task_state?.completed_at != null;
+  
+  const work_board_count = in_work.length + open_tasks.length + (show_opening ? 1 : 0);
+  const ready_board_count = handed_out.length + done_tasks.length + (opening_is_done ? 1 : 0);
   const guided_task = day_tasks.find((t) => t.id === task_guide_id) ?? null;
   /** бейдж «готовые» = число выдач, как в аналитике (задачи смены не считаем) */
   const ready_handout_count = handed_out.length;
@@ -1242,6 +1283,13 @@ export default function seller_board() {
     return render_fill_grid(
       items,
       <>
+        {show_opening && opening_task_state
+          ? createElement(opening_task_card, {
+              key: 'opening-task',
+              task: opening_task_state,
+              on_open: () => set_opening_guide_open(true),
+            })
+          : null}
         {open_tasks.map((t) =>
           createElement(shift_task_card, {
             key: `task-${t.id}`,
@@ -1286,6 +1334,13 @@ export default function seller_board() {
     return render_fill_grid(
       items,
       <>
+        {opening_is_done && opening_task_state
+          ? createElement(opening_task_card, {
+              key: 'opening-task-done',
+              task: opening_task_state,
+              on_open: () => set_opening_guide_open(true),
+            })
+          : null}
         {done_tasks.map((t) =>
           createElement(shift_task_card, {
             key: `task-done-${t.id}`,
@@ -1542,6 +1597,20 @@ export default function seller_board() {
             spot_id: shift?.spot_id || '',
             on_press: () => press_task(guided_task.id),
             on_close: () => set_task_guide_id(null),
+          })
+        : null}
+      {opening_guide_open && opening_task_state
+        ? createElement(opening_task_guide, {
+            task: opening_task_state,
+            seller_id: seller_id || seller_ref.current.id || 'seller',
+            seller_name: seller_name || seller_ref.current.name || 'бариста',
+            on_close: () => set_opening_guide_open(false),
+            on_update: (updated) => {
+              set_opening_task_state(updated);
+              if (updated.completed_at) {
+                setTimeout(() => set_opening_guide_open(false), 1500);
+              }
+            },
           })
         : null}
     </div>

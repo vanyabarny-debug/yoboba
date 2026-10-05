@@ -133,6 +133,24 @@ export default function day_tasks_manage() {
   async function save_draft(e: React.FormEvent) {
     e.preventDefault();
     if (!draft) return;
+    
+    // Валидация
+    if (!draft.title.trim()) {
+      set_error('укажите название задачи');
+      return;
+    }
+    
+    // Проверка страниц
+    for (let i = 0; i < draft.blocks.length; i++) {
+      const block = draft.blocks[i];
+      const hasText = block.text.trim().length > 0;
+      const hasMedia = block.media != null;
+      if (!hasText && !hasMedia) {
+        set_error(`страница ${i + 1}: добавьте текст или фото/видео`);
+        return;
+      }
+    }
+    
     const task: day_task_template = {
       ...draft,
       title: draft.title.trim(),
@@ -327,22 +345,34 @@ export default function day_tasks_manage() {
             </label>
 
             <div className="space-y-3">
-              {draft.blocks.map((block, index) => (
-                <div key={block.id} className="rounded-xl border border-surface p-3 text-center">
-                  <p className="text-xs text-neutral-400">страница {index + 1}</p>
-                  <input
-                    value={block.kicker}
-                    placeholder="подпись"
-                    onChange={(e) => patch_block(block.id, { kicker: e.target.value })}
-                    className="mt-2 w-full rounded-lg border border-surface px-3 py-2 text-center text-sm"
-                  />
-                  <textarea
-                    value={block.text}
-                    placeholder="текст страницы"
-                    rows={3}
-                    onChange={(e) => patch_block(block.id, { text: e.target.value })}
-                    className="mt-2 w-full rounded-lg border border-surface px-3 py-2 text-center text-sm"
-                  />
+              {draft.blocks.map((block, index) => {
+                const hasContent = block.text.trim() || block.media;
+                return (
+                  <div 
+                    key={block.id} 
+                    className={`rounded-xl border p-3 text-center ${
+                      hasContent ? 'border-surface' : 'border-red-200 bg-red-50/30'
+                    }`}
+                  >
+                    <p className="text-xs text-neutral-400">
+                      страница {index + 1}
+                      {!hasContent && <span className="ml-1 text-red-500">· нужен текст или медиа</span>}
+                    </p>
+                    <input
+                      value={block.kicker}
+                      placeholder="подпись (необязательно)"
+                      onChange={(e) => patch_block(block.id, { kicker: e.target.value })}
+                      className="mt-2 w-full rounded-lg border border-surface px-3 py-2 text-center text-sm"
+                    />
+                    <textarea
+                      value={block.text}
+                      placeholder="что бариста должен сделать..."
+                      rows={3}
+                      onChange={(e) => patch_block(block.id, { text: e.target.value })}
+                      className={`mt-2 w-full rounded-lg border px-3 py-2 text-center text-sm ${
+                        !block.text.trim() && !block.media ? 'border-red-300' : 'border-surface'
+                      }`}
+                    />
                   {block.media?.kind === 'image' ? (
                     <img
                       src={day_task_media_url(block.media.id)}
@@ -409,7 +439,8 @@ export default function day_tasks_manage() {
                     ) : null}
                   </div>
                 </div>
-              ))}
+              );
+              })}
               <button
                 type="button"
                 className="w-full rounded-xl border border-surface py-2 text-sm text-neutral-600"
