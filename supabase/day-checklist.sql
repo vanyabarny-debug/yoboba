@@ -1,4 +1,5 @@
 -- Чек-лист «в течение дня» (аналогично открытию и закрытию)
+-- Можно запускать повторно: таблицы/политики/realtime не падают, если уже есть
 
 -- таблица задач дня (одна на seller_id/день)
 create table if not exists public.day_tasks (
@@ -41,29 +42,34 @@ create index if not exists idx_day_tasks_completed on public.day_tasks (complete
 create index if not exists idx_day_checklist_task on public.day_checklist_items (day_task_id, item_order);
 create index if not exists idx_day_notifications_admin on public.day_notifications (admin_id, is_read);
 
--- RLS policies
+-- RLS
 alter table public.day_tasks enable row level security;
 alter table public.day_checklist_items enable row level security;
 alter table public.day_notifications enable row level security;
 
+drop policy if exists "day_tasks_staff_select" on public.day_tasks;
 create policy "day_tasks_staff_select"
   on public.day_tasks for select
   using (public.current_role() in ('admin', 'barista'));
 
+drop policy if exists "day_tasks_staff_write" on public.day_tasks;
 create policy "day_tasks_staff_write"
   on public.day_tasks for all
   using (public.current_role() in ('admin', 'barista'))
   with check (public.current_role() in ('admin', 'barista'));
 
+drop policy if exists "day_checklist_staff_select" on public.day_checklist_items;
 create policy "day_checklist_staff_select"
   on public.day_checklist_items for select
   using (public.current_role() in ('admin', 'barista'));
 
+drop policy if exists "day_checklist_staff_write" on public.day_checklist_items;
 create policy "day_checklist_staff_write"
   on public.day_checklist_items for all
   using (public.current_role() in ('admin', 'barista'))
   with check (public.current_role() in ('admin', 'barista'));
 
+drop policy if exists "day_notifications_admin_select" on public.day_notifications;
 create policy "day_notifications_admin_select"
   on public.day_notifications for select
   using (
@@ -71,10 +77,12 @@ create policy "day_notifications_admin_select"
     or auth.uid() = admin_id
   );
 
+drop policy if exists "day_notifications_insert" on public.day_notifications;
 create policy "day_notifications_insert"
   on public.day_notifications for insert
   with check (public.current_role() in ('admin', 'barista'));
 
+drop policy if exists "day_notifications_admin_update" on public.day_notifications;
 create policy "day_notifications_admin_update"
   on public.day_notifications for update
   using (
@@ -82,5 +90,10 @@ create policy "day_notifications_admin_update"
     or auth.uid() = admin_id
   );
 
--- realtime для уведомлений админам
-alter publication supabase_realtime add table public.day_notifications;
+-- realtime (если таблица уже в publication — просто пропускаем)
+do $$
+begin
+  alter publication supabase_realtime add table public.day_notifications;
+exception
+  when duplicate_object then null;
+end $$;
