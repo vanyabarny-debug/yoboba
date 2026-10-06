@@ -4,9 +4,10 @@ import { session_cookie } from '@/lib/session';
 import { normalize_phone } from '@/lib/phone';
 import {
   claim_gift,
-  list_redeemable_gifts,
+  list_redeemable_gifts_for_recipient,
   public_gift_view,
 } from '@/lib/gifts-server';
+import { parse_pickup_code_input, resolve_pickup_code } from '@/lib/pickup-code-server';
 
 async function is_staff() {
   const store = await cookies();
@@ -19,13 +20,35 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: 'доступ запрещён' }, { status: 403 });
   }
 
-  const phone = normalize_phone(new URL(request.url).searchParams.get('phone'));
-  if (!phone) {
+  const url = new URL(request.url);
+  const raw_code = url.searchParams.get('code');
+  const code = raw_code ? parse_pickup_code_input(raw_code) : null;
+
+  if (code) {
+    const resolved = await resolve_pickup_code(code);
+    if (!resolved) {
+      return NextResponse.json({ gifts: [], error: 'код не найден или устарел' });
+    }
+    const gifts = await list_redeemable_gifts_for_recipient({
+      phone: resolved.phone,
+      user_id: resolved.user_id,
+    });
+    return NextResponse.json({
+      gifts: gifts.map(public_gift_view),
+      phone: resolved.phone,
+      user_id: resolved.user_id,
+    });
+  }
+
+  const phone = normalize_phone(url.searchParams.get('phone'));
+  const user_id = url.searchParams.get('user_id')?.trim() || null;
+
+  if (!phone && !user_id) {
     return NextResponse.json({ gifts: [] });
   }
 
-  const gifts = await list_redeemable_gifts(phone);
-  return NextResponse.json({ gifts: gifts.map(public_gift_view) });
+  const gifts = await list_redeemable_gifts_for_recipient({ phone, user_id });
+  return NextResponse.json({ gifts: gifts.map(public_gift_view), phone, user_id });
 }
 
 export async function POST(request: Request) {

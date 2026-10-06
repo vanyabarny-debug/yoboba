@@ -93,6 +93,23 @@ export async function list_redeemable_gifts(phone: string): Promise<gift[]> {
   );
 }
 
+/** оплаченные подарки для выдачи на кассе — по телефону и/или user_id получателя */
+export async function list_redeemable_gifts_for_recipient(input: {
+  phone?: string | null;
+  user_id?: string | null;
+}): Promise<gift[]> {
+  const normalized = normalize_phone(input.phone);
+  const user_id = input.user_id?.trim() || null;
+  const paid = (await list_gifts()).filter((g) => g.status === 'paid');
+  if (normalized) {
+    return paid.filter((g) => g.recipient_phone === normalized);
+  }
+  if (user_id) {
+    return paid.filter((g) => g.recipient_user_id === user_id);
+  }
+  return [];
+}
+
 export type create_gift_input = {
   sender_id: string;
   sender_name: string;

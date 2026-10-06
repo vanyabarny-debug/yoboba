@@ -1,6 +1,6 @@
 'use client';
 
-import { createElement, useEffect, useMemo, useState } from 'react';
+import { createElement, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   default_categories,
   get_menu_store,
@@ -9,7 +9,7 @@ import {
   subscribe_menu_store,
 } from '@/lib/menu-store';
 import { item_in_category } from '@/lib/menu-item-categories';
-import { format_phone_input, phone_input_to_e164 } from '@/lib/phone';
+import { format_phone_display, format_phone_input, phone_input_to_e164 } from '@/lib/phone';
 import { parse_pickup_code_input } from '@/lib/pickup-code';
 import { category_tile_meta } from '@/lib/category-icons';
 import { configured_unit_price, first_volume_id, resolve_volume_id } from '@/lib/product-details';
@@ -207,12 +207,16 @@ export default function pos_panel({
   }, []);
 
 
-  useEffect(() => {
-    if (!confirm_open) return;
-    const code = parse_pickup_code_input(code_draft);
-    const e164 = phone_input_to_e164(phone_draft);
+  const lookup_seq = useRef(0);
+  const skip_phone_lookup = useRef(false);
+
+  const lookup_guest = useCallback(async (opts: { code?: string | null; phone_e164?: string | null }) => {
+    const seq = ++lookup_seq.current;
+    const code = opts.code ? parse_pickup_code_input(opts.code) : null;
+    const e164 = opts.phone_e164 || null;
 
     if (!code && !e164) {
+      if (seq !== lookup_seq.current) return;
       set_customer(null);
       set_confirm_student(false);
       set_lookup_gifts([]);
@@ -220,84 +224,86 @@ export default function pos_panel({
       return;
     }
 
-    let cancelled = false;
     set_lookup_busy(true);
-    const t = window.setTimeout(() => {
-      const run = async () => {
-        try {
-          if (code) {
-            const orders_body = (await fetch(
-              `/api/seller/orders?code=${encodeURIComponent(code)}`,
-              { credentials: 'same-origin' }
-            ).then((r) => r.json())) as {
-              customer?: found_customer | null;
-              phone?: string | null;
-              error?: string;
-            };
-            if (cancelled) return;
-            if (!orders_body.customer) {
-              set_customer(null);
-              set_confirm_student(false);
-              set_lookup_gifts([]);
-              set_active_pickup_code(null);
-              if (orders_body.error) set_error(orders_body.error);
-              return;
-            }
-            set_error(null);
-            set_customer(orders_body.customer);
-            set_confirm_student(false);
-            set_active_pickup_code(code);
-            if (orders_body.customer.phone || orders_body.phone) {
-              const phone = orders_body.customer.phone || orders_body.phone || null;
-              set_phone_draft(e164_to_phone_draft(phone));
-              if (phone) {
-                const gifts_body = (await fetch(
-                  `/api/seller/gifts?phone=${encodeURIComponent(phone)}`,
-                  { credentials: 'same-origin' }
-                ).then((r) => r.json())) as { gifts?: gift[] };
-                if (!cancelled) set_lookup_gifts(gifts_body.gifts || []);
-              } else {
-                set_lookup_gifts([]);
-              }
-            } else {
-              set_lookup_gifts([]);
-            }
-            return;
-          }
-
-          if (!e164) return;
-          const [orders_body, gifts_body] = await Promise.all([
-            fetch(`/api/seller/orders?phone=${encodeURIComponent(e164)}`, {
-              credentials: 'same-origin',
-            }).then((r) => r.json()) as Promise<{ customer?: found_customer | null }>,
-            fetch(`/api/seller/gifts?phone=${encodeURIComponent(e164)}`, {
-              credentials: 'same-origin',
-            }).then((r) => r.json()) as Promise<{ gifts?: gift[] }>,
-          ]);
-          if (cancelled) return;
-          set_customer(orders_body.customer || null);
+    try {
+      if (code) {
+        const [orders_body, gifts_body] = await Promise.all([
+          fetch(`/api/seller/orders?code=${encodeURIComponent(code)}`, {
+            credentials: 'same-origin',
+          }).then((r) => r.json()) as Promise<{
+            customer?: found_customer | null;
+            phone?: string | null;
+            error?: string;
+          }>,
+          fetch(`/api/seller/gifts?code=${encodeURIComponent(code)}`, {
+            credentials: 'same-origin',
+          }).then((r) => r.json()) as Promise<{ gifts?: gift[]; error?: string }>,
+        ]);
+        if (seq !== lookup_seq.current) return;
+        if (!orders_body.customer) {
+          set_customer(null);
           set_confirm_student(false);
-          set_lookup_gifts(gifts_body.gifts || []);
+          set_lookup_gifts([]);
           set_active_pickup_code(null);
-        } catch {
-          if (!cancelled) {
-            set_customer(null);
-            set_confirm_student(false);
-            set_lookup_gifts([]);
-            set_active_pickup_code(null);
-          }
-        } finally {
-          if (!cancelled) set_lookup_busy(false);
+          if (orders_body.error) set_error(orders_body.error);
+          return;
         }
-      };
-      void run();
-    }, 350);
+        set_error(null);
+        set_customer(orders_body.customer);
+        set_confirm_student(false);
+        set_active_pickup_code(code);
+        set_lookup_gifts(gifts_body.gifts || []);
+        const phone = orders_body.customer.phone || orders_body.phone || null;
+        if (phone) {
+          skip_phone_lookup.current = true;
+          set_phone_draft(e164_to_phone_draft(phone));
+        }
+        return;
+      }
 
-    return () => {
-      cancelled = true;
-      window.clearTimeout(t);
-    };
-  }, [phone_draft, code_draft, confirm_open]);
+      if (!e164) return;
+      const [orders_body, gifts_body] = await Promise.all([
+        fetch(`/api/seller/orders?phone=${encodeURIComponent(e164)}`, {
+          credentials: 'same-origin',
+        }).then((r) => r.json()) as Promise<{ customer?: found_customer | null }>,
+        fetch(`/api/seller/gifts?phone=${encodeURIComponent(e164)}`, {
+          credentials: 'same-origin',
+        }).then((r) => r.json()) as Promise<{ gifts?: gift[] }>,
+      ]);
+      if (seq !== lookup_seq.current) return;
+      set_error(null);
+      set_customer(orders_body.customer || null);
+      set_confirm_student(false);
+      set_lookup_gifts(gifts_body.gifts || []);
+      set_active_pickup_code(null);
+    } catch {
+      if (seq !== lookup_seq.current) return;
+      set_customer(null);
+      set_confirm_student(false);
+      set_lookup_gifts([]);
+      set_active_pickup_code(null);
+    } finally {
+      if (seq === lookup_seq.current) set_lookup_busy(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!confirm_open) return;
+    const t = window.setTimeout(() => {
+      if (skip_phone_lookup.current) {
+        skip_phone_lookup.current = false;
+        return;
+      }
+      const code = parse_pickup_code_input(code_draft);
+      const e164 = phone_input_to_e164(phone_draft);
+      if (code && active_pickup_code === code && customer) return;
+      void lookup_guest({
+        code: code ? code_draft : null,
+        phone_e164: code ? null : e164,
+      });
+    }, 350);
+    return () => window.clearTimeout(t);
+  }, [phone_draft, code_draft, confirm_open, active_pickup_code, customer, lookup_guest]);
 
   const filtered = useMemo(() => {
     if (!category) return [];
@@ -692,7 +698,7 @@ export default function pos_panel({
               ? 'скидка 50% · спишется со склада'
               : cart.length
                 ? 'заказ уйдёт в работу'
-                : 'телефон и подарки'}
+                : 'код, телефон, бобаллы и подарки'}
           </p>
         </div>
 
@@ -799,6 +805,30 @@ export default function pos_panel({
 
           {!staff_drink ? (
             <>
+          {!cart.length && customer ? (
+            <div className="rounded-xl border border-neutral-200 bg-neutral-50 px-3 py-3">
+              <p className="text-sm font-semibold text-neutral-900">
+                {customer.name || 'гость'}
+              </p>
+              {customer.phone ? (
+                <p className="mt-0.5 text-xs text-neutral-500">
+                  {format_phone_display(customer.phone)}
+                </p>
+              ) : (
+                <p className="mt-0.5 text-xs text-neutral-400">телефон не указан в профиле</p>
+              )}
+              <p className="mt-2 text-sm tabular-nums text-neutral-800">
+                <span className="font-semibold text-accent">{customer.bonus_balance}</span>
+                <span className="text-neutral-500"> бобаллов</span>
+              </p>
+              {active_pickup_code ? (
+                <p className="mt-1 text-xs font-semibold text-accent">
+                  найден по коду {active_pickup_code}
+                </p>
+              ) : null}
+            </div>
+          ) : null}
+
           <label className="block">
             <span className="text-xs text-neutral-500">код гостя (из приложения)</span>
             <div className="mt-1 flex items-center gap-2">
@@ -1075,6 +1105,7 @@ export default function pos_panel({
       set_code_draft(code);
       set_active_pickup_code(null);
       set_error(null);
+      void lookup_guest({ code });
     },
   });
 
@@ -1172,7 +1203,7 @@ export default function pos_panel({
           onClick={() => open_confirm('gift')}
           className="shrink-0 py-1 text-center text-xs font-medium text-neutral-500"
         >
-          выдать подарок по телефону
+          выдать подарок — код или телефон
         </button>
         {confirm_modal}
         {scanner_modal}
