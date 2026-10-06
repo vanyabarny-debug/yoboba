@@ -11,6 +11,7 @@ import {
   seller_right_label,
   type seller_access,
 } from '@/lib/seller-access';
+import PosAccountCard from '@/components/admin/pos-account-card';
 
 function new_seller_id() {
   return `seller-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
@@ -155,6 +156,8 @@ export default function sellers_manage({ bare = false }: { bare?: boolean } = {}
           <h2 className="text-lg font-semibold text-neutral-900">{bare ? 'сотрудники' : 'персонал'}</h2>
           <p className="text-sm text-neutral-500">должность пишется своими словами · привязка к точкам</p>
         </div>
+
+        <PosAccountCard />
 
         <button
           type="button"

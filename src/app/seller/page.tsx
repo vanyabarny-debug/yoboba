@@ -3,7 +3,8 @@
 import { useCallback, useEffect, useRef, useState, createElement, type ReactNode } from 'react';
 import { create_client } from '@/lib/supabase/client';
 import { is_supabase_configured } from '@/lib/supabase/config';
-import { get_demo_user, clear_session } from '@/lib/demo-auth';
+import { get_demo_user, clear_session, create_demo_user } from '@/lib/demo-auth';
+import { capture_device_geo } from '@/lib/location';
 import { useRouter } from 'next/navigation';
 import { DEFAULT_PREP_MINUTES } from '@/lib/kitchen-queue';
 import { format_order_number, moscow_today_iso } from '@/lib/order-number';
@@ -20,6 +21,7 @@ import { use_page_swipe } from '@/lib/use-page-swipe';
 import type { cash_transaction, order, order_item, store_spot } from '@/lib/types';
 import cash_register_modal from '@/components/seller/cash-register-modal';
 import barista_analytics_panel from '@/components/seller/barista-analytics';
+import barista_login_sheet from '@/components/seller/barista-login-sheet';
 import pos_panel from '@/components/seller/pos-panel';
 import seller_inventory from '@/components/seller/seller-inventory';
 import drink_cook_guide from '@/components/seller/drink-cook-guide';
@@ -275,7 +277,10 @@ function shift_picker({
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/40 p-4">
       <div className="w-full max-w-md rounded-3xl bg-white p-6 shadow-xl">
         <h2 className="text-xl font-bold text-neutral-900">открыть смену</h2>
-        <p className="text-sm text-neutral-500 mt-1 mb-4">точка работы</p>
+        <p className="text-sm text-neutral-500 mt-1">точка работы</p>
+        <p className="text-xs text-neutral-400 mt-1 mb-4">
+          при открытии зафиксируем геолокацию устройства для админки
+        </p>
         <ul className="space-y-2">
           {spots.map((spot) => (
             <li key={spot.id}>
@@ -308,6 +313,10 @@ export default function seller_board() {
   const [shift, set_shift] = useState<seller_shift | null>(null);
   const [shift_spots, set_shift_spots] = useState<store_spot[]>([]);
   const [need_shift, set_need_shift] = useState(false);
+  const [need_barista, set_need_barista] = useState(false);
+  const [switch_barista_open, set_switch_barista_open] = useState(false);
+  const [barista_busy, set_barista_busy] = useState(false);
+  const [barista_error, set_barista_error] = useState('');
   const [shift_busy, set_shift_busy] = useState(false);
   const [prep_map, set_prep_map] = useState<Record<string, Record<string, prep_state>>>({});
   const [order_starts, set_order_starts] = useState<Record<string, number>>({});
@@ -353,7 +362,7 @@ export default function seller_board() {
   const { viewport_ref, page_style, width: board_w, height: board_h } = use_page_swipe({
     index: Math.max(0, tab_index),
     count: Math.max(1, panes.length),
-    enabled: !paying && !cook && !revising && !task_guide_id && !need_shift && !(tab === 'pos' && pos_depth) && !(tab === 'stock' && stock_depth),
+    enabled: !paying && !cook && !revising && !task_guide_id && !need_shift && !need_barista && !switch_barista_open && !(tab === 'pos' && pos_depth) && !(tab === 'stock' && stock_depth),
     on_index: (next) => set_tab(panes[next]?.id ?? panes[0]?.id ?? 'work'),
   });
 
@@ -630,36 +639,8 @@ export default function seller_board() {
     set_prep_map(load_prep_map());
     set_order_starts(load_order_starts());
     set_handed(load_handed(board_day()));
-    const user = get_demo_user();
-    if (user) {
-      set_seller_id(user.id);
-      set_seller_name(user.name);
-      seller_ref.current = { id: user.id, name: user.name };
-    }
-    void fetch('/api/auth/session', { credentials: 'same-origin' })
-      .then((res) => (res.ok ? res.json() : null))
-      .then((body: { seller_id?: string | null; name?: string | null } | null) => {
-        if (!body?.seller_id) return;
-        const name = body.name || 'бариста';
-        set_seller_id(body.seller_id);
-        set_seller_name(name);
-        seller_ref.current = { id: body.seller_id, name };
-      })
-      .catch(() => {});
 
-    const existing = load_shift();
-    if (existing) {
-      set_shift(existing);
-      set_need_shift(false);
-    } else {
-      let allowed_ids: string[] = [];
-      try {
-        allowed_ids = JSON.parse(
-          sessionStorage.getItem('yoboba_seller_spot_ids') || '[]'
-        ) as string[];
-      } catch {
-        allowed_ids = [];
-      }
+    function apply_spots(allowed_ids: string[]) {
       const all = get_active_spots();
       const available =
         allowed_ids.length > 0
@@ -668,8 +649,57 @@ export default function seller_board() {
             ? all
             : get_spots();
       set_shift_spots(available.length ? available : get_spots());
+    }
+
+    function begin_shift_flow(allowed_ids?: string[]) {
+      const existing = load_shift();
+      if (existing) {
+        set_shift(existing);
+        set_need_shift(false);
+        return;
+      }
+      let ids = allowed_ids;
+      if (!ids) {
+        try {
+          ids = JSON.parse(
+            sessionStorage.getItem('yoboba_seller_spot_ids') || '[]'
+          ) as string[];
+        } catch {
+          ids = [];
+        }
+      }
+      apply_spots(ids || []);
       set_need_shift(true);
     }
+
+    const user = get_demo_user();
+    if (user && user.id && user.id !== 'pos-terminal') {
+      set_seller_id(user.id);
+      set_seller_name(user.name);
+      seller_ref.current = { id: user.id, name: user.name };
+    }
+
+    void fetch('/api/auth/session', { credentials: 'same-origin' })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((body: { seller_id?: string | null; name?: string | null } | null) => {
+        if (!body?.seller_id) {
+          set_seller_id('');
+          set_seller_name('касса');
+          seller_ref.current = { id: '', name: 'касса' };
+          set_need_barista(true);
+          set_need_shift(false);
+          return;
+        }
+        const name = body.name || 'бариста';
+        set_seller_id(body.seller_id);
+        set_seller_name(name);
+        seller_ref.current = { id: body.seller_id, name };
+        set_need_barista(false);
+        begin_shift_flow();
+      })
+      .catch(() => {
+        begin_shift_flow();
+      });
 
     void load();
     const poll = window.setInterval(() => void load(), 4000);
@@ -1459,17 +1489,141 @@ export default function seller_board() {
     );
   }
 
+  async function close_local_shift() {
+    if (shift?.id) {
+      await fetch('/api/seller/shifts', {
+        method: 'PATCH',
+        headers: { 'content-type': 'application/json' },
+        credentials: 'same-origin',
+        body: JSON.stringify({ id: shift.id, action: 'close' }),
+      }).catch(() => {});
+    }
+    sessionStorage.removeItem(shift_key);
+    set_shift(null);
+    set_need_shift(false);
+  }
+
+  function start_shift_picker(spot_ids: string[]) {
+    sessionStorage.setItem('yoboba_seller_spot_ids', JSON.stringify(spot_ids || []));
+    const all = get_active_spots();
+    const available =
+      spot_ids.length > 0
+        ? all.filter((s) => spot_ids.includes(s.id))
+        : all.length
+          ? all
+          : get_spots();
+    set_shift_spots(available.length ? available : get_spots());
+    const existing = load_shift();
+    if (existing) {
+      set_shift(existing);
+      set_need_shift(false);
+    } else {
+      set_need_shift(true);
+    }
+  }
+
+  async function submit_barista_login(login: string, password: string) {
+    set_barista_busy(true);
+    set_barista_error('');
+    try {
+      const res = await fetch('/api/seller/switch', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        credentials: 'same-origin',
+        body: JSON.stringify({ login, password }),
+      });
+      const data = (await res.json().catch(() => ({}))) as {
+        seller_id?: string;
+        name?: string;
+        spot_ids?: string[];
+        error?: string;
+      };
+      if (!res.ok || !data.seller_id) {
+        set_barista_error(data.error || 'неверный логин или пароль');
+        return;
+      }
+      create_demo_user({
+        id: data.seller_id,
+        name: data.name || 'бариста',
+        role: 'seller',
+        force: true,
+      });
+      set_seller_id(data.seller_id);
+      set_seller_name(data.name || 'бариста');
+      seller_ref.current = { id: data.seller_id, name: data.name || 'бариста' };
+      set_need_barista(false);
+      set_switch_barista_open(false);
+      start_shift_picker(data.spot_ids || []);
+    } catch {
+      set_barista_error('ошибка сети');
+    } finally {
+      set_barista_busy(false);
+    }
+  }
+
+  async function lock_barista() {
+    await close_local_shift();
+    await fetch('/api/seller/switch', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      credentials: 'same-origin',
+      body: JSON.stringify({ action: 'lock' }),
+    }).catch(() => {});
+    create_demo_user({ id: 'pos-terminal', name: 'касса', role: 'seller', force: true });
+    set_seller_id('');
+    set_seller_name('касса');
+    seller_ref.current = { id: '', name: 'касса' };
+    set_need_barista(true);
+    set_switch_barista_open(false);
+    set_barista_error('');
+  }
+
   return (
     <div className="flex h-[calc(100dvh-var(--safe-top)-var(--safe-bottom))] min-h-0 flex-col bg-[#f0f1f4]">
+      {(need_barista || switch_barista_open) &&
+        createElement(barista_login_sheet, {
+          title: switch_barista_open ? 'сменить бариста' : 'кто на смене',
+          subtitle: switch_barista_open
+            ? 'войдите логином следующего бариста'
+            : 'общий вход в кассу уже есть · теперь ваш логин',
+          busy: barista_busy,
+          error: barista_error,
+          allow_cancel: switch_barista_open,
+          on_cancel: () => {
+            set_switch_barista_open(false);
+            set_barista_error('');
+            if (!need_barista && seller_id && !load_shift()) {
+              start_shift_picker(
+                (() => {
+                  try {
+                    return JSON.parse(
+                      sessionStorage.getItem('yoboba_seller_spot_ids') || '[]'
+                    ) as string[];
+                  } catch {
+                    return [];
+                  }
+                })()
+              );
+            }
+          },
+          on_submit: submit_barista_login,
+        })}
+
       {need_shift &&
+        !need_barista &&
         createElement(shift_picker, {
           spots: shift_spots,
           busy: shift_busy,
           on_pick: async (spot) => {
             set_shift_busy(true);
             try {
-              const sid = seller_id || seller_ref.current.id || 'seller';
+              const sid = seller_id || seller_ref.current.id;
               const sname = seller_name || seller_ref.current.name || 'бариста';
+              if (!sid) {
+                set_need_barista(true);
+                return;
+              }
+              const open_geo = await capture_device_geo();
               const res = await fetch('/api/seller/shifts', {
                 method: 'POST',
                 headers: { 'content-type': 'application/json' },
@@ -1480,6 +1634,7 @@ export default function seller_board() {
                   spot_city: spot.city,
                   seller_id: sid,
                   seller_name: sname,
+                  open_geo,
                 }),
               });
               const body = (await res.json().catch(() => null)) as {
@@ -1524,30 +1679,42 @@ export default function seller_board() {
           <div className="flex items-center justify-between gap-2">
             <div className="min-w-0 flex items-baseline gap-1.5">
               <span className="text-sm text-neutral-500 shrink-0">бариста</span>
-              <h1 className="text-sm font-bold text-accent truncate">{seller_name}</h1>
+              <h1 className="text-sm font-bold text-accent truncate">
+                {need_barista ? 'не выбран' : seller_name}
+              </h1>
               <span className="text-[10px] text-neutral-400 truncate">
                 {shift ? shift.address : 'смена закрыта'}
               </span>
             </div>
-            <button
-              type="button"
-              onClick={async () => {
-                if (shift?.id) {
-                  await fetch('/api/seller/shifts', {
-                    method: 'PATCH',
-                    headers: { 'content-type': 'application/json' },
-                    credentials: 'same-origin',
-                    body: JSON.stringify({ id: shift.id, action: 'close' }),
-                  }).catch(() => {});
-                }
-                sessionStorage.removeItem(shift_key);
-                await clear_session();
-                router.push('/admin/login');
-              }}
-              className="shrink-0 rounded-lg px-2 py-1 text-[10px] font-medium text-neutral-500"
-            >
-              выйти
-            </button>
+            <div className="flex items-center gap-1 shrink-0">
+              {!need_barista ? (
+                <button
+                  type="button"
+                  onClick={async () => {
+                    await close_local_shift();
+                    set_barista_error('');
+                    set_switch_barista_open(true);
+                  }}
+                  className="rounded-lg px-2 py-1 text-[10px] font-medium text-neutral-600"
+                >
+                  сменить
+                </button>
+              ) : null}
+              <button
+                type="button"
+                onClick={async () => {
+                  if (need_barista) {
+                    await clear_session();
+                    router.push('/admin/login');
+                    return;
+                  }
+                  await lock_barista();
+                }}
+                className="rounded-lg px-2 py-1 text-[10px] font-medium text-neutral-500"
+              >
+                {need_barista ? 'выйти' : 'заблокировать'}
+              </button>
+            </div>
           </div>
 
           <div className="mt-1.5 flex gap-0.5 overflow-x-auto rounded-xl bg-surface p-0.5">

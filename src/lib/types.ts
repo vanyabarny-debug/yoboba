@@ -203,6 +203,16 @@ export type day_summary = {
   cash_change: number;
 };
 
+/** гео при открытии смены (GPS устройства кассы) */
+export type shift_open_geo = {
+  lat: number | null;
+  lng: number | null;
+  accuracy: number | null;
+  /** адрес/город по reverse geocode, если удалось */
+  label: string | null;
+  status: 'ok' | 'denied' | 'unavailable' | 'timeout' | 'error';
+};
+
 /** открытая / закрытая смена кассира на точке */
 export type seller_shift_record = {
   id: string;
@@ -215,6 +225,8 @@ export type seller_shift_record = {
   closed_at: string | null;
   /** календарный день смены по Москве */
   shift_date: string;
+  /** фактическая геолокация в момент открытия смены */
+  open_geo?: shift_open_geo | null;
 };
 
 /** одно приготовление напитка баристой */

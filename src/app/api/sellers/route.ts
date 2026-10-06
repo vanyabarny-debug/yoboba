@@ -27,12 +27,26 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'заполните все поля' }, { status: 400 });
   }
 
+  const login = body.login.trim().toLowerCase();
   const sellers = await get_sellers();
   const duplicate = sellers.find(
-    (s) => s.login.toLowerCase() === body.login.trim().toLowerCase() && s.id !== body.id
+    (s) => s.login.toLowerCase() === login && s.id !== body.id
   );
   if (duplicate) {
     return NextResponse.json({ error: 'такой логин уже есть' }, { status: 409 });
+  }
+
+  const { read_admin_account_public } = await import('@/lib/admin-account-server');
+  const { read_pos_account_public } = await import('@/lib/pos-account-server');
+  const [admin, pos] = await Promise.all([
+    read_admin_account_public(),
+    read_pos_account_public(),
+  ]);
+  if (admin.login.toLowerCase() === login) {
+    return NextResponse.json({ error: 'такой логин уже у админа' }, { status: 409 });
+  }
+  if (pos.login.toLowerCase() === login) {
+    return NextResponse.json({ error: 'такой логин уже у общего входа в кассу' }, { status: 409 });
   }
 
   const record = await upsert_seller({

@@ -149,6 +149,12 @@ export async function update_admin_account(input: {
     return { ok: false as const, error: 'такой логин уже есть у сотрудника' };
   }
 
+  const { read_pos_account_public } = await import('@/lib/pos-account-server');
+  const pos = await read_pos_account_public();
+  if (pos.login.toLowerCase() === login) {
+    return { ok: false as const, error: 'такой логин уже у общего входа в кассу' };
+  }
+
   const next_password = input.new_password || input.current_password;
   if (next_password.length < 4) {
     return { ok: false as const, error: 'пароль короче 4 символов' };

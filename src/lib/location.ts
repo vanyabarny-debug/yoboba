@@ -114,3 +114,54 @@ export async function detect_location(): Promise<user_location> {
   set_location(location);
   return location;
 }
+
+export type device_geo_capture = {
+  lat: number | null;
+  lng: number | null;
+  accuracy: number | null;
+  label: string | null;
+  status: 'ok' | 'denied' | 'unavailable' | 'timeout' | 'error';
+};
+
+/** GPS устройства для контроля открытия смены */
+export async function capture_device_geo(): Promise<device_geo_capture> {
+  if (typeof navigator === 'undefined' || !('geolocation' in navigator)) {
+    return { lat: null, lng: null, accuracy: null, label: null, status: 'unavailable' };
+  }
+
+  try {
+    const pos = await new Promise<GeolocationPosition>((resolve, reject) => {
+      navigator.geolocation.getCurrentPosition(resolve, reject, {
+        enableHighAccuracy: true,
+        timeout: 12000,
+        maximumAge: 0,
+      });
+    });
+    const lat = pos.coords.latitude;
+    const lng = pos.coords.longitude;
+    const accuracy =
+      typeof pos.coords.accuracy === 'number' && Number.isFinite(pos.coords.accuracy)
+        ? pos.coords.accuracy
+        : null;
+    const city = await reverse_geocode(lat, lng);
+    const label = city
+      ? `${city} · ${lat.toFixed(5)}, ${lng.toFixed(5)}`
+      : `${lat.toFixed(5)}, ${lng.toFixed(5)}`;
+    return { lat, lng, accuracy, label, status: 'ok' };
+  } catch (err) {
+    const code =
+      err && typeof err === 'object' && 'code' in err
+        ? Number((err as GeolocationPositionError).code)
+        : NaN;
+    if (code === 1) {
+      return { lat: null, lng: null, accuracy: null, label: null, status: 'denied' };
+    }
+    if (code === 3) {
+      return { lat: null, lng: null, accuracy: null, label: null, status: 'timeout' };
+    }
+    if (code === 2) {
+      return { lat: null, lng: null, accuracy: null, label: null, status: 'unavailable' };
+    }
+    return { lat: null, lng: null, accuracy: null, label: null, status: 'error' };
+  }
+}

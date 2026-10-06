@@ -1,6 +1,6 @@
 import { read_json_store, write_json_store } from '@/lib/data-store';
 import { moscow_today_iso } from '@/lib/order-number';
-import type { seller_shift_record } from '@/lib/types';
+import type { seller_shift_record, shift_open_geo } from '@/lib/types';
 
 const store_key = 'seller-shifts';
 
@@ -33,6 +33,26 @@ export async function get_shift(id: string): Promise<seller_shift_record | null>
   return all.find((s) => s.id === id) || null;
 }
 
+function normalize_open_geo(raw: shift_open_geo | null | undefined): shift_open_geo | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const status = raw.status;
+  if (
+    status !== 'ok' &&
+    status !== 'denied' &&
+    status !== 'unavailable' &&
+    status !== 'timeout' &&
+    status !== 'error'
+  ) {
+    return null;
+  }
+  const lat = typeof raw.lat === 'number' && Number.isFinite(raw.lat) ? raw.lat : null;
+  const lng = typeof raw.lng === 'number' && Number.isFinite(raw.lng) ? raw.lng : null;
+  const accuracy =
+    typeof raw.accuracy === 'number' && Number.isFinite(raw.accuracy) ? raw.accuracy : null;
+  const label = typeof raw.label === 'string' ? raw.label.trim().slice(0, 200) || null : null;
+  return { lat, lng, accuracy, label, status };
+}
+
 /** открыть смену или продолжить незакрытую на этой точке у этого кассира */
 export async function open_or_resume_shift(input: {
   spot_id: string;
@@ -40,9 +60,11 @@ export async function open_or_resume_shift(input: {
   spot_city: string;
   seller_id: string;
   seller_name: string;
+  open_geo?: shift_open_geo | null;
 }): Promise<seller_shift_record> {
   const all = await load_shifts();
   const today = moscow_today_iso();
+  const open_geo = normalize_open_geo(input.open_geo);
   const existing_idx = all.findIndex(
     (s) =>
       !s.closed_at &&
@@ -51,7 +73,14 @@ export async function open_or_resume_shift(input: {
   );
   if (existing_idx >= 0) {
     const existing = all[existing_idx];
-    if (existing.shift_date === today) return existing;
+    if (existing.shift_date === today) {
+      if (!existing.open_geo && open_geo) {
+        all[existing_idx] = { ...existing, open_geo };
+        await save_shifts(all);
+        return all[existing_idx];
+      }
+      return existing;
+    }
     all[existing_idx] = { ...existing, closed_at: new Date().toISOString() };
   }
 
@@ -65,6 +94,7 @@ export async function open_or_resume_shift(input: {
     opened_at: new Date().toISOString(),
     closed_at: null,
     shift_date: moscow_today_iso(),
+    open_geo,
   };
   all.push(record);
   await save_shifts(all);

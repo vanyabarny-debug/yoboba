@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import type { cash_transaction, seller_shift_record } from '@/lib/types';
+import type { cash_transaction, seller_shift_record, shift_open_geo } from '@/lib/types';
 import { moscow_today_iso } from '@/lib/order-number';
 
 function format_dt(iso: string | null | undefined) {
@@ -12,6 +12,27 @@ function format_dt(iso: string | null | undefined) {
     hour: '2-digit',
     minute: '2-digit',
   });
+}
+
+function format_geo(geo: shift_open_geo | null | undefined) {
+  if (!geo) return 'гео не записано';
+  if (geo.status === 'ok' && geo.lat != null && geo.lng != null) {
+    const acc =
+      geo.accuracy != null && Number.isFinite(geo.accuracy)
+        ? ` · ±${Math.round(geo.accuracy)} м`
+        : '';
+    const label = geo.label ? geo.label : `${geo.lat.toFixed(5)}, ${geo.lng.toFixed(5)}`;
+    return `${label}${acc}`;
+  }
+  if (geo.status === 'denied') return 'гео отказано на устройстве';
+  if (geo.status === 'timeout') return 'гео не успело определиться';
+  if (geo.status === 'unavailable') return 'гео недоступно';
+  return 'гео ошибка';
+}
+
+function maps_url(geo: shift_open_geo | null | undefined) {
+  if (!geo || geo.status !== 'ok' || geo.lat == null || geo.lng == null) return null;
+  return `https://www.google.com/maps?q=${geo.lat},${geo.lng}`;
 }
 
 export default function shifts_manage() {
@@ -61,13 +82,14 @@ export default function shifts_manage() {
     : shifts;
 
   const selected_total = txs.reduce((s, t) => s + t.order_total, 0);
+  const selected_maps = maps_url(selected?.open_geo);
 
   return (
     <div className="space-y-5">
       <div>
         <h1 className="text-xl font-bold text-neutral-900">смены</h1>
         <p className="text-sm text-neutral-500 mt-0.5">
-          касса и операции по точкам и кассирам
+          касса, гео при открытии и операции по точкам
         </p>
       </div>
 
@@ -133,6 +155,15 @@ export default function shifts_manage() {
                           {format_dt(s.opened_at)}
                           {s.closed_at ? ` → ${format_dt(s.closed_at)}` : ' · открыта'}
                         </p>
+                        <p
+                          className={`text-[11px] mt-1 truncate ${
+                            s.open_geo?.status === 'ok'
+                              ? 'text-emerald-700'
+                              : 'text-amber-700'
+                          }`}
+                        >
+                          {format_geo(s.open_geo)}
+                        </p>
                       </div>
                       <span
                         className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-bold uppercase ${
@@ -157,9 +188,24 @@ export default function shifts_manage() {
               {selected ? `касса · ${selected.seller_name}` : 'касса смены'}
             </p>
             {selected ? (
-              <p className="text-xs text-neutral-500 mt-0.5">
-                итого {selected_total} ₽ · {txs.length} оп.
-              </p>
+              <>
+                <p className="text-xs text-neutral-500 mt-0.5">
+                  итого {selected_total} ₽ · {txs.length} оп.
+                </p>
+                <p className="text-xs text-neutral-600 mt-1.5">
+                  гео открытия: {format_geo(selected.open_geo)}
+                </p>
+                {selected_maps ? (
+                  <a
+                    href={selected_maps}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-block text-xs text-accent mt-1 hover:underline"
+                  >
+                    открыть на карте
+                  </a>
+                ) : null}
+              </>
             ) : (
               <p className="text-xs text-neutral-400 mt-0.5">выберите смену слева</p>
             )}

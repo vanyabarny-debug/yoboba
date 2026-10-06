@@ -96,9 +96,10 @@ export default function admin_login_page() {
 
       const data = (await res.json().catch(() => ({}))) as {
         role?: string;
-        seller_id?: string;
-        name?: string;
+        seller_id?: string | null;
+        name?: string | null;
         spot_ids?: string[];
+        pos?: boolean;
         error?: string;
       };
 
@@ -109,12 +110,21 @@ export default function admin_login_page() {
       }
 
       if (data.role === 'seller') {
-        create_demo_user({
-          id: data.seller_id || `seller-${Date.now()}`,
-          name: data.name || 'бариста',
-          role: 'seller',
-          force: true,
-        });
+        if (data.seller_id) {
+          create_demo_user({
+            id: data.seller_id,
+            name: data.name || 'бариста',
+            role: 'seller',
+            force: true,
+          });
+        } else {
+          create_demo_user({
+            id: 'pos-terminal',
+            name: 'касса',
+            role: 'seller',
+            force: true,
+          });
+        }
         if (typeof window !== 'undefined') {
           sessionStorage.setItem(
             'yoboba_seller_spot_ids',
@@ -153,7 +163,9 @@ export default function admin_login_page() {
             >
               yoSquad
             </h1>
-            <p className="text-sm text-neutral-500 mt-2">вход для команды точки</p>
+            <p className="text-sm text-neutral-500 mt-2">
+              админ или общий вход кассы · бариста — уже внутри
+            </p>
           </div>
 
           <form

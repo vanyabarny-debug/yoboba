@@ -7,6 +7,7 @@ import {
   list_shifts,
   open_or_resume_shift,
 } from '@/lib/shifts-server';
+import type { shift_open_geo } from '@/lib/types';
 
 async function staff_role() {
   const store = await cookies();
@@ -32,10 +33,9 @@ export async function GET(request: Request) {
   const shift_date = url.searchParams.get('shift_date') || undefined;
   const open_only = url.searchParams.get('open_only') === '1';
 
-  // продавец видит свои; админ — все (или фильтр)
   const shifts = await list_shifts({
     spot_id,
-    seller_id: role === 'seller' && seller_id ? seller_id : role === 'admin' ? seller_id : seller_id,
+    seller_id,
     shift_date,
     open_only,
   });
@@ -55,6 +55,7 @@ export async function POST(request: Request) {
     spot_city?: string;
     seller_id?: string;
     seller_name?: string;
+    open_geo?: shift_open_geo | null;
   };
 
   if (!body.spot_id || !body.seller_id || !body.seller_name) {
@@ -67,6 +68,7 @@ export async function POST(request: Request) {
     spot_city: body.spot_city || '',
     seller_id: body.seller_id,
     seller_name: body.seller_name,
+    open_geo: body.open_geo ?? null,
   });
 
   return NextResponse.json({ shift });

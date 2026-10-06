@@ -9,6 +9,7 @@ import {
   type user_role,
 } from '@/lib/session';
 import { record_admin_login, verify_admin_login } from '@/lib/admin-account-server';
+import { verify_pos_login } from '@/lib/pos-account-server';
 import { find_seller_by_credentials } from '@/lib/sellers-server';
 
 const allowed_roles: user_role[] = ['guest', 'user', 'admin', 'barista', 'seller'];
@@ -86,11 +87,28 @@ export async function POST(request: Request) {
       return res;
     }
 
+    // общий вход в кассу: без конкретного бариста
+    if (await verify_pos_login(login, password)) {
+      const res = NextResponse.json({
+        ok: true,
+        role: 'seller' as user_role,
+        pos: true,
+        seller_id: null,
+        name: null,
+        spot_ids: [] as string[],
+      });
+      res.cookies.set(session_cookie, 'seller', cookie_opts);
+      res.cookies.set(seller_id_cookie, '', { ...cookie_opts, maxAge: 0 });
+      res.cookies.set(seller_name_cookie, '', { ...cookie_opts, maxAge: 0 });
+      return res;
+    }
+
     const seller = await find_seller_by_credentials(login, password);
     if (seller) {
       const res = NextResponse.json({
         ok: true,
         role: 'seller' as user_role,
+        pos: true,
         seller_id: seller.id,
         name: seller.name,
         spot_ids: seller.spot_ids ?? [],
