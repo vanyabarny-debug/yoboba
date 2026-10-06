@@ -3,6 +3,49 @@
 import { useState } from 'react';
 import { opening_progress, is_opening_complete, type opening_task } from '@/lib/opening-checklist';
 
+// Звук при отметке пункта
+function play_check_sound() {
+  const audio_ctx = new AudioContext();
+  const oscillator = audio_ctx.createOscillator();
+  const gain = audio_ctx.createGain();
+  
+  oscillator.connect(gain);
+  gain.connect(audio_ctx.destination);
+  
+  oscillator.frequency.value = 800;
+  oscillator.type = 'sine';
+  
+  gain.gain.setValueAtTime(0.3, audio_ctx.currentTime);
+  gain.gain.exponentialRampToValueAtTime(0.01, audio_ctx.currentTime + 0.1);
+  
+  oscillator.start(audio_ctx.currentTime);
+  oscillator.stop(audio_ctx.currentTime + 0.1);
+}
+
+// Звук при завершении всех пунктов
+function play_complete_sound() {
+  const audio_ctx = new AudioContext();
+  const notes = [523.25, 659.25, 783.99]; // C5, E5, G5
+  
+  notes.forEach((freq, i) => {
+    const oscillator = audio_ctx.createOscillator();
+    const gain = audio_ctx.createGain();
+    
+    oscillator.connect(gain);
+    gain.connect(audio_ctx.destination);
+    
+    oscillator.frequency.value = freq;
+    oscillator.type = 'sine';
+    
+    const start_time = audio_ctx.currentTime + i * 0.15;
+    gain.gain.setValueAtTime(0.2, start_time);
+    gain.gain.exponentialRampToValueAtTime(0.01, start_time + 0.3);
+    
+    oscillator.start(start_time);
+    oscillator.stop(start_time + 0.3);
+  });
+}
+
 export default function OpeningTaskGuide({
   task,
   seller_id,
@@ -58,8 +101,18 @@ export default function OpeningTaskGuide({
     }
   }
 
-  async function toggle_item(item_id: string, current_state: boolean) {
+  async function toggle_item(item_id: string, current_state: boolean, item_order: number) {
     if (busy || task.completed_at) return;
+
+    // Проверить что все предыдущие пункты выполнены
+    const previous_items = task.items.filter((i) => i.item_order < item_order);
+    const all_previous_checked = previous_items.every((i) => i.is_checked);
+    
+    if (!all_previous_checked && !current_state) {
+      set_error('выполняйте пункты по порядку');
+      setTimeout(() => set_error(''), 2000);
+      return;
+    }
 
     // Начать задачу автоматически при первом клике
     if (!is_started) {
@@ -92,11 +145,17 @@ export default function OpeningTaskGuide({
       const data = (await res.json()) as { task: opening_task };
       on_update(data.task);
 
-      // Если задача завершена — закрыть через секунду
+      // Воспроизвести звук
+      if (!current_state) {
+        play_check_sound();
+      }
+
+      // Если задача завершена — воспроизвести звук завершения и закрыть
       if (is_opening_complete(data.task)) {
+        play_complete_sound();
         setTimeout(() => {
           on_close();
-        }, 1000);
+        }, 1500);
       }
     } catch {
       set_error('не удалось обновить');
@@ -153,51 +212,71 @@ export default function OpeningTaskGuide({
 
           {/* Список пунктов */}
           <ul className="mt-6 space-y-3">
-            {task.items.map((item, index) => (
-              <li key={item.id}>
-                <button
-                  type="button"
-                  onClick={() => toggle_item(item.id, item.is_checked)}
-                  disabled={busy || task.completed_at != null}
-                  className={`flex w-full items-start gap-3 rounded-2xl border-2 p-4 text-left transition ${
-                    item.is_checked
-                      ? 'border-green-500 bg-green-50'
-                      : 'border-neutral-200 bg-white hover:border-neutral-300'
-                  } disabled:opacity-50`}
-                >
-                  {/* Номер / Галочка */}
-                  <div
-                    className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-sm font-bold ${
+            {task.items.map((item, index) => {
+              // Проверить доступность пункта (все предыдущие выполнены)
+              const previous_items = task.items.filter((i) => i.item_order < item.item_order);
+              const all_previous_checked = previous_items.every((i) => i.is_checked);
+              const is_available = item.is_checked || all_previous_checked;
+              
+              return (
+                <li key={item.id}>
+                  <button
+                    type="button"
+                    onClick={() => toggle_item(item.id, item.is_checked, item.item_order)}
+                    disabled={busy || task.completed_at != null || !is_available}
+                    className={`flex w-full items-start gap-3 rounded-2xl border-2 p-4 text-left transition ${
                       item.is_checked
-                        ? 'bg-green-500 text-white'
-                        : 'bg-neutral-100 text-neutral-500'
-                    }`}
+                        ? 'border-green-500 bg-green-50'
+                        : is_available
+                        ? 'border-neutral-200 bg-white hover:border-neutral-300 hover:shadow-sm'
+                        : 'border-neutral-100 bg-neutral-50'
+                    } disabled:cursor-not-allowed`}
                   >
-                    {item.is_checked ? '✓' : index + 1}
-                  </div>
-
-                  {/* Текст */}
-                  <div className="min-w-0 flex-1 pt-0.5">
-                    <p
-                      className={`font-medium leading-snug ${
-                        item.is_checked ? 'text-green-900' : 'text-neutral-900'
+                    {/* Номер / Галочка */}
+                    <div
+                      className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-sm font-bold ${
+                        item.is_checked
+                          ? 'bg-green-500 text-white'
+                          : is_available
+                          ? 'bg-accent text-white'
+                          : 'bg-neutral-200 text-neutral-400'
                       }`}
                     >
-                      {item.item_text}
-                    </p>
-                    {item.checked_at && item.checked_by ? (
-                      <p className="mt-1 text-xs text-neutral-500">
-                        {item.checked_by} ·{' '}
-                        {new Date(item.checked_at).toLocaleTimeString('ru-RU', {
-                          hour: '2-digit',
-                          minute: '2-digit',
-                        })}
+                      {item.is_checked ? '✓' : index + 1}
+                    </div>
+
+                    {/* Текст */}
+                    <div className="min-w-0 flex-1 pt-0.5">
+                      <p
+                        className={`font-medium leading-snug ${
+                          item.is_checked
+                            ? 'text-green-900'
+                            : is_available
+                            ? 'text-neutral-900'
+                            : 'text-neutral-400'
+                        }`}
+                      >
+                        {item.item_text}
                       </p>
-                    ) : null}
-                  </div>
-                </button>
-              </li>
-            ))}
+                      {item.checked_at && item.checked_by ? (
+                        <p className="mt-1 text-xs text-neutral-500">
+                          {item.checked_by} ·{' '}
+                          {new Date(item.checked_at).toLocaleTimeString('ru-RU', {
+                            hour: '2-digit',
+                            minute: '2-digit',
+                          })}
+                        </p>
+                      ) : null}
+                      {!is_available && !item.is_checked ? (
+                        <p className="mt-1 text-xs text-neutral-400">
+                          выполните предыдущие пункты
+                        </p>
+                      ) : null}
+                    </div>
+                  </button>
+                </li>
+              );
+            })}
           </ul>
 
           {/* Ошибка */}
