@@ -536,7 +536,7 @@ export function merge_menu_item_catalog(items: menu_item[], removed_ids: Iterabl
     });
 }
 
-function green_jasmine_photo(url?: string) {
+function green_jasmine_photo(url?: string | null) {
   const bare = (url || '').split('?')[0];
   if (!bare || bare.endsWith('/jasmine-green-led.png')) return local('jasmine-green');
   return url || local('jasmine-green');
