@@ -176,19 +176,23 @@ export async function ensure_pickup_code(input: {
 
 async function resolve_user_id_via_table(code: string): Promise<string | null> {
   const admin = create_service_client();
+  // не фильтруем expires_at здесь: TTL проверяем мягко в diagnose,
+  // иначе рассинхрон часов / старый QR даёт «гость не найден»
   const { data, error } = await admin
     .from('pickup_codes')
-    .select('user_id')
+    .select('user_id, expires_at, used_at')
     .eq('code', code)
     .is('used_at', null)
-    .gt('expires_at', new Date().toISOString())
+    .order('created_at', { ascending: false })
+    .limit(1)
     .maybeSingle();
 
   if (error) {
     console.error('[pickup] resolve table failed:', error.message, error.code);
     return null;
   }
-  return data?.user_id ? String(data.user_id) : null;
+  if (!data?.user_id) return null;
+  return String(data.user_id);
 }
 
 async function diagnose_code_miss(code: string): Promise<string> {
@@ -239,20 +243,19 @@ export async function resolve_pickup_code(
   }
 
   const admin = create_service_client();
-  let user_id: string | null = null;
-
-  const { data: rpc_uid, error: rpc_err } = await admin.rpc('resolve_pickup_code', {
-    p_code: code,
-  });
-
-  if (rpc_err) {
-    console.error('[pickup] resolve rpc failed:', rpc_err.message);
-  } else if (rpc_uid) {
-    user_id = String(rpc_uid);
-  }
+  // сначала таблица (без жёсткого TTL) — RPC мог отсечь «просроченный» код
+  let user_id: string | null = await resolve_user_id_via_table(code);
 
   if (!user_id) {
-    user_id = await resolve_user_id_via_table(code);
+    const { data: rpc_uid, error: rpc_err } = await admin.rpc('resolve_pickup_code', {
+      p_code: code,
+    });
+
+    if (rpc_err) {
+      console.error('[pickup] resolve rpc failed:', rpc_err.message);
+    } else if (rpc_uid) {
+      user_id = String(rpc_uid);
+    }
   }
 
   if (!user_id) {

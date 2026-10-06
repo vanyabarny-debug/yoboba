@@ -283,12 +283,13 @@ export default function pos_panel({
       set_confirm_student(false);
       set_lookup_gifts(gifts_body.gifts || []);
       set_active_pickup_code(null);
-    } catch {
+    } catch (e) {
       if (seq !== lookup_seq.current) return;
       set_customer(null);
       set_confirm_student(false);
       set_lookup_gifts([]);
       set_active_pickup_code(null);
+      set_error(e instanceof Error ? e.message : 'ошибка поиска гостя');
     } finally {
       if (seq === lookup_seq.current) set_lookup_busy(false);
     }
