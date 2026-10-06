@@ -324,6 +324,7 @@ export async function upsert_vk_supabase_user(input: {
   };
 
   if (!user_id) {
+    // Попробовать создать нового пользователя
     const { data, error } = await admin.auth.admin.createUser({
       email,
       email_confirm: true,
@@ -332,19 +333,33 @@ export async function upsert_vk_supabase_user(input: {
     });
 
     if (error || !data.user) {
-      const existing =
+      // Если ошибка - возможно пользователь уже существует
+      // Ищем снова более тщательно
+      let existing =
         (await find_user_id_by_email(email)) ||
         (await find_user_id_by_email(vk_auth_email(vk_id)));
 
+      // Если по email не нашли, попробуем по телефону
+      if (!existing && phone) {
+        const { data: phone_users } = await admin.auth.admin.listUsers();
+        const phone_match = phone_users.users?.find(
+          (u) => u.phone === phone || u.user_metadata?.phone === phone
+        );
+        if (phone_match) existing = phone_match.id;
+      }
+
       if (existing) {
+        // Нашли существующего пользователя - обновляем его данные и связываем с VK
         user_id = existing;
         await admin.auth.admin.updateUserById(user_id, {
+          email_confirm: true,
           user_metadata: metadata,
           ...(phone ? { phone, phone_confirm: true } : {}),
         });
-      } else if (phone) {
+      } else {
+        // Действительно не можем создать - последняя попытка без телефона
         const retry = await admin.auth.admin.createUser({
-          email,
+          email: vk_auth_email(vk_id), // используем безопасный email
           email_confirm: true,
           user_metadata: metadata,
         });
@@ -352,14 +367,22 @@ export async function upsert_vk_supabase_user(input: {
           throw new Error(retry.error?.message || error?.message || 'не удалось создать пользователя');
         }
         user_id = retry.data.user.id;
-      } else {
-        throw new Error(error?.message || 'не удалось создать пользователя');
+        
+        // Если есть телефон, обновляем его отдельно
+        if (phone) {
+          await admin.auth.admin.updateUserById(user_id, {
+            phone,
+            phone_confirm: true,
+          });
+        }
       }
     } else {
       user_id = data.user.id;
     }
   } else {
+    // Пользователь найден - обновляем его данные и связываем с VK
     await admin.auth.admin.updateUserById(user_id, {
+      email_confirm: true,
       user_metadata: metadata,
       ...(phone ? { phone, phone_confirm: true } : {}),
     });
