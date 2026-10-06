@@ -38,34 +38,30 @@ export default function pickup_code_sheet({
   const [error, set_error] = useState('');
 
   useEffect(() => {
-    if (!open) return;
+    if (!open || !is_logged_in) return;
     set_balance(bonus);
-    if (!is_logged_in) {
-      set_code(null);
-      set_qr_url(null);
-      set_expires_at(null);
-      set_error('');
-      return;
-    }
 
     let cancelled = false;
-    set_busy(true);
-    set_error('');
+    let refresh_timer: number | null = null;
 
-    const params = new URLSearchParams();
-    if (demo_mode && user_id) {
-      params.set('demo_user_id', user_id);
-      if (user_name) params.set('name', user_name);
-      if (user_phone) params.set('phone', user_phone);
-      params.set('bonus', String(bonus));
-    }
+    async function load_code() {
+      set_busy(true);
+      set_error('');
 
-    const qs = params.toString();
-    void fetch(`/api/me/pickup-code${qs ? `?${qs}` : ''}`, {
-      credentials: 'same-origin',
-      cache: 'no-store',
-    })
-      .then(async (r) => {
+      const params = new URLSearchParams();
+      if (demo_mode && user_id) {
+        params.set('demo_user_id', user_id);
+        if (user_name) params.set('name', user_name);
+        if (user_phone) params.set('phone', user_phone);
+        params.set('bonus', String(bonus));
+      }
+
+      const qs = params.toString();
+      try {
+        const r = await fetch(`/api/me/pickup-code${qs ? `?${qs}` : ''}`, {
+          credentials: 'same-origin',
+          cache: 'no-store',
+        });
         const body = (await r.json()) as {
           code?: string;
           expires_at?: string;
@@ -84,20 +80,31 @@ export default function pickup_code_sheet({
           color: { dark: '#002d7a', light: '#ffffff' },
         });
         if (!cancelled) set_qr_url(data_url);
-      })
-      .catch((e) => {
+
+        if (body.expires_at && !cancelled) {
+          const ms = new Date(body.expires_at).getTime() - Date.now() - 5_000;
+          if (ms > 0) {
+            refresh_timer = window.setTimeout(() => {
+              void load_code();
+            }, ms);
+          }
+        }
+      } catch (e) {
         if (!cancelled) {
           set_error(e instanceof Error ? e.message : 'ошибка');
           set_code(null);
           set_qr_url(null);
         }
-      })
-      .finally(() => {
+      } finally {
         if (!cancelled) set_busy(false);
-      });
+      }
+    }
+
+    void load_code();
 
     return () => {
       cancelled = true;
+      if (refresh_timer) window.clearTimeout(refresh_timer);
     };
   }, [open, is_logged_in, demo_mode, user_id, user_name, user_phone, bonus]);
 

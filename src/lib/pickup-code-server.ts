@@ -191,6 +191,30 @@ async function resolve_user_id_via_table(code: string): Promise<string | null> {
   return data?.user_id ? String(data.user_id) : null;
 }
 
+async function diagnose_code_miss(code: string): Promise<string> {
+  const admin = create_service_client();
+  const { data, error } = await admin
+    .from('pickup_codes')
+    .select('user_id, expires_at, used_at')
+    .eq('code', code)
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (error) {
+    console.error('[pickup] diagnose failed:', error.message);
+    return 'код не найден — проверьте SQL pickup_codes или обновите «мой код»';
+  }
+  if (!data) return 'код не найден — пусть гость откроет «мой код» заново';
+  if (data.used_at) {
+    return 'код уже использован — пусть гость обновит «мой код»';
+  }
+  if (new Date(data.expires_at).getTime() <= Date.now()) {
+    return 'код просрочен — пусть гость обновит «мой код»';
+  }
+  return 'код не найден или устарел — пусть гость обновит «мой код»';
+}
+
 export async function resolve_pickup_code(
   raw: string | null | undefined
 ): Promise<resolved_pickup | null> {
@@ -232,7 +256,8 @@ export async function resolve_pickup_code(
   }
 
   if (!user_id) {
-    console.error('[pickup] resolve miss code=', code);
+    const reason = await diagnose_code_miss(code);
+    console.error('[pickup] resolve miss code=', code, reason);
     return null;
   }
 
@@ -266,6 +291,16 @@ export async function resolve_pickup_code(
     phone: profile.phone ?? null,
     bonus_balance: profile.bonus_balance ?? 0,
   };
+}
+
+/** причина, почему код не резолвится — для ответа кассе */
+export async function pickup_code_miss_reason(
+  raw: string | null | undefined
+): Promise<string> {
+  const code = parse_pickup_code_input(raw);
+  if (!code) return 'код должен быть из 6 цифр';
+  if (!is_supabase_configured()) return 'код не найден или устарел';
+  return diagnose_code_miss(code);
 }
 
 export async function invalidate_pickup_code(input: {

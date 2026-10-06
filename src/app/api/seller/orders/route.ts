@@ -226,11 +226,13 @@ export async function GET(request: Request) {
     }
     const resolved = await resolve_pickup_code(code);
     if (!resolved) {
-      console.error('[pickup] seller lookup miss', code);
+      const { pickup_code_miss_reason } = await import('@/lib/pickup-code-server');
+      const reason = await pickup_code_miss_reason(code);
+      console.error('[pickup] seller lookup miss', code, reason);
       return NextResponse.json({
         customer: null,
         code,
-        error: 'код не найден или устарел — гость пусть обновит «мой код» в приложении',
+        error: reason,
       });
     }
     console.info(
@@ -630,11 +632,13 @@ export async function POST(request: Request) {
         kind: staff ? 'staff' : 'sale',
       });
 
-      if (user_id && !staff) {
+      // сжигаем код только если заказ привязали по pickup-коду
+      // (заказ по телефону раньше убивал QR на экране гостя)
+      if (pickup_code_used && !staff) {
         const { invalidate_pickup_code } = await import('@/lib/pickup-code-server');
         await invalidate_pickup_code({
-          user_id,
           code: pickup_code_used,
+          user_id: user_id || pickup_user_id,
         });
       }
 
@@ -704,11 +708,11 @@ export async function POST(request: Request) {
     kind: staff ? 'staff' : 'sale',
   });
 
-  if ((user_id || pickup_user_id || pickup_code_used) && !staff) {
+  if (pickup_code_used && !staff) {
     const { invalidate_pickup_code } = await import('@/lib/pickup-code-server');
     await invalidate_pickup_code({
-      user_id: user_id || pickup_user_id,
       code: pickup_code_used,
+      user_id: user_id || pickup_user_id,
     });
   }
 

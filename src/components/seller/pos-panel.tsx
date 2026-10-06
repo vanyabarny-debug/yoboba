@@ -227,25 +227,32 @@ export default function pos_panel({
     set_lookup_busy(true);
     try {
       if (code) {
-        const [orders_body, gifts_body] = await Promise.all([
-          fetch(`/api/seller/orders?code=${encodeURIComponent(code)}`, {
-            credentials: 'same-origin',
-          }).then((r) => r.json()) as Promise<{
-            customer?: found_customer | null;
-            phone?: string | null;
-            error?: string;
-          }>,
-          fetch(`/api/seller/gifts?code=${encodeURIComponent(code)}`, {
-            credentials: 'same-origin',
-          }).then((r) => r.json()) as Promise<{ gifts?: gift[]; error?: string }>,
-        ]);
+        const orders_res = await fetch(
+          `/api/seller/orders?code=${encodeURIComponent(code)}`,
+          { credentials: 'same-origin' }
+        );
+        const orders_body = (await orders_res.json()) as {
+          customer?: found_customer | null;
+          phone?: string | null;
+          error?: string;
+        };
+        const gifts_body = (await fetch(
+          `/api/seller/gifts?code=${encodeURIComponent(code)}`,
+          { credentials: 'same-origin' }
+        ).then((r) => r.json())) as { gifts?: gift[]; error?: string };
+
         if (seq !== lookup_seq.current) return;
-        if (!orders_body.customer) {
+        if (!orders_res.ok || !orders_body.customer) {
           set_customer(null);
           set_confirm_student(false);
           set_lookup_gifts([]);
           set_active_pickup_code(null);
-          if (orders_body.error) set_error(orders_body.error);
+          set_error(
+            orders_body.error ||
+              (orders_res.status === 403
+                ? 'нет доступа кассира'
+                : 'гость по коду не найден — пусть обновит «мой код»')
+          );
           return;
         }
         set_error(null);
