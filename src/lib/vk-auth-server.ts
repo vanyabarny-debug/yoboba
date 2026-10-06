@@ -221,30 +221,30 @@ export async function fetch_vk_user(
   };
 }
 
-async function find_user_id_by_email(email: string) {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  if (!url || !key) return null;
+/**
+ * Поиск пользователя в GoTrue по vk_id (в метаданных) или по одному из email.
+ * GoTrue admin API не умеет фильтровать по email, поэтому перебираем страницами.
+ */
+export async function find_vk_user_id(opts: { vk_id?: string | null; emails: string[] }) {
+  const admin = service_client();
+  const emails = opts.emails.map((e) => e.trim().toLowerCase()).filter(Boolean);
+  const per_page = 1000;
 
-  // GoTrue admin filter by email — быстрее listUsers
-  const res = await fetch(
-    `${url.replace(/\/$/, '')}/auth/v1/admin/users?email=${encodeURIComponent(email)}`,
-    {
-      headers: {
-        Authorization: `Bearer ${key}`,
-        apikey: key,
-      },
-    }
-  );
-  if (!res.ok) return null;
+  for (let page = 1; page < 100; page++) {
+    const { data, error } = await admin.auth.admin.listUsers({ page, perPage: per_page });
+    if (error || !data?.users?.length) break;
 
-  const json = (await res.json()) as { users?: { id: string; email?: string }[] };
-  const match = json.users?.find((u) => u.email?.toLowerCase() === email.toLowerCase());
-  return match?.id ?? null;
+    const match = data.users.find(
+      (u) =>
+        (opts.vk_id && String(u.user_metadata?.vk_id ?? '') === String(opts.vk_id)) ||
+        (u.email && emails.includes(u.email.toLowerCase()))
+    );
+    if (match) return match.id;
+
+    if (data.users.length < per_page) break;
+  }
+  return null;
 }
-
-// Экспортируем для использования в callback
-export const find_user_id_by_email_public = find_user_id_by_email;
 
 async function merge_cart(from_id: string, to_id: string) {
   if (from_id === to_id) return;
@@ -305,22 +305,7 @@ export async function upsert_vk_supabase_user(input: {
   const email = input.vk_user.email?.trim() || vk_auth_email(vk_id);
   const name = display_name(input.vk_user);
 
-  // Сначала ищем по VK ID в метаданных - самый надежный способ
-  const { data: all_users } = await admin.auth.admin.listUsers();
-  const existing_by_vk = all_users.users?.find(
-    (u) => u.user_metadata?.vk_id === vk_id
-  );
-  
-  let user_id = existing_by_vk?.id || null;
-  
-  // Если не нашли по vk_id, ищем по email
-  if (!user_id) {
-    user_id = await find_user_id_by_email(email);
-  }
-  if (!user_id && email !== vk_auth_email(vk_id)) {
-    user_id = await find_user_id_by_email(vk_auth_email(vk_id));
-  }
-  
+  const safe_email = vk_auth_email(vk_id);
   const phone = normalize_phone(input.vk_user.phone);
   const metadata = {
     vk_id,
@@ -338,8 +323,17 @@ export async function upsert_vk_supabase_user(input: {
         : null,
   };
 
-  if (!user_id) {
-    // Попробовать создать нового пользователя
+  // Один поиск: по vk_id в метаданных или по любому из возможных email
+  let user_id = await find_vk_user_id({ vk_id, emails: [email, safe_email] });
+  console.log('[vk-auth] lookup', { vk_id, email, safe_email, found: user_id });
+
+  if (user_id) {
+    const { error } = await admin.auth.admin.updateUserById(user_id, {
+      user_metadata: metadata,
+      ...(phone ? { phone, phone_confirm: true } : {}),
+    });
+    if (error) console.warn('[vk-auth] update metadata failed', error.message);
+  } else {
     const { data, error } = await admin.auth.admin.createUser({
       email,
       email_confirm: true,
@@ -348,74 +342,22 @@ export async function upsert_vk_supabase_user(input: {
     });
 
     if (error || !data.user) {
-      // Если ошибка - возможно пользователь уже существует
-      // Ищем снова более тщательно
-      let existing =
-        (await find_user_id_by_email(email)) ||
-        (await find_user_id_by_email(vk_auth_email(vk_id)));
-
-      // Если по email не нашли, попробуем по телефону
-      if (!existing && phone) {
-        const { data: phone_users } = await admin.auth.admin.listUsers();
-        const phone_match = phone_users.users?.find(
-          (u) => u.phone === phone || u.user_metadata?.phone === phone
-        );
-        if (phone_match) existing = phone_match.id;
-      }
-
-      if (existing) {
-        // Нашли существующего пользователя - обновляем его данные и связываем с VK
-        user_id = existing;
-        console.log('[vk-auth] found existing user, updating metadata', { user_id, vk_id });
-        await admin.auth.admin.updateUserById(user_id, {
-          email_confirm: true,
-          user_metadata: metadata,
-          ...(phone ? { phone, phone_confirm: true } : {}),
-        });
-      } else {
-        // Действительно не можем создать - последняя попытка без телефона
-        console.log('[vk-auth] creating user with safe email', { vk_id });
+      // Гонка или телефон занят: ещё раз ищем, иначе создаём на безопасный email без телефона
+      user_id = await find_vk_user_id({ vk_id, emails: [email, safe_email] });
+      if (!user_id) {
         const retry = await admin.auth.admin.createUser({
-          email: vk_auth_email(vk_id), // используем безопасный email
+          email: safe_email,
           email_confirm: true,
           user_metadata: metadata,
         });
         if (retry.error || !retry.data.user) {
-          // Если и это не сработало, возможно пользователь с безопасным email тоже есть
-          const safe_email_user = await find_user_id_by_email(vk_auth_email(vk_id));
-          if (safe_email_user) {
-            console.log('[vk-auth] found user with safe email', { user_id: safe_email_user });
-            user_id = safe_email_user;
-            await admin.auth.admin.updateUserById(user_id, {
-              email_confirm: true,
-              user_metadata: metadata,
-              ...(phone ? { phone, phone_confirm: true } : {}),
-            });
-          } else {
-            throw new Error(retry.error?.message || error?.message || 'не удалось создать пользователя');
-          }
-        } else {
-          user_id = retry.data.user.id;
-          
-          // Если есть телефон, обновляем его отдельно
-          if (phone) {
-            await admin.auth.admin.updateUserById(user_id, {
-              phone,
-              phone_confirm: true,
-            });
-          }
+          throw new Error(retry.error?.message || error?.message || 'не удалось создать пользователя');
         }
+        user_id = retry.data.user.id;
       }
     } else {
       user_id = data.user.id;
     }
-  } else {
-    // Пользователь найден - обновляем его данные и связываем с VK
-    await admin.auth.admin.updateUserById(user_id, {
-      email_confirm: true,
-      user_metadata: metadata,
-      ...(phone ? { phone, phone_confirm: true } : {}),
-    });
   }
 
   const { random_avatar_emoji } = await import('@/lib/avatar-emoji');

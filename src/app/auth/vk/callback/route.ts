@@ -7,7 +7,6 @@ import {
   fetch_vk_user,
   issue_vk_one_time_password,
   upsert_vk_supabase_user,
-  find_user_id_by_email_public,
 } from '@/lib/vk-auth-server';
 import { save_pending_vk_session } from '@/lib/vk-pending-session';
 
@@ -125,46 +124,11 @@ export async function GET(request: NextRequest) {
       phone: vk_user.phone,
     });
     
-    let account;
-    try {
-      account = await upsert_vk_supabase_user({
-        vk_user,
-        anonymous_user_id: null,
-      });
-      console.log('[vk/callback] upsert success', { user_id: account.user_id });
-    } catch (upsert_error) {
-      console.error('[vk/callback] upsert error', upsert_error);
-      
-      // Если ошибка связана с уже существующим email - это не критично,
-      // пытаемся найти существующего пользователя
-      const error_msg = upsert_error instanceof Error ? upsert_error.message.toLowerCase() : '';
-      if (error_msg.includes('already') && error_msg.includes('registered')) {
-        console.log('[vk/callback] user already exists, trying to find by email');
-        
-        // Попытка найти существующего пользователя по разным email
-        const safe_email = `vk${vk_user.user_id}@auth.yoboba.su`;
-        const real_email = vk_user.email?.trim();
-        
-        let existing_id = await find_user_id_by_email_public(safe_email);
-        if (!existing_id && real_email) {
-          existing_id = await find_user_id_by_email_public(real_email);
-        }
-        
-        if (existing_id) {
-          console.log('[vk/callback] found existing user', { user_id: existing_id, safe_email });
-          account = {
-            user_id: existing_id,
-            email: safe_email,
-            name: `${vk_user.first_name || ''} ${vk_user.last_name || ''}`.trim() || `id${vk_user.user_id}`,
-          };
-        } else {
-          console.error('[vk/callback] could not find existing user', { safe_email, real_email });
-          throw upsert_error;
-        }
-      } else {
-        throw upsert_error;
-      }
-    }
+    const account = await upsert_vk_supabase_user({
+      vk_user,
+      anonymous_user_id: null,
+    });
+    console.log('[vk/callback] upsert ok', { user_id: account.user_id, email: account.email });
 
     const cookie_bag: {
       name: string;
