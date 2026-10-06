@@ -736,18 +736,22 @@ export default function seller_board() {
 
   // Загрузка задачи открытия
   useEffect(() => {
-    if (!shift?.spot_id) {
-      set_opening_task_state(null);
-      return;
-    }
+    if (!seller_id) return;
 
     async function load_opening_task() {
       try {
+        const params = new URLSearchParams({
+          seller_id,
+          shift_date: board_day(),
+        });
+        
+        // Если смена открыта, передаем spot_id
+        if (shift?.spot_id) {
+          params.set('spot_id', shift.spot_id);
+        }
+
         const res = await fetch(
-          `/api/seller/opening-task?${new URLSearchParams({
-            spot_id: shift!.spot_id,
-            shift_date: board_day(),
-          })}`,
+          `/api/seller/opening-task?${params}`,
           { credentials: 'same-origin' }
         );
 
@@ -763,7 +767,7 @@ export default function seller_board() {
     void load_opening_task();
     const poll = window.setInterval(() => void load_opening_task(), 30_000);
     return () => window.clearInterval(poll);
-  }, [shift?.spot_id, shift?.shift_date]);
+  }, [seller_id, shift?.spot_id, shift?.shift_date]);
 
   useEffect(() => {
     let stop = false;

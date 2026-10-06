@@ -20,33 +20,38 @@ export async function GET(request: NextRequest) {
   }
 
   const url = new URL(request.url);
-  const spot_id = url.searchParams.get('spot_id');
+  const seller_id = url.searchParams.get('seller_id');
+  const spot_id = url.searchParams.get('spot_id') || null;
   const shift_date = url.searchParams.get('shift_date') || moscow_today_iso();
 
-  if (!spot_id) {
+  if (!seller_id) {
     return NextResponse.json(
-      { error: 'spot_id обязателен' },
+      { error: 'seller_id обязателен' },
       { status: 400 }
     );
   }
 
   const supabase = create_service_client();
 
-  // Найти или создать задачу открытия
-  const { data: existing_task, error: fetch_error } = await supabase
+  // Найти задачу открытия по seller_id и дате (spot_id может быть null до открытия смены)
+  let query = supabase
     .from('opening_tasks')
     .select('*')
-    .eq('spot_id', spot_id)
     .eq('shift_date', shift_date)
-    .single();
+    .or(`seller_id.eq.${seller_id},spot_id.eq.${spot_id || 'null'}`)
+    .order('created_at', { ascending: false })
+    .limit(1);
 
-  if (fetch_error && fetch_error.code !== 'PGRST116') {
+  const { data: existing_tasks, error: fetch_error } = await query;
+
+  if (fetch_error) {
     return NextResponse.json(
       { error: 'не удалось загрузить задачу' },
       { status: 500 }
     );
   }
 
+  const existing_task = existing_tasks?.[0] || null;
   let task_id = existing_task?.id;
 
   // Если задачи нет — создать
@@ -54,8 +59,9 @@ export async function GET(request: NextRequest) {
     const { data: new_task, error: create_error } = await supabase
       .from('opening_tasks')
       .insert({
-        spot_id,
+        spot_id: spot_id || null,
         shift_date,
+        seller_id,
       })
       .select()
       .single();
@@ -78,6 +84,12 @@ export async function GET(request: NextRequest) {
     }));
 
     await supabase.from('opening_checklist_items').insert(items);
+  } else if (spot_id && !existing_task.spot_id) {
+    // Если смена открылась, обновить spot_id в существующей задаче
+    await supabase
+      .from('opening_tasks')
+      .update({ spot_id })
+      .eq('id', task_id);
   }
 
   // Загрузить задачу с пунктами
@@ -95,10 +107,10 @@ export async function GET(request: NextRequest) {
 
   const task: opening_task = {
     id: task_data?.id || '',
-    spot_id: task_data?.spot_id || spot_id,
+    spot_id: task_data?.spot_id || spot_id || '',
     spot_address: task_data?.spot_address || null,
     shift_date: task_data?.shift_date || shift_date,
-    seller_id: task_data?.seller_id || null,
+    seller_id: task_data?.seller_id || seller_id,
     seller_name: task_data?.seller_name || null,
     started_at: task_data?.started_at || null,
     completed_at: task_data?.completed_at || null,
