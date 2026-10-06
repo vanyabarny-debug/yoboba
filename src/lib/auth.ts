@@ -152,30 +152,68 @@ function hydrate_profile(
   };
 }
 
-let finish_vk_once: Promise<void> | null = null;
+let finish_vk_once: Promise<boolean> | null = null;
+
+function has_vk_finish_hint() {
+  if (typeof window === 'undefined') return false;
+  try {
+    if (new URLSearchParams(window.location.search).get('vk') === '1') return true;
+  } catch {
+    /* ignore */
+  }
+  // httpOnly cookie не видно из JS — поэтому при ?vk=1 всегда пробуем finish-vk
+  return false;
+}
 
 async function finish_vk_browser_session() {
+  const should_try = has_vk_finish_hint() || !finish_vk_once;
+
+  if (!should_try && finish_vk_once) {
+    await finish_vk_once;
+    return;
+  }
+
+  // при ?vk=1 не кешируем пустой результат навсегда
+  if (has_vk_finish_hint()) {
+    finish_vk_once = null;
+  }
+
   if (!finish_vk_once) {
     finish_vk_once = (async () => {
       try {
         const res = await fetch('/api/auth/finish-vk', {
           method: 'POST',
           credentials: 'same-origin',
+          cache: 'no-store',
         });
-        if (!res.ok) return;
+        if (!res.ok) return false;
         const body = (await res.json()) as {
           ok?: boolean;
           session?: Session | null;
         };
         if (body.ok && body.session) {
           await apply_session(body.session);
+          try {
+            const url = new URL(window.location.href);
+            if (url.searchParams.has('vk')) {
+              url.searchParams.delete('vk');
+              window.history.replaceState({}, '', url.pathname + url.search + url.hash);
+            }
+          } catch {
+            /* ignore */
+          }
+          return true;
         }
+        return false;
       } catch {
-        /* нет pending vk-сессии */
+        return false;
       }
     })();
   }
-  await finish_vk_once;
+
+  const ok = await finish_vk_once;
+  // если не вышло — разрешить повтор на следующем get_auth_state (пока ?vk=1)
+  if (!ok) finish_vk_once = null;
 }
 
 export async function get_auth_state(): Promise<auth_state> {

@@ -174,6 +174,12 @@ export async function GET(request: NextRequest) {
     next.searchParams.set('vk', '1');
     const res = NextResponse.redirect(next);
     res.headers.set('cache-control', 'no-store');
+
+    // сессия supabase в cookies редиректа — иначе браузер приходит «гостем»
+    for (const { name, value, options } of cookie_bag) {
+      res.cookies.set(name, value, options);
+    }
+
     res.cookies.set('vk_pending', pending_id, {
       httpOnly: true,
       sameSite: 'lax',
@@ -182,11 +188,18 @@ export async function GET(request: NextRequest) {
       path: '/',
     });
 
+    // oauth cookies больше не нужны
+    res.cookies.set('vk_oauth_state', '', { maxAge: 0, path: '/' });
+    res.cookies.set('vk_code_verifier', '', { maxAge: 0, path: '/' });
+    res.cookies.set('vk_return_to', '', { maxAge: 0, path: '/' });
+    res.cookies.set('vk_redirect_uri', '', { maxAge: 0, path: '/' });
+
     console.log('[vk/callback] session ok', {
       user_id: verified.data.session.user.id,
       email: account.email,
       next: return_to,
       pending: true,
+      supabase_cookies: cookie_bag.length,
     });
 
     return res;
