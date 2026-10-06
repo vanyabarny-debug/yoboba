@@ -118,11 +118,47 @@ export async function GET(request: NextRequest) {
     console.log('[vk/callback] fetch user');
     const vk_user = await fetch_vk_user(tokens.access_token, tokens.id_token);
 
-    console.log('[vk/callback] upsert supabase user', { vk_id: vk_user.user_id });
-    const account = await upsert_vk_supabase_user({
-      vk_user,
-      anonymous_user_id: null,
+    console.log('[vk/callback] upsert supabase user', { 
+      vk_id: vk_user.user_id,
+      email: vk_user.email,
+      phone: vk_user.phone,
     });
+    
+    let account;
+    try {
+      account = await upsert_vk_supabase_user({
+        vk_user,
+        anonymous_user_id: null,
+      });
+      console.log('[vk/callback] upsert success', { user_id: account.user_id });
+    } catch (upsert_error) {
+      console.error('[vk/callback] upsert error', upsert_error);
+      
+      // Если ошибка связана с уже существующим email - это не критично,
+      // пытаемся найти существующего пользователя
+      const error_msg = upsert_error instanceof Error ? upsert_error.message.toLowerCase() : '';
+      if (error_msg.includes('already') && error_msg.includes('registered')) {
+        console.log('[vk/callback] user already exists, trying to find by email');
+        
+        // Попытка найти существующего пользователя
+        const email_to_find = vk_user.email?.trim() || `vk${vk_user.user_id}@auth.yoboba.su`;
+        const { find_user_id_by_email_public } = await import('@/lib/vk-auth-server');
+        const existing_id = await find_user_id_by_email_public(email_to_find);
+        
+        if (existing_id) {
+          console.log('[vk/callback] found existing user', { user_id: existing_id });
+          account = {
+            user_id: existing_id,
+            email: email_to_find,
+            name: `${vk_user.first_name || ''} ${vk_user.last_name || ''}`.trim() || `id${vk_user.user_id}`,
+          };
+        } else {
+          throw upsert_error;
+        }
+      } else {
+        throw upsert_error;
+      }
+    }
 
     const cookie_bag: {
       name: string;

@@ -243,6 +243,9 @@ async function find_user_id_by_email(email: string) {
   return match?.id ?? null;
 }
 
+// Экспортируем для использования в callback
+export const find_user_id_by_email_public = find_user_id_by_email;
+
 async function merge_cart(from_id: string, to_id: string) {
   if (from_id === to_id) return;
 
@@ -351,6 +354,7 @@ export async function upsert_vk_supabase_user(input: {
       if (existing) {
         // Нашли существующего пользователя - обновляем его данные и связываем с VK
         user_id = existing;
+        console.log('[vk-auth] found existing user, updating metadata', { user_id, vk_id });
         await admin.auth.admin.updateUserById(user_id, {
           email_confirm: true,
           user_metadata: metadata,
@@ -358,22 +362,36 @@ export async function upsert_vk_supabase_user(input: {
         });
       } else {
         // Действительно не можем создать - последняя попытка без телефона
+        console.log('[vk-auth] creating user with safe email', { vk_id });
         const retry = await admin.auth.admin.createUser({
           email: vk_auth_email(vk_id), // используем безопасный email
           email_confirm: true,
           user_metadata: metadata,
         });
         if (retry.error || !retry.data.user) {
-          throw new Error(retry.error?.message || error?.message || 'не удалось создать пользователя');
-        }
-        user_id = retry.data.user.id;
-        
-        // Если есть телефон, обновляем его отдельно
-        if (phone) {
-          await admin.auth.admin.updateUserById(user_id, {
-            phone,
-            phone_confirm: true,
-          });
+          // Если и это не сработало, возможно пользователь с безопасным email тоже есть
+          const safe_email_user = await find_user_id_by_email(vk_auth_email(vk_id));
+          if (safe_email_user) {
+            console.log('[vk-auth] found user with safe email', { user_id: safe_email_user });
+            user_id = safe_email_user;
+            await admin.auth.admin.updateUserById(user_id, {
+              email_confirm: true,
+              user_metadata: metadata,
+              ...(phone ? { phone, phone_confirm: true } : {}),
+            });
+          } else {
+            throw new Error(retry.error?.message || error?.message || 'не удалось создать пользователя');
+          }
+        } else {
+          user_id = retry.data.user.id;
+          
+          // Если есть телефон, обновляем его отдельно
+          if (phone) {
+            await admin.auth.admin.updateUserById(user_id, {
+              phone,
+              phone_confirm: true,
+            });
+          }
         }
       }
     } else {
