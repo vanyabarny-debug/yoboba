@@ -305,10 +305,22 @@ export async function upsert_vk_supabase_user(input: {
   const email = input.vk_user.email?.trim() || vk_auth_email(vk_id);
   const name = display_name(input.vk_user);
 
-  let user_id = await find_user_id_by_email(email);
+  // Сначала ищем по VK ID в метаданных - самый надежный способ
+  const { data: all_users } = await admin.auth.admin.listUsers();
+  const existing_by_vk = all_users.users?.find(
+    (u) => u.user_metadata?.vk_id === vk_id
+  );
+  
+  let user_id = existing_by_vk?.id || null;
+  
+  // Если не нашли по vk_id, ищем по email
+  if (!user_id) {
+    user_id = await find_user_id_by_email(email);
+  }
   if (!user_id && email !== vk_auth_email(vk_id)) {
     user_id = await find_user_id_by_email(vk_auth_email(vk_id));
   }
+  
   const phone = normalize_phone(input.vk_user.phone);
   const metadata = {
     vk_id,
