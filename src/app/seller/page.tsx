@@ -27,7 +27,10 @@ import task_guide from '@/components/seller/task-guide';
 import shift_task_card from '@/components/seller/shift-task-card';
 import opening_task_card from '@/components/seller/opening-task-card';
 import opening_task_guide from '@/components/seller/opening-task-guide';
+import closing_task_card from '@/components/seller/closing-task-card';
+import closing_task_guide from '@/components/seller/closing-task-guide';
 import { should_show_opening_task, type opening_task } from '@/lib/opening-checklist';
+import { should_show_closing_task, type closing_task } from '@/lib/closing-checklist';
 import order_prep_card, {
   type drink_row,
   type prep_state,
@@ -317,6 +320,8 @@ export default function seller_board() {
   const [task_templates, set_task_templates] = useState<day_task_template[] | null>(null);
   const [opening_task_state, set_opening_task_state] = useState<opening_task | null>(null);
   const [opening_guide_open, set_opening_guide_open] = useState(false);
+  const [closing_task_state, set_closing_task_state] = useState<closing_task | null>(null);
+  const [closing_guide_open, set_closing_guide_open] = useState(false);
   const [fresh_ids, set_fresh_ids] = useState<Set<string>>(new Set());
   const [unread_new, set_unread_new] = useState(0);
   const [pos_depth, set_pos_depth] = useState(false);
@@ -766,6 +771,41 @@ export default function seller_board() {
 
     void load_opening_task();
     const poll = window.setInterval(() => void load_opening_task(), 30_000);
+    return () => window.clearInterval(poll);
+  }, [seller_id, shift?.spot_id, shift?.shift_date]);
+
+  // Загрузка задачи закрытия
+  useEffect(() => {
+    if (!seller_id) return;
+
+    async function load_closing_task() {
+      try {
+        const params = new URLSearchParams({
+          seller_id,
+          shift_date: board_day(),
+        });
+        
+        // Если смена открыта, передаем spot_id
+        if (shift?.spot_id) {
+          params.set('spot_id', shift.spot_id);
+        }
+
+        const res = await fetch(
+          `/api/seller/closing-task?${params}`,
+          { credentials: 'same-origin' }
+        );
+
+        if (res.ok) {
+          const data = (await res.json()) as { task: closing_task };
+          set_closing_task_state(data.task);
+        }
+      } catch {
+        // задача закрытия не критична
+      }
+    }
+
+    void load_closing_task();
+    const poll = window.setInterval(() => void load_closing_task(), 30_000);
     return () => window.clearInterval(poll);
   }, [seller_id, shift?.spot_id, shift?.shift_date]);
 
@@ -1249,8 +1289,12 @@ export default function seller_board() {
   const show_opening = opening_task_state && should_show_opening_task() && !opening_task_state.completed_at;
   const opening_is_done = opening_task_state?.completed_at != null;
   
-  const work_board_count = in_work.length + open_tasks.length + (show_opening ? 1 : 0);
-  const ready_board_count = handed_out.length + done_tasks.length + (opening_is_done ? 1 : 0);
+  // Добавить задачу закрытия, если время пришло и она не завершена
+  const show_closing = closing_task_state && should_show_closing_task() && !closing_task_state.completed_at;
+  const closing_is_done = closing_task_state?.completed_at != null;
+  
+  const work_board_count = in_work.length + open_tasks.length + (show_opening ? 1 : 0) + (show_closing ? 1 : 0);
+  const ready_board_count = handed_out.length + done_tasks.length + (opening_is_done ? 1 : 0) + (closing_is_done ? 1 : 0);
   const guided_task = day_tasks.find((t) => t.id === task_guide_id) ?? null;
   /** бейдж «готовые» = число выдач, как в аналитике (задачи смены не считаем) */
   const ready_handout_count = handed_out.length;
@@ -1292,6 +1336,13 @@ export default function seller_board() {
               key: 'opening-task',
               task: opening_task_state,
               on_open: () => set_opening_guide_open(true),
+            })
+          : null}
+        {show_closing && closing_task_state
+          ? createElement(closing_task_card, {
+              key: 'closing-task',
+              task: closing_task_state,
+              on_open: () => set_closing_guide_open(true),
             })
           : null}
         {open_tasks.map((t) =>
@@ -1343,6 +1394,13 @@ export default function seller_board() {
               key: 'opening-task-done',
               task: opening_task_state,
               on_open: () => set_opening_guide_open(true),
+            })
+          : null}
+        {closing_is_done && closing_task_state
+          ? createElement(closing_task_card, {
+              key: 'closing-task-done',
+              task: closing_task_state,
+              on_open: () => set_closing_guide_open(true),
             })
           : null}
         {done_tasks.map((t) =>
@@ -1613,6 +1671,20 @@ export default function seller_board() {
               set_opening_task_state(updated);
               if (updated.completed_at) {
                 setTimeout(() => set_opening_guide_open(false), 1500);
+              }
+            },
+          })
+        : null}
+      {closing_guide_open && closing_task_state
+        ? createElement(closing_task_guide, {
+            task: closing_task_state,
+            seller_id: seller_id || seller_ref.current.id || 'seller',
+            seller_name: seller_name || seller_ref.current.name || 'бариста',
+            on_close: () => set_closing_guide_open(false),
+            on_update: (updated) => {
+              set_closing_task_state(updated);
+              if (updated.completed_at) {
+                setTimeout(() => set_closing_guide_open(false), 1500);
               }
             },
           })
