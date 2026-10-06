@@ -10,6 +10,7 @@ import {
 } from '@/lib/menu-store';
 import { item_in_category } from '@/lib/menu-item-categories';
 import { format_phone_input, phone_input_to_e164 } from '@/lib/phone';
+import { parse_pickup_code_input } from '@/lib/pickup-code';
 import { category_tile_meta } from '@/lib/category-icons';
 import { configured_unit_price, first_volume_id, resolve_volume_id } from '@/lib/product-details';
 import { tile_grid, board_tile_grid } from '@/lib/seller-tile-grid';
@@ -26,7 +27,17 @@ import {
 } from '@/lib/pos-pricing';
 import menu_image from '@/components/menu-image';
 import seller_product_sheet from '@/components/seller/seller-product-sheet';
+import pos_qr_scanner from '@/components/seller/pos-qr-scanner';
 import { FLOATING_CLOSE_BTN_CLASS } from '@/lib/drawer-ui';
+
+function e164_to_phone_draft(phone: string | null | undefined): string {
+  if (!phone) return '';
+  const digits = phone.replace(/\D/g, '');
+  const local = digits.length === 11 && (digits.startsWith('7') || digits.startsWith('8'))
+    ? digits.slice(1)
+    : digits.slice(-10);
+  return format_phone_input(local);
+}
 
 function close_x() {
   return (
@@ -140,6 +151,9 @@ export default function pos_panel({
   const [category, set_category] = useState<string>('');
   const [cart, set_cart] = useState<cart_line[]>([]);
   const [phone_draft, set_phone_draft] = useState('');
+  const [code_draft, set_code_draft] = useState('');
+  const [active_pickup_code, set_active_pickup_code] = useState<string | null>(null);
+  const [scanner_open, set_scanner_open] = useState(false);
   const [customer, set_customer] = useState<found_customer | null>(null);
   const [lookup_gifts, set_lookup_gifts] = useState<gift[]>([]);
   const [gift_busy, set_gift_busy] = useState<string | null>(null);
@@ -195,48 +209,95 @@ export default function pos_panel({
 
   useEffect(() => {
     if (!confirm_open) return;
+    const code = parse_pickup_code_input(code_draft);
     const e164 = phone_input_to_e164(phone_draft);
-    if (!e164) {
+
+    if (!code && !e164) {
       set_customer(null);
       set_confirm_student(false);
       set_lookup_gifts([]);
+      set_active_pickup_code(null);
       return;
     }
 
     let cancelled = false;
     set_lookup_busy(true);
     const t = window.setTimeout(() => {
-      void Promise.all([
-        fetch(`/api/seller/orders?phone=${encodeURIComponent(e164)}`, {
-          credentials: 'same-origin',
-        }).then((r) => r.json()) as Promise<{ customer?: found_customer | null }>,
-        fetch(`/api/seller/gifts?phone=${encodeURIComponent(e164)}`, {
-          credentials: 'same-origin',
-        }).then((r) => r.json()) as Promise<{ gifts?: gift[] }>,
-      ])
-        .then(([orders_body, gifts_body]) => {
+      const run = async () => {
+        try {
+          if (code) {
+            const orders_body = (await fetch(
+              `/api/seller/orders?code=${encodeURIComponent(code)}`,
+              { credentials: 'same-origin' }
+            ).then((r) => r.json())) as {
+              customer?: found_customer | null;
+              phone?: string | null;
+              error?: string;
+            };
+            if (cancelled) return;
+            if (!orders_body.customer) {
+              set_customer(null);
+              set_confirm_student(false);
+              set_lookup_gifts([]);
+              set_active_pickup_code(null);
+              if (orders_body.error) set_error(orders_body.error);
+              return;
+            }
+            set_error(null);
+            set_customer(orders_body.customer);
+            set_confirm_student(false);
+            set_active_pickup_code(code);
+            if (orders_body.customer.phone || orders_body.phone) {
+              const phone = orders_body.customer.phone || orders_body.phone || null;
+              set_phone_draft(e164_to_phone_draft(phone));
+              if (phone) {
+                const gifts_body = (await fetch(
+                  `/api/seller/gifts?phone=${encodeURIComponent(phone)}`,
+                  { credentials: 'same-origin' }
+                ).then((r) => r.json())) as { gifts?: gift[] };
+                if (!cancelled) set_lookup_gifts(gifts_body.gifts || []);
+              } else {
+                set_lookup_gifts([]);
+              }
+            } else {
+              set_lookup_gifts([]);
+            }
+            return;
+          }
+
+          if (!e164) return;
+          const [orders_body, gifts_body] = await Promise.all([
+            fetch(`/api/seller/orders?phone=${encodeURIComponent(e164)}`, {
+              credentials: 'same-origin',
+            }).then((r) => r.json()) as Promise<{ customer?: found_customer | null }>,
+            fetch(`/api/seller/gifts?phone=${encodeURIComponent(e164)}`, {
+              credentials: 'same-origin',
+            }).then((r) => r.json()) as Promise<{ gifts?: gift[] }>,
+          ]);
           if (cancelled) return;
           set_customer(orders_body.customer || null);
           set_confirm_student(false);
           set_lookup_gifts(gifts_body.gifts || []);
-        })
-        .catch(() => {
+          set_active_pickup_code(null);
+        } catch {
           if (!cancelled) {
             set_customer(null);
             set_confirm_student(false);
             set_lookup_gifts([]);
+            set_active_pickup_code(null);
           }
-        })
-        .finally(() => {
+        } finally {
           if (!cancelled) set_lookup_busy(false);
-        });
+        }
+      };
+      void run();
     }, 350);
 
     return () => {
       cancelled = true;
       window.clearTimeout(t);
     };
-  }, [phone_draft, confirm_open]);
+  }, [phone_draft, code_draft, confirm_open]);
 
   const filtered = useMemo(() => {
     if (!category) return [];
@@ -462,14 +523,19 @@ export default function pos_panel({
   async function submit() {
     if (!cart.length || busy) return;
     const phone = staff_drink ? '' : phone_input_to_e164(phone_draft);
+    const pickup_code = staff_drink ? null : active_pickup_code || parse_pickup_code_input(code_draft);
     if (!staff_drink && phone_draft.trim() && !phone) {
       set_error('введите телефон полностью');
+      return;
+    }
+    if (!staff_drink && code_draft.trim() && !pickup_code && !phone) {
+      set_error('введите код из 6 цифр');
       return;
     }
 
     const can_bonus =
       !staff_drink &&
-      Boolean(phone) &&
+      (Boolean(phone) || Boolean(pickup_code)) &&
       customer != null &&
       customer.bonus_balance >= FREE_DRINK_BONUS_THRESHOLD;
     if (pay_with_bonus && !can_bonus) {
@@ -492,7 +558,8 @@ export default function pos_panel({
             quantity,
             volume,
           })),
-          customer_phone: staff_drink ? undefined : phone,
+          customer_phone: staff_drink ? undefined : phone || undefined,
+          pickup_code: staff_drink ? undefined : pickup_code || undefined,
           customer_name: staff_drink ? seller_name : customer?.name || undefined,
           seller_name,
           pickup_minutes: 10,
@@ -575,6 +642,8 @@ export default function pos_panel({
 
       set_cart([]);
       set_phone_draft('');
+      set_code_draft('');
+      set_active_pickup_code(null);
       set_customer(null);
       set_confirm_student(false);
       set_paid_now(false);
@@ -731,14 +800,49 @@ export default function pos_panel({
           {!staff_drink ? (
             <>
           <label className="block">
-            <span className="text-xs text-neutral-500">телефон гостя</span>
+            <span className="text-xs text-neutral-500">код гостя (из приложения)</span>
+            <div className="mt-1 flex items-center gap-2">
+              <div className="flex flex-1 items-center gap-2 rounded-xl border border-neutral-200 px-3 py-2.5">
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  autoComplete="one-time-code"
+                  value={code_draft}
+                  onChange={(e) => {
+                    const digits = e.target.value.replace(/\D/g, '').slice(0, 6);
+                    set_code_draft(digits);
+                    set_active_pickup_code(null);
+                    set_error(null);
+                  }}
+                  placeholder="123456"
+                  className="w-full bg-transparent font-mono text-sm tracking-[0.2em] outline-none"
+                />
+              </div>
+              <button
+                type="button"
+                onClick={() => set_scanner_open(true)}
+                className="shrink-0 rounded-xl border border-neutral-200 bg-white px-3 py-2.5 text-xs font-semibold text-neutral-700"
+              >
+                QR
+              </button>
+            </div>
+          </label>
+
+          <label className="block">
+            <span className="text-xs text-neutral-500">или телефон гостя</span>
             <div className="mt-1 flex items-center gap-2 rounded-xl border border-neutral-200 px-3 py-2.5">
               <span className="text-sm text-neutral-400">+7</span>
               <input
                 type="tel"
                 inputMode="numeric"
                 value={phone_draft}
-                onChange={(e) => set_phone_draft(format_phone_input(e.target.value))}
+                onChange={(e) => {
+                  set_phone_draft(format_phone_input(e.target.value));
+                  if (code_draft) {
+                    set_code_draft('');
+                    set_active_pickup_code(null);
+                  }
+                }}
                 placeholder="900 000-00-00"
                 className="w-full bg-transparent text-sm outline-none"
               />
@@ -751,6 +855,11 @@ export default function pos_panel({
             <p className="text-sm text-neutral-700">
               <span className="font-semibold">{customer.name || 'гость'}</span>
               <span className="text-neutral-400"> · {customer.bonus_balance} бобаллов</span>
+              {active_pickup_code ? (
+                <span className="mt-1 block text-xs font-semibold text-accent">
+                  найден по коду {active_pickup_code}
+                </span>
+              ) : null}
               {customer.student_verified ? (
                 <span className="mt-1 block text-xs font-semibold text-accent">
                   {STUDENT_DISCOUNT_LABEL}
@@ -959,6 +1068,16 @@ export default function pos_panel({
     </div>
   ) : null;
 
+  const scanner_modal = createElement(pos_qr_scanner, {
+    open: scanner_open,
+    on_close: () => set_scanner_open(false),
+    on_scan: (code: string) => {
+      set_code_draft(code);
+      set_active_pickup_code(null);
+      set_error(null);
+    },
+  });
+
   const editing_line =
     edit_index != null && cart[edit_index] ? cart[edit_index] : null;
   const sheet_mode =
@@ -1056,6 +1175,7 @@ export default function pos_panel({
           выдать подарок по телефону
         </button>
         {confirm_modal}
+        {scanner_modal}
         {sheet}
       </div>
     );
@@ -1134,6 +1254,7 @@ export default function pos_panel({
         on_work: () => open_confirm('order'),
       })}
       {confirm_modal}
+      {scanner_modal}
       {sheet}
     </div>
   );

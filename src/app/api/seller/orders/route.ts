@@ -206,6 +206,71 @@ export async function GET(request: Request) {
     return NextResponse.json({ orders: completed });
   }
 
+  const raw_code = url.searchParams.get('code');
+  if (raw_code) {
+    const {
+      parse_pickup_code_input,
+      pickup_lookup_allowed,
+      resolve_pickup_code,
+    } = await import('@/lib/pickup-code-server');
+    const code = parse_pickup_code_input(raw_code);
+    if (!code) {
+      return NextResponse.json({ customer: null, error: 'код должен быть из 6 цифр' }, { status: 400 });
+    }
+    const rate_key = `seller-code:${(await cookies()).get(session_cookie)?.value || 'anon'}`;
+    if (!pickup_lookup_allowed(rate_key)) {
+      return NextResponse.json(
+        { customer: null, error: 'слишком много попыток — подождите минуту' },
+        { status: 429 }
+      );
+    }
+    const resolved = await resolve_pickup_code(code);
+    if (!resolved) {
+      return NextResponse.json({ customer: null, code, error: 'код не найден или устарел' });
+    }
+    if (is_supabase_configured()) {
+      const admin = create_service_client();
+      const full = await admin
+        .from('profiles')
+        .select(
+          'id, name, phone, bonus_balance, student_claimed, student_verified, student_verified_at, student_verified_by'
+        )
+        .eq('id', resolved.user_id)
+        .maybeSingle();
+      const profile = full.error
+        ? (
+            await admin
+              .from('profiles')
+              .select('id, name, phone, bonus_balance')
+              .eq('id', resolved.user_id)
+              .maybeSingle()
+          ).data
+        : full.data;
+      if (profile) {
+        return NextResponse.json({
+          phone: profile.phone,
+          code,
+          customer: await customer_payload(profile),
+        });
+      }
+    }
+    const student = await read_student_status({
+      user_id: resolved.user_id,
+      phone: resolved.phone,
+    });
+    return NextResponse.json({
+      phone: resolved.phone,
+      code,
+      customer: {
+        id: resolved.user_id,
+        name: (resolved.name || '').trim() || null,
+        phone: resolved.phone,
+        bonus_balance: resolved.bonus_balance,
+        ...student,
+      },
+    });
+  }
+
   const raw = url.searchParams.get('phone');
   const phone = normalize_phone(raw);
   const user_id = url.searchParams.get('user_id') || undefined;
@@ -273,7 +338,30 @@ export async function POST(request: Request) {
   }
 
   const menu = await load_menu_map();
-  const customer_phone = normalize_phone(body.customer_phone as string | undefined);
+  const pickup_code_raw = body.pickup_code as string | undefined;
+  let customer_phone = normalize_phone(body.customer_phone as string | undefined);
+  let pickup_code_used: string | null = null;
+  let pickup_user_id: string | null = null;
+
+  if (pickup_code_raw) {
+    const { parse_pickup_code_input, resolve_pickup_code } = await import(
+      '@/lib/pickup-code-server'
+    );
+    const code = parse_pickup_code_input(pickup_code_raw);
+    if (!code) {
+      return NextResponse.json({ error: 'код должен быть из 6 цифр' }, { status: 400 });
+    }
+    const resolved = await resolve_pickup_code(code);
+    if (!resolved) {
+      return NextResponse.json({ error: 'код не найден или устарел' }, { status: 400 });
+    }
+    pickup_code_used = code;
+    pickup_user_id = resolved.user_id;
+    if (!customer_phone && resolved.phone) {
+      customer_phone = normalize_phone(resolved.phone);
+    }
+  }
+
   const raw_confirm_student = Boolean(body.confirm_student);
   let student_verified = false;
   if (customer_phone) {
@@ -281,6 +369,16 @@ export async function POST(request: Request) {
     if (raw_confirm_student && !student.student_verified) {
       student = await set_student_verified({
         phone: customer_phone,
+        verified: true,
+        by: await staff_actor_name(),
+      });
+    }
+    student_verified = student.student_verified;
+  } else if (pickup_user_id) {
+    let student = await read_student_status({ user_id: pickup_user_id });
+    if (raw_confirm_student && !student.student_verified) {
+      student = await set_student_verified({
+        user_id: pickup_user_id,
         verified: true,
         by: await staff_actor_name(),
       });
@@ -359,6 +457,24 @@ export async function POST(request: Request) {
     // баллы копятся на телефон: и найденному гостю, и новому (профиль создадим ниже)
     can_earn_bonus = true;
     bonus_earned = bonus_for_items;
+  } else if (pickup_user_id) {
+    user_id = pickup_user_id;
+    can_earn_bonus = true;
+    bonus_earned = bonus_for_items;
+    if (is_supabase_configured()) {
+      const admin = create_service_client();
+      const { data: by_id } = await admin
+        .from('profiles')
+        .select('id, name, phone, bonus_balance')
+        .eq('id', pickup_user_id)
+        .maybeSingle();
+      if (by_id) {
+        const profile_name = (by_id.name || '').trim();
+        if (profile_name) customer_name = profile_name;
+        bonus_balance = by_id.bonus_balance ?? 0;
+        if (!customer_phone) customer_phone = normalize_phone(by_id.phone);
+      }
+    }
   }
   if (staff) {
     customer_name = (body.seller_name as string | undefined)?.trim() || 'персонал';
@@ -388,13 +504,13 @@ export async function POST(request: Request) {
     if (staff) {
       return NextResponse.json({ error: 'напиток персонала нельзя оплатить бобаллами' }, { status: 400 });
     }
-    if (!customer_phone) {
+    if (!customer_phone && !pickup_user_id) {
       return NextResponse.json(
-        { error: 'нужен телефон гостя, чтобы списать бобаллы' },
+        { error: 'нужен телефон или код гостя, чтобы списать бобаллы' },
         { status: 400 }
       );
     }
-    if (!is_supabase_configured()) {
+    if (!is_supabase_configured() && customer_phone) {
       await ensure_demo_bonus_row({
         phone: customer_phone,
         name: customer_name,
@@ -402,7 +518,7 @@ export async function POST(request: Request) {
       });
     }
     const result = await redeem_bonus_points({
-      user_id,
+      user_id: user_id || pickup_user_id,
       phone: customer_phone,
       amount: FREE_DRINK_BONUS_THRESHOLD,
       actor,
@@ -501,6 +617,14 @@ export async function POST(request: Request) {
         kind: staff ? 'staff' : 'sale',
       });
 
+      if (user_id && !staff) {
+        const { invalidate_pickup_code } = await import('@/lib/pickup-code-server');
+        await invalidate_pickup_code({
+          user_id,
+          code: pickup_code_used,
+        });
+      }
+
       return NextResponse.json({
         order: {
           ...data,
@@ -566,6 +690,14 @@ export async function POST(request: Request) {
     items,
     kind: staff ? 'staff' : 'sale',
   });
+
+  if ((user_id || pickup_user_id || pickup_code_used) && !staff) {
+    const { invalidate_pickup_code } = await import('@/lib/pickup-code-server');
+    await invalidate_pickup_code({
+      user_id: user_id || pickup_user_id,
+      code: pickup_code_used,
+    });
+  }
 
   return NextResponse.json({
     order,

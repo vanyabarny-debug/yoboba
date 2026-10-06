@@ -18,6 +18,8 @@ import cart_drawer, {
 } from '@/components/cart-drawer';
 import { format_combo_picks, is_combo_item } from '@/lib/combo';
 import cart_fab from '@/components/cart-fab';
+import pickup_code_fab from '@/components/pickup-code-fab';
+import pickup_code_sheet from '@/components/pickup-code-sheet';
 import top_bar from '@/components/top-bar';
 import promo_banners from '@/components/promo-banners';
 import promo_story_viewer from '@/components/promo-story-viewer';
@@ -289,6 +291,7 @@ export default function home_client({
     temp?: drink_temp;
   }>({ qty: 1, volume: '500', topping: 0 });
   const [cart_open, set_cart_open] = useState(false);
+  const [pickup_code_open, set_pickup_code_open] = useState(false);
   const [cart_lines, set_cart_lines] = useState<cart_line[]>(() => load_guest_cart());
   const [user, set_user] = useState<demo_user | null>(null);
   const [user_id, set_user_id] = useState<string | null>(null);
@@ -1624,7 +1627,7 @@ export default function home_client({
           </div>
         </div>
 
-        <main className={`menu-sheet-main py-5 sm:py-6 ${cart_count > 0 ? 'pb-[calc(7rem+var(--safe-bottom))]' : 'pb-[calc(6rem+var(--safe-bottom))]'} sm:pb-28`}>
+        <main className={`menu-sheet-main py-5 sm:py-6 ${cart_count > 0 ? 'pb-[calc(8rem+var(--safe-bottom))]' : 'pb-[calc(7rem+var(--safe-bottom))]'} sm:pb-28`}>
             <div className="page-shell min-[1024px]:flex min-[1024px]:gap-6 min-[1024px]:pr-1">
               <div className="min-w-0 min-[1024px]:flex-[4]">
               {is_admin_edit
@@ -1767,11 +1770,33 @@ export default function home_client({
       })}
 
       {!is_admin_edit &&
+        createElement(pickup_code_fab, {
+          on_click: () => set_pickup_code_open(true),
+          hidden: cart_open || drawer_open || pickup_code_open || gift_open,
+        })}
+
+      {!is_admin_edit &&
         createElement(cart_fab, {
           count: cart_count,
           total: cart_total,
           on_click: () => set_cart_open(true),
-          hidden: cart_open || drawer_open,
+          hidden: cart_open || drawer_open || pickup_code_open,
+        })}
+
+      {!is_admin_edit &&
+        createElement(pickup_code_sheet, {
+          open: pickup_code_open,
+          is_logged_in,
+          demo_mode,
+          user_id: user_id || user?.id || null,
+          user_name: user?.name || null,
+          user_phone: user?.phone || null,
+          bonus,
+          on_close: () => set_pickup_code_open(false),
+          on_need_login: () => {
+            set_pickup_code_open(false);
+            handle_login();
+          },
         })}
 
       {!is_admin_edit && story_index !== null &&
