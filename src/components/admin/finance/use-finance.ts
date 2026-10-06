@@ -20,6 +20,7 @@ export type section_props = {
   to: string;
   set_period: (from: string, to: string) => void;
   menu: menu_item[];
+  set_menu?: (fn: (prev: menu_item[]) => menu_item[]) => void;
   compact?: boolean;
 };
 
@@ -32,6 +33,7 @@ export type finance_bundle = {
   to: string;
   set_period: (from: string, to: string) => void;
   menu: menu_item[];
+  set_menu: (fn: (prev: menu_item[]) => menu_item[]) => void;
   error: string;
   save_status: 'idle' | 'dirty' | 'saving' | 'saved' | 'error';
   months: string[];
@@ -141,6 +143,10 @@ export function use_finance(): finance_bundle {
     [state]
   );
 
+  const set_menu_items = useCallback((fn: (prev: menu_item[]) => menu_item[]) => {
+    set_menu(fn);
+  }, []);
+
   return {
     state: state as finance_state | null,
     set_state,
@@ -150,6 +156,7 @@ export function use_finance(): finance_bundle {
     to,
     set_period,
     menu,
+    set_menu: set_menu_items,
     error,
     save_status,
     months,

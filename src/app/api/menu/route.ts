@@ -7,7 +7,7 @@ export const dynamic = 'force-dynamic';
 export async function GET() {
   const stored = await read_published_menu();
   if (stored && stored.version >= store_version && stored.items?.length) {
-    const merged_items = merge_menu_item_catalog(stored.items);
+    const merged_items = merge_menu_item_catalog(stored.items, stored.removed_item_ids ?? []);
     const merged_store = {
       ...stored,
       items: merged_items,

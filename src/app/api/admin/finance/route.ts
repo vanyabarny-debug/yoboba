@@ -18,7 +18,7 @@ async function is_admin() {
 async function load_menu_items(): Promise<menu_item[]> {
   const stored = await read_published_menu();
   if (stored && stored.version >= store_version && stored.items?.length) {
-    return merge_menu_item_catalog(stored.items);
+    return merge_menu_item_catalog(stored.items, stored.removed_item_ids ?? []);
   }
   return get_default_store().items;
 }

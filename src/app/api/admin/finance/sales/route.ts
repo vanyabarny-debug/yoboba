@@ -101,7 +101,7 @@ export async function GET(request: Request) {
   const [state, stored_menu] = await Promise.all([read_finance_state(), read_published_menu()]);
   const menu: menu_item[] =
     stored_menu && stored_menu.version >= store_version && stored_menu.items?.length
-      ? merge_menu_item_catalog(stored_menu.items)
+      ? merge_menu_item_catalog(stored_menu.items, stored_menu.removed_item_ids ?? [])
       : get_default_store().items;
   const menu_by_id = new Map(menu.map((m) => [m.id, m]));
   const card_by_menu = new Map(

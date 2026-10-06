@@ -61,6 +61,7 @@ export default function FinanceFrame({
           to: f.to,
           set_period: f.set_period,
           menu: f.menu,
+          set_menu: f.set_menu,
         })}
     </AdminShell>
   );

@@ -32,19 +32,20 @@ import {
 
 const skip_categories = new Set(['комбо', 'закуски', 'добавки']);
 
-export default function TechcardsSection({ state, set_state, menu, month }: section_props) {
+export default function TechcardsSection({ state, set_state, menu, set_menu, month }: section_props) {
   const drinks = useMemo(
     () =>
       menu
         .filter((m) => !skip_categories.has(m.category))
-        .sort((a, b) => {
-          const arch = (a.is_available === false ? 1 : 0) - (b.is_available === false ? 1 : 0);
-          return arch || a.name.localeCompare(b.name, 'ru');
-        }),
+        .sort((a, b) => a.name.localeCompare(b.name, 'ru')),
     [menu]
   );
+  const active = useMemo(() => drinks.filter((item) => item.is_available !== false), [drinks]);
+  const archived = useMemo(() => drinks.filter((item) => item.is_available === false), [drinks]);
   const [selected_id, set_selected_id] = useState<string | null>(null);
   const [query, set_query] = useState('');
+  const [folder, set_folder] = useState<'cards' | 'archive'>('cards');
+  const [purge_error, set_purge_error] = useState('');
 
   const menu_by_id = useMemo(() => new Map(menu.map((m) => [m.id, m])), [menu]);
   const md = state.monthsData.find((m) => m.month === month);
@@ -56,7 +57,8 @@ export default function TechcardsSection({ state, set_state, menu, month }: sect
     return map;
   }, [state.techCards]);
 
-  const visible = drinks.filter((d) => !query || d.name.toLowerCase().includes(query.toLowerCase()));
+  const pool = folder === 'archive' ? archived : active;
+  const visible = pool.filter((d) => !query || d.name.toLowerCase().includes(query.toLowerCase()));
   const selected_drink = selected_id ? menu_by_id.get(selected_id) ?? drinks.find((d) => d.id === selected_id) : null;
   const card = selected_id ? card_by_menu.get(selected_id) ?? null : null;
 
@@ -79,6 +81,42 @@ export default function TechcardsSection({ state, set_state, menu, month }: sect
       techCards: prev.techCards.filter((row) => row.id !== card.id),
       removedTechCardIds: [...new Set([...(prev.removedTechCardIds ?? []), ...tech_card_removed_keys(card)])],
     }));
+    set_selected_id(null);
+  }
+
+  async function purge_archived(item: menu_item) {
+    if (!window.confirm(`удалить «${item.name}» из архива навсегда? напиток и рецепт пропадут из базы`)) return;
+    set_purge_error('');
+    const loaded = await fetch('/api/admin/menu', { credentials: 'same-origin' });
+    const body = (await loaded.json()) as { store?: { items?: menu_item[]; removed_item_ids?: string[]; categories?: string[] } };
+    const store = body.store;
+    if (!loaded.ok || !store?.items?.length || !store.categories) {
+      set_purge_error('не удалось открыть меню');
+      return;
+    }
+    const removed_item_ids = [...new Set([...(store.removed_item_ids ?? []), item.id])];
+    const saved = await fetch('/api/admin/menu', {
+      method: 'PUT',
+      credentials: 'same-origin',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        ...store,
+        items: store.items.filter((row) => row.id !== item.id),
+        removed_item_ids,
+      }),
+    });
+    if (!saved.ok) {
+      set_purge_error('не удалось удалить из базы');
+      return;
+    }
+    const existing = card_by_menu.get(item.id);
+    const tombstone = existing ?? { id: `tc_${item.id}`, name: item.name, menu_item_id: item.id, sizes: {} };
+    set_state((prev) => ({
+      ...prev,
+      techCards: prev.techCards.filter((row) => row.id !== tombstone.id && row.menu_item_id !== item.id),
+      removedTechCardIds: [...new Set([...(prev.removedTechCardIds ?? []), ...tech_card_removed_keys(tombstone)])],
+    }));
+    set_menu?.((prev) => prev.filter((row) => row.id !== item.id));
     set_selected_id(null);
   }
 
@@ -128,12 +166,29 @@ export default function TechcardsSection({ state, set_state, menu, month }: sect
   return (
     <div className="relative lg:grid lg:grid-cols-[300px_minmax(0,1fr)] lg:gap-4">
       <div className={show_editor ? 'hidden lg:block' : ''}>
+        {folder === 'archive' ? (
+          <button
+            type="button"
+            className="mb-3 text-sm text-accent"
+            onClick={() => {
+              set_folder('cards');
+              set_selected_id(null);
+              set_query('');
+            }}
+          >
+            ← к техкартам
+          </button>
+        ) : null}
         <input
           className={`${field_class} mb-3`}
-          placeholder="найти напиток…"
+          placeholder={folder === 'archive' ? 'найти в архиве…' : 'найти напиток…'}
           value={query}
           onChange={(e) => set_query(e.target.value)}
         />
+        {folder === 'archive' ? (
+          <p className="mb-2 text-[11px] font-normal text-neutral-400">архив хранится в базе, пока напиток не удалить навсегда</p>
+        ) : null}
+        {purge_error ? <p className="mb-2 text-sm text-red-500">{purge_error}</p> : null}
         {visible.length ? (
           <ul className="space-y-1">
             {visible.map((item) => {
@@ -154,7 +209,6 @@ export default function TechcardsSection({ state, set_state, menu, month }: sect
                     <span className="min-w-0 flex-1">
                       <span className="block truncate text-sm text-neutral-900">{item.name}</span>
                       <span className="text-[11px] font-normal text-neutral-400">
-                        {item.is_available === false ? 'архив · ' : ''}
                         {empty ? 'рецепт не заполнен' : 'техкарта'}
                       </span>
                     </span>
@@ -164,16 +218,46 @@ export default function TechcardsSection({ state, set_state, menu, month }: sect
             })}
           </ul>
         ) : (
-          <EmptyState>напитков нет</EmptyState>
+          <EmptyState>{folder === 'archive' ? 'в архиве пусто' : 'напитков нет'}</EmptyState>
         )}
+        {folder === 'cards' ? (
+          <button
+            type="button"
+            onClick={() => {
+              set_folder('archive');
+              set_selected_id(null);
+              set_query('');
+            }}
+            className="mt-3 flex w-full items-center gap-3 rounded-2xl bg-neutral-100 px-3 py-2.5 text-left ring-1 ring-neutral-200/80 transition-colors hover:bg-neutral-200/60"
+          >
+            <span className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-white text-sm font-medium text-neutral-500 ring-1 ring-black/5">
+              {archived.length}
+            </span>
+            <span className="min-w-0 flex-1">
+              <span className="block text-sm text-neutral-900">архив</span>
+              <span className="text-[11px] font-normal text-neutral-400">скрытые напитки и их рецепты</span>
+            </span>
+          </button>
+        ) : null}
       </div>
 
       {selected_drink && !card ? (
         <Card title={selected_drink.name}>
-          <p className="text-sm text-neutral-500">техкарты нет — в меню напиток остаётся</p>
-          <button type="button" className={`${btn_secondary} mt-3`} onClick={() => ensure_card(selected_drink)}>
-            создать техкарту
-          </button>
+          <p className="text-sm text-neutral-500">
+            {selected_drink.is_available === false
+              ? 'рецепта нет — напиток лежит в архиве'
+              : 'техкарты нет — в меню напиток остаётся'}
+          </p>
+          <div className="mt-3 flex flex-wrap gap-2">
+            <button type="button" className={btn_secondary} onClick={() => ensure_card(selected_drink)}>
+              создать техкарту
+            </button>
+            {selected_drink.is_available === false ? (
+              <button type="button" className={btn_ghost_danger} onClick={() => void purge_archived(selected_drink)}>
+                удалить навсегда
+              </button>
+            ) : null}
+          </div>
         </Card>
       ) : null}
 
@@ -204,9 +288,15 @@ export default function TechcardsSection({ state, set_state, menu, month }: sect
                 on_cold: (on: boolean) => set_card_temp(card, selected_drink, { cold: on }),
                 on_hot: (on: boolean) => set_card_temp(card, selected_drink, { hot: on }),
               })}
-              <button type="button" className={btn_ghost_danger} onClick={() => remove_card(card)}>
-                удалить техкарту
-              </button>
+              {selected_drink.is_available === false ? (
+                <button type="button" className={btn_ghost_danger} onClick={() => void purge_archived(selected_drink)}>
+                  удалить навсегда
+                </button>
+              ) : (
+                <button type="button" className={btn_ghost_danger} onClick={() => remove_card(card)}>
+                  удалить техкарту
+                </button>
+              )}
             </div>
             <div className="flex flex-wrap gap-2">
               {Object.keys(card.sizes)

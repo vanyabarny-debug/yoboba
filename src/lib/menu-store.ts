@@ -487,9 +487,10 @@ export function normalize_menu_item_images(items: menu_item[]) {
 }
 
 /** цены, объёмы и флаги карточки — из актуального меню в коде */
-export function merge_menu_item_catalog(items: menu_item[]): menu_item[] {
+export function merge_menu_item_catalog(items: menu_item[], removed_ids: Iterable<string> = []): menu_item[] {
+  const removed = new Set(removed_ids);
   const { by_id, by_name } = get_default_lookups();
-  const merged = items.map((item) => {
+  const merged = items.filter((item) => !removed.has(item.id)).map((item) => {
     const fallback = find_default_item(item, by_id, by_name);
     if (!fallback) return item;
     const moved_category = resolve_catalog_category(item.id, item.category, fallback.id);
@@ -510,10 +511,10 @@ export function merge_menu_item_catalog(items: menu_item[]): menu_item[] {
   });
   const ids = new Set(merged.map((item) => item.id));
   for (const def of default_menu_items) {
-    if (!ids.has(def.id) && !iced_only_ids.has(def.id)) merged.push({ ...def });
+    if (!ids.has(def.id) && !iced_only_ids.has(def.id) && !removed.has(def.id)) merged.push({ ...def });
   }
   return merged
-    .filter((item) => !iced_only_ids.has(item.id))
+    .filter((item) => !iced_only_ids.has(item.id) && !removed.has(item.id))
     .map((item) => {
       const iced =
         item.id === 'original-black-led'
@@ -579,7 +580,8 @@ function repair_menu_store(store: menu_store): menu_store {
           image_url,
           prep_minutes,
         };
-      })
+      }),
+      removed
     )
   );
   for (const def of defaults.items) {

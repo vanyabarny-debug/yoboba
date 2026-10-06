@@ -23,9 +23,11 @@ function merge_items(previous: menu_item[], incoming: menu_item[]) {
 
 function merge_stores(previous: menu_store | null, incoming: menu_store): menu_store {
   if (!previous) return incoming;
+  const removed = new Set([...(previous.removed_item_ids ?? []), ...(incoming.removed_item_ids ?? [])]);
   return {
     ...incoming,
-    items: merge_items(previous.items ?? [], incoming.items ?? []),
+    removed_item_ids: [...removed],
+    items: merge_items(previous.items ?? [], incoming.items ?? []).filter((item) => !removed.has(item.id)),
   };
 }
 
@@ -80,17 +82,22 @@ export async function write_published_menu(store: menu_store): Promise<void> {
       },
       { onConflict: 'id' }
     );
-    if (!error) return;
+    if (!error) {
+      published_cache = { at: Date.now(), store: durable };
+      return;
+    }
     if (!/does not exist/i.test(error.message)) {
       console.error('menu catalog write', error.message);
       throw new Error(error.message);
     }
     // таблица ещё не создана — старый fallback оставляем только как запасной путь
     await write_json_store(store_key, durable);
+    published_cache = { at: Date.now(), store: durable };
     return;
   }
 
   await write_json_store(store_key, store);
+  published_cache = { at: Date.now(), store };
 }
 
 export function is_menu_store_payload(value: unknown): value is menu_store {
