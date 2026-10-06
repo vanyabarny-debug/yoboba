@@ -10,7 +10,7 @@ type panel_tab = 'checklists' | 'timed' | 'control';
 export default function personnel_tasks_panel() {
   const [tab, set_tab] = useState<panel_tab>('checklists');
   const [control, set_control] = useState<{
-    progress: { opening: []; day: []; closing: [] };
+    progress: { opening: []; closing: [] };
     checklist_proofs: [];
     timed_proofs: [];
   } | null>(null);
@@ -22,7 +22,10 @@ export default function personnel_tasks_panel() {
       if (!res.ok) return;
       const data = await res.json();
       set_control({
-        progress: data.progress,
+        progress: {
+          opening: data.progress?.opening || [],
+          closing: data.progress?.closing || [],
+        },
         checklist_proofs: data.checklist_proofs,
         timed_proofs: data.timed_proofs,
       });
@@ -48,7 +51,7 @@ export default function personnel_tasks_panel() {
             tab === 'timed' ? 'bg-neutral-900 text-white' : 'text-neutral-500'
           }`}
         >
-          задачи по времени
+          задачи в течение дня
         </button>
         <button
           type="button"

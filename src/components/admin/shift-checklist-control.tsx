@@ -65,7 +65,7 @@ export default function shift_checklist_control({
   checklist_proofs,
   timed_proofs,
 }: {
-  progress: { opening: task_progress[]; day: task_progress[]; closing: task_progress[] };
+  progress: { opening: task_progress[]; closing: task_progress[] };
   checklist_proofs: checklist_proof[];
   timed_proofs: { id: string; template_id: string; seller_id: string; media: { id: string; kind: 'image' | 'video' } }[];
 }) {
@@ -73,11 +73,12 @@ export default function shift_checklist_control({
     <div className="mx-auto max-w-3xl space-y-4">
       <div>
         <h2 className="text-lg font-semibold text-neutral-900">контроль смены</h2>
-        <p className="text-sm text-neutral-500">прогресс чек-листов и файлы от бариста за сегодня</p>
+        <p className="text-sm text-neutral-500">
+          прогресс открытия/закрытия и файлы от бариста (чек-листы и задачи в течение дня)
+        </p>
       </div>
-      <div className="grid gap-3 sm:grid-cols-3">
+      <div className="grid gap-3 sm:grid-cols-2">
         {progress_block('открытие', progress.opening)}
-        {progress_block('в течение дня', progress.day)}
         {progress_block('закрытие', progress.closing)}
       </div>
       {checklist_proofs.length ? (

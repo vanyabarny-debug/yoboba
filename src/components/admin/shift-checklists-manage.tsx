@@ -4,15 +4,13 @@ import { useEffect, useState } from 'react';
 import { day_task_media_url } from '@/lib/day-task-templates';
 import {
   empty_template_item,
-  type checklist_kind,
   type shift_checklist_bundle,
   type shift_checklist_section,
   type shift_checklist_template_item,
 } from '@/lib/shift-checklist-templates';
 
-const kind_tabs: { id: checklist_kind; label: string }[] = [
+const kind_tabs: { id: 'opening' | 'closing'; label: string }[] = [
   { id: 'opening', label: 'открытие' },
-  { id: 'day', label: 'в течение дня' },
   { id: 'closing', label: 'закрытие' },
 ];
 
@@ -25,7 +23,7 @@ const proof_options = [
 
 export default function shift_checklists_manage() {
   const [bundle, set_bundle] = useState<shift_checklist_bundle | null>(null);
-  const [tab, set_tab] = useState<checklist_kind>('opening');
+  const [tab, set_tab] = useState<'opening' | 'closing'>('opening');
   const [error, set_error] = useState('');
   const [loading, set_loading] = useState(true);
   const [saving, set_saving] = useState(false);
@@ -48,7 +46,7 @@ export default function shift_checklists_manage() {
     void reload();
   }, []);
 
-  function patch_section(kind: checklist_kind, patch: Partial<shift_checklist_section>) {
+  function patch_section(kind: 'opening' | 'closing', patch: Partial<shift_checklist_section>) {
     set_bundle((prev) =>
       prev
         ? {
@@ -59,7 +57,7 @@ export default function shift_checklists_manage() {
     );
   }
 
-  function patch_item(kind: checklist_kind, id: string, patch: Partial<shift_checklist_template_item>) {
+  function patch_item(kind: 'opening' | 'closing', id: string, patch: Partial<shift_checklist_template_item>) {
     set_bundle((prev) => {
       if (!prev) return prev;
       const section = prev[kind];
@@ -73,7 +71,7 @@ export default function shift_checklists_manage() {
     });
   }
 
-  async function upload_media(kind: checklist_kind, item_id: string, file: File) {
+  async function upload_media(kind: 'opening' | 'closing', item_id: string, file: File) {
     set_error('');
     const body = new FormData();
     body.set('file', file);
@@ -123,10 +121,10 @@ export default function shift_checklists_manage() {
   return (
     <div className="mx-auto max-w-3xl space-y-4">
       <div>
-        <h2 className="text-lg font-semibold text-neutral-900">чек-листы смены</h2>
+        <h2 className="text-lg font-semibold text-neutral-900">чек-листы открытия и закрытия</h2>
         <p className="text-sm text-neutral-500">
-          открытие, день и закрытие на доске бариста. новые смены получают эти пункты; уже начатые сегодня — со старым
-          списком
+          одна карта на открытие и одна на закрытие. задачи в течение дня настраиваются отдельно — вкладка «в течение
+          дня»
         </p>
       </div>
 

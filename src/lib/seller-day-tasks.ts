@@ -1,6 +1,7 @@
 /** прогресс задач дня — только на этом устройстве, шаблоны приходят с сервера */
 
 import { moscow_today_iso } from '@/lib/order-number';
+import { is_template_active_on, default_schedule } from '@/lib/day-task-templates';
 import type { day_task_block, day_task_proof, day_task_template } from '@/lib/day-task-templates';
 
 /** одно нажатие кнопки: начать → пауза → готово */
@@ -107,7 +108,8 @@ export function apply_day_templates(
 ): day_task[] {
   const saved = read_saved(spot_id, day);
   const by_tpl = new Map(saved.map((t) => [t.template_id, t]));
-  const tasks = templates.map((tpl) => {
+  const active = templates.filter((tpl) => is_template_active_on(tpl.schedule ?? default_schedule(), day));
+  const tasks = active.map((tpl) => {
     const prev = by_tpl.get(tpl.id);
     const base = blank_task(day, tpl);
     if (!prev) return base;

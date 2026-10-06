@@ -12,7 +12,17 @@ const proofs_key = 'day-task-proofs';
 
 export async function get_day_task_templates(): Promise<day_task_template[]> {
   const raw = await read_json_store<unknown>(tasks_key, default_day_tasks);
-  return parse_day_tasks(raw) ?? default_day_tasks;
+  const parsed = parse_day_tasks(raw);
+  if (!parsed) return default_day_tasks;
+
+  /** старые демо-задачи (фритюр/масло) → заменить на дела из плаката */
+  const legacy = new Set(['journals', 'showcase', 'floor', 'oil-change', 'fryer-clean', 'trash']);
+  if (parsed.length === legacy.size && parsed.every((t) => legacy.has(t.id))) {
+    await write_json_store(tasks_key, default_day_tasks);
+    return default_day_tasks;
+  }
+
+  return parsed;
 }
 
 export async function save_day_task_templates(tasks: day_task_template[]) {

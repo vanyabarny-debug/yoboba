@@ -3,9 +3,14 @@
 import { useEffect, useState } from 'react';
 import {
   day_task_media_url,
+  default_schedule,
+  repeat_options,
+  schedule_summary,
+  weekday_labels,
   type day_task_block,
   type day_task_proof,
   type day_task_proof_record,
+  type day_task_repeat,
   type day_task_template,
 } from '@/lib/day-task-templates';
 
@@ -33,6 +38,7 @@ function empty_task(): day_task_template {
     expected_minutes: 5,
     proof: 'none',
     blocks: [empty_block()],
+    schedule: default_schedule(),
   };
 }
 
@@ -76,7 +82,7 @@ export default function day_tasks_manage() {
   }
 
   function open_edit(task: day_task_template) {
-    set_draft(structuredClone(task));
+    set_draft(structuredClone({ ...task, schedule: task.schedule ?? default_schedule() }));
     set_untimed(task.expected_minutes === 0);
     set_error('');
   }
@@ -156,6 +162,7 @@ export default function day_tasks_manage() {
       title: draft.title.trim(),
       hint: draft.hint.trim(),
       expected_minutes: untimed ? 0 : Math.min(240, Math.max(1, Math.round(draft.expected_minutes) || 1)),
+      schedule: draft.schedule ?? default_schedule(),
       blocks: draft.blocks.map((block) => ({
         ...block,
         kicker: block.kicker.trim(),
@@ -177,9 +184,10 @@ export default function day_tasks_manage() {
   return (
     <div className="mx-auto max-w-3xl space-y-4">
       <div>
-        <h2 className="text-lg font-semibold text-neutral-900">задачи по времени</h2>
+        <h2 className="text-lg font-semibold text-neutral-900">задачи в течение дня</h2>
         <p className="text-sm text-neutral-500">
-          отдельные карточки на доске (не чек-листы открытия/дня/закрытия). страницы, таймер, фото или видео в конце
+          каждая задача — своя карточка на доске. время вылета, дни, повтор (каждый день / неделя / раз в N дней /
+          месяц / год), страницы, фото или видео
         </p>
       </div>
 
@@ -211,6 +219,8 @@ export default function day_tasks_manage() {
                       {task.appear_at} · {task.title}
                     </p>
                     <p className="mt-1 text-xs text-neutral-500">
+                      {schedule_summary(task.schedule ?? default_schedule())}
+                      {' · '}
                       {task.expected_minutes > 0 ? `${task.expected_minutes} мин` : 'без таймера'}
                       {' · '}
                       {task.blocks.length} {task.blocks.length === 1 ? 'страница' : 'страницы'}
@@ -329,6 +339,156 @@ export default function day_tasks_manage() {
               />
               без таймера
             </label>
+
+            <div className="rounded-xl border border-surface p-3 space-y-3 text-center">
+              <p className="text-sm font-medium text-neutral-700">когда вылетает</p>
+              <label className="block text-sm text-neutral-600">
+                повтор
+                <select
+                  value={(draft.schedule ?? default_schedule()).repeat}
+                  onChange={(e) =>
+                    set_draft({
+                      ...draft,
+                      schedule: {
+                        ...(draft.schedule ?? default_schedule()),
+                        repeat: e.target.value as day_task_repeat,
+                      },
+                    })
+                  }
+                  className="mt-1 w-full rounded-xl border border-surface px-4 py-2.5 text-center text-sm"
+                >
+                  {repeat_options.map((opt) => (
+                    <option key={opt.id} value={opt.id}>
+                      {opt.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              {(draft.schedule ?? default_schedule()).repeat === 'every_n_days' ? (
+                <div className="grid grid-cols-2 gap-3">
+                  <label className="block text-sm text-neutral-600">
+                    каждые N дней
+                    <input
+                      type="number"
+                      min={1}
+                      max={365}
+                      value={(draft.schedule ?? default_schedule()).every}
+                      onChange={(e) =>
+                        set_draft({
+                          ...draft,
+                          schedule: {
+                            ...(draft.schedule ?? default_schedule()),
+                            every: Math.max(1, Number(e.target.value) || 1),
+                          },
+                        })
+                      }
+                      className="mt-1 w-full rounded-xl border border-surface px-4 py-2.5 text-center text-sm"
+                    />
+                  </label>
+                  <label className="block text-sm text-neutral-600">
+                    от даты
+                    <input
+                      type="date"
+                      value={(draft.schedule ?? default_schedule()).from}
+                      onChange={(e) =>
+                        set_draft({
+                          ...draft,
+                          schedule: {
+                            ...(draft.schedule ?? default_schedule()),
+                            from: e.target.value,
+                          },
+                        })
+                      }
+                      className="mt-1 w-full rounded-xl border border-surface px-4 py-2.5 text-center text-sm"
+                    />
+                  </label>
+                </div>
+              ) : null}
+
+              {(draft.schedule ?? default_schedule()).repeat === 'monthly' ||
+              (draft.schedule ?? default_schedule()).repeat === 'yearly' ? (
+                <div className="grid grid-cols-2 gap-3">
+                  {(draft.schedule ?? default_schedule()).repeat === 'yearly' ? (
+                    <label className="block text-sm text-neutral-600">
+                      месяц
+                      <input
+                        type="number"
+                        min={1}
+                        max={12}
+                        value={(draft.schedule ?? default_schedule()).month}
+                        onChange={(e) =>
+                          set_draft({
+                            ...draft,
+                            schedule: {
+                              ...(draft.schedule ?? default_schedule()),
+                              month: Math.min(12, Math.max(1, Number(e.target.value) || 1)),
+                            },
+                          })
+                        }
+                        className="mt-1 w-full rounded-xl border border-surface px-4 py-2.5 text-center text-sm"
+                      />
+                    </label>
+                  ) : null}
+                  <label className="block text-sm text-neutral-600">
+                    число
+                    <input
+                      type="number"
+                      min={1}
+                      max={31}
+                      value={(draft.schedule ?? default_schedule()).month_day}
+                      onChange={(e) =>
+                        set_draft({
+                          ...draft,
+                          schedule: {
+                            ...(draft.schedule ?? default_schedule()),
+                            month_day: Math.min(31, Math.max(1, Number(e.target.value) || 1)),
+                          },
+                        })
+                      }
+                      className="mt-1 w-full rounded-xl border border-surface px-4 py-2.5 text-center text-sm"
+                    />
+                  </label>
+                </div>
+              ) : null}
+
+              {(draft.schedule ?? default_schedule()).repeat === 'daily' ||
+              (draft.schedule ?? default_schedule()).repeat === 'weekly' ? (
+                <div>
+                  <p className="mb-2 text-sm text-neutral-600">дни недели</p>
+                  <div className="flex flex-wrap justify-center gap-1">
+                    {weekday_labels.map((day) => {
+                      const schedule = draft.schedule ?? default_schedule();
+                      const on = schedule.weekdays.includes(day.id);
+                      return (
+                        <button
+                          key={day.id}
+                          type="button"
+                          onClick={() => {
+                            const next = on
+                              ? schedule.weekdays.filter((d) => d !== day.id)
+                              : [...schedule.weekdays, day.id].sort((a, b) => a - b);
+                            set_draft({
+                              ...draft,
+                              schedule: {
+                                ...schedule,
+                                weekdays: next.length ? next : [day.id],
+                              },
+                            });
+                          }}
+                          className={`rounded-lg px-2.5 py-1.5 text-xs font-medium ${
+                            on ? 'bg-neutral-900 text-white' : 'border border-surface text-neutral-500'
+                          }`}
+                        >
+                          {day.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              ) : null}
+            </div>
+
             <label className="block text-center">
               <span className="text-sm text-neutral-600">бариста прикладывает</span>
               <select
