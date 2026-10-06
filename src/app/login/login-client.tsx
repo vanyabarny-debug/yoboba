@@ -28,6 +28,18 @@ export default function login_client() {
   useEffect(() => {
     const auth_error = params.get('error');
     if (auth_error) {
+      const decoded = decodeURIComponent(auth_error).toLowerCase();
+      
+      // Если email уже зарегистрирован - это не ошибка, просто показываем что письмо отправлено
+      if (decoded.includes('already been registered') || decoded.includes('already registered')) {
+        const email_param = params.get('email');
+        if (email_param) {
+          set_email(email_param);
+          set_email_step('sent');
+        }
+        return;
+      }
+      
       set_error(
         auth_error === 'vk_state_mismatch'
           ? 'сессия vk устарела — попробуйте ещё раз'

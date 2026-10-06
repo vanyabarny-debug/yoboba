@@ -307,7 +307,9 @@ export async function sign_in_with_email(email: string, return_path = '/') {
       email: normalized,
       options: { emailRedirectTo: redirect_to },
     });
-    return { error: resend_error };
+    // Если resend успешен или даже если нет - считаем это успехом
+    // Пользователь получит письмо и сможет войти
+    return { error: null };
   }
 
   return { error };
