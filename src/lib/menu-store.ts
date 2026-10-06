@@ -29,8 +29,11 @@ const classic_drink_item_ids = new Set([
   'taro-led',
 ]);
 
+/** тёплые дубли: в меню и техкартах остаётся только вариант со льдом, без этой подписи */
+const iced_only_ids = new Set(['original-black', 'jasmine-green']);
+
 /** позиции, снятые с меню — остаются в админской истории, но не публикуются на сайте */
-export const retired_item_ids = new Set(['golubaya-laguna', 'subzero', 'tropichesky-limonad']);
+export const retired_item_ids = new Set(['golubaya-laguna', 'subzero', 'tropichesky-limonad', ...iced_only_ids]);
 export const retired_item_names = new Set([
   'голубая лагуна',
   'сабзиро',
@@ -189,21 +192,21 @@ export const default_menu_items: menu_item[] = [
     volumes: vols(450, 520),
     cold: false,
     hot: false,
-    recommendations: ['kakao', 'original-black'],
+    recommendations: ['kakao', 'original-black-led'],
   }),
-  item('original-black-led', 'чёрный сахар со льдом', 390, CLASSIC_CATEGORY, local('original-black-led'), {
+  item('original-black-led', 'чёрный сахар', 390, CLASSIC_CATEGORY, local('original-black-led'), {
     composition: 'чёрный чай, молоко, тапиока, сироп «чёрный сахар», лёд',
     volumes: vols(390, 450),
     cold: true,
     hot: false,
-    recommendations: ['original-black', 'jasmine-green-led'],
+    recommendations: ['jasmine-green-led'],
   }),
-  item('jasmine-green-led', 'зелёный жасмин со льдом', 390, CLASSIC_CATEGORY, local('jasmine-green-led'), {
+  item('jasmine-green-led', 'зелёный жасмин', 390, CLASSIC_CATEGORY, local('jasmine-green'), {
     composition: 'зелёный чай с жасмином, молоко, тапиока, сироп «чёрный сахар», лёд',
     volumes: vols(390, 450),
     cold: true,
     hot: false,
-    recommendations: ['jasmine-green', 'original-black-led'],
+    recommendations: ['original-black-led'],
   }),
   item('matcha-latte-tiger-led', 'матча латте со льдом', 450, CLASSIC_CATEGORY, local('matcha-latte-tiger-led'), {
     composition:
@@ -507,13 +510,35 @@ export function merge_menu_item_catalog(items: menu_item[]): menu_item[] {
   });
   const ids = new Set(merged.map((item) => item.id));
   for (const def of default_menu_items) {
-    if (!ids.has(def.id)) merged.push({ ...def });
+    if (!ids.has(def.id) && !iced_only_ids.has(def.id)) merged.push({ ...def });
   }
-  return merged.map((item) => ({
-    ...item,
-    is_available: is_retired_menu_item(item) ? false : item.is_available,
-    recommendations: (item.recommendations ?? []).filter((id) => !retired_item_ids.has(id)),
-  }));
+  return merged
+    .filter((item) => !iced_only_ids.has(item.id))
+    .map((item) => {
+      const iced =
+        item.id === 'original-black-led'
+          ? { name: 'чёрный сахар', cold: true as const, hot: false as const }
+          : item.id === 'jasmine-green-led'
+            ? {
+                name: 'зелёный жасмин',
+                cold: true as const,
+                hot: false as const,
+                image_url: green_jasmine_photo(item.image_url),
+              }
+            : null;
+      return {
+        ...item,
+        ...iced,
+        is_available: is_retired_menu_item(item) ? false : item.is_available,
+        recommendations: (item.recommendations ?? []).filter((id) => !retired_item_ids.has(id)),
+      };
+    });
+}
+
+function green_jasmine_photo(url?: string) {
+  const bare = (url || '').split('?')[0];
+  if (!bare || bare.endsWith('/jasmine-green-led.png')) return local('jasmine-green');
+  return url || local('jasmine-green');
 }
 
 function repair_menu_store(store: menu_store): menu_store {
