@@ -12,6 +12,15 @@ const next_config: NextConfig = {
   output: 'standalone',
   // иначе 127.0.0.1 режет /_next/* и страница крутится на сплэше
   allowedDevOrigins: ['127.0.0.1', 'localhost'],
+  experimental: {
+    proxyClientMaxBodySize: '20mb',
+  },
+  async rewrites() {
+    return [
+      { source: '/admin/designer', destination: '/admin/designer/index.html' },
+      { source: '/admin/designer/', destination: '/admin/designer/index.html' },
+    ];
+  },
   headers: async () => [
     {
       source: '/service-worker.js',

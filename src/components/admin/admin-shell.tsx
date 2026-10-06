@@ -44,6 +44,7 @@ export const admin_tabs = [
     match: (p: string) => p.startsWith('/admin/personnel') || p.startsWith('/admin/sellers'),
   },
   { href: '/admin/spots', label: 'точки', match: (p: string) => p.startsWith('/admin/spots') },
+  { href: '/admin/designer', label: 'дизайн', match: (p: string) => p.startsWith('/admin/designer') },
   { href: '/admin/account', label: 'аккаунт', match: (p: string) => p.startsWith('/admin/account') },
 ] as const;
 
@@ -68,16 +69,20 @@ export function AdminHeader({ actions, wide = false }: { actions?: React.ReactNo
         <nav className="flex min-w-0 flex-1 gap-0.5 overflow-x-auto stories-scroll">
           {admin_tabs.map((tab) => {
             const active = tab.match(pathname);
+            const class_name = `shrink-0 rounded-pill px-2.5 py-1.5 text-sm font-medium transition-colors ${
+              active
+                ? 'bg-accent text-white'
+                : 'text-neutral-500 hover:bg-accent/10 hover:text-neutral-800'
+            }`;
+            if (tab.href === '/admin/designer') {
+              return (
+                <a key={tab.href} href={tab.href} className={class_name}>
+                  {tab.label}
+                </a>
+              );
+            }
             return (
-              <Link
-                key={tab.href}
-                href={tab.href}
-                className={`shrink-0 rounded-pill px-2.5 py-1.5 text-sm font-medium transition-colors ${
-                  active
-                    ? 'bg-accent text-white'
-                    : 'text-neutral-500 hover:bg-accent/10 hover:text-neutral-800'
-                }`}
-              >
+              <Link key={tab.href} href={tab.href} className={class_name}>
                 {tab.label}
               </Link>
             );

@@ -46,6 +46,7 @@ next-env.d.ts
 /data/day-task-media/
 /data/admin-account.json
 /data/order-audit.json
+/data/designer-exports/
 
 # OpenNext
 .open-next

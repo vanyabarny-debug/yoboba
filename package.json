@@ -13,6 +13,7 @@
     "cf-typegen": "wrangler types --config wrangler.worker.jsonc --env-interface CloudflareEnv cloudflare-env.d.ts"
   },
   "dependencies": {
+    "@google/genai": "^2.27.0",
     "@supabase/ssr": "^0.12.0",
     "@supabase/supabase-js": "^2.108.2",
     "next": "16.2.9",
