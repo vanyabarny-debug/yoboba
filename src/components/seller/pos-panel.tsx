@@ -805,7 +805,7 @@ export default function pos_panel({
 
           {!staff_drink ? (
             <>
-          {!cart.length && customer ? (
+          {customer ? (
             <div className="rounded-xl border border-neutral-200 bg-neutral-50 px-3 py-3">
               <p className="text-sm font-semibold text-neutral-900">
                 {customer.name || 'гость'}
@@ -881,20 +881,9 @@ export default function pos_panel({
 
           {lookup_busy ? (
             <p className="text-xs text-neutral-400">ищем в базе…</p>
-          ) : customer ? (
-            <p className="text-sm text-neutral-700">
-              <span className="font-semibold">{customer.name || 'гость'}</span>
-              <span className="text-neutral-400"> · {customer.bonus_balance} бобаллов</span>
-              {active_pickup_code ? (
-                <span className="mt-1 block text-xs font-semibold text-accent">
-                  найден по коду {active_pickup_code}
-                </span>
-              ) : null}
-              {customer.student_verified ? (
-                <span className="mt-1 block text-xs font-semibold text-accent">
-                  {STUDENT_DISCOUNT_LABEL}
-                </span>
-              ) : null}
+          ) : code_draft.length === 6 && !customer ? (
+            <p className="text-xs text-accent">
+              {error || 'гость по коду не найден — пусть обновит «мой код» в приложении'}
             </p>
           ) : null}
 
@@ -1102,8 +1091,9 @@ export default function pos_panel({
     open: scanner_open,
     on_close: () => set_scanner_open(false),
     on_scan: (code: string) => {
+      skip_phone_lookup.current = true;
       set_code_draft(code);
-      set_active_pickup_code(null);
+      set_active_pickup_code(code);
       set_error(null);
       void lookup_guest({ code });
     },

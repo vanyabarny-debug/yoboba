@@ -226,8 +226,21 @@ export async function GET(request: Request) {
     }
     const resolved = await resolve_pickup_code(code);
     if (!resolved) {
-      return NextResponse.json({ customer: null, code, error: 'код не найден или устарел' });
+      console.error('[pickup] seller lookup miss', code);
+      return NextResponse.json({
+        customer: null,
+        code,
+        error: 'код не найден или устарел — гость пусть обновит «мой код» в приложении',
+      });
     }
+    console.info(
+      '[pickup] seller lookup ok',
+      code,
+      resolved.user_id,
+      resolved.name,
+      resolved.phone,
+      resolved.bonus_balance
+    );
     if (is_supabase_configured()) {
       const admin = create_service_client();
       const full = await admin

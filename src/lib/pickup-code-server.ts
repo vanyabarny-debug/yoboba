@@ -93,6 +93,56 @@ async function ensure_demo_code(input: {
   return { code, expires_at };
 }
 
+async function ensure_via_table(input: {
+  user_id: string;
+}): Promise<pickup_code_result> {
+  const admin = create_service_client();
+  const now_iso = new Date().toISOString();
+
+  const { data: existing, error: find_err } = await admin
+    .from('pickup_codes')
+    .select('code, expires_at, used_at')
+    .eq('user_id', input.user_id)
+    .is('used_at', null)
+    .gt('expires_at', now_iso)
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (find_err) {
+    throw new Error(
+      find_err.message.includes('pickup_codes') || find_err.code === '42P01'
+        ? 'таблица pickup_codes не создана — выполните supabase/pickup-codes.sql'
+        : find_err.message
+    );
+  }
+
+  if (existing?.code && existing.expires_at) {
+    return { code: String(existing.code), expires_at: String(existing.expires_at) };
+  }
+
+  await admin
+    .from('pickup_codes')
+    .update({ used_at: now_iso })
+    .eq('user_id', input.user_id)
+    .is('used_at', null);
+
+  for (let i = 0; i < 12; i++) {
+    const code = mint_digits();
+    const expires_at = new Date(Date.now() + PICKUP_CODE_TTL_MINUTES * 60_000).toISOString();
+    const { error } = await admin.from('pickup_codes').insert({
+      user_id: input.user_id,
+      code,
+      expires_at,
+    });
+    if (!error) return { code, expires_at };
+    if (error.code !== '23505') {
+      throw new Error(error.message || 'не удалось создать код');
+    }
+  }
+  throw new Error('не удалось создать код');
+}
+
 export async function ensure_pickup_code(input: {
   user_id: string;
   name?: string | null;
@@ -109,19 +159,36 @@ export async function ensure_pickup_code(input: {
     p_ttl_minutes: PICKUP_CODE_TTL_MINUTES,
   });
 
+  if (!error) {
+    const row = Array.isArray(data) ? data[0] : data;
+    if (row?.code && row?.expires_at) {
+      return {
+        code: String(row.code),
+        expires_at: String(row.expires_at),
+      };
+    }
+  } else {
+    console.error('[pickup] ensure rpc failed:', error.message);
+  }
+
+  return ensure_via_table(input);
+}
+
+async function resolve_user_id_via_table(code: string): Promise<string | null> {
+  const admin = create_service_client();
+  const { data, error } = await admin
+    .from('pickup_codes')
+    .select('user_id')
+    .eq('code', code)
+    .is('used_at', null)
+    .gt('expires_at', new Date().toISOString())
+    .maybeSingle();
+
   if (error) {
-    throw new Error(error.message || 'не удалось создать код');
+    console.error('[pickup] resolve table failed:', error.message, error.code);
+    return null;
   }
-
-  const row = Array.isArray(data) ? data[0] : data;
-  if (!row?.code || !row?.expires_at) {
-    throw new Error('не удалось создать код');
-  }
-
-  return {
-    code: String(row.code),
-    expires_at: String(row.expires_at),
-  };
+  return data?.user_id ? String(data.user_id) : null;
 }
 
 export async function resolve_pickup_code(
@@ -134,7 +201,10 @@ export async function resolve_pickup_code(
     const rows = await load_demo();
     const now = Date.now();
     const row = rows.find((r) => r.code === code && is_active(r, now));
-    if (!row) return null;
+    if (!row) {
+      console.error('[pickup] demo resolve miss', code);
+      return null;
+    }
     return {
       user_id: row.user_id,
       code: row.code,
@@ -145,11 +215,26 @@ export async function resolve_pickup_code(
   }
 
   const admin = create_service_client();
-  const { data: user_id, error } = await admin.rpc('resolve_pickup_code', {
+  let user_id: string | null = null;
+
+  const { data: rpc_uid, error: rpc_err } = await admin.rpc('resolve_pickup_code', {
     p_code: code,
   });
 
-  if (error || !user_id) return null;
+  if (rpc_err) {
+    console.error('[pickup] resolve rpc failed:', rpc_err.message);
+  } else if (rpc_uid) {
+    user_id = String(rpc_uid);
+  }
+
+  if (!user_id) {
+    user_id = await resolve_user_id_via_table(code);
+  }
+
+  if (!user_id) {
+    console.error('[pickup] resolve miss code=', code);
+    return null;
+  }
 
   const full = await admin
     .from('profiles')
@@ -169,7 +254,10 @@ export async function resolve_pickup_code(
       ).data
     : full.data;
 
-  if (!profile) return null;
+  if (!profile) {
+    console.error('[pickup] profile missing for', user_id);
+    return null;
+  }
 
   return {
     user_id: profile.id,
@@ -208,14 +296,44 @@ export async function invalidate_pickup_code(input: {
     p_code: code,
   });
 
-  if (error) return false;
-  return Boolean(data);
+  if (!error && data) return Boolean(data);
+
+  if (error) console.error('[pickup] invalidate rpc failed:', error.message);
+
+  const now_iso = new Date().toISOString();
+  if (code) {
+    const { error: upd_err, count } = await admin
+      .from('pickup_codes')
+      .update({ used_at: now_iso }, { count: 'exact' })
+      .eq('code', code)
+      .is('used_at', null);
+    if (upd_err) {
+      console.error('[pickup] invalidate table failed:', upd_err.message);
+      return false;
+    }
+    return (count ?? 0) > 0;
+  }
+
+  if (input.user_id) {
+    const { error: upd_err, count } = await admin
+      .from('pickup_codes')
+      .update({ used_at: now_iso }, { count: 'exact' })
+      .eq('user_id', input.user_id)
+      .is('used_at', null);
+    if (upd_err) {
+      console.error('[pickup] invalidate user failed:', upd_err.message);
+      return false;
+    }
+    return (count ?? 0) > 0;
+  }
+
+  return false;
 }
 
 /** простой rate-limit на lookup по коду (на инстанс) */
 const lookup_hits = new Map<string, { count: number; reset_at: number }>();
 
-export function pickup_lookup_allowed(key: string, limit = 30, window_ms = 60_000): boolean {
+export function pickup_lookup_allowed(key: string, limit = 60, window_ms = 60_000): boolean {
   const now = Date.now();
   const row = lookup_hits.get(key);
   if (!row || row.reset_at <= now) {
