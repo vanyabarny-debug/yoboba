@@ -224,6 +224,7 @@ export async function GET(request: Request) {
         { status: 429 }
       );
     }
+    console.log('[pickup] seller lookup try', { raw: raw_code, code });
     const resolved = await resolve_pickup_code(code);
     if (!resolved) {
       const { pickup_code_miss_reason } = await import('@/lib/pickup-code-server');
