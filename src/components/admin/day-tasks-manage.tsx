@@ -177,9 +177,9 @@ export default function day_tasks_manage() {
   return (
     <div className="mx-auto max-w-3xl space-y-4">
       <div>
-        <h2 className="text-lg font-semibold text-neutral-900">задачи дня</h2>
+        <h2 className="text-lg font-semibold text-neutral-900">задачи по времени</h2>
         <p className="text-sm text-neutral-500">
-          чистые страницы для бариста. вылетают по времени москвы. одна кнопка: начать, пауза, готово
+          отдельные карточки на доске (не чек-листы открытия/дня/закрытия). страницы, таймер, фото или видео в конце
         </p>
       </div>
 

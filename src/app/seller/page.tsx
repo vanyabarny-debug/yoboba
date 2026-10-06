@@ -31,9 +31,10 @@ import closing_task_card from '@/components/seller/closing-task-card';
 import closing_task_guide from '@/components/seller/closing-task-guide';
 import day_task_card from '@/components/seller/day-task-card';
 import day_task_guide from '@/components/seller/day-task-guide';
-import { should_show_opening_task, type opening_task } from '@/lib/opening-checklist';
-import { should_show_closing_task, type closing_task } from '@/lib/closing-checklist';
-import { should_show_day_task, type day_checklist_task } from '@/lib/day-checklist';
+import { type opening_task } from '@/lib/opening-checklist';
+import { type closing_task } from '@/lib/closing-checklist';
+import { type day_checklist_task } from '@/lib/day-checklist';
+import { should_show_checklist_at } from '@/lib/shift-checklist-templates';
 import order_prep_card, {
   type drink_row,
   type prep_state,
@@ -327,6 +328,11 @@ export default function seller_board() {
   const [closing_guide_open, set_closing_guide_open] = useState(false);
   const [day_task_state, set_day_task_state] = useState<day_checklist_task | null>(null);
   const [day_guide_open, set_day_guide_open] = useState(false);
+  const [checklist_meta, set_checklist_meta] = useState({
+    opening_at: '11:00',
+    day_at: '12:00',
+    closing_at: '20:00',
+  });
   const [fresh_ids, set_fresh_ids] = useState<Set<string>>(new Set());
   const [unread_new, set_unread_new] = useState(0);
   const [pos_depth, set_pos_depth] = useState(false);
@@ -368,6 +374,19 @@ export default function seller_board() {
     return () => {
       stop = true;
     };
+  }, []);
+
+  useEffect(() => {
+    void fetch('/api/seller/shift-checklists/meta', { credentials: 'same-origin' })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data: { opening_at?: string; day_at?: string; closing_at?: string } | null) => {
+        if (!data?.opening_at) return;
+        set_checklist_meta({
+          opening_at: data.opening_at,
+          day_at: data.day_at || '12:00',
+          closing_at: data.closing_at || '20:00',
+        });
+      });
   }, []);
 
   useEffect(() => {
@@ -1322,15 +1341,17 @@ export default function seller_board() {
   const { open: open_tasks, done: done_tasks } = get_board_tasks(day_tasks);
   
   // Добавить задачу открытия, если время пришло и она не завершена
-  const show_opening = opening_task_state && should_show_opening_task() && !opening_task_state.completed_at;
+  const show_opening =
+    opening_task_state && should_show_checklist_at(checklist_meta.opening_at) && !opening_task_state.completed_at;
   const opening_is_done = opening_task_state?.completed_at != null;
   
   // Добавить задачу закрытия, если время пришло и она не завершена
-  const show_closing = closing_task_state && should_show_closing_task() && !closing_task_state.completed_at;
+  const show_closing =
+    closing_task_state && should_show_checklist_at(checklist_meta.closing_at) && !closing_task_state.completed_at;
   const closing_is_done = closing_task_state?.completed_at != null;
 
   // Чек-лист дня — с полудня, пункты в любом порядке
-  const show_day = day_task_state && should_show_day_task() && !day_task_state.completed_at;
+  const show_day = day_task_state && should_show_checklist_at(checklist_meta.day_at) && !day_task_state.completed_at;
   const day_is_done = day_task_state?.completed_at != null;
   
   const work_board_count =

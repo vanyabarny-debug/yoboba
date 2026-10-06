@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import AdminShell from '@/components/admin/admin-shell';
-import DayTasksManage from '@/components/admin/day-tasks-manage';
+import PersonnelTasksPanel from '@/components/admin/personnel-tasks-panel';
 import InternsManage from '@/components/admin/interns-manage';
 import SellersManage from '@/components/admin/sellers-manage';
 
@@ -40,7 +40,7 @@ export default function personnel_page() {
           задачи
         </button>
       </div>
-      {tab === 'interns' ? <InternsManage /> : tab === 'staff' ? <SellersManage bare /> : <DayTasksManage />}
+      {tab === 'interns' ? <InternsManage /> : tab === 'staff' ? <SellersManage bare /> : <PersonnelTasksPanel />}
     </AdminShell>
   );
 }

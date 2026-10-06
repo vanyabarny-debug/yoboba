@@ -2,12 +2,13 @@ import { NextRequest, NextResponse } from 'next/server';
 import { create_service_client } from '@/lib/supabase/service';
 import { is_supabase_configured } from '@/lib/supabase/config';
 import { moscow_today_iso } from '@/lib/order-number';
+import { is_opening_complete, type opening_task } from '@/lib/opening-checklist';
 import {
-  default_opening_checklist,
-  is_opening_complete,
-  type opening_task,
-  type opening_checklist_item,
-} from '@/lib/opening-checklist';
+  checklist_items_for_new_task,
+  enrich_checklist_items,
+  template_proof_for_item,
+} from '@/lib/checklist-task-enrich';
+import { proofs_map_for_task } from '@/lib/checklist-proofs-server';
 import { send_push_to_admins } from '@/lib/opening-notify';
 
 /** GET /api/seller/opening-task - получить задачу открытия на сегодня */
@@ -76,7 +77,8 @@ export async function GET(request: NextRequest) {
     task_id = new_task.id;
 
     // Создать дефолтные пункты чек-листа
-    const items = default_opening_checklist.map((text, index) => ({
+    const lines = await checklist_items_for_new_task('opening');
+    const items = lines.map((text, index) => ({
       opening_task_id: task_id,
       item_order: index + 1,
       item_text: text,
@@ -105,6 +107,21 @@ export async function GET(request: NextRequest) {
     .eq('opening_task_id', task_id)
     .order('item_order');
 
+  const base_items = (items_data || []).map((item: any) => ({
+    id: item.id,
+    item_order: item.item_order,
+    item_text: item.item_text,
+    is_checked: item.is_checked,
+    checked_at: item.checked_at,
+    checked_by: item.checked_by,
+  }));
+  const enriched = await enrich_checklist_items(
+    'opening',
+    task_id as string,
+    task_data?.shift_date || shift_date,
+    base_items
+  );
+
   const task: opening_task = {
     id: task_data?.id || '',
     spot_id: task_data?.spot_id || spot_id || '',
@@ -114,14 +131,7 @@ export async function GET(request: NextRequest) {
     seller_name: task_data?.seller_name || null,
     started_at: task_data?.started_at || null,
     completed_at: task_data?.completed_at || null,
-    items: (items_data || []).map((item: any) => ({
-      id: item.id,
-      item_order: item.item_order,
-      item_text: item.item_text,
-      is_checked: item.is_checked,
-      checked_at: item.checked_at,
-      checked_by: item.checked_by,
-    })),
+    items: enriched,
   };
 
   return NextResponse.json({ task });
@@ -152,6 +162,28 @@ export async function PATCH(request: NextRequest) {
   }
 
   const supabase = create_service_client();
+
+  const { data: item_row } = await supabase
+    .from('opening_checklist_items')
+    .select('item_order')
+    .eq('id', body.item_id)
+    .single();
+
+  if (body.is_checked && item_row?.item_order) {
+    const proof = await template_proof_for_item('opening', item_row.item_order);
+    if (proof !== 'none') {
+      const { data: task_row } = await supabase
+        .from('opening_tasks')
+        .select('shift_date')
+        .eq('id', body.task_id)
+        .single();
+      const shift_date = task_row?.shift_date || moscow_today_iso();
+      const proofs = await proofs_map_for_task('opening', body.task_id, shift_date);
+      if (!proofs.has(body.item_id)) {
+        return NextResponse.json({ error: 'сначала приложите фото или видео' }, { status: 400 });
+      }
+    }
+  }
 
   // Обновить пункт
   const update_data: any = {
@@ -184,6 +216,21 @@ export async function PATCH(request: NextRequest) {
     .eq('opening_task_id', body.task_id)
     .order('item_order');
 
+  const base_items = (items_data || []).map((item: any) => ({
+    id: item.id,
+    item_order: item.item_order,
+    item_text: item.item_text,
+    is_checked: item.is_checked,
+    checked_at: item.checked_at,
+    checked_by: item.checked_by,
+  }));
+  const enriched = await enrich_checklist_items(
+    'opening',
+    body.task_id,
+    task_data?.shift_date || moscow_today_iso(),
+    base_items
+  );
+
   const task: opening_task = {
     id: task_data?.id || body.task_id,
     spot_id: task_data?.spot_id || '',
@@ -193,14 +240,7 @@ export async function PATCH(request: NextRequest) {
     seller_name: task_data?.seller_name || null,
     started_at: task_data?.started_at || null,
     completed_at: task_data?.completed_at || null,
-    items: (items_data || []).map((item: any) => ({
-      id: item.id,
-      item_order: item.item_order,
-      item_text: item.item_text,
-      is_checked: item.is_checked,
-      checked_at: item.checked_at,
-      checked_by: item.checked_by,
-    })),
+    items: enriched,
   };
 
   // Проверить, завершен ли чек-лист

@@ -2,12 +2,13 @@ import { NextRequest, NextResponse } from 'next/server';
 import { create_service_client } from '@/lib/supabase/service';
 import { is_supabase_configured } from '@/lib/supabase/config';
 import { moscow_today_iso } from '@/lib/order-number';
+import { is_day_complete, type day_checklist_task, type day_checklist_item } from '@/lib/day-checklist';
 import {
-  default_day_checklist,
-  is_day_complete,
-  type day_checklist_task,
-  type day_checklist_item,
-} from '@/lib/day-checklist';
+  checklist_items_for_new_task,
+  enrich_checklist_items,
+  template_proof_for_item,
+} from '@/lib/checklist-task-enrich';
+import { proofs_map_for_task } from '@/lib/checklist-proofs-server';
 import { send_push_to_admins } from '@/lib/opening-notify';
 
 type task_row = {
@@ -59,6 +60,11 @@ function to_task(
       })
     ),
   };
+}
+
+async function with_enriched(task: day_checklist_task): Promise<day_checklist_task> {
+  const items = await enrich_checklist_items('day', task.id, task.shift_date, task.items);
+  return { ...task, items };
 }
 
 async function load_task(supabase: ReturnType<typeof create_service_client>, task_id: string) {
@@ -121,7 +127,8 @@ export async function GET(request: NextRequest) {
 
     task_id = (new_task as task_row).id;
 
-    const items = default_day_checklist.map((text, index) => ({
+    const lines = await checklist_items_for_new_task('day');
+    const items = lines.map((text, index) => ({
       day_task_id: task_id,
       item_order: index + 1,
       item_text: text,
@@ -134,7 +141,9 @@ export async function GET(request: NextRequest) {
   }
 
   const { task_data, items_data } = await load_task(supabase, task_id as string);
-  const task = to_task(task_data, items_data, { id: task_id as string, spot_id, shift_date, seller_id });
+  const task = await with_enriched(
+    to_task(task_data, items_data, { id: task_id as string, spot_id, shift_date, seller_id })
+  );
 
   return NextResponse.json({ task });
 }
@@ -157,6 +166,28 @@ export async function PATCH(request: NextRequest) {
 
   const supabase = create_service_client();
   const now = new Date().toISOString();
+
+  const { data: item_row } = await supabase
+    .from('day_checklist_items')
+    .select('item_order')
+    .eq('id', body.item_id)
+    .single();
+
+  if (body.is_checked && item_row?.item_order) {
+    const proof = await template_proof_for_item('day', item_row.item_order);
+    if (proof !== 'none') {
+      const { data: task_row } = await supabase
+        .from('day_tasks')
+        .select('shift_date')
+        .eq('id', body.task_id)
+        .single();
+      const shift_date = task_row?.shift_date || moscow_today_iso();
+      const proofs = await proofs_map_for_task('day', body.task_id, shift_date);
+      if (!proofs.has(body.item_id)) {
+        return NextResponse.json({ error: 'сначала приложите фото или видео' }, { status: 400 });
+      }
+    }
+  }
 
   await supabase
     .from('day_checklist_items')
@@ -223,7 +254,7 @@ export async function PATCH(request: NextRequest) {
     task.completed_at = null;
   }
 
-  return NextResponse.json({ task });
+  return NextResponse.json({ task: await with_enriched(task) });
 }
 
 /** POST /api/seller/day-task — начать выполнение */

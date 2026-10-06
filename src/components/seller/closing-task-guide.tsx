@@ -1,7 +1,11 @@
 'use client';
 
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { closing_progress, is_closing_complete, type closing_task } from '@/lib/closing-checklist';
+import {
+  ChecklistInstructionMedia,
+  ChecklistProofPreview,
+} from '@/components/seller/checklist-item-actions';
 
 // Звук при отметке пункта
 function play_check_sound() {
@@ -61,6 +65,8 @@ export default function ClosingTaskGuide({
 }) {
   const [busy, set_busy] = useState(false);
   const [error, set_error] = useState('');
+  const file_ref = useRef<HTMLInputElement>(null);
+  const [pending_id, set_pending_id] = useState<string | null>(null);
   const progress = closing_progress(task);
   const is_complete = is_closing_complete(task);
   const is_started = task.started_at != null;
@@ -101,71 +107,118 @@ export default function ClosingTaskGuide({
     }
   }
 
-  async function toggle_item(item_id: string, current_state: boolean, item_order: number) {
-    if (busy || task.completed_at) return;
+  async function patch_item(item_id: string, is_checked: boolean) {
+    const res = await fetch('/api/seller/closing-task', {
+      method: 'PATCH',
+      headers: { 'content-type': 'application/json' },
+      credentials: 'same-origin',
+      body: JSON.stringify({
+        task_id: task.id,
+        item_id,
+        is_checked,
+        seller_id,
+        seller_name,
+      }),
+    });
+    if (!res.ok) {
+      const data = (await res.json()) as { error?: string };
+      throw new Error(data.error || 'не удалось обновить');
+    }
+    return (await res.json()) as { task: closing_task };
+  }
 
-    // Проверить что все предыдущие пункты выполнены
-    const previous_items = task.items.filter((i) => i.item_order < item_order);
+  async function upload_proof(item: closing_task['items'][number], file: File) {
+    const body = new FormData();
+    body.set('file', file);
+    body.set('kind', 'closing');
+    body.set('task_id', task.id);
+    body.set('item_id', item.id);
+    body.set('spot_id', task.spot_id || 'unknown');
+    body.set('item_order', String(item.item_order));
+    body.set('shift_date', task.shift_date);
+    const res = await fetch('/api/seller/checklist-proof', { method: 'POST', credentials: 'same-origin', body });
+    const data = (await res.json()) as { error?: string };
+    if (!res.ok) throw new Error(data.error || 'не удалось отправить файл');
+  }
+
+  async function toggle_item(item: closing_task['items'][number]) {
+    if (busy || task.completed_at) return;
+    const current_state = item.is_checked;
+    const previous_items = task.items.filter((i) => i.item_order < item.item_order);
     const all_previous_checked = previous_items.every((i) => i.is_checked);
-    
+
     if (!all_previous_checked && !current_state) {
       set_error('выполняйте пункты по порядку');
       setTimeout(() => set_error(''), 2000);
       return;
     }
 
-    // Начать задачу автоматически при первом клике
-    if (!is_started) {
-      await start_task();
+    if (!current_state && item.proof && item.proof !== 'none' && !item.proof_media) {
+      set_pending_id(item.id);
+      file_ref.current?.click();
+      return;
     }
+
+    if (!is_started) await start_task();
 
     set_busy(true);
     set_error('');
-
     try {
-      const res = await fetch('/api/seller/closing-task', {
-        method: 'PATCH',
-        headers: { 'content-type': 'application/json' },
-        credentials: 'same-origin',
-        body: JSON.stringify({
-          task_id: task.id,
-          item_id,
-          is_checked: !current_state,
-          seller_id,
-          seller_name,
-        }),
-      });
-
-      if (!res.ok) {
-        const data = (await res.json()) as { error?: string };
-        set_error(data.error || 'не удалось обновить');
-        return;
-      }
-
-      const data = (await res.json()) as { task: closing_task };
+      const data = await patch_item(item.id, !current_state);
       on_update(data.task);
-
-      // Воспроизвести звук
-      if (!current_state) {
-        play_check_sound();
-      }
-
-      // Если задача завершена — воспроизвести звук завершения и закрыть
+      if (!current_state) play_check_sound();
       if (is_closing_complete(data.task)) {
         play_complete_sound();
-        setTimeout(() => {
-          on_close();
-        }, 1500);
+        setTimeout(() => on_close(), 1500);
       }
-    } catch {
-      set_error('не удалось обновить');
+    } catch (err) {
+      set_error(err instanceof Error ? err.message : 'не удалось обновить');
     } finally {
       set_busy(false);
     }
   }
 
+  async function on_proof_file(file: File | undefined) {
+    const item = task.items.find((i) => i.id === pending_id);
+    if (!file || !item) return;
+    if (!is_started) await start_task();
+    set_busy(true);
+    set_error('');
+    try {
+      await upload_proof(item, file);
+      const data = await patch_item(item.id, true);
+      on_update(data.task);
+      play_check_sound();
+      set_pending_id(null);
+      if (is_closing_complete(data.task)) {
+        play_complete_sound();
+        setTimeout(() => on_close(), 1500);
+      }
+    } catch (err) {
+      set_error(err instanceof Error ? err.message : 'не удалось отправить');
+    } finally {
+      set_busy(false);
+      if (file_ref.current) file_ref.current.value = '';
+    }
+  }
+
+  const pending_item = task.items.find((i) => i.id === pending_id);
+
   return (
     <div className="fixed inset-0 z-[70] flex flex-col bg-white font-heading-soft text-neutral-900">
+      <input
+        ref={file_ref}
+        type="file"
+        accept={
+          pending_item?.proof === 'photo'
+            ? 'image/*'
+            : pending_item?.proof === 'video'
+              ? 'video/*'
+              : 'image/*,video/*'
+        }
+        className="hidden"
+        onChange={(e) => void on_proof_file(e.target.files?.[0])}
+      />
       <div className="flex items-center justify-between px-5 py-4">
         <button 
           type="button" 
@@ -222,7 +275,7 @@ export default function ClosingTaskGuide({
                 <li key={item.id}>
                   <button
                     type="button"
-                    onClick={() => toggle_item(item.id, item.is_checked, item.item_order)}
+                    onClick={() => void toggle_item(item)}
                     disabled={busy || task.completed_at != null || !is_available}
                     className={`flex w-full items-start gap-3 rounded-2xl border-2 p-4 text-left transition ${
                       item.is_checked
@@ -258,6 +311,13 @@ export default function ClosingTaskGuide({
                       >
                         {item.item_text}
                       </p>
+                      {item.proof && item.proof !== 'none' ? (
+                        <p className="mt-1 text-xs text-orange-700">
+                          {item.proof === 'photo' ? 'нужно фото' : item.proof === 'video' ? 'нужно видео' : 'фото или видео'}
+                        </p>
+                      ) : null}
+                      {item.instruction_media ? <ChecklistInstructionMedia media={item.instruction_media} /> : null}
+                      {item.proof_media ? <ChecklistProofPreview media={item.proof_media} /> : null}
                       {item.checked_at && item.checked_by ? (
                         <p className="mt-1 text-xs text-neutral-500">
                           {item.checked_by} ·{' '}

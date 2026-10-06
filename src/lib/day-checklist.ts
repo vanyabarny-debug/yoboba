@@ -1,5 +1,7 @@
 /** Чек-лист «в течение дня» — текущие дела смены между открытием и закрытием */
 
+import type { day_task_media } from '@/lib/day-task-templates';
+
 export type day_checklist_item = {
   id: string;
   item_order: number;
@@ -7,6 +9,10 @@ export type day_checklist_item = {
   is_checked: boolean;
   checked_at: string | null;
   checked_by: string | null;
+  template_item_id?: string | null;
+  proof?: 'none' | 'photo' | 'video' | 'any';
+  instruction_media?: day_task_media | null;
+  proof_media?: day_task_media | null;
 };
 
 export type day_checklist_task = {
