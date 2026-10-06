@@ -334,13 +334,16 @@ export default function pos_panel({
   function build_line(
     item: menu_item,
     qty: number,
-    options?: { volume?: string; topping: number }
+    options?: { volume?: string; topping: number; temp?: 'cold' | 'hot' }
   ): cart_line {
     const volume = resolve_volume_id(item, options?.volume);
     const topping = options?.topping ?? 0;
+    const temp = options?.temp;
     const unit = configured_unit_price(item, volume, topping);
     const name_bits = [item.name];
     if (volume) name_bits.push(`${volume}мл`);
+    if (temp === 'cold') name_bits.push('холодный');
+    if (temp === 'hot') name_bits.push('горячий');
     if (topping > 0) name_bits.push(`+топ.${topping}`);
     return {
       menu_id: item.id,
@@ -349,13 +352,14 @@ export default function pos_panel({
       quantity: qty,
       volume,
       topping,
+      ...(temp ? { temp } : {}),
     };
   }
 
   function add_configured(
     item: menu_item,
     qty: number,
-    options?: { volume?: string; topping: number }
+    options?: { volume?: string; topping: number; temp?: 'cold' | 'hot' }
   ) {
     const line = build_line(item, qty, options);
 

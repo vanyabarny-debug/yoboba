@@ -187,8 +187,8 @@ export const default_menu_items: menu_item[] = [
     composition:
       'чёрный чай, сахар тростниковый, специи (имбирь, перец чёрный, кардамон), сливки, сырная шапка, тапиока',
     volumes: vols(450, 520),
-    cold: true,
-    hot: true,
+    cold: false,
+    hot: false,
     recommendations: ['kakao', 'original-black'],
   }),
   item('original-black-led', 'чёрный сахар со льдом', 390, CLASSIC_CATEGORY, local('original-black-led'), {
@@ -499,8 +499,8 @@ export function merge_menu_item_catalog(items: menu_item[]): menu_item[] {
       volumes: fallback.volumes,
       has_volumes: fallback.has_volumes,
       has_toppings: fallback.has_toppings,
-      cold: fallback.cold,
-      hot: fallback.hot,
+      cold: typeof item.cold === 'boolean' ? item.cold : fallback.cold,
+      hot: typeof item.hot === 'boolean' ? item.hot : fallback.hot,
       composition: item.composition ?? fallback.composition,
       nutrition: item.nutrition ?? fallback.nutrition,
     };

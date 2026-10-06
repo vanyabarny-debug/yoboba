@@ -37,6 +37,7 @@ export function parse_order_items(raw: unknown): { ok: true; items: order_item[]
     }
     const menu_id = typeof rec.menu_id === 'string' ? rec.menu_id.trim() : '';
     const volume = typeof rec.volume === 'string' && /^\d+$/.test(rec.volume) ? rec.volume : undefined;
+    const temp = rec.temp === 'cold' || rec.temp === 'hot' ? rec.temp : undefined;
     const kind = rec.kind === 'staff' || rec.kind === 'sale' ? rec.kind : undefined;
     items.push({
       menu_id,
@@ -44,6 +45,7 @@ export function parse_order_items(raw: unknown): { ok: true; items: order_item[]
       price,
       quantity,
       ...(volume ? { volume } : {}),
+      ...(temp ? { temp } : {}),
       ...(kind ? { kind } : {}),
     });
   }

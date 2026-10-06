@@ -217,7 +217,7 @@ function expand_drinks(o: order, lines: schedule_line[]): drink_row[] {
   for (const item of o.items as order['items']) {
     for (let q = 0; q < item.quantity; q++) {
       rows.push({
-        key: `${o.id}:${item.menu_id}:${q}`,
+        key: `${o.id}:${item.menu_id}:${item.volume ?? ''}:${item.temp ?? ''}:${q}`,
         name: item.name,
         menu_id: item.menu_id,
         prep_minutes: prep_by_menu.get(item.menu_id) || DEFAULT_PREP_MINUTES,

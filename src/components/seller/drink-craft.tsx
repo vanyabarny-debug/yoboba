@@ -51,6 +51,8 @@ export default function drink_craft() {
   const [error, set_error] = useState('');
   const [name, set_name] = useState('');
   const [category, set_category] = useState('');
+  const [cold, set_cold] = useState(true);
+  const [hot, set_hot] = useState(true);
   const [boards, set_boards] = useState<board[]>(() => [fresh_board(), fresh_board(), fresh_board()]);
   const [headspace, set_headspace] = useState(String(craft_headspace_ml));
   const [pick_board, set_pick_board] = useState<string | null>(null);
@@ -221,6 +223,8 @@ export default function drink_craft() {
         body: JSON.stringify({
           name: name.trim(),
           category,
+          cold,
+          hot,
           boards: boards.map((board) => ({
             caption: board.caption,
             drops: board.drops.map((drop) => ({
@@ -258,6 +262,8 @@ export default function drink_craft() {
           onClick={() => {
             set_saved(null);
             set_name('');
+            set_cold(true);
+            set_hot(true);
             set_boards([fresh_board(), fresh_board(), fresh_board()]);
             set_error('');
           }}
@@ -296,6 +302,20 @@ export default function drink_craft() {
       </div>
 
       <div className="mb-3 flex flex-wrap gap-1.5">
+        <button
+          type="button"
+          onClick={() => set_cold((on) => !on)}
+          className={`rounded-full px-2.5 py-1 text-xs ${cold ? 'bg-sky-500 text-white' : 'bg-neutral-100 text-neutral-500'}`}
+        >
+          холодный
+        </button>
+        <button
+          type="button"
+          onClick={() => set_hot((on) => !on)}
+          className={`rounded-full px-2.5 py-1 text-xs ${hot ? 'bg-rose-500 text-white' : 'bg-neutral-100 text-neutral-500'}`}
+        >
+          горячий
+        </button>
         {categories.map((item) => (
           <button
             key={item}

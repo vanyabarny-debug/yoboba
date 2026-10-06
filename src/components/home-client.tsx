@@ -9,6 +9,7 @@ import menu_grid_admin from '@/components/admin/menu-grid-admin';
 import product_drawer from '@/components/product-drawer';
 import product_drawer_admin from '@/components/admin/product-drawer-admin';
 import combo_builder from '@/components/combo-builder';
+import { drink_temp_label, type drink_temp } from '@/components/menu-temp-marks';
 import cart_drawer, {
   cart_line_key,
   cart_line_pay_price,
@@ -132,15 +133,17 @@ function merge_cart_line(
   lines: cart_line[],
   item: menu_item,
   qty: number,
-  options?: {
-    volume?: string;
-    topping?: number;
-    replace_key?: string;
-    combo_picks?: string[];
-  }
-): cart_line[] {
+    options?: {
+      volume?: string;
+      topping?: number;
+      temp?: drink_temp;
+      replace_key?: string;
+      combo_picks?: string[];
+    }
+  ): cart_line[] {
   const volume = resolve_volume_id(item, options?.volume);
   const topping = options?.topping ?? 0;
+  const temp = options?.temp;
   const combo_picks = options?.combo_picks;
   const combo_key = combo_picks?.join('|') ?? '';
   const next_qty = Math.max(1, qty);
@@ -183,6 +186,7 @@ function merge_cart_line(
         quantity: next_qty,
         volume,
         topping,
+        ...(temp ? { temp } : {}),
         ...(combo_picks?.length ? { combo_picks } : {}),
       },
     ];
@@ -193,6 +197,7 @@ function merge_cart_line(
     (l) =>
       l.item.id === item.id &&
       (l.volume ?? '') === (volume ?? '') &&
+      (l.temp ?? '') === (temp ?? '') &&
       (l.topping ?? 0) === topping &&
       (l.combo_picks?.join('|') ?? '') === combo_key &&
       !l.item.id.startsWith('topping-')
@@ -215,6 +220,7 @@ function merge_cart_line(
       quantity: next_qty,
       volume,
       topping,
+      ...(temp ? { temp } : {}),
       ...(combo_picks?.length ? { combo_picks } : {}),
     },
   ];
@@ -230,6 +236,7 @@ function gift_items_from_lines(lines: cart_line[]): order_item[] {
   return lines.map((l) => {
     const bits = [l.item.name];
     if (l.volume) bits.push(`${l.volume} мл`);
+    if (l.temp) bits.push(drink_temp_label(l.temp));
     if (l.topping && l.topping > 0) bits.push(`топ. ×${l.topping}`);
     if (l.combo_picks?.length) bits.push(format_combo_picks(l.combo_picks));
     return {
@@ -237,6 +244,8 @@ function gift_items_from_lines(lines: cart_line[]): order_item[] {
       name: bits.join(' · '),
       price: cart_line_unit_price(l),
       quantity: l.quantity,
+      ...(l.volume ? { volume: l.volume } : {}),
+      ...(l.temp ? { temp: l.temp } : {}),
     };
   });
 }
@@ -277,6 +286,7 @@ export default function home_client({
     qty: number;
     volume: string;
     topping: number;
+    temp?: drink_temp;
   }>({ qty: 1, volume: '500', topping: 0 });
   const [cart_open, set_cart_open] = useState(false);
   const [cart_lines, set_cart_lines] = useState<cart_line[]>(() => load_guest_cart());
@@ -497,15 +507,23 @@ export default function home_client({
       return;
     }
 
-    const items = cart_lines.map((l) => ({
-      menu_id: l.item.id,
-      name:
+    const items = cart_lines.map((l) => {
+      const bits = [
         l.combo_picks && l.combo_picks.length > 0
           ? `${l.item.name}: ${format_combo_picks(l.combo_picks)}`
           : l.item.name,
-      price: cart_line_unit_price(l),
-      quantity: l.quantity,
-    }));
+      ];
+      if (l.volume) bits.push(`${l.volume} мл`);
+      if (l.temp) bits.push(drink_temp_label(l.temp));
+      return {
+        menu_id: l.item.id,
+        name: bits.join(' · '),
+        price: cart_line_unit_price(l),
+        quantity: l.quantity,
+        ...(l.volume ? { volume: l.volume } : {}),
+        ...(l.temp ? { temp: l.temp } : {}),
+      };
+    });
     const total_price = cart_lines.reduce((s, l) => s + cart_line_unit_price(l) * l.quantity, 0);
     const want_redeem = redeem_bonus && bonus >= FREE_DRINK_BONUS_THRESHOLD;
 
@@ -1051,6 +1069,7 @@ export default function home_client({
     options?: {
       volume?: string;
       topping?: number;
+      temp?: drink_temp;
       replace_key?: string;
       combo_picks?: string[];
     }
@@ -1086,6 +1105,7 @@ export default function home_client({
     options?: {
       volume?: string;
       topping?: number;
+      temp?: drink_temp;
       replace_key?: string;
       combo_picks?: string[];
     }
@@ -1096,6 +1116,7 @@ export default function home_client({
     await execute_add(item, qty, {
       volume: options?.volume,
       topping: options?.topping,
+      temp: options?.temp,
       replace_key,
       combo_picks: options?.combo_picks,
     });
@@ -1265,6 +1286,7 @@ export default function home_client({
       qty: line.quantity,
       volume: line.volume ?? first_volume_id(line.item),
       topping: line.topping ?? 0,
+      temp: line.temp,
     });
     set_drawer_open(true);
   }
@@ -1682,6 +1704,7 @@ export default function home_client({
             initial_qty: edit_initial.qty,
             initial_volume: edit_initial.volume,
             initial_topping: edit_initial.topping,
+            initial_temp: edit_initial.temp,
             return_to_cart: product_from_cart,
             on_return_to_cart: handle_return_to_cart,
             skip_fly: from_cart_upsell,

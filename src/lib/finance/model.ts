@@ -101,6 +101,10 @@ export type tech_card = {
   name: string;
   /** позиция меню сайта, к которой привязана техкарта */
   menu_item_id?: string | null;
+  /** можно заказать холодным — иконка в меню и выбор у гостя */
+  cold?: boolean;
+  /** можно заказать горячим */
+  hot?: boolean;
   /** ключи размеров: S/M/L (наследие) или объём в мл ('500', '650') */
   sizes: Record<string, tech_card_size>;
 };
@@ -199,6 +203,8 @@ export type finance_state = {
   equipments: equipment[];
   monthsData: month_data[];
   stockMovements: stock_movement[];
+  /** id техкарт и позиций меню, которые удалили — дефолты из кода их не возвращают */
+  removedTechCardIds?: string[];
   /** журнал «кто / что / когда» — дублируется в supabase.stock_audit */
   stockAudit?: stock_audit_entry[];
   /** ISO время последней полной инвентаризации; нет — склад считается неподтверждённым */
@@ -745,6 +751,8 @@ export function normalize_finance_state(raw: unknown): finance_state {
             id: String(t.id),
             name: String(t.name || t.id).trim(),
             menu_item_id: t.menu_item_id ?? null,
+            ...(typeof t.cold === 'boolean' ? { cold: t.cold } : {}),
+            ...(typeof t.hot === 'boolean' ? { hot: t.hot } : {}),
             sizes,
           };
         })
@@ -766,7 +774,13 @@ export function normalize_finance_state(raw: unknown): finance_state {
     }
   }
 
+  const removedTechCardIds = Array.isArray(v.removedTechCardIds)
+    ? [...new Set(v.removedTechCardIds.map((id) => String(id)).filter(Boolean))]
+    : [];
+  const removed_tech = new Set(removedTechCardIds);
+
   for (const d of default_tech_cards) {
+    if (tech_card_is_removed(removed_tech, d)) continue;
     const existing =
       techCards.find((c) => c.id === d.id) ||
       techCards.find((c) => (d.menu_item_id && c.menu_item_id === d.menu_item_id) || names_match(c.name, d.name));
@@ -911,6 +925,7 @@ export function normalize_finance_state(raw: unknown): finance_state {
     version: FINANCE_STATE_VERSION,
     materials,
     techCards,
+    removedTechCardIds,
     opexCategories,
     stockCategories,
     equipments,
@@ -1016,8 +1031,24 @@ export function size_key_for_item(
  * — для позиций меню без техкарты создаётся пустая техкарта с объёмами из меню.
  * ничего не удаляет — техкарты без позиции в меню остаются как есть.
  */
+export function tech_card_removed_keys(card: { id: string; name: string; menu_item_id?: string | null }): string[] {
+  const keys = [card.id];
+  if (card.menu_item_id) keys.push(card.menu_item_id, `tc_${card.menu_item_id}`);
+  const name = card.name.trim().toLowerCase();
+  if (name) keys.push(`name:${name}`);
+  return keys;
+}
+
+export function tech_card_is_removed(
+  removed: Set<string>,
+  card: { id: string; name: string; menu_item_id?: string | null }
+): boolean {
+  return tech_card_removed_keys(card).some((key) => removed.has(key));
+}
+
 export function sync_tech_cards_with_menu(state: finance_state, menu: menu_item[]): finance_state {
   const cards = state.techCards.map((c) => ({ ...c, sizes: { ...c.sizes } }));
+  const removed = new Set(state.removedTechCardIds ?? []);
   const skip_categories = new Set(['комбо', 'закуски', 'добавки']);
   const linked = new Set(cards.map((c) => c.menu_item_id).filter(Boolean) as string[]);
   /** card id → (старый ключ размера → новый), чтобы перенести продажи */
@@ -1025,6 +1056,7 @@ export function sync_tech_cards_with_menu(state: finance_state, menu: menu_item[
 
   for (const item of menu) {
     if (skip_categories.has(item.category)) continue;
+    if (tech_card_is_removed(removed, { id: `tc_${item.id}`, name: item.name, menu_item_id: item.id })) continue;
     const keys = menu_item_size_keys(item);
 
     const existing = cards.find((c) => c.menu_item_id === item.id);

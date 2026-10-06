@@ -22,6 +22,7 @@ import {
 import { create_client } from '@/lib/supabase/client';
 import { is_supabase_configured } from '@/lib/supabase/config';
 import { FLOATING_CLOSE_BTN_CLASS } from '@/lib/drawer-ui';
+import { drink_temps, menu_temp_choice, type drink_temp } from '@/components/menu-temp-marks';
 
 type props = {
   item: menu_item | null;
@@ -30,14 +31,14 @@ type props = {
   /** баланс бобаллов гостя, если уже найден по телефону */
   customer_bonus?: number | null;
   /** стартовые опции при правке позиции из корзины */
-  initial?: { volume?: string; topping?: number; qty?: number } | null;
+  initial?: { volume?: string; topping?: number; qty?: number; temp?: drink_temp } | null;
   /** режим: обычное добавление / правка / выбор замены */
   mode?: 'add' | 'edit' | 'replace';
   on_close: () => void;
   on_add: (
     item: menu_item,
     qty: number,
-    options?: { volume?: string; topping: number }
+    options?: { volume?: string; topping: number; temp?: drink_temp }
   ) => void;
   /** начать выбор другого блюда вместо текущего */
   on_start_replace?: () => void;
@@ -59,6 +60,7 @@ export default function seller_product_sheet({
   const [qty, set_qty] = useState(1);
   const [volume, set_volume] = useState('500');
   const [topping, set_topping] = useState(0);
+  const [temp, set_temp] = useState<drink_temp | undefined>(undefined);
   const [details_open, set_details_open] = useState(false);
   const [recs, set_recs] = useState<menu_item[]>([]);
 
@@ -68,8 +70,10 @@ export default function seller_product_sheet({
     set_qty(Math.max(1, initial?.qty ?? 1));
     set_volume(resolve_volume_id(item, initial?.volume) ?? first_volume_id(item));
     set_topping(Math.max(0, initial?.topping ?? 0));
+    const temps = drink_temps(item);
+    set_temp(initial?.temp && temps.includes(initial.temp) ? initial.temp : temps[0]);
     set_details_open(false);
-  }, [open, item, initial?.qty, initial?.volume, initial?.topping]);
+  }, [open, item, initial?.qty, initial?.volume, initial?.topping, initial?.temp]);
 
   useEffect(() => {
     if (!open || !active) {
@@ -136,19 +140,22 @@ export default function seller_product_sheet({
   if (!open || !active) return null;
 
   function add_current() {
-    on_add(active!, qty, { volume: volume_used, topping: topping_used });
+    on_add(active!, qty, { volume: volume_used, topping: topping_used, ...(temp ? { temp } : {}) });
     on_close();
   }
 
   function suggest(rec: menu_item) {
+    const next_temp = drink_temps(rec)[0];
     on_add(rec, 1, {
       volume: resolve_volume_id(rec),
       topping: 0,
+      ...(next_temp ? { temp: next_temp } : {}),
     });
     set_active(rec);
     set_qty(1);
     set_volume(first_volume_id(rec));
     set_topping(0);
+    set_temp(next_temp);
     set_details_open(false);
   }
 
@@ -210,6 +217,16 @@ export default function seller_product_sheet({
               </p>
             ) : null}
           </div>
+
+          {drink_temps(active).length > 0 && (
+            <div className="shrink-0">
+              {createElement(menu_temp_choice, {
+                options: drink_temps(active),
+                value: temp,
+                on_change: set_temp,
+              })}
+            </div>
+          )}
 
           {show_volumes && volume_options.length > 0 && (
           <div className="grid shrink-0 grid-cols-2 gap-2">

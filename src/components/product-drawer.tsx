@@ -21,7 +21,7 @@ import { DRAWER_CLOSE_BTN_CLASS, DRAWER_INLINE_CLOSE_BTN_CLASS } from '@/lib/dra
 import { use_sheet_swipe } from '@/lib/use-sheet-swipe';
 import { item_has_toppings, item_has_volumes } from '@/lib/cart-summary';
 import { STUDENT_DISCOUNT_LABEL, student_line_price } from '@/lib/student-discount';
-import menu_temp_marks from '@/components/menu-temp-marks';
+import menu_temp_marks, { drink_temps, menu_temp_choice, type drink_temp } from '@/components/menu-temp-marks';
 import {
   format_stock_left,
   item_is_effectively_available,
@@ -37,7 +37,7 @@ type props = {
   on_add: (
     item: menu_item,
     qty: number,
-    options?: { volume?: string; topping: number; replace_key?: string }
+    options?: { volume?: string; topping: number; temp?: drink_temp; replace_key?: string }
   ) => void | Promise<void>;
   /** правка позиции из корзины */
   edit_mode?: boolean;
@@ -45,6 +45,7 @@ type props = {
   initial_qty?: number;
   initial_volume?: string;
   initial_topping?: number;
+  initial_temp?: drink_temp;
   return_to_cart?: boolean;
   on_return_to_cart?: () => void;
   /** добавление из блока «добавить закуску» в корзине — без анимации полёта */
@@ -56,6 +57,7 @@ type card_state = {
   qty: number;
   volume: string;
   topping: number;
+  temp?: drink_temp;
 };
 
 type history_entry = {
@@ -63,8 +65,9 @@ type history_entry = {
   state: card_state;
 };
 
-function default_card_state(item?: menu_item | null): card_state {
-  return { qty: 1, volume: first_volume_id(item), topping: 0 };
+function default_card_state(item?: menu_item | null, temp?: drink_temp): card_state {
+  const options = drink_temps(item);
+  return { qty: 1, volume: first_volume_id(item), topping: 0, temp: temp && options.includes(temp) ? temp : options[0] };
 }
 
 function SectionTitle({ children }: { children: ReactNode }) {
@@ -87,6 +90,7 @@ export default function product_drawer({
   initial_qty = 1,
   initial_volume = '500',
   initial_topping = 0,
+  initial_temp,
   return_to_cart = false,
   on_return_to_cart,
   skip_fly = false,
@@ -96,6 +100,7 @@ export default function product_drawer({
   const image_ref = useRef<HTMLDivElement>(null);
   const [volume, set_volume] = useState('500');
   const [topping, set_topping] = useState(0);
+  const [temp, set_temp] = useState<drink_temp | undefined>(undefined);
   const [nav_item, set_nav_item] = useState<menu_item | null>(null);
   const [history, set_history] = useState<history_entry[]>([]);
   const [recommendations, set_recommendations] = useState<menu_item[]>([]);
@@ -124,10 +129,11 @@ export default function product_drawer({
     set_qty(state.qty);
     set_volume(state.volume);
     set_topping(state.topping);
+    set_temp(state.temp);
   }
 
   function snapshot_card_state(): card_state {
-    return { qty, volume, topping };
+    return { qty, volume, topping, temp };
   }
 
   useEffect(() => {
@@ -189,11 +195,12 @@ export default function product_drawer({
           ? resolve_volume_id(item, initial_volume) ?? first_volume_id(item)
           : first_volume_id(item),
         topping: Math.max(0, initial_topping),
+        temp: initial_temp ?? drink_temps(item)[0],
       });
     } else {
       apply_card_state(default_card_state(item));
     }
-  }, [item?.id, edit_mode, return_to_cart, initial_qty, initial_volume, initial_topping]);
+  }, [item?.id, edit_mode, return_to_cart, initial_qty, initial_volume, initial_topping, initial_temp]);
 
   useEffect(() => {
     const current = active_item;
@@ -316,6 +323,7 @@ export default function product_drawer({
       await on_add(active_item, qty, {
         ...(volume_used ? { volume: volume_used } : {}),
         topping: topping_used,
+        ...(temp ? { temp } : {}),
         ...(replace_key ? { replace_key } : {}),
       });
     } finally {
@@ -419,8 +427,10 @@ export default function product_drawer({
                 {!item_is_effectively_available(active_item) && (
                   <p className="mt-2 text-sm font-bold text-neutral-400">нет в наличии</p>
                 )}
+                {(show_volumes && volume_options.length > 0) || drink_temps(active_item).length > 0 ? (
+                <div className="mt-3 flex flex-wrap items-center gap-2">
                 {show_volumes && volume_options.length > 0 && (
-                <div className="mt-3 inline-flex max-w-full flex-wrap rounded-full border border-black/[0.08] bg-white p-0.5">
+                <div className="inline-flex max-w-full flex-wrap rounded-full border border-black/[0.08] bg-white p-0.5">
                   {volume_options.map((option) => {
                     const id = String(option.ml);
                     const active = id === volume;
@@ -441,6 +451,13 @@ export default function product_drawer({
                   })}
                 </div>
                 )}
+                {createElement(menu_temp_choice, {
+                  options: drink_temps(active_item),
+                  value: temp,
+                  on_change: set_temp,
+                })}
+                </div>
+                ) : null}
               </div>
 
               <div className="mt-5">

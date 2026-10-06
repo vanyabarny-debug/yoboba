@@ -1,4 +1,5 @@
 import { read_json_store, write_json_store } from '@/lib/data-store';
+import { read_published_menu, write_published_menu } from '@/lib/menu-catalog-server';
 import { is_supabase_configured } from '@/lib/supabase/config';
 import { create_service_client } from '@/lib/supabase/service';
 import { persist_stock_audit } from '@/lib/finance/stock-audit';
@@ -107,8 +108,31 @@ export async function read_finance_state(): Promise<finance_state> {
   return read_fallback();
 }
 
+async function sync_tech_card_temps(state: finance_state): Promise<void> {
+  const tagged = state.techCards.filter(
+    (card) => card.menu_item_id && (typeof card.cold === 'boolean' || typeof card.hot === 'boolean')
+  );
+  if (!tagged.length) return;
+  const menu = await read_published_menu();
+  if (!menu?.items?.length) return;
+  const by_menu = new Map(tagged.map((card) => [card.menu_item_id as string, card]));
+  let changed = false;
+  const items = menu.items.map((item) => {
+    const card = by_menu.get(item.id);
+    if (!card) return item;
+    const cold = typeof card.cold === 'boolean' ? card.cold : item.cold;
+    const hot = typeof card.hot === 'boolean' ? card.hot : item.hot;
+    if (item.cold === cold && item.hot === hot) return item;
+    changed = true;
+    return { ...item, cold, hot };
+  });
+  if (!changed) return;
+  await write_published_menu({ ...menu, items });
+}
+
 export async function write_finance_state(state: finance_state): Promise<void> {
   const durable = prune_stock_retention(normalize_finance_state(state));
+  await sync_tech_card_temps(durable);
   const local = write_json_store(store_key, durable).catch(() => {});
   if (!is_supabase_configured()) {
     await local;

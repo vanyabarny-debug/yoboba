@@ -21,6 +21,7 @@ import {
 } from '@/lib/cart-summary';
 import { kopi_boby_name } from '@/components/kopi-boby';
 import { configured_unit_price, get_topping_name } from '@/lib/product-details';
+import { drink_temp_label, type drink_temp } from '@/components/menu-temp-marks';
 import { format_combo_picks } from '@/lib/combo';
 import type { store_spot } from '@/lib/types';
 import { STUDENT_DISCOUNT_LABEL, student_line_price } from '@/lib/student-discount';
@@ -31,6 +32,7 @@ export type cart_line = {
   /** уникальный ключ позиции (чтобы правки не склеивались) */
   key?: string;
   volume?: string;
+  temp?: drink_temp;
   /** порций топпинга на 1 шт */
   topping?: number;
   /** выбранные напитки в комбо (названия) */
@@ -280,6 +282,7 @@ export default function cart_drawer({
                 const unit = cart_line_pay_price(line, student_verified);
                 const full = cart_line_unit_price(line);
                 const volume_label = line.volume ? `${line.volume} мл` : null;
+                const temp_label = drink_temp_label(line.temp);
                 const topping_label =
                   (line.topping ?? 0) > 0
                     ? `+${line.topping}× ${get_topping_name(line.item)}`
@@ -288,7 +291,7 @@ export default function cart_drawer({
                   line.combo_picks && line.combo_picks.length > 0
                     ? format_combo_picks(line.combo_picks)
                     : null;
-                const meta = [volume_label, topping_label, combo_label, line.item.category]
+                const meta = [volume_label, temp_label, topping_label, combo_label, line.item.category]
                   .filter(Boolean)
                   .join(' · ');
                 return (

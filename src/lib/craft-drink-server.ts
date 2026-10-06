@@ -180,6 +180,8 @@ export async function add_craft_material(input: {
 export async function create_crafted_drink(input: {
   name: string;
   category: string;
+  cold?: boolean;
+  hot?: boolean;
   boards: { caption?: string; drops?: { material_id?: string; qty?: number; action?: string }[] }[];
 }): Promise<{ item: menu_item; cost: number; price: number }> {
   const name = input.name.trim().replace(/\s+/g, ' ');
@@ -228,14 +230,16 @@ export async function create_crafted_drink(input: {
       .filter((part) => part && !/стакан|крышк|трубоч|плёнк|пленк/.test(part.toLowerCase()))
       .join(', '),
     nutrition: { kcal: 0, protein: 0, fat: 0, carb: 0 },
-    hot: true,
-    cold: true,
+    hot: input.hot !== false,
+    cold: input.cold !== false,
   };
 
   const card: tech_card = {
     id: new_id('craft'),
     name,
     menu_item_id: item.id,
+    cold: item.cold,
+    hot: item.hot,
     sizes: {
       '500': size_from_steps(steps, state.materials, craft_cup_ml),
       '650': size_from_steps(large_steps, state.materials, 650),

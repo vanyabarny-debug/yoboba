@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { createElement, useMemo, useState } from 'react';
 import type { menu_item } from '@/lib/types';
 import {
   base_unit_label,
@@ -11,11 +11,13 @@ import {
   size_label,
   sync_tech_cards_with_menu,
   tech_card_cost,
+  tech_card_removed_keys,
   type tech_card,
   type tech_card_size,
 } from '@/lib/finance/model';
 import type { section_props } from '@/components/admin/finance/use-finance';
 import PrepStepsEditor from '@/components/admin/finance/prep-steps-editor';
+import { menu_temp_switches } from '@/components/menu-temp-marks';
 import { scale_steps } from '@/lib/finance/prep-steps';
 import {
   Card,
@@ -59,10 +61,31 @@ export default function TechcardsSection({ state, set_state, menu, month }: sect
   const card = selected_id ? card_by_menu.get(selected_id) ?? null : null;
 
   function pick(item: menu_item) {
-    if (!card_by_menu.has(item.id)) {
-      set_state((prev) => sync_tech_cards_with_menu(prev, [item]));
-    }
     set_selected_id(item.id);
+  }
+
+  function ensure_card(item: menu_item) {
+    set_state((prev) => {
+      const drop = new Set([item.id, `tc_${item.id}`, `name:${item.name.trim().toLowerCase()}`]);
+      const removedTechCardIds = (prev.removedTechCardIds ?? []).filter((id) => !drop.has(id));
+      return sync_tech_cards_with_menu({ ...prev, removedTechCardIds }, [item]);
+    });
+  }
+
+  function remove_card(card: tech_card) {
+    if (!window.confirm(`убрать техкарту «${card.name}»? из базы она тоже пропадёт`)) return;
+    set_state((prev) => ({
+      ...prev,
+      techCards: prev.techCards.filter((row) => row.id !== card.id),
+      removedTechCardIds: [...new Set([...(prev.removedTechCardIds ?? []), ...tech_card_removed_keys(card)])],
+    }));
+    set_selected_id(null);
+  }
+
+  function set_card_temp(card: tech_card, drink: menu_item, patch: { cold?: boolean; hot?: boolean }) {
+    const cold = patch.cold ?? card.cold ?? Boolean(drink.cold);
+    const hot = patch.hot ?? card.hot ?? Boolean(drink.hot);
+    update_card(card.id, (row) => ({ ...row, cold, hot }));
   }
 
   function update_card(id: string, fn: (c: tech_card) => tech_card) {
@@ -145,6 +168,15 @@ export default function TechcardsSection({ state, set_state, menu, month }: sect
         )}
       </div>
 
+      {selected_drink && !card ? (
+        <Card title={selected_drink.name}>
+          <p className="text-sm text-neutral-500">техкарты нет — в меню напиток остаётся</p>
+          <button type="button" className={`${btn_secondary} mt-3`} onClick={() => ensure_card(selected_drink)}>
+            создать техкарту
+          </button>
+        </Card>
+      ) : null}
+
       {show_editor && card && selected_drink ? (
         <div className="space-y-4 lg:sticky lg:top-20 lg:self-start">
           <button
@@ -165,6 +197,17 @@ export default function TechcardsSection({ state, set_state, menu, month }: sect
               </div>
             }
           >
+            <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+              {createElement(menu_temp_switches, {
+                cold: card.cold ?? Boolean(selected_drink.cold),
+                hot: card.hot ?? Boolean(selected_drink.hot),
+                on_cold: (on: boolean) => set_card_temp(card, selected_drink, { cold: on }),
+                on_hot: (on: boolean) => set_card_temp(card, selected_drink, { hot: on }),
+              })}
+              <button type="button" className={btn_ghost_danger} onClick={() => remove_card(card)}>
+                удалить техкарту
+              </button>
+            </div>
             <div className="flex flex-wrap gap-2">
               {Object.keys(card.sizes)
                 .sort((a, b) => (Number(a) || 0) - (Number(b) || 0) || a.localeCompare(b))

@@ -33,6 +33,8 @@ export async function POST(request: Request) {
     category?: unknown;
     measure?: unknown;
     cost?: unknown;
+    cold?: unknown;
+    hot?: unknown;
     boards?: { caption?: string; drops?: { material_id?: string; qty?: number; action?: string }[] }[];
   };
 
@@ -48,6 +50,8 @@ export async function POST(request: Request) {
     const saved = await create_crafted_drink({
       name: String(row.name || ''),
       category: String(row.category || ''),
+      cold: row.cold !== false,
+      hot: row.hot !== false,
       boards: Array.isArray(row.boards) ? row.boards : [],
     });
     return NextResponse.json(saved);
