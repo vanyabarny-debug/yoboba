@@ -6,6 +6,7 @@ import {
   format_pickup_code_display,
   pickup_qr_payload,
 } from '@/lib/pickup-code';
+import { read_json_response } from '@/lib/read-json-response';
 
 type props = {
   open: boolean;
@@ -62,12 +63,12 @@ export default function pickup_code_sheet({
           credentials: 'same-origin',
           cache: 'no-store',
         });
-        const body = (await r.json()) as {
+        const body = await read_json_response<{
           code?: string;
           expires_at?: string;
           bonus_balance?: number;
           error?: string;
-        };
+        }>(r);
         if (!r.ok) throw new Error(body.error || 'не удалось получить код');
         if (cancelled) return;
         if (!body.code) throw new Error('пустой код');

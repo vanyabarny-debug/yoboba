@@ -11,6 +11,7 @@ import {
 import { item_in_category } from '@/lib/menu-item-categories';
 import { format_phone_display, format_phone_input, phone_input_to_e164 } from '@/lib/phone';
 import { parse_pickup_code_input } from '@/lib/pickup-code';
+import { read_json_response } from '@/lib/read-json-response';
 import { category_tile_meta } from '@/lib/category-icons';
 import { configured_unit_price, first_volume_id, resolve_volume_id } from '@/lib/product-details';
 import { tile_grid, board_tile_grid } from '@/lib/seller-tile-grid';
@@ -231,15 +232,18 @@ export default function pos_panel({
           `/api/seller/orders?code=${encodeURIComponent(code)}`,
           { credentials: 'same-origin' }
         );
-        const orders_body = (await orders_res.json()) as {
+        const orders_body = await read_json_response<{
           customer?: found_customer | null;
           phone?: string | null;
           error?: string;
-        };
-        const gifts_body = (await fetch(
+        }>(orders_res);
+        const gifts_res = await fetch(
           `/api/seller/gifts?code=${encodeURIComponent(code)}`,
           { credentials: 'same-origin' }
-        ).then((r) => r.json())) as { gifts?: gift[]; error?: string };
+        );
+        const gifts_body = await read_json_response<{ gifts?: gift[]; error?: string }>(
+          gifts_res
+        );
 
         if (seq !== lookup_seq.current) return;
         if (!orders_res.ok || !orders_body.customer) {
@@ -269,14 +273,18 @@ export default function pos_panel({
       }
 
       if (!e164) return;
-      const [orders_body, gifts_body] = await Promise.all([
+      const [orders_res, gifts_res] = await Promise.all([
         fetch(`/api/seller/orders?phone=${encodeURIComponent(e164)}`, {
           credentials: 'same-origin',
-        }).then((r) => r.json()) as Promise<{ customer?: found_customer | null }>,
+        }),
         fetch(`/api/seller/gifts?phone=${encodeURIComponent(e164)}`, {
           credentials: 'same-origin',
-        }).then((r) => r.json()) as Promise<{ gifts?: gift[] }>,
+        }),
       ]);
+      const orders_body = await read_json_response<{ customer?: found_customer | null }>(
+        orders_res
+      );
+      const gifts_body = await read_json_response<{ gifts?: gift[] }>(gifts_res);
       if (seq !== lookup_seq.current) return;
       set_error(null);
       set_customer(orders_body.customer || null);
@@ -590,13 +598,13 @@ export default function pos_panel({
         }),
       });
       if (!res.ok) {
-        const body = (await res.json().catch(() => null)) as { error?: string } | null;
+        const body = await read_json_response<{ error?: string }>(res).catch(() => null);
         throw new Error(body?.error || 'не удалось создать заказ');
       }
-      const created = (await res.json()) as {
+      const created = await read_json_response<{
         order?: { id: string; total_price: number; items?: order_item[] };
         bonus_balance?: number;
-      };
+      }>(res);
       const order = created.order;
       if (typeof created.bonus_balance === 'number' && customer) {
         set_customer({ ...customer, bonus_balance: created.bonus_balance });
