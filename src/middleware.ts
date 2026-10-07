@@ -106,46 +106,58 @@ export async function middleware(request: NextRequest) {
     return redirect;
   }
 
-  const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
-      cookies: {
-        getAll() {
-          return request.cookies.getAll();
+  try {
+    const supabase = createServerClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+      {
+        cookies: {
+          getAll() {
+            return request.cookies.getAll();
+          },
+          setAll() {},
         },
-        setAll() {},
-      },
+      }
+    );
+
+    const user_result = await Promise.race([
+      supabase.auth.getUser(),
+      new Promise<{ data: { user: null } }>((resolve) =>
+        setTimeout(() => resolve({ data: { user: null } }), 1500)
+      ),
+    ]);
+    const user = user_result.data.user;
+    if (!user) {
+      const redirect = NextResponse.redirect(new URL('/admin/login', request.url));
+      copy_cookies(session_response, redirect);
+      return redirect;
     }
-  );
 
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) {
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('role')
+      .eq('id', user.id)
+      .single();
+
+    if (is_admin_route && profile?.role !== 'admin') {
+      const redirect = NextResponse.redirect(new URL('/', request.url));
+      copy_cookies(session_response, redirect);
+      return redirect;
+    }
+
+    if (is_barista_route && !['barista', 'admin'].includes(profile?.role || '')) {
+      const redirect = NextResponse.redirect(new URL('/', request.url));
+      copy_cookies(session_response, redirect);
+      return redirect;
+    }
+
+    if (is_seller_route && !['seller', 'admin'].includes(profile?.role || '')) {
+      const redirect = NextResponse.redirect(new URL('/', request.url));
+      copy_cookies(session_response, redirect);
+      return redirect;
+    }
+  } catch {
     const redirect = NextResponse.redirect(new URL('/admin/login', request.url));
-    copy_cookies(session_response, redirect);
-    return redirect;
-  }
-
-  const { data: profile } = await supabase
-    .from('profiles')
-    .select('role')
-    .eq('id', user.id)
-    .single();
-
-  if (is_admin_route && profile?.role !== 'admin') {
-    const redirect = NextResponse.redirect(new URL('/', request.url));
-    copy_cookies(session_response, redirect);
-    return redirect;
-  }
-
-  if (is_barista_route && !['barista', 'admin'].includes(profile?.role || '')) {
-    const redirect = NextResponse.redirect(new URL('/', request.url));
-    copy_cookies(session_response, redirect);
-    return redirect;
-  }
-
-  if (is_seller_route && !['seller', 'admin'].includes(profile?.role || '')) {
-    const redirect = NextResponse.redirect(new URL('/', request.url));
     copy_cookies(session_response, redirect);
     return redirect;
   }

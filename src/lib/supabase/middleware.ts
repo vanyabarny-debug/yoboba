@@ -2,6 +2,22 @@ import { createServerClient } from '@supabase/ssr';
 import { NextResponse, type NextRequest } from 'next/server';
 import { is_supabase_configured } from '@/lib/supabase/config';
 
+async function with_timeout<T>(promise: Promise<T>, ms: number): Promise<T | null> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<null>((resolve) => {
+        timer = setTimeout(() => resolve(null), ms);
+      }),
+    ]);
+  } catch {
+    return null;
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
 export async function update_session(request: NextRequest) {
   let supabase_response = NextResponse.next({ request });
 
@@ -32,7 +48,8 @@ export async function update_session(request: NextRequest) {
     }
   );
 
-  await supabase.auth.getUser();
+  // если supabase недоступен с VPS — не держим весь сайт 10+ секунд
+  await with_timeout(supabase.auth.getUser(), 1500);
 
   return supabase_response;
 }
