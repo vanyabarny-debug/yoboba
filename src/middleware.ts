@@ -53,9 +53,15 @@ export async function middleware(request: NextRequest) {
 
   // email/magiclink → /auth/callback; VK OAuth держит свой PKCE в cookies
   // на /auth/vk/callback — не перехватывать, иначе Supabase ищет чужой verifier
+  // /api/* тоже не трогаем: касса ищет гостя по ?code= (код выдачи), это не OAuth
   const is_vk_oauth =
     path.startsWith('/auth/vk/') || path.startsWith('/api/auth/vk');
-  if ((code || token_hash) && path !== '/auth/callback' && !is_vk_oauth) {
+  if (
+    (code || token_hash) &&
+    path !== '/auth/callback' &&
+    !is_vk_oauth &&
+    !path.startsWith('/api/')
+  ) {
     const url = request.nextUrl.clone();
     url.pathname = '/auth/callback';
     return NextResponse.redirect(url);
