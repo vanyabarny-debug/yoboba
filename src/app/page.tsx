@@ -30,7 +30,9 @@ async function resolve_live_menu() {
       ...stored,
       items: merged_items,
     };
-    await write_published_menu(merged_store);
+    await write_published_menu(merged_store).catch((e) =>
+      console.error('menu publish skipped', e instanceof Error ? e.message : e)
+    );
     return {
       items: apply_menu_item_badges(merged_items),
       categories: fold_warm_drink_categories(
@@ -41,7 +43,9 @@ async function resolve_live_menu() {
   }
 
   const fresh = get_default_store();
-  await write_published_menu(fresh);
+  await write_published_menu(fresh).catch((e) =>
+    console.error('menu publish skipped', e instanceof Error ? e.message : e)
+  );
   return {
     items: apply_menu_item_badges(fresh.items),
     categories: fresh.categories,
@@ -68,12 +72,18 @@ export default async function home_page() {
     );
   }
 
-  const supabase = await create_server_client();
-  const { data: stories } = await supabase
-    .from('stories')
-    .select('*')
-    .gt('active_until', new Date().toISOString())
-    .order('active_until', { ascending: false });
+  let stories: story[] = [];
+  try {
+    const supabase = await create_server_client();
+    const { data } = await supabase
+      .from('stories')
+      .select('*')
+      .gt('active_until', new Date().toISOString())
+      .order('active_until', { ascending: false });
+    stories = (data as story[]) || [];
+  } catch (e) {
+    console.error('stories fetch failed', e instanceof Error ? e.message : e);
+  }
 
   return createElement(
     Suspense,
@@ -81,7 +91,7 @@ export default async function home_page() {
     createElement(home_client, {
       initial_menu: live.items.length ? live.items : apply_menu_item_badges(default_menu_items),
       initial_categories: live.categories,
-      initial_stories: (stories as story[]) || [],
+      initial_stories: stories,
       demo_mode: false,
     })
   );

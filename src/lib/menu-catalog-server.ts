@@ -74,23 +74,29 @@ export async function write_published_menu(store: menu_store): Promise<void> {
     const admin = create_service_client();
     const previous = await read_published_menu();
     const durable = merge_stores(previous, store);
-    const { error } = await admin.from('menu_catalog').upsert(
-      {
-        id: catalog_row_id,
-        store: durable,
-        updated_at: new Date().toISOString(),
-      },
-      { onConflict: 'id' }
-    );
-    if (!error) {
-      published_cache = { at: Date.now(), store: durable };
-      return;
-    }
-    if (!/does not exist/i.test(error.message)) {
+    try {
+      const { error } = await admin.from('menu_catalog').upsert(
+        {
+          id: catalog_row_id,
+          store: durable,
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: 'id' }
+      );
+      if (!error) {
+        published_cache = { at: Date.now(), store: durable };
+        // зеркало на диск — если supabase снова отвалится, сайт всё равно поднимется
+        await write_json_store(store_key, durable).catch(() => {});
+        return;
+      }
       console.error('menu catalog write', error.message);
-      throw new Error(error.message);
+    } catch (e) {
+      console.error(
+        'menu catalog write',
+        e instanceof Error ? e.message : e
+      );
     }
-    // таблица ещё не создана — старый fallback оставляем только как запасной путь
+    // supabase недоступен / таблица отсутствует — пишем локально, страницу не валим
     await write_json_store(store_key, durable);
     published_cache = { at: Date.now(), store: durable };
     return;
