@@ -13,7 +13,7 @@ import { use_sheet_swipe } from '@/lib/use-sheet-swipe';
 import {
   combo_selectable_drinks,
   format_combo_picks,
-  get_combo_drink_count,
+  get_combo_config,
 } from '@/lib/combo';
 import { student_line_price } from '@/lib/student-discount';
 
@@ -36,8 +36,19 @@ export default function combo_builder({
   initial_picks,
   student_verified = false,
 }: props) {
-  const slots = get_combo_drink_count(combo) ?? 0;
-  const drinks = useMemo(() => combo_selectable_drinks(all_items), [all_items]);
+  const cfg = get_combo_config(combo);
+  const slots = cfg?.drink_count ?? 0;
+  const allow_duplicates = cfg?.allow_duplicates !== false;
+  const drinks = useMemo(() => combo_selectable_drinks(all_items, combo), [all_items, combo]);
+  const includes = useMemo(() => {
+    const by_id = new Map(all_items.map((m) => [m.id, m]));
+    return (cfg?.includes ?? [])
+      .map((row) => {
+        const item = by_id.get(row.menu_id);
+        return item ? { item, qty: row.qty } : null;
+      })
+      .filter(Boolean) as { item: menu_item; qty: number }[];
+  }, [all_items, cfg?.includes]);
   const combo_full =
     all_items.find((m) => m.id === combo?.id)?.price ?? combo?.price ?? 0;
   const combo_price = student_line_price(
@@ -76,6 +87,7 @@ export default function combo_builder({
   function add_drink(item: menu_item) {
     set_picks((prev) => {
       if (prev.length >= slots) return prev;
+      if (!allow_duplicates && prev.some((p) => p.id === item.id)) return prev;
       return [...prev, item];
     });
   }
@@ -86,7 +98,8 @@ export default function combo_builder({
 
   function confirm() {
     if (!ready || !combo) return;
-    on_confirm(combo, picks.slice(0, slots));
+    const fixed = includes.flatMap(({ item, qty }) => Array.from({ length: qty }, () => item));
+    on_confirm(combo, [...picks.slice(0, slots), ...fixed]);
   }
 
   return (
@@ -125,7 +138,8 @@ export default function combo_builder({
               </h3>
               <p className="mt-1 text-sm text-neutral-500">
                 выбери {slots}{' '}
-                {slots === 1 ? 'напиток' : slots < 5 ? 'напитка' : 'напитков'} · {filled}/{slots}
+                {slots === 1 ? 'напиток' : slots < 5 ? 'напитка' : 'напитков'}
+                {cfg?.volume_ml ? ` ${cfg.volume_ml} мл` : ''} · {filled}/{slots}
               </p>
             </div>
             <button
@@ -171,9 +185,33 @@ export default function combo_builder({
           )}
 
           <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 py-4 sm:px-5">
+            {includes.length ? (
+              <div className="mb-4 rounded-2xl bg-neutral-50 px-3 py-2.5">
+                <p className="text-[11px] font-medium uppercase tracking-wide text-neutral-400">
+                  уже в комплекте
+                </p>
+                <ul className="mt-1.5 space-y-1">
+                  {includes.map(({ item, qty }) => (
+                    <li key={item.id} className="flex items-center gap-2 text-sm text-neutral-800">
+                      <span className="relative h-8 w-8 shrink-0 overflow-hidden rounded-full bg-white">
+                        {createElement(menu_image, {
+                          item,
+                          className: 'h-full w-full',
+                          variant: 'thumb',
+                          fit: 'contain',
+                        })}
+                      </span>
+                      <span className="min-w-0 flex-1 truncate">{item.name}</span>
+                      <span className="text-xs text-neutral-400">×{qty}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ) : null}
             <div className="grid grid-cols-3 gap-2 sm:grid-cols-4 sm:gap-3">
               {drinks.map((item) => {
-                const disabled = ready;
+                const already = !allow_duplicates && picks.some((p) => p.id === item.id);
+                const disabled = ready || already;
                 return (
                   <button
                     key={item.id}

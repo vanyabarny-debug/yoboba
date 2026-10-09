@@ -3,7 +3,7 @@
 import type { ReactNode } from 'react';
 import AdminShell from '@/components/admin/admin-shell';
 import { PeriodPicker } from '@/components/admin/finance/ui';
-import { save_label, use_finance, type section_props } from '@/components/admin/finance/use-finance';
+import { use_finance, type section_props } from '@/components/admin/finance/use-finance';
 
 export default function FinanceFrame({
   title,
@@ -19,27 +19,14 @@ export default function FinanceFrame({
   children: (p: section_props) => ReactNode;
 }) {
   const f = use_finance();
-  const status = save_label(f.save_status);
   const heading = show_heading || show_month;
 
   return (
-    <AdminShell
-      wide
-      actions={
-        <span
-          className={`hidden text-xs sm:inline ${
-            f.save_status === 'error' ? 'text-red-500' : f.save_status === 'saved' ? 'text-emerald-600' : 'text-neutral-400'
-          }`}
-        >
-          {status}
-        </span>
-      }
-    >
+    <AdminShell wide>
       {heading && (
       <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
         {show_heading && (
         <div>
-          <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-accent">yoSquad</p>
           <h1 className="font-heading-soft text-2xl tracking-tight text-neutral-900">{title}</h1>
           {hint && <p className="mt-0.5 text-xs font-normal text-neutral-500">{hint}</p>}
         </div>
@@ -62,6 +49,8 @@ export default function FinanceFrame({
           set_period: f.set_period,
           menu: f.menu,
           set_menu: f.set_menu,
+          flush: f.flush,
+          reload: f.reload,
         })}
     </AdminShell>
   );

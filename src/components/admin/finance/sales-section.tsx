@@ -46,7 +46,7 @@ function exec_bar(ratio: number) {
   return 'bg-accent';
 }
 
-export default function SalesSection({ state, set_state, month, menu }: section_props) {
+export default function SalesSection({ state, set_state, month, menu, spot_id = '' }: section_props) {
   const md = state.monthsData.find((m) => m.month === month);
   const [fact, set_fact] = useState<fact_response | null>(null);
   const [loading, set_loading] = useState(false);
@@ -56,7 +56,8 @@ export default function SalesSection({ state, set_state, month, menu }: section_
   useEffect(() => {
     let cancelled = false;
     set_loading(true);
-    fetch(`/api/admin/finance/sales?month=${month}`, { credentials: 'same-origin' })
+    const spot_q = spot_id ? `&spot_id=${encodeURIComponent(spot_id)}` : '';
+    fetch(`/api/admin/finance/sales?month=${month}${spot_q}`, { credentials: 'same-origin' })
       .then((r) => r.json())
       .then((body: fact_response) => {
         if (cancelled) return;
@@ -73,7 +74,7 @@ export default function SalesSection({ state, set_state, month, menu }: section_
     return () => {
       cancelled = true;
     };
-  }, [month]);
+  }, [month, spot_id]);
 
   const cards = useMemo(
     () =>
@@ -169,7 +170,7 @@ export default function SalesSection({ state, set_state, month, menu }: section_
       {fact && fact.unmatched.length > 0 && (
         <p className="rounded-2xl bg-amber-50 px-3 py-2 text-xs text-amber-800">
           без техкарты: {fact.unmatched.slice(0, 5).map((u) => `${u.name} ×${u.qty}`).join(', ')}
-          {fact.unmatched.length > 5 ? ` и ещё ${fact.unmatched.length - 5}` : ''} — откройте раздел «техкарты».
+          {fact.unmatched.length > 5 ? ` и ещё ${fact.unmatched.length - 5}` : ''} — откройте раздел «меню».
         </p>
       )}
 
@@ -267,7 +268,7 @@ export default function SalesSection({ state, set_state, month, menu }: section_
           })}
         </div>
       ) : (
-        <EmptyState>техкарт нет — они создаются из меню в разделе «техкарты»</EmptyState>
+        <EmptyState>рецептов нет — они создаются из меню в разделе «меню»</EmptyState>
       )}
 
       <RetailSales state={state} set_state={set_state} month={month} />

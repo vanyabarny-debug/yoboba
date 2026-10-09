@@ -5,6 +5,7 @@ import {
   stock_category_for,
   type material,
   type prep_step,
+  type tech_card,
   type tech_card_size,
 } from '@/lib/finance/model';
 
@@ -71,19 +72,45 @@ function step_from_material(mat: material, qty: number): prep_step {
   };
 }
 
-/** этапы для кассира: сохранённые или собранные из техкарты */
-export function resolved_prep_steps(size: tech_card_size, materials: material[]): prep_step[] {
-  if (size.steps?.length) {
-    return size.steps.map((s) => {
-      const mat = s.materialId ? materials.find((m) => m.id === s.materialId) : undefined;
-      return {
-        ...s,
-        title: s.title.trim() || (mat ? barista_title(mat.name) : 'шаг'),
-        hint: (s.hint || '').trim() || (mat ? hint_for(mat) : 'сделать'),
-      };
-    });
-  }
+function qty_stays(mat: material | undefined) {
+  return !mat || base_unit(mat.unit) === 'pcs' || mat.category === 'packaging';
+}
 
+/** базовый объём для граммовок в общих этапах */
+export function card_steps_base_ml(card: tech_card): number {
+  const base = card.sizes['500'];
+  if (base?.volume > 0) return base.volume;
+  const first = Object.keys(card.sizes)
+    .filter((k) => /^\d+$/.test(k))
+    .sort((a, b) => Number(a) - Number(b))[0];
+  if (first) return Number(first) || 500;
+  return 500;
+}
+
+/** общие этапы техкарты; если пусто — поднимаем из размера (наследие) */
+export function get_card_steps(card: tech_card): prep_step[] | undefined {
+  if (card.steps?.length) return card.steps;
+  const preferred =
+    card.sizes['500'] ??
+    Object.keys(card.sizes)
+      .sort((a, b) => (Number(a) || 0) - (Number(b) || 0) || a.localeCompare(b))
+      .map((k) => card.sizes[k])[0];
+  return preferred?.steps?.length ? preferred.steps : undefined;
+}
+
+function decorate_steps(steps: prep_step[], materials: material[]): prep_step[] {
+  return steps.map((s) => {
+    const mat = s.materialId ? materials.find((m) => m.id === s.materialId) : undefined;
+    return {
+      ...s,
+      title: s.title.trim() || (mat ? barista_title(mat.name) : 'шаг'),
+      hint: (s.hint || '').trim() || (mat ? hint_for(mat) : 'сделать'),
+    };
+  });
+}
+
+/** этапы из состава размера (когда общих ещё нет) */
+export function steps_from_size_ingredients(size: tech_card_size, materials: material[]): prep_step[] {
   const by_id = new Map(materials.map((m) => [m.id, m]));
   const rows: { mat: material; qty: number; pack: boolean }[] = [];
   for (const [id, qty] of Object.entries(size.ingredients || {})) {
@@ -110,6 +137,59 @@ export function resolved_prep_steps(size: tech_card_size, materials: material[])
   return rows.map((r) => step_from_material(r.mat, r.qty));
 }
 
+export function scale_prep_steps(
+  steps: prep_step[],
+  from_ml: number,
+  to_ml: number,
+  materials: material[]
+): prep_step[] {
+  const by_id = new Map(materials.map((m) => [m.id, m]));
+  const k = from_ml > 0 ? to_ml / from_ml : 1;
+  if (Math.abs(k - 1) < 0.001) return decorate_steps(steps, materials);
+  return decorate_steps(
+    steps.map((s) => {
+      const mat = s.materialId ? by_id.get(s.materialId) : undefined;
+      const qty =
+        s.qty > 0 && !qty_stays(mat) ? Math.round(s.qty * k * 10) / 10 : s.qty;
+      return { ...s, qty };
+    }),
+    materials
+  );
+}
+
+/** этапы для редактора: общие, без пересчёта объёма */
+export function resolved_card_prep_steps(card: tech_card, materials: material[]): prep_step[] {
+  const saved = get_card_steps(card);
+  if (saved?.length) return decorate_steps(saved, materials);
+  const base_key = card.sizes['500']
+    ? '500'
+    : Object.keys(card.sizes).sort((a, b) => (Number(a) || 0) - (Number(b) || 0))[0];
+  const base = base_key ? card.sizes[base_key] : undefined;
+  return base ? steps_from_size_ingredients(base, materials) : [];
+}
+
+/** этапы для кассира под выбранный объём */
+export function resolved_prep_steps_for_volume(
+  card: tech_card,
+  size_key: string,
+  materials: material[],
+  size?: tech_card_size
+): prep_step[] {
+  const saved = get_card_steps(card);
+  const volume = size?.volume || Number(size_key) || card_steps_base_ml(card);
+  if (saved?.length) {
+    return scale_prep_steps(saved, card_steps_base_ml(card), volume, materials);
+  }
+  if (size) return steps_from_size_ingredients(size, materials);
+  return [];
+}
+
+/** @deprecated используйте resolved_prep_steps_for_volume / resolved_card_prep_steps */
+export function resolved_prep_steps(size: tech_card_size, materials: material[]): prep_step[] {
+  if (size.steps?.length) return decorate_steps(size.steps, materials);
+  return steps_from_size_ingredients(size, materials);
+}
+
 export function cook_steps_view(steps: prep_step[], materials: material[]): cook_step_view[] {
   const by_id = new Map(materials.map((m) => [m.id, m]));
   return steps.map((s) => {
@@ -123,11 +203,10 @@ export function cook_steps_view(steps: prep_step[], materials: material[]): cook
   });
 }
 
-export function apply_steps_to_size(
-  size: tech_card_size,
+export function ingredients_from_steps(
   steps: prep_step[],
   materials: material[]
-): tech_card_size {
+): { ingredients: Record<string, number>; packaging: Record<string, number>; saw_pack: boolean } {
   const by_id = new Map(materials.map((m) => [m.id, m]));
   const ingredients: Record<string, number> = {};
   const packaging: Record<string, number> = {};
@@ -144,11 +223,47 @@ export function apply_steps_to_size(
       ingredients[s.materialId] = (ingredients[s.materialId] || 0) + s.qty;
     }
   }
+  return { ingredients, packaging, saw_pack };
+}
+
+export function apply_steps_to_size(
+  size: tech_card_size,
+  steps: prep_step[],
+  materials: material[]
+): tech_card_size {
+  const { ingredients, packaging, saw_pack } = ingredients_from_steps(steps, materials);
   return {
     ...size,
     ingredients,
     packaging: saw_pack ? packaging : { ...size.packaging },
     steps,
+  };
+}
+
+/** пишет общие этапы на карту и синхронизирует состав базового размера */
+export function apply_steps_to_card(
+  card: tech_card,
+  steps: prep_step[],
+  materials: material[]
+): tech_card {
+  const base_key = card.sizes['500']
+    ? '500'
+    : Object.keys(card.sizes).sort((a, b) => (Number(a) || 0) - (Number(b) || 0))[0];
+  if (!base_key || !card.sizes[base_key]) {
+    return { ...card, steps: steps.length ? steps : undefined };
+  }
+  const { ingredients, packaging, saw_pack } = ingredients_from_steps(steps, materials);
+  const base = card.sizes[base_key];
+  const next_base: tech_card_size = {
+    volume: base.volume || Number(base_key) || card_steps_base_ml(card),
+    ingredients,
+    packaging: saw_pack ? packaging : { ...base.packaging },
+  };
+  // авто-650 пересчитается через effective_card_size; ручной 650 не трогаем
+  return {
+    ...card,
+    steps: steps.length ? steps : undefined,
+    sizes: { ...card.sizes, [base_key]: next_base },
   };
 }
 
@@ -166,9 +281,7 @@ export function clone_size_with_steps(size: tech_card_size): tech_card_size {
     volume: size.volume,
     ingredients: { ...size.ingredients },
     packaging: { ...size.packaging },
-    ...(size.steps?.length
-      ? { steps: size.steps.map((s) => ({ ...s })) }
-      : {}),
+    ...(size.manual ? { manual: true } : {}),
   };
 }
 

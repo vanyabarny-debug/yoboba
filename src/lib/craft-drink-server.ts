@@ -105,7 +105,12 @@ function steps_from_boards(
 }
 
 function size_from_steps(steps: prep_step[], materials: material[], volume: number): tech_card_size {
-  return apply_steps_to_size({ volume, ingredients: {}, packaging: {} }, steps, materials);
+  const sized = apply_steps_to_size({ volume, ingredients: {}, packaging: {} }, steps, materials);
+  return {
+    volume: sized.volume,
+    ingredients: sized.ingredients,
+    packaging: sized.packaging,
+  };
 }
 
 function scale_steps(steps: prep_step[], materials: Map<string, material>): prep_step[] {
@@ -219,7 +224,6 @@ export async function create_crafted_drink(input: {
     is_available: true,
     recommendations: [],
     prep_minutes: 3,
-    has_volumes: true,
     has_toppings: true,
     volumes: [
       { ml: 500, add: 0 },
@@ -240,9 +244,13 @@ export async function create_crafted_drink(input: {
     menu_item_id: item.id,
     cold: item.cold,
     hot: item.hot,
+    steps,
     sizes: {
       '500': size_from_steps(steps, state.materials, craft_cup_ml),
-      '650': size_from_steps(large_steps, state.materials, 650),
+      '650': {
+        ...size_from_steps(large_steps, state.materials, 650),
+        manual: true,
+      },
     },
   };
 

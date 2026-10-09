@@ -224,7 +224,7 @@ export default function AdminAccount() {
                   <p className="mt-1 text-xs text-neutral-500">
                     {row.action === 'delete'
                       ? `${row.before} · ${row.before_total.toLocaleString('ru-RU')} ₽`
-                      : `было ${row.before} · стало ${row.after}`}
+                      : `было: ${row.before} · ${row.before_total.toLocaleString('ru-RU')} ₽ → стало: ${row.after} · ${(row.after_total ?? 0).toLocaleString('ru-RU')} ₽`}
                   </p>
                 </li>
               ))}

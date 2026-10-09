@@ -96,6 +96,54 @@ export function get_active_spots(): store_spot[] {
   return get_spots().filter((s) => s.is_active);
 }
 
+/** полный адрес точки — как у гостей в шапке */
+export function spot_display(s: Pick<store_spot, 'label' | 'address' | 'city'> | null | undefined) {
+  if (!s) return '';
+  const address = (s.address || '').trim();
+  if (address) return address;
+  const label = (s.label || '').trim();
+  if (label) return label;
+  return (s.city || '').trim();
+}
+
+/** компактная подпись: улица из адреса (не маркетинговый label вроде «центр») */
+export function spot_short(s: Pick<store_spot, 'label' | 'address' | 'city'> | null | undefined) {
+  if (!s) return '';
+  const address = (s.address || '').trim();
+  if (address) {
+    const parts = address.split(',').map((p) => p.trim()).filter(Boolean);
+    // «Кимры, ул. Урицкого, 12» → «ул. Урицкого, 12»
+    if (parts.length >= 2) return parts.slice(1).join(', ');
+    return address;
+  }
+  const label = (s.label || '').trim();
+  if (label) return label;
+  return (s.city || '').trim();
+}
+
+/** подписи точек сотрудника; пустой список = все точки */
+export function seller_spot_labels(
+  spot_ids: string[] | undefined,
+  spots: store_spot[],
+  empty = 'все точки'
+) {
+  if (!spot_ids?.length) return empty;
+  return spot_ids
+    .map((id) => {
+      const s = spots.find((x) => x.id === id);
+      return s ? spot_display(s) : id;
+    })
+    .filter(Boolean)
+    .join(' · ');
+}
+
+/** сотрудник относится к точке (пусто spot_ids = любая) */
+export function seller_works_at(spot_ids: string[] | undefined, spot_id: string | null | undefined) {
+  if (!spot_id) return true;
+  if (!spot_ids?.length) return true;
+  return spot_ids.includes(spot_id);
+}
+
 export function save_spot_store(store: spot_store) {
   const next = { ...store, version: spot_store_version };
   localStorage.setItem(storage_key, JSON.stringify(next));

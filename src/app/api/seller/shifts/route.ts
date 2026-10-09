@@ -4,10 +4,10 @@ import { session_cookie } from '@/lib/session';
 import {
   close_shift,
   get_shift,
+  get_spot_day_shift,
+  join_shift_crew,
   list_shifts,
-  open_or_resume_shift,
 } from '@/lib/shifts-server';
-import type { shift_open_geo } from '@/lib/types';
 
 async function staff_role() {
   const store = await cookies();
@@ -33,6 +33,12 @@ export async function GET(request: Request) {
   const shift_date = url.searchParams.get('shift_date') || undefined;
   const open_only = url.searchParams.get('open_only') === '1';
 
+  // быстрый ответ: смена точки на день (выбор точки кассиром)
+  if (spot_id && shift_date && !seller_id && !open_only && url.searchParams.get('day') === '1') {
+    const shift = await get_spot_day_shift(spot_id, shift_date);
+    return NextResponse.json({ shift });
+  }
+
   const shifts = await list_shifts({
     spot_id,
     seller_id,
@@ -43,6 +49,10 @@ export async function GET(request: Request) {
   return NextResponse.json({ shifts });
 }
 
+/**
+ * Выбор точки больше не открывает смену.
+ * POST только подтягивает уже открытую (или закрытую) смену точки на день.
+ */
 export async function POST(request: Request) {
   const role = await staff_role();
   if (role !== 'admin' && role !== 'seller') {
@@ -51,33 +61,42 @@ export async function POST(request: Request) {
 
   const body = (await request.json()) as {
     spot_id?: string;
-    spot_address?: string;
-    spot_city?: string;
+    shift_date?: string;
     seller_id?: string;
     seller_name?: string;
-    open_geo?: shift_open_geo | null;
   };
 
-  if (!body.spot_id || !body.seller_id || !body.seller_name) {
+  if (!body.spot_id) {
     return NextResponse.json({ error: 'неполные данные' }, { status: 400 });
   }
 
-  const shift = await open_or_resume_shift({
-    spot_id: body.spot_id,
-    spot_address: body.spot_address || '',
-    spot_city: body.spot_city || '',
-    seller_id: body.seller_id,
-    seller_name: body.seller_name,
-    open_geo: body.open_geo ?? null,
-  });
+  let shift = await get_spot_day_shift(body.spot_id, body.shift_date);
+  // если смена уже открыта — добавляем бариста в состав
+  if (shift && !shift.closed_at && body.seller_id) {
+    shift =
+      (await join_shift_crew({
+        spot_id: body.spot_id,
+        shift_date: body.shift_date,
+        seller_id: body.seller_id,
+        seller_name: body.seller_name || 'бариста',
+      })) || shift;
+  }
 
-  return NextResponse.json({ shift });
+  return NextResponse.json({
+    shift,
+    /** точка выбрана; смена откроется после чек-листа открытия */
+    assignment_only: !shift || Boolean(shift.closed_at) ? true : false,
+  });
 }
 
+/** ручное закрытие только для админа — кассир закрывает через чек-лист */
 export async function PATCH(request: Request) {
   const role = await staff_role();
-  if (role !== 'admin' && role !== 'seller') {
-    return NextResponse.json({ error: 'доступ запрещён' }, { status: 403 });
+  if (role !== 'admin') {
+    return NextResponse.json(
+      { error: 'закрытие смены — через чек-лист закрытия' },
+      { status: 403 }
+    );
   }
 
   const body = (await request.json()) as { id?: string; action?: string };

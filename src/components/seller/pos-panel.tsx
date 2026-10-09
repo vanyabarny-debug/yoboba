@@ -18,7 +18,7 @@ import { tile_grid, board_tile_grid } from '@/lib/seller-tile-grid';
 import { calc_order_bonus, FREE_DRINK_BONUS_THRESHOLD } from '@/lib/cart-summary';
 import { gift_items_label } from '@/lib/gifts';
 import { use_page_swipe } from '@/lib/use-page-swipe';
-import type { gift, menu_item, order_item } from '@/lib/types';
+import type { gift, menu_item, order_combo_component, order_item } from '@/lib/types';
 import { STUDENT_DISCOUNT_LABEL, student_line_price } from '@/lib/student-discount';
 import {
   cart_total_after_discount,
@@ -26,8 +26,10 @@ import {
   discount_label,
   type pos_discount,
 } from '@/lib/pos-pricing';
+import { format_combo_picks, is_combo_item } from '@/lib/combo';
 import menu_image from '@/components/menu-image';
 import seller_product_sheet from '@/components/seller/seller-product-sheet';
+import seller_combo_sheet from '@/components/seller/seller-combo-sheet';
 import pos_qr_scanner from '@/components/seller/pos-qr-scanner';
 import { FLOATING_CLOSE_BTN_CLASS } from '@/lib/drawer-ui';
 
@@ -51,6 +53,8 @@ function close_x() {
 type cart_line = order_item & {
   volume?: string;
   topping?: number;
+  combo_picks?: string[];
+  combo_components?: order_combo_component[];
 };
 
 type props = {
@@ -78,9 +82,19 @@ type step = 'categories' | 'products';
 
 function line_label(line: cart_line) {
   const bits = [line.name];
+  if (line.combo_picks?.length) bits.push(format_combo_picks(line.combo_picks));
   if (line.volume && !String(line.name).includes(line.volume)) bits.push(`${line.volume} мл`);
   if (line.topping && line.topping > 0) bits.push(`топ. ×${line.topping}`);
   return bits.join(' · ');
+}
+
+function combo_key(line: Pick<cart_line, 'combo_components' | 'combo_picks'>) {
+  if (line.combo_components?.length) {
+    return line.combo_components
+      .map((c) => `${c.menu_id}:${c.volume ?? ''}:${c.quantity ?? 1}`)
+      .join('|');
+  }
+  return line.combo_picks?.join('|') ?? '';
 }
 
 function cart_bar({
@@ -188,7 +202,9 @@ export default function pos_panel({
 
   useEffect(() => {
     function apply(store: ReturnType<typeof get_menu_store>) {
-      const available = normalize_menu_item_images(store.items.filter((i) => i.is_available));
+      const available = normalize_menu_item_images(
+        store.items.filter((i) => i.is_available !== false && i.archived !== true)
+      );
       set_items(available);
       const from_menu = (store.categories.length ? store.categories : default_categories).filter(
         (c) => available.some((i) => item_in_category(i, c))
@@ -381,6 +397,13 @@ export default function pos_panel({
   }
 
   function open_item(item: menu_item) {
+    if (replace_index != null && is_combo_item(item)) {
+      // замена на комбо — сначала выбрать напитки
+      set_edit_index(null);
+      set_selected(item);
+      set_sheet_open(true);
+      return;
+    }
     if (replace_index != null) {
       const qty = cart[replace_index]?.quantity ?? 1;
       add_configured(item, qty, { volume: resolve_volume_id(item), topping: 0 });
@@ -417,14 +440,22 @@ export default function pos_panel({
   function build_line(
     item: menu_item,
     qty: number,
-    options?: { volume?: string; topping: number; temp?: 'cold' | 'hot' }
+    options?: {
+      volume?: string;
+      topping: number;
+      temp?: 'cold' | 'hot';
+      combo_picks?: string[];
+      combo_components?: order_combo_component[];
+    }
   ): cart_line {
     const volume = resolve_volume_id(item, options?.volume);
     const topping = options?.topping ?? 0;
     const temp = options?.temp;
-    const unit = configured_unit_price(item, volume, topping);
+    const unit = is_combo_item(item)
+      ? Math.max(0, Math.round(item.price))
+      : configured_unit_price(item, volume, topping);
+    // объём/температура/топпинг — отдельные поля; в name не вшиваем, иначе 500/650 = «разные напитки»
     const name_bits = [item.name];
-    if (volume) name_bits.push(`${volume}мл`);
     if (temp === 'cold') name_bits.push('холодный');
     if (temp === 'hot') name_bits.push('горячий');
     if (topping > 0) name_bits.push(`+топ.${topping}`);
@@ -433,16 +464,24 @@ export default function pos_panel({
       name: name_bits.join(' '),
       price: unit,
       quantity: qty,
-      volume,
-      topping,
-      ...(temp ? { temp } : {}),
+      volume: is_combo_item(item) ? undefined : volume,
+      topping: is_combo_item(item) ? 0 : topping,
+      ...(temp && !is_combo_item(item) ? { temp } : {}),
+      ...(options?.combo_picks?.length ? { combo_picks: options.combo_picks } : {}),
+      ...(options?.combo_components?.length ? { combo_components: options.combo_components } : {}),
     };
   }
 
   function add_configured(
     item: menu_item,
     qty: number,
-    options?: { volume?: string; topping: number; temp?: 'cold' | 'hot' }
+    options?: {
+      volume?: string;
+      topping: number;
+      temp?: 'cold' | 'hot';
+      combo_picks?: string[];
+      combo_components?: order_combo_component[];
+    }
   ) {
     const line = build_line(item, qty, options);
 
@@ -476,7 +515,8 @@ export default function pos_panel({
       const key_match = (r: cart_line) =>
         r.menu_id === line.menu_id &&
         (r.volume ?? '') === (line.volume ?? '') &&
-        (r.topping ?? 0) === (line.topping ?? 0);
+        (r.topping ?? 0) === (line.topping ?? 0) &&
+        combo_key(r) === combo_key(line);
       const idx = prev.findIndex(key_match);
       if (idx >= 0) {
         const next = [...prev];
@@ -573,12 +613,14 @@ export default function pos_panel({
         headers: { 'content-type': 'application/json' },
         credentials: 'same-origin',
         body: JSON.stringify({
-          items: cart.map(({ menu_id, name, price, quantity, volume }) => ({
+          items: cart.map(({ menu_id, name, price, quantity, volume, combo_picks, combo_components }) => ({
             menu_id,
             name,
             price,
             quantity,
             volume,
+            ...(combo_picks?.length ? { combo_picks } : {}),
+            ...(combo_components?.length ? { combo_components } : {}),
           })),
           customer_phone: staff_drink ? undefined : phone || undefined,
           pickup_code: staff_drink ? undefined : pickup_code || undefined,
@@ -595,6 +637,7 @@ export default function pos_panel({
             confirm_student &&
             Boolean(customer) &&
             !customer?.student_verified,
+          spot_id: spot_id || undefined,
         }),
       });
       if (!res.ok) {
@@ -1140,29 +1183,54 @@ export default function pos_panel({
       </div>
     ) : null;
 
-  const sheet = createElement(seller_product_sheet, {
-    item: selected,
-    all_items: items,
-    open: sheet_open,
-    customer_bonus: customer?.bonus_balance ?? null,
-    mode: sheet_mode,
-    initial: editing_line
-      ? {
-          volume: editing_line.volume ?? first_volume_id(selected),
-          topping: editing_line.topping ?? 0,
-          qty: editing_line.quantity,
-        }
-      : replace_index != null && cart[replace_index]
-        ? { qty: cart[replace_index].quantity, volume: first_volume_id(selected), topping: 0 }
-        : null,
-    on_close: () => {
-      set_sheet_open(false);
-      set_selected(null);
-      set_edit_index(null);
-    },
-    on_add: add_configured,
-    on_start_replace: edit_index != null ? start_replace_from_sheet : undefined,
-  });
+  const combo_selected = selected && is_combo_item(selected);
+  const sheet = combo_selected
+    ? createElement(seller_combo_sheet, {
+        combo: selected,
+        all_items: items,
+        open: sheet_open,
+        qty: editing_line?.quantity ?? (replace_index != null ? cart[replace_index]?.quantity : 1) ?? 1,
+        initial_picks: editing_line?.combo_components?.length
+          ? editing_line.combo_components
+              .map((c) => items.find((i) => i.id === c.menu_id))
+              .filter(Boolean) as menu_item[]
+          : undefined,
+        on_close: () => {
+          set_sheet_open(false);
+          set_selected(null);
+          set_edit_index(null);
+        },
+        on_confirm: ({ combo, qty, combo_picks, combo_components }) => {
+          add_configured(combo, qty, {
+            topping: 0,
+            combo_picks,
+            combo_components,
+          });
+        },
+      })
+    : createElement(seller_product_sheet, {
+        item: selected,
+        all_items: items,
+        open: sheet_open,
+        customer_bonus: customer?.bonus_balance ?? null,
+        mode: sheet_mode,
+        initial: editing_line
+          ? {
+              volume: editing_line.volume ?? first_volume_id(selected),
+              topping: editing_line.topping ?? 0,
+              qty: editing_line.quantity,
+            }
+          : replace_index != null && cart[replace_index]
+            ? { qty: cart[replace_index].quantity, volume: first_volume_id(selected), topping: 0 }
+            : null,
+        on_close: () => {
+          set_sheet_open(false);
+          set_selected(null);
+          set_edit_index(null);
+        },
+        on_add: add_configured,
+        on_start_replace: edit_index != null ? start_replace_from_sheet : undefined,
+      });
 
   if (step === 'categories') {
     const { cols, rows } = tile_grid(categories.length);

@@ -1,6 +1,7 @@
 /** Система открытия смены с чек-листом */
 
 import type { day_task_media } from '@/lib/day-task-templates';
+import type { shift_open_geo } from '@/lib/types';
 
 export type opening_checklist_item = {
   id: string;
@@ -24,6 +25,8 @@ export type opening_task = {
   seller_name: string | null;
   started_at: string | null;
   completed_at: string | null;
+  /** GPS в момент «начать открытие» */
+  open_geo?: shift_open_geo | null;
   items: opening_checklist_item[];
 };
 

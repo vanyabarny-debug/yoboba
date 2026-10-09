@@ -16,7 +16,7 @@ import cart_drawer, {
   cart_line_unit_price,
   type cart_line,
 } from '@/components/cart-drawer';
-import { format_combo_picks, is_combo_item } from '@/lib/combo';
+import { build_combo_components, format_combo_picks, is_combo_item } from '@/lib/combo';
 import cart_fab from '@/components/cart-fab';
 import pickup_code_fab from '@/components/pickup-code-fab';
 import pickup_code_sheet from '@/components/pickup-code-sheet';
@@ -39,6 +39,7 @@ import {
 } from '@/lib/news-ticker-store';
 import { admin_sheet } from '@/components/admin/admin-sheet';
 import { AdminHeader } from '@/components/admin/admin-shell';
+import { AdminSpotProvider } from '@/components/admin/admin-spot-context';
 import location_modal from '@/components/location-modal';
 import order_gate_modal from '@/components/order-gate-modal';
 import phone_gate_modal from '@/components/phone-gate-modal';
@@ -66,7 +67,15 @@ import {
   subscribe_sidebar_ad_store,
   upsert_sidebar_slide,
 } from '@/lib/sidebar-ad-store';
-import type { gift, menu_item, order_item, promo_banner, sidebar_ad_slide, story } from '@/lib/types';
+import type {
+  gift,
+  menu_item,
+  order_combo_component,
+  order_item,
+  promo_banner,
+  sidebar_ad_slide,
+  story,
+} from '@/lib/types';
 import { get_auth_state, sign_out } from '@/lib/auth';
 import { create_order } from '@/lib/orders';
 import { format_order_number } from '@/lib/order-number';
@@ -141,12 +150,15 @@ function merge_cart_line(
       temp?: drink_temp;
       replace_key?: string;
       combo_picks?: string[];
+      combo_components?: order_combo_component[];
     }
   ): cart_line[] {
-  const volume = resolve_volume_id(item, options?.volume);
-  const topping = options?.topping ?? 0;
-  const temp = options?.temp;
+  const combo = is_combo_item(item);
+  const volume = combo ? undefined : resolve_volume_id(item, options?.volume);
+  const topping = combo ? 0 : (options?.topping ?? 0);
+  const temp = combo ? undefined : options?.temp;
   const combo_picks = options?.combo_picks;
+  const combo_components = options?.combo_components;
   const combo_key = combo_picks?.join('|') ?? '';
   const next_qty = Math.max(1, qty);
 
@@ -190,6 +202,7 @@ function merge_cart_line(
         topping,
         ...(temp ? { temp } : {}),
         ...(combo_picks?.length ? { combo_picks } : {}),
+        ...(combo_components?.length ? { combo_components } : {}),
       },
     ];
   }
@@ -224,6 +237,7 @@ function merge_cart_line(
       topping,
       ...(temp ? { temp } : {}),
       ...(combo_picks?.length ? { combo_picks } : {}),
+      ...(combo_components?.length ? { combo_components } : {}),
     },
   ];
 }
@@ -248,6 +262,8 @@ function gift_items_from_lines(lines: cart_line[]): order_item[] {
       quantity: l.quantity,
       ...(l.volume ? { volume: l.volume } : {}),
       ...(l.temp ? { temp: l.temp } : {}),
+      ...(l.combo_picks?.length ? { combo_picks: l.combo_picks } : {}),
+      ...(l.combo_components?.length ? { combo_components: l.combo_components } : {}),
     };
   });
 }
@@ -273,7 +289,7 @@ export default function home_client({
   const router = useRouter();
   const search_params = useSearchParams();
   const [menu, set_menu] = useState(
-    admin_edit_mode ? initial_menu : initial_menu.filter((i) => i.is_available)
+    initial_menu.filter((i) => i.is_available !== false && i.archived !== true)
   );
   const [categories, set_categories] = useState(initial_categories);
   const [selected, set_selected] = useState<menu_item | null>(null);
@@ -525,6 +541,8 @@ export default function home_client({
         quantity: l.quantity,
         ...(l.volume ? { volume: l.volume } : {}),
         ...(l.temp ? { temp: l.temp } : {}),
+        ...(l.combo_picks?.length ? { combo_picks: l.combo_picks } : {}),
+        ...(l.combo_components?.length ? { combo_components: l.combo_components } : {}),
       };
     });
     const total_price = cart_lines.reduce((s, l) => s + cart_line_unit_price(l) * l.quantity, 0);
@@ -797,11 +815,7 @@ export default function home_client({
     function reload_menu() {
       const store = get_menu_store();
       set_categories(store.categories);
-      set_menu(
-        admin_edit_mode
-          ? store.items
-          : store.items.filter((i) => i.is_available)
-      );
+      set_menu(store.items.filter((i) => i.is_available !== false && i.archived !== true));
     }
 
     reload_menu();
@@ -820,7 +834,7 @@ export default function home_client({
         const applied = apply_published_menu_store(store) ?? store;
         apply_published_heading_styles(applied.category_heading_styles);
         set_categories(applied.categories);
-        set_menu(applied.items.filter((i) => i.is_available));
+        set_menu(applied.items.filter((i) => i.is_available !== false && i.archived !== true));
       })
       .catch(() => {});
     return () => {
@@ -839,7 +853,7 @@ export default function home_client({
   useEffect(() => {
     if (demo_mode) return;
     set_categories(initial_categories);
-    set_menu(admin_edit_mode ? initial_menu : initial_menu.filter((i) => i.is_available));
+    set_menu(initial_menu.filter((i) => i.is_available !== false && i.archived !== true));
   }, [demo_mode, initial_menu, initial_categories, admin_edit_mode]);
 
   useEffect(() => {
@@ -854,6 +868,7 @@ export default function home_client({
       topping?: number;
       replace_key?: string;
       combo_picks?: string[];
+      combo_components?: order_combo_component[];
     }
   ) {
     set_cart_lines((prev) => merge_cart_line(prev, item, qty, options));
@@ -893,6 +908,7 @@ export default function home_client({
           volume: prev_line?.volume,
           topping: prev_line?.topping ?? 0,
           combo_picks: prev_line?.combo_picks,
+          combo_components: prev_line?.combo_components,
         });
       }
 
@@ -1075,6 +1091,7 @@ export default function home_client({
       temp?: drink_temp;
       replace_key?: string;
       combo_picks?: string[];
+      combo_components?: order_combo_component[];
     }
   ) {
     add_to_local_cart(item, qty, options);
@@ -1111,6 +1128,7 @@ export default function home_client({
       temp?: drink_temp;
       replace_key?: string;
       combo_picks?: string[];
+      combo_components?: order_combo_component[];
     }
   ) {
     // replace_key только явно из drawer при «Изменить» — иначе upsell/quick-add
@@ -1122,6 +1140,7 @@ export default function home_client({
       temp: options?.temp,
       replace_key,
       combo_picks: options?.combo_picks,
+      combo_components: options?.combo_components,
     });
     if (replace_key) {
       editing_line_key_ref.current = null;
@@ -1510,19 +1529,32 @@ export default function home_client({
       style={{ '--site-header-h': `${header_h}px` } as React.CSSProperties}
     >
       {is_admin_edit &&
-        createElement(AdminHeader, {
-          actions: createElement(
-            'button',
-            {
-              type: 'button',
-              onClick: () => {
-                if (confirm('сбросить меню к дефолту?')) reset_menu_store();
-              },
-              className: 'text-neutral-400 hover:text-neutral-700',
-            },
-            'сброс'
-          ),
-        })}
+        createElement(
+          AdminSpotProvider,
+          null,
+          createElement(AdminHeader, {
+            actions: createElement(
+              'span',
+              { className: 'flex items-center gap-3' },
+              createElement(
+                'a',
+                { href: '/', className: 'text-neutral-400 hover:text-neutral-700' },
+                'на сайт'
+              ),
+              createElement(
+                'button',
+                {
+                  type: 'button',
+                  onClick: () => {
+                    if (confirm('сбросить меню к дефолту?')) reset_menu_store();
+                  },
+                  className: 'text-neutral-400 hover:text-neutral-700',
+                },
+                'сброс'
+              )
+            ),
+          })
+        )}
 
       <div className="hidden min-[1024px]:block bg-page border-b border-surface/70">
         {createElement(top_bar, is_admin_edit ? {
@@ -1734,6 +1766,7 @@ export default function home_client({
             const replace_key = editing_line_key || undefined;
             void handle_add(combo, 1, {
               combo_picks: picks.map((p) => p.name),
+              combo_components: build_combo_components(combo, picks, menu),
               ...(replace_key ? { replace_key } : {}),
             });
             set_combo_building(null);

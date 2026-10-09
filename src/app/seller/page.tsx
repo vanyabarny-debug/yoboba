@@ -4,9 +4,9 @@ import { useCallback, useEffect, useRef, useState, createElement, type ReactNode
 import { create_client } from '@/lib/supabase/client';
 import { is_supabase_configured } from '@/lib/supabase/config';
 import { get_demo_user, clear_session, create_demo_user } from '@/lib/demo-auth';
-import { capture_device_geo } from '@/lib/location';
 import { useRouter } from 'next/navigation';
 import { DEFAULT_PREP_MINUTES } from '@/lib/kitchen-queue';
+import { normalize_order_item_fields } from '@/lib/order-item-name';
 import { format_order_number, moscow_today_iso } from '@/lib/order-number';
 import {
   play_drink_ready_chime,
@@ -18,7 +18,13 @@ import {
 } from '@/lib/order-chime';
 import { get_active_spots, get_spots } from '@/lib/spot-store';
 import { use_page_swipe } from '@/lib/use-page-swipe';
-import type { cash_transaction, order, order_item, store_spot } from '@/lib/types';
+import type {
+  cash_transaction,
+  order,
+  order_item,
+  seller_shift_record,
+  store_spot,
+} from '@/lib/types';
 import cash_register_modal from '@/components/seller/cash-register-modal';
 import barista_analytics_panel from '@/components/seller/barista-analytics';
 import barista_login_sheet from '@/components/seller/barista-login-sheet';
@@ -164,18 +170,32 @@ function load_shift(): seller_shift | null {
     const raw = sessionStorage.getItem(shift_key);
     if (!raw) return null;
     const parsed = JSON.parse(raw) as Partial<seller_shift>;
-    if (!parsed?.id || !parsed.spot_id) return null;
+    if (!parsed?.spot_id) return null;
     return {
-      id: parsed.id,
+      id: parsed.id || `spot-${parsed.spot_id}-${parsed.shift_date || moscow_today_iso()}`,
       spot_id: parsed.spot_id,
       address: parsed.address || '',
       city: parsed.city || '',
-      opened_at: parsed.opened_at || new Date().toISOString(),
+      opened_at: parsed.opened_at || '',
       shift_date: parsed.shift_date || moscow_today_iso(),
     };
   } catch {
     return null;
   }
+}
+
+function apply_server_shift(
+  current: seller_shift | null,
+  server: seller_shift_record
+): seller_shift {
+  return {
+    id: server.id,
+    spot_id: server.spot_id,
+    address: server.spot_address || current?.address || '',
+    city: server.spot_city || current?.city || '',
+    opened_at: server.opened_at,
+    shift_date: server.shift_date,
+  };
 }
 
 function save_shift(shift: seller_shift) {
@@ -218,13 +238,14 @@ function expand_drinks(o: order, lines: schedule_line[]): drink_row[] {
   }
   const rows: drink_row[] = [];
   for (const item of o.items as order['items']) {
+    const normalized = normalize_order_item_fields({ name: item.name, volume: item.volume });
     for (let q = 0; q < item.quantity; q++) {
       rows.push({
-        key: `${o.id}:${item.menu_id}:${item.volume ?? ''}:${item.temp ?? ''}:${q}`,
-        name: item.name,
+        key: `${o.id}:${item.menu_id}:${normalized.volume ?? ''}:${item.temp ?? ''}:${q}`,
+        name: normalized.name,
         menu_id: item.menu_id,
         prep_minutes: prep_by_menu.get(item.menu_id) || DEFAULT_PREP_MINUTES,
-        volume: item.volume,
+        volume: normalized.volume,
       });
     }
   }
@@ -276,10 +297,9 @@ function shift_picker({
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/40 p-4">
       <div className="w-full max-w-md rounded-3xl bg-white p-6 shadow-xl">
-        <h2 className="text-xl font-bold text-neutral-900">открыть смену</h2>
-        <p className="text-sm text-neutral-500 mt-1">точка работы</p>
-        <p className="text-xs text-neutral-400 mt-1 mb-4">
-          при открытии зафиксируем геолокацию устройства для админки
+        <h2 className="text-xl font-bold text-neutral-900">точка работы</h2>
+        <p className="text-sm text-neutral-500 mt-1 mb-4">
+          смена откроется после чек-листа открытия, не при выборе точки
         </p>
         <ul className="space-y-2">
           {spots.map((spot) => (
@@ -786,21 +806,21 @@ export default function seller_board() {
     return () => stop_order_alarm();
   }, []);
 
-  // Загрузка задачи открытия
+  // Загрузка задачи открытия — только после выбора точки
   useEffect(() => {
-    if (!seller_id) return;
+    if (!seller_id || !shift?.spot_id) return;
+    const spot_id = shift.spot_id;
+    const spot_address = shift.address;
+    const needs_server_sync = !shift.opened_at || shift.id.startsWith('spot-');
 
     async function load_opening_task() {
       try {
         const params = new URLSearchParams({
           seller_id,
+          spot_id,
           shift_date: board_day(),
         });
-        
-        // Если смена открыта, передаем spot_id
-        if (shift?.spot_id) {
-          params.set('spot_id', shift.spot_id);
-        }
+        if (spot_address) params.set('spot_address', spot_address);
 
         const res = await fetch(
           `/api/seller/opening-task?${params}`,
@@ -810,6 +830,20 @@ export default function seller_board() {
         if (res.ok) {
           const data = (await res.json()) as { task: opening_task };
           set_opening_task_state(data.task);
+          if (data.task.completed_at && needs_server_sync) {
+            const day_res = await fetch(
+              `/api/seller/shifts?spot_id=${encodeURIComponent(spot_id)}&shift_date=${board_day()}&day=1`,
+              { credentials: 'same-origin' }
+            );
+            if (day_res.ok) {
+              const day_body = (await day_res.json()) as { shift?: seller_shift_record | null };
+              if (day_body.shift) {
+                const next = apply_server_shift(load_shift(), day_body.shift);
+                save_shift(next);
+                set_shift(next);
+              }
+            }
+          }
         }
       } catch {
         // задача открытия не критична
@@ -819,23 +853,20 @@ export default function seller_board() {
     void load_opening_task();
     const poll = window.setInterval(() => void load_opening_task(), 30_000);
     return () => window.clearInterval(poll);
-  }, [seller_id, shift?.spot_id, shift?.shift_date]);
+  }, [seller_id, shift?.spot_id, shift?.shift_date, shift?.address, shift?.id, shift?.opened_at]);
 
-  // Загрузка задачи закрытия
+  // Загрузка задачи закрытия — только после выбора точки
   useEffect(() => {
-    if (!seller_id) return;
+    if (!seller_id || !shift?.spot_id) return;
 
     async function load_closing_task() {
       try {
         const params = new URLSearchParams({
           seller_id,
+          spot_id: shift!.spot_id,
           shift_date: board_day(),
         });
-        
-        // Если смена открыта, передаем spot_id
-        if (shift?.spot_id) {
-          params.set('spot_id', shift.spot_id);
-        }
+        if (shift!.address) params.set('spot_address', shift!.address);
 
         const res = await fetch(
           `/api/seller/closing-task?${params}`,
@@ -854,7 +885,7 @@ export default function seller_board() {
     void load_closing_task();
     const poll = window.setInterval(() => void load_closing_task(), 30_000);
     return () => window.clearInterval(poll);
-  }, [seller_id, shift?.spot_id, shift?.shift_date]);
+  }, [seller_id, shift?.spot_id, shift?.shift_date, shift?.address]);
 
   useEffect(() => {
     let stop = false;
@@ -1103,7 +1134,7 @@ export default function seller_board() {
       created_at: new Date().toISOString(),
       spot_id: shift?.spot_id || null,
       spot_address: shift?.address || null,
-      shift_id: shift?.id || null,
+      shift_id: shift?.id && !shift.id.startsWith('spot-') ? shift.id : null,
     };
 
     const cash_res = await fetch('/api/cash', {
@@ -1489,18 +1520,26 @@ export default function seller_board() {
     );
   }
 
-  async function close_local_shift() {
-    if (shift?.id) {
-      await fetch('/api/seller/shifts', {
-        method: 'PATCH',
-        headers: { 'content-type': 'application/json' },
-        credentials: 'same-origin',
-        body: JSON.stringify({ id: shift.id, action: 'close' }),
-      }).catch(() => {});
-    }
+  /** смена точки закрывается только чек-листом; при смене бариста точку оставляем */
+  function clear_barista_session_keep_spot() {
+    // точка и локальная привязка остаются — следующий бариста продолжит ту же смену точки
+  }
+
+  function leave_spot_assignment() {
     sessionStorage.removeItem(shift_key);
     set_shift(null);
     set_need_shift(false);
+    set_opening_task_state(null);
+    set_closing_task_state(null);
+  }
+
+  function sync_from_server_shift(server: seller_shift_record) {
+    const next = apply_server_shift(shift, server);
+    save_shift(next);
+    set_shift(next);
+    if (server.closed_at) {
+      // точка закрыта чек-листом — локально можно остаться на точке до ухода
+    }
   }
 
   function start_shift_picker(spot_ids: string[]) {
@@ -1562,7 +1601,7 @@ export default function seller_board() {
   }
 
   async function lock_barista() {
-    await close_local_shift();
+    clear_barista_session_keep_spot();
     await fetch('/api/seller/switch', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
@@ -1618,48 +1657,48 @@ export default function seller_board() {
             set_shift_busy(true);
             try {
               const sid = seller_id || seller_ref.current.id;
-              const sname = seller_name || seller_ref.current.name || 'бариста';
               if (!sid) {
                 set_need_barista(true);
                 return;
               }
-              const open_geo = await capture_device_geo();
+              const day = board_day();
               const res = await fetch('/api/seller/shifts', {
                 method: 'POST',
                 headers: { 'content-type': 'application/json' },
                 credentials: 'same-origin',
                 body: JSON.stringify({
                   spot_id: spot.id,
-                  spot_address: spot.address,
-                  spot_city: spot.city,
+                  shift_date: day,
                   seller_id: sid,
-                  seller_name: sname,
-                  open_geo,
+                  seller_name: seller_name || seller_ref.current.name || 'бариста',
                 }),
               });
               const body = (await res.json().catch(() => null)) as {
-                shift?: {
-                  id: string;
-                  spot_id: string;
-                  spot_address: string;
-                  spot_city: string;
-                  opened_at: string;
-                  shift_date: string;
-                };
+                shift?: seller_shift_record | null;
                 error?: string;
               } | null;
-              if (!res.ok || !body?.shift) {
-                alert(body?.error || 'не удалось открыть смену');
+              if (!res.ok) {
+                alert(body?.error || 'не удалось выбрать точку');
                 return;
               }
-              const next: seller_shift = {
-                id: body.shift.id,
-                spot_id: body.shift.spot_id,
-                address: body.shift.spot_address || spot.address,
-                city: body.shift.spot_city || spot.city,
-                opened_at: body.shift.opened_at,
-                shift_date: body.shift.shift_date,
-              };
+              if (body?.shift?.closed_at) {
+                alert('смена на этой точке уже закрыта — повторное открытие нельзя');
+                return;
+              }
+              const next: seller_shift = body?.shift
+                ? apply_server_shift(null, {
+                    ...body.shift,
+                    spot_address: body.shift.spot_address || spot.address,
+                    spot_city: body.shift.spot_city || spot.city,
+                  })
+                : {
+                    id: `spot-${spot.id}-${day}`,
+                    spot_id: spot.id,
+                    address: spot.address,
+                    city: spot.city,
+                    opened_at: '',
+                    shift_date: day,
+                  };
               save_shift(next);
               set_shift(next);
               set_need_shift(false);
@@ -1683,15 +1722,17 @@ export default function seller_board() {
                 {need_barista ? 'не выбран' : seller_name}
               </h1>
               <span className="text-[10px] text-neutral-400 truncate">
-                {shift ? shift.address : 'смена закрыта'}
+                {shift
+                  ? `${shift.address}${shift.opened_at ? '' : ' · ждём открытие'}`
+                  : 'точка не выбрана'}
               </span>
             </div>
             <div className="flex items-center gap-1 shrink-0">
               {!need_barista ? (
                 <button
                   type="button"
-                  onClick={async () => {
-                    await close_local_shift();
+                  onClick={() => {
+                    clear_barista_session_keep_spot();
                     set_barista_error('');
                     set_switch_barista_open(true);
                   }}
@@ -1769,7 +1810,8 @@ export default function seller_board() {
                   on_nav_depth: set_pos_depth,
                   seller_id,
                   seller_name,
-                  shift_id: shift?.id || null,
+                  shift_id:
+                    shift?.id && !shift.id.startsWith('spot-') ? shift.id : null,
                   shift_date: board_day(),
                   spot_id: shift?.spot_id || null,
                   spot_address: shift?.address || null,
@@ -1787,7 +1829,7 @@ export default function seller_board() {
                   seller_id,
                   seller_name,
                   spot_id: shift?.spot_id,
-                  shift_id: shift?.id,
+                  shift_id: shift?.id && !shift.id.startsWith('spot-') ? shift.id : undefined,
                   shift_date: board_day(),
                 })
               : null}
@@ -1854,6 +1896,7 @@ export default function seller_board() {
             task: opening_task_state,
             seller_id: seller_id || seller_ref.current.id || 'seller',
             seller_name: seller_name || seller_ref.current.name || 'бариста',
+            spot_city: shift?.city,
             on_close: () => set_opening_guide_open(false),
             on_update: (updated) => {
               set_opening_task_state(updated);
@@ -1861,6 +1904,7 @@ export default function seller_board() {
                 setTimeout(() => set_opening_guide_open(false), 1500);
               }
             },
+            on_shift: (server) => sync_from_server_shift(server),
           })
         : null}
       {closing_guide_open && closing_task_state
@@ -1873,6 +1917,13 @@ export default function seller_board() {
               set_closing_task_state(updated);
               if (updated.completed_at) {
                 setTimeout(() => set_closing_guide_open(false), 1500);
+              }
+            },
+            on_shift: (server) => {
+              sync_from_server_shift(server);
+              if (server.closed_at) {
+                // после закрытия — снять точку, без переоткрытия в этот день
+                window.setTimeout(() => leave_spot_assignment(), 1600);
               }
             },
           })

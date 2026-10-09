@@ -10,8 +10,13 @@ import {
 } from '@/lib/checklist-task-enrich';
 import { proofs_map_for_task } from '@/lib/checklist-proofs-server';
 import { send_push_to_admins } from '@/lib/opening-notify';
+import {
+  get_spot_day_shift,
+  open_shift_from_opening,
+} from '@/lib/shifts-server';
+import type { shift_open_geo } from '@/lib/types';
 
-/** GET /api/seller/opening-task - получить задачу открытия на сегодня */
+/** GET /api/seller/opening-task - одна задача открытия на точку в день */
 export async function GET(request: NextRequest) {
   if (!is_supabase_configured() || !process.env.SUPABASE_SERVICE_ROLE_KEY) {
     return NextResponse.json(
@@ -23,6 +28,7 @@ export async function GET(request: NextRequest) {
   const url = new URL(request.url);
   const seller_id = url.searchParams.get('seller_id');
   const spot_id = url.searchParams.get('spot_id') || null;
+  const spot_address = url.searchParams.get('spot_address') || null;
   const shift_date = url.searchParams.get('shift_date') || moscow_today_iso();
 
   if (!seller_id) {
@@ -32,18 +38,23 @@ export async function GET(request: NextRequest) {
     );
   }
 
+  if (!spot_id) {
+    return NextResponse.json(
+      { error: 'сначала выберите точку' },
+      { status: 400 }
+    );
+  }
+
   const supabase = create_service_client();
 
-  // Найти задачу открытия по seller_id и дате (spot_id может быть null до открытия смены)
-  let query = supabase
+  // Одна задача открытия на точку + день — без переоткрытий разными кассирами
+  const { data: existing_tasks, error: fetch_error } = await supabase
     .from('opening_tasks')
     .select('*')
     .eq('shift_date', shift_date)
-    .or(`seller_id.eq.${seller_id},spot_id.eq.${spot_id || 'null'}`)
+    .eq('spot_id', spot_id)
     .order('created_at', { ascending: false })
     .limit(1);
-
-  const { data: existing_tasks, error: fetch_error } = await query;
 
   if (fetch_error) {
     return NextResponse.json(
@@ -57,10 +68,19 @@ export async function GET(request: NextRequest) {
 
   // Если задачи нет — создать
   if (!existing_task) {
+    const day_shift = await get_spot_day_shift(spot_id, shift_date);
+    if (day_shift?.closed_at) {
+      return NextResponse.json(
+        { error: 'смена на этой точке уже закрыта' },
+        { status: 409 }
+      );
+    }
+
     const { data: new_task, error: create_error } = await supabase
       .from('opening_tasks')
       .insert({
-        spot_id: spot_id || null,
+        spot_id,
+        spot_address: spot_address || null,
         shift_date,
         seller_id,
       })
@@ -86,11 +106,10 @@ export async function GET(request: NextRequest) {
     }));
 
     await supabase.from('opening_checklist_items').insert(items);
-  } else if (spot_id && !existing_task.spot_id) {
-    // Если смена открылась, обновить spot_id в существующей задаче
+  } else if (spot_address && !existing_task.spot_address) {
     await supabase
       .from('opening_tasks')
-      .update({ spot_id })
+      .update({ spot_address })
       .eq('id', task_id);
   }
 
@@ -125,12 +144,13 @@ export async function GET(request: NextRequest) {
   const task: opening_task = {
     id: task_data?.id || '',
     spot_id: task_data?.spot_id || spot_id || '',
-    spot_address: task_data?.spot_address || null,
+    spot_address: task_data?.spot_address || spot_address || null,
     shift_date: task_data?.shift_date || shift_date,
     seller_id: task_data?.seller_id || seller_id,
     seller_name: task_data?.seller_name || null,
     started_at: task_data?.started_at || null,
     completed_at: task_data?.completed_at || null,
+    open_geo: (task_data?.open_geo as shift_open_geo | null) || null,
     items: enriched,
   };
 
@@ -152,6 +172,8 @@ export async function PATCH(request: NextRequest) {
     is_checked: boolean;
     seller_id?: string;
     seller_name?: string;
+    spot_city?: string;
+    open_geo?: shift_open_geo | null;
   };
 
   if (!body.task_id || !body.item_id) {
@@ -240,6 +262,7 @@ export async function PATCH(request: NextRequest) {
     seller_name: task_data?.seller_name || null,
     started_at: task_data?.started_at || null,
     completed_at: task_data?.completed_at || null,
+    open_geo: (task_data?.open_geo as shift_open_geo | null) || body.open_geo || null,
     items: enriched,
   };
 
@@ -247,16 +270,38 @@ export async function PATCH(request: NextRequest) {
   const was_complete = task_data?.completed_at != null;
   const is_complete = is_opening_complete(task);
 
+  let shift: import('@/lib/types').seller_shift_record | null = null;
+
   if (is_complete && !was_complete) {
+    const completed_at = new Date().toISOString();
     // Отметить задачу как завершенную
     await supabase
       .from('opening_tasks')
       .update({
-        completed_at: new Date().toISOString(),
+        completed_at,
         seller_id: body.seller_id || task_data?.seller_id,
         seller_name: body.seller_name || task_data?.seller_name,
       })
       .eq('id', body.task_id);
+
+    const spot_id = task_data?.spot_id || task.spot_id;
+    const stored_geo =
+      (task_data?.open_geo as shift_open_geo | null) || body.open_geo || null;
+    if (spot_id) {
+      const open_result = await open_shift_from_opening({
+        spot_id,
+        spot_address: task_data?.spot_address || task.spot_address || '',
+        spot_city: body.spot_city || '',
+        seller_id: body.seller_id || task_data?.seller_id || '',
+        seller_name: body.seller_name || task_data?.seller_name || 'бариста',
+        opened_at: task_data?.started_at || completed_at,
+        open_geo: stored_geo,
+      });
+      if ('error' in open_result) {
+        return NextResponse.json({ error: open_result.error, task }, { status: 409 });
+      }
+      shift = open_result.shift;
+    }
 
     // Получить всех админов
     const { data: admins } = await supabase
@@ -282,14 +327,14 @@ export async function PATCH(request: NextRequest) {
         body: `${task.spot_address || 'Точка'} — открытие завершил ${body.seller_name || 'бариста'}`,
         url: '/admin',
         spot_address: task.spot_address,
-        completed_at: new Date().toISOString(),
+        completed_at,
       });
     }
 
-    task.completed_at = new Date().toISOString();
+    task.completed_at = completed_at;
   }
 
-  return NextResponse.json({ task });
+  return NextResponse.json({ task, shift });
 }
 
 /** POST /api/seller/opening-task - начать выполнение открытия */
@@ -305,6 +350,9 @@ export async function POST(request: NextRequest) {
     task_id: string;
     seller_id: string;
     seller_name: string;
+    spot_id?: string;
+    spot_address?: string;
+    open_geo?: shift_open_geo | null;
   };
 
   if (!body.task_id) {
@@ -316,15 +364,49 @@ export async function POST(request: NextRequest) {
 
   const supabase = create_service_client();
 
-  // Отметить начало выполнения
-  await supabase
+  const { data: existing } = await supabase
     .from('opening_tasks')
-    .update({
-      started_at: new Date().toISOString(),
-      seller_id: body.seller_id,
-      seller_name: body.seller_name,
-    })
-    .eq('id', body.task_id);
+    .select('id, started_at, completed_at, spot_id, open_geo')
+    .eq('id', body.task_id)
+    .single();
 
-  return NextResponse.json({ success: true });
+  if (existing?.completed_at) {
+    return NextResponse.json(
+      { error: 'открытие уже завершено' },
+      { status: 409 }
+    );
+  }
+
+  if (existing?.started_at) {
+    return NextResponse.json({
+      success: true,
+      already_started: true,
+      open_geo: (existing.open_geo as shift_open_geo | null) || null,
+    });
+  }
+
+  const spot_id = body.spot_id || existing?.spot_id;
+  if (spot_id) {
+    const day_shift = await get_spot_day_shift(spot_id);
+    if (day_shift?.closed_at) {
+      return NextResponse.json(
+        { error: 'смена на этой точке уже закрыта — повторное открытие нельзя' },
+        { status: 409 }
+      );
+    }
+  }
+
+  const patch: Record<string, unknown> = {
+    started_at: new Date().toISOString(),
+    seller_id: body.seller_id,
+    seller_name: body.seller_name,
+  };
+  if (body.spot_id) patch.spot_id = body.spot_id;
+  if (body.spot_address) patch.spot_address = body.spot_address;
+  if (body.open_geo) patch.open_geo = body.open_geo;
+
+  // Начало открытия: гео в Supabase; смена откроется после завершения чек-листа
+  await supabase.from('opening_tasks').update(patch).eq('id', body.task_id);
+
+  return NextResponse.json({ success: true, open_geo: body.open_geo ?? null });
 }

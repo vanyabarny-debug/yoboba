@@ -3,6 +3,8 @@ import { delete_demo_order, get_demo_orders, update_demo_order } from '@/lib/dem
 import { record_order_stock, release_order_stock } from '@/lib/finance/order-stock';
 import type { stock_actor } from '@/lib/finance/model';
 import { forget_handed_order, replace_handed_snapshot } from '@/lib/handed-orders-server';
+import { parse_combo_order_fields } from '@/lib/combo';
+import { normalize_order_item_fields } from '@/lib/order-item-name';
 import { format_order_number } from '@/lib/order-number';
 import { record_order_audit } from '@/lib/order-audit-server';
 import { forget_order_activity } from '@/lib/prep-stats-server';
@@ -39,25 +41,52 @@ export function parse_order_items(raw: unknown): { ok: true; items: order_item[]
     const volume = typeof rec.volume === 'string' && /^\d+$/.test(rec.volume) ? rec.volume : undefined;
     const temp = rec.temp === 'cold' || rec.temp === 'hot' ? rec.temp : undefined;
     const kind = rec.kind === 'staff' || rec.kind === 'sale' ? rec.kind : undefined;
+    const normalized = normalize_order_item_fields({ name, volume });
+    const combo = parse_combo_order_fields(rec);
     items.push({
       menu_id,
-      name,
+      name: normalized.name,
       price,
       quantity,
-      ...(volume ? { volume } : {}),
+      ...(normalized.volume ? { volume: normalized.volume } : {}),
       ...(temp ? { temp } : {}),
       ...(kind ? { kind } : {}),
+      ...combo,
     });
   }
   return { ok: true, items };
 }
 
 function items_text(items: order_item[]) {
-  return items.map((item) => `${item.name} ×${item.quantity}`).join(', ');
+  return items
+    .map((item) => {
+      const vol = item.volume ? ` ${item.volume}мл` : '';
+      const picks = item.combo_picks?.length
+        ? ` (${item.combo_picks.join(', ')})`
+        : '';
+      const unit = `${item.price}₽`;
+      return `${item.name}${vol}${picks} ×${item.quantity} по ${unit}`;
+    })
+    .join(', ');
+}
+
+function item_fingerprint(item: order_item) {
+  const picks = (item.combo_picks || []).join('|');
+  return [
+    item.menu_id || '',
+    item.name,
+    item.volume || '',
+    item.temp || '',
+    item.kind || '',
+    String(item.quantity),
+    String(item.price),
+    picks,
+  ].join('\0');
 }
 
 function same_items(a: order_item[], b: order_item[]) {
-  return items_text(a) === items_text(b) && a.every((item, i) => item.price === b[i]?.price);
+  if (a.length !== b.length) return false;
+  return a.every((item, i) => item_fingerprint(item) === item_fingerprint(b[i] || ({} as order_item)));
 }
 
 async function load_order(id: string): Promise<order | null> {

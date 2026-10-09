@@ -1,6 +1,6 @@
 'use client';
 
-import { createElement, useRef, useState } from 'react';
+import { createElement, useRef, useState, type ReactNode } from 'react';
 import edit_pencil from '@/components/admin/edit-pencil';
 import menu_photo_crop_modal from '@/components/admin/menu-photo-crop-modal';
 
@@ -71,11 +71,13 @@ export function product_photo_button({
   label = 'выбрать фото',
   className = '',
   title = 'фото товара',
+  children,
 }: {
   on_save: (data_url: string) => void;
   label?: string;
   className?: string;
   title?: string;
+  children?: ReactNode;
 }) {
   const ref = useRef<HTMLInputElement>(null);
   const [pending_file, set_pending_file] = useState<File | null>(null);
@@ -100,9 +102,14 @@ export function product_photo_button({
       <button
         type="button"
         onClick={() => ref.current?.click()}
-        className={`rounded-pill bg-accent text-accent-foreground px-4 py-2 text-sm font-medium ${className}`}
+        aria-label={children ? title : undefined}
+        className={
+          children
+            ? className
+            : `rounded-pill bg-accent text-accent-foreground px-4 py-2 text-sm font-medium ${className}`
+        }
       >
-        {label}
+        {children ?? label}
       </button>
       {createElement(menu_photo_crop_modal, {
         open: crop_open,

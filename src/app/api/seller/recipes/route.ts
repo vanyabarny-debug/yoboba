@@ -2,8 +2,12 @@ import { NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 import { session_cookie } from '@/lib/session';
 import { read_finance_state } from '@/lib/finance/finance-server';
-import { size_label } from '@/lib/finance/model';
-import { cook_steps_view, resolved_prep_steps, type public_recipe } from '@/lib/finance/prep-steps';
+import { effective_card_size, size_label } from '@/lib/finance/model';
+import {
+  cook_steps_view,
+  resolved_prep_steps_for_volume,
+  type public_recipe,
+} from '@/lib/finance/prep-steps';
 
 async function is_staff() {
   const store = await cookies();
@@ -20,11 +24,16 @@ export async function GET() {
     .filter((c) => c.menu_item_id)
     .map((card) => {
       const sizes: public_recipe['sizes'] = {};
-      for (const [key, size] of Object.entries(card.sizes)) {
+      for (const key of Object.keys(card.sizes)) {
+        const size = effective_card_size(card, key, state.materials);
+        if (!size) continue;
         sizes[key] = {
           volume: size.volume,
           label: size_label(key),
-          steps: cook_steps_view(resolved_prep_steps(size, state.materials), state.materials),
+          steps: cook_steps_view(
+            resolved_prep_steps_for_volume(card, key, state.materials, size),
+            state.materials
+          ),
         };
       }
       return {

@@ -101,7 +101,7 @@ export default function SettingsSection({ state, set_state, menu }: section_prop
       set_message(
         `импортировано: ${incoming.materials.length} материалов, ${incoming.techCards.length} техкарт, ${incoming.monthsData.length} месяцев${
           incoming.stockMovements.length ? `, ${incoming.stockMovements.length} движений склада` : ''
-        }. техкарты связаны с меню по названиям — проверьте во вкладке «техкарты».`
+        }. рецепты связаны с меню по названиям — проверьте в разделе «меню».`
       );
     } catch {
       set_message('не удалось прочитать файл');

@@ -83,9 +83,9 @@ export function is_snack_category(category: string): boolean {
   return snack_categories.has(category);
 }
 
+/** размеры в карточке гостя — по списку volumes (его пишет техкарта) */
 export function item_has_volumes(item: menu_item): boolean {
-  if (typeof item.has_volumes === 'boolean') return item.has_volumes;
-  return !is_snack_category(item.category);
+  return (item.volumes ?? []).some((v) => Math.round(Number(v.ml) || 0) > 0);
 }
 
 export function item_has_toppings(item: menu_item): boolean {

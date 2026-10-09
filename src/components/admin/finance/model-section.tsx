@@ -4,63 +4,50 @@ import { useEffect, useState } from 'react';
 import {
   amortization_per_month,
   apply_opex_to_all_months,
+  apply_tax_regime,
+  CUSTOM_TAX_BASIS,
+  custom_taxes_of,
+  default_custom_taxes,
   format_rub,
-  insurance_from_net,
   is_salary_opex,
-  ndfl_from_net,
   new_id,
-  summarize_month,
+  other_opex_sum,
+  resolve_month_opex,
+  resolve_month_payroll,
+  set_month_payroll,
+  TAX_REGIMES,
   tax_regime_of,
+  type custom_tax_basis,
+  type custom_tax_line,
   type tax_regime,
   update_month,
-  with_fact_revenue,
 } from '@/lib/finance/model';
 import type { section_props } from '@/components/admin/finance/use-finance';
-import { BreakEvenCard, Card, NumInput, cell_input_class, field_class } from '@/components/admin/finance/ui';
-
-const tax_choices: { id: tax_regime; label: string; rate: number }[] = [
-  { id: 'ausn_income', label: 'аусн с продаж', rate: 8 },
-  { id: 'ausn_profit', label: 'аусн с прибыли', rate: 20 },
-  { id: 'usn_income', label: 'усн с продаж', rate: 6 },
-  { id: 'usn_profit', label: 'усн с прибыли', rate: 15 },
-  { id: 'patent', label: 'патент', rate: 0 },
-  { id: 'custom', label: 'своя ставка', rate: 8 },
-];
-
-function salary_id_of(state: section_props['state']) {
-  return state.opexCategories.find((c) => is_salary_opex(c.id))?.id ?? 'salary';
-}
+import { Card, MenuSelect, NumInput, cell_input_class, field_class } from '@/components/admin/finance/ui';
 
 function years_of(months: number) {
   return Math.round((Math.max(1, months) / 12) * 10) / 10;
 }
 
-export default function ModelSection({ state, set_state, month }: section_props) {
+/** редактор модели: налоги, постоянные, техника — встраивается в плашку пост. расходов */
+export default function ModelSection({
+  state,
+  set_state,
+  month,
+  embedded = false,
+}: section_props & { embedded?: boolean }) {
   const [new_cost, set_new_cost] = useState('');
   const [gear_open, set_gear_open] = useState(false);
-  const [fact_rev, set_fact_rev] = useState(0);
   const md = state.monthsData.find((m) => m.month === month);
   const regime = tax_regime_of(state);
-  const salary_id = salary_id_of(state);
-  const salary = md ? Number(md.opex[salary_id]) || 0 : 0;
-  const ndfl = ndfl_from_net(salary, state.ndflRate);
-  const insurance = insurance_from_net(salary, state.insuranceRate);
+  const opex = md ? resolve_month_opex(state, month) : {};
+  const pay = md ? resolve_month_payroll(state, { ...md, opex }) : null;
+  const salary = pay?.net ?? 0;
+  const ndfl = pay?.ndfl ?? 0;
+  const insurance = pay?.insurance ?? 0;
   const rest = state.opexCategories.filter((c) => !is_salary_opex(c.id));
+  const opex_inherited = md ? other_opex_sum(md.opex) <= 0 && other_opex_sum(opex) > 0 : false;
   const amort = amortization_per_month(state);
-  const break_even = md ? with_fact_revenue(summarize_month(state, md), fact_rev, state).break_even : 0;
-
-  useEffect(() => {
-    let cancelled = false;
-    fetch(`/api/admin/finance/sales?month=${month}`, { credentials: 'same-origin' })
-      .then((r) => r.json())
-      .then((body: { revenue?: number }) => {
-        if (!cancelled && body.revenue) set_fact_rev(body.revenue);
-      })
-      .catch(() => {});
-    return () => {
-      cancelled = true;
-    };
-  }, [month]);
 
   useEffect(() => {
     if (state.opexCategories.some((c) => is_salary_opex(c.id))) return;
@@ -71,22 +58,33 @@ export default function ModelSection({ state, set_state, month }: section_props)
   }, [set_state, state.opexCategories]);
 
   function set_regime(id: tax_regime) {
-    const next = tax_choices.find((r) => r.id === id);
-    if (!next) return;
-    set_state((prev) => ({
-      ...prev,
-      taxRegime: id,
-      taxRate: id === 'custom' ? prev.taxRate : next.rate,
-      insuranceRate: id.startsWith('ausn') ? 0 : prev.insuranceRate,
-    }));
+    set_state((prev) => apply_tax_regime(prev, id));
   }
 
   function set_opex(id: string, v: number) {
-    set_state((prev) => update_month(prev, month, (m) => ({ ...m, opex: { ...m.opex, [id]: v } })));
+    set_state((prev) => {
+      const resolved = resolve_month_opex(prev, month);
+      let next = update_month(prev, month, (m) => ({
+        ...m,
+        opex: { ...resolved, ...m.opex, [id]: v },
+      }));
+      if (!is_salary_opex(id)) {
+        next = apply_opex_to_all_months(next, { ...resolve_month_opex(next, month), [id]: v });
+      }
+      return next;
+    });
   }
 
   function set_salary(v: number) {
     set_state((prev) => {
+      const md0 = prev.monthsData.find((m) => m.month === month);
+      const prev_lines = md0 ? resolve_month_payroll(prev, md0).lines : [];
+      const with_ndfl = prev_lines.length ? prev_lines.some((l) => l.withNdfl) : true;
+      if (prev_lines.length <= 1) {
+        return set_month_payroll(prev, month, [
+          { id: prev_lines[0]?.id || new_id('pay'), name: prev_lines[0]?.name || 'ФОТ', amount: v, withNdfl: with_ndfl },
+        ]);
+      }
       const id = prev.opexCategories.find((c) => is_salary_opex(c.id))?.id ?? 'salary';
       const cats = prev.opexCategories.some((c) => c.id === id)
         ? prev.opexCategories
@@ -109,204 +107,338 @@ export default function ModelSection({ state, set_state, month }: section_props)
       ...prev,
       opexCategories: prev.opexCategories.filter((x) => x.id !== id),
       monthsData: prev.monthsData.map((m) => {
-        const opex = { ...m.opex };
-        delete opex[id];
-        return { ...m, opex };
+        const next_opex = { ...m.opex };
+        delete next_opex[id];
+        return { ...m, opex: next_opex };
       }),
     }));
   }
 
   if (!md) {
     return (
-      <p className="rounded-3xl border border-dashed border-accent/25 bg-accent/5 px-4 py-8 text-center text-sm text-neutral-500">
-        добавьте месяц сверху — и сюда можно вписать расходы
+      <p className="py-2 text-sm text-neutral-400">
+        нет месяца в модели — выберите период сверху
       </p>
+    );
+  }
+
+  function patch_custom_taxes(next: custom_tax_line[]) {
+    set_state((p) => ({ ...p, customTaxes: next }));
+  }
+
+  const custom_lines = custom_taxes_of(state);
+  const injury_show = regime.show_injury
+    ? Math.max(0, Math.round(Number(state.injuryMonthly ?? regime.injury_monthly) || 0))
+    : 0;
+  const regime_summary = (() => {
+    if (regime.id === 'custom') return null;
+    const parts: string[] = [];
+    if (regime.kind !== 'patent') {
+      parts.push(
+        `налог ${regime.rate}% ${regime.kind === 'profit' ? 'с прибыли' : 'с доходов'}`
+      );
+    }
+    if (regime.show_injury && injury_show > 0) {
+      parts.push(`травматизм ${format_rub(injury_show)}/мес`);
+    }
+    if (regime.show_insurance) {
+      parts.push(`страховые ${regime.insurance_rate}% с ФОТ`);
+    }
+    if (regime.show_ndfl) {
+      parts.push(`ндфл ${state.ndflRate || 13}% с ФОТ`);
+    }
+    return parts.join(' · ');
+  })();
+
+  const tax_block = (
+    <div className="space-y-3">
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
+        <div className="w-full max-w-[16rem] shrink-0 sm:w-auto">
+          <MenuSelect
+            value={state.taxRegime}
+            options={TAX_REGIMES.map((r) => ({ id: r.id, label: r.label, hint: r.hint }))}
+            on_change={(id) => set_regime(id as tax_regime)}
+            menu_className="w-full min-w-[16rem]"
+          />
+        </div>
+        {regime.kind === 'patent' ? (
+          <label className="flex items-center gap-1.5 text-[12px] text-neutral-600">
+            патент
+            <NumInput
+              value={state.taxPatentMonthly}
+              min={0}
+              className={`${cell_input_class} w-24`}
+              on_change={(v) => set_state((p) => ({ ...p, taxPatentMonthly: Math.max(0, v) }))}
+            />
+            <span className="text-neutral-400">₽/мес</span>
+          </label>
+        ) : null}
+        {regime_summary ? (
+          <p className="min-w-0 flex-1 text-[12px] leading-snug text-neutral-600">{regime_summary}</p>
+        ) : null}
+      </div>
+
+      {regime.id === 'custom' ? (
+        <div className="space-y-2">
+          <p className="text-[11px] text-neutral-400">
+            свои налоги и взносы — название, база и ставка. для расчёта в другой стране.
+          </p>
+          <div className="space-y-2">
+            {custom_lines.map((line, i) => (
+              <div
+                key={line.id}
+                className="grid grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)_5.5rem_1.5rem] items-end gap-2"
+              >
+                <label className="text-[10px] text-neutral-400">
+                  название
+                  <input
+                    className={`${field_class} mt-1`}
+                    value={line.name}
+                    placeholder="VAT / social tax…"
+                    onChange={(e) => {
+                      patch_custom_taxes(
+                        custom_lines.map((t, j) => (j === i ? { ...t, name: e.target.value } : t))
+                      );
+                    }}
+                  />
+                </label>
+                <label className="text-[10px] text-neutral-400">
+                  база
+                  <div className="mt-1">
+                    <MenuSelect
+                      value={line.basis}
+                      options={CUSTOM_TAX_BASIS.map((b) => ({ id: b.id, label: b.label }))}
+                      on_change={(id) => {
+                        patch_custom_taxes(
+                          custom_lines.map((t, j) =>
+                            j === i ? { ...t, basis: id as custom_tax_basis } : t
+                          )
+                        );
+                      }}
+                      menu_className="w-full min-w-[12rem]"
+                    />
+                  </div>
+                </label>
+                <label className="text-[10px] text-neutral-400">
+                  {line.basis === 'fixed' ? '₽/мес' : '%'}
+                  <div className="mt-1">
+                    <NumInput
+                      value={line.value}
+                      min={0}
+                      on_change={(v) => {
+                        patch_custom_taxes(
+                          custom_lines.map((t, j) =>
+                            j === i ? { ...t, value: Math.max(0, v) } : t
+                          )
+                        );
+                      }}
+                    />
+                  </div>
+                </label>
+                <button
+                  type="button"
+                  className="mb-2 justify-self-center text-lg leading-none text-neutral-300 hover:text-red-500"
+                  aria-label="удалить"
+                  onClick={() => patch_custom_taxes(custom_lines.filter((_, j) => j !== i))}
+                >
+                  ×
+                </button>
+              </div>
+            ))}
+          </div>
+          <button
+            type="button"
+            className="text-xs font-medium text-accent hover:underline"
+            onClick={() => {
+              if (!custom_lines.length) {
+                patch_custom_taxes(default_custom_taxes());
+                return;
+              }
+              patch_custom_taxes([
+                ...custom_lines,
+                { id: new_id('ctx'), name: '', basis: 'revenue', value: 0 },
+              ]);
+            }}
+          >
+            + налог / взнос
+          </button>
+        </div>
+      ) : null}
+    </div>
+  );
+
+  const opex_block = (
+    <div>
+      <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+        <p className="text-[11px] text-neutral-400">
+          аренда, свет и т.п. · одни на все месяцы · фот — в плашке фот
+        </p>
+        <button
+          type="button"
+          className="text-xs font-medium text-accent hover:underline"
+          onClick={() => set_state((prev) => apply_opex_to_all_months(prev, resolve_month_opex(prev, month)))}
+        >
+          проставить во все месяцы
+        </button>
+      </div>
+      {!embedded ? (
+        <>
+          <Line name="фот на руки" name_locked value={salary} on_value={set_salary} />
+          {salary > 0 ? (
+            <p className="mb-2 pl-1 text-xs text-neutral-400">
+              разбивка по людям — в плашке фот
+              {ndfl > 0 ? ` · ндфл ${format_rub(ndfl)}` : ''}
+              {insurance > 0 ? ` · взносы ${format_rub(insurance)}` : ''}
+            </p>
+          ) : null}
+        </>
+      ) : null}
+      {opex_inherited ? (
+        <p className="mb-2 pl-1 text-xs text-amber-700/80">
+          ниже подставлены из другого месяца — правка сразу во все месяцы
+        </p>
+      ) : null}
+      {rest.map((c) => (
+        <Line
+          key={c.id}
+          name={c.name}
+          value={opex[c.id] ?? 0}
+          on_name={(name) =>
+            set_state((prev) => ({
+              ...prev,
+              opexCategories: prev.opexCategories.map((x) => (x.id === c.id ? { ...x, name } : x)),
+            }))
+          }
+          on_value={(v) => set_opex(c.id, v)}
+          on_remove={() => remove_cost(c.id, c.name)}
+        />
+      ))}
+      <form
+        className="mt-2 flex gap-2"
+        onSubmit={(e) => {
+          e.preventDefault();
+          add_cost();
+        }}
+      >
+        <input
+          className={`${field_class} min-w-0 flex-1 py-1.5`}
+          placeholder="ещё расход"
+          value={new_cost}
+          onChange={(e) => set_new_cost(e.target.value)}
+        />
+        <button
+          type="submit"
+          disabled={!new_cost.trim()}
+          className="shrink-0 rounded-pill border border-neutral-200 px-4 py-1.5 text-sm text-neutral-700 disabled:opacity-40"
+        >
+          добавить
+        </button>
+      </form>
+    </div>
+  );
+
+  const gear_block = (
+    <div>
+      <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+        <button
+          type="button"
+          onClick={() => set_gear_open((v) => !v)}
+          className="text-sm text-neutral-600"
+        >
+          {state.equipments.length
+            ? `${state.equipments.length} позиций · ${format_rub(amort)}/мес`
+            : 'техники пока нет'}
+          <span className="ml-2 text-neutral-400">{gear_open ? 'свернуть' : 'список'}</span>
+        </button>
+        <button
+          type="button"
+          className="text-xs font-medium text-accent hover:underline"
+          onClick={() =>
+            set_state((prev) => ({
+              ...prev,
+              equipments: [...prev.equipments, { id: new_id('eq'), name: 'новая техника', price: 0, months: 24 }],
+            }))
+          }
+        >
+          + техника
+        </button>
+      </div>
+      {gear_open
+        ? state.equipments.map((e) => (
+            <div key={e.id} className="mb-2 grid grid-cols-[minmax(0,1fr)_6.5rem_4.5rem_auto] items-center gap-2">
+              <input
+                className={field_class}
+                value={e.name}
+                onChange={(ev) =>
+                  set_state((prev) => ({
+                    ...prev,
+                    equipments: prev.equipments.map((x) => (x.id === e.id ? { ...x, name: ev.target.value } : x)),
+                  }))
+                }
+              />
+              <NumInput
+                value={e.price}
+                min={0}
+                on_change={(v) =>
+                  set_state((prev) => ({
+                    ...prev,
+                    equipments: prev.equipments.map((x) => (x.id === e.id ? { ...x, price: v } : x)),
+                  }))
+                }
+              />
+              <NumInput
+                value={years_of(e.months)}
+                min={0.5}
+                step={0.5}
+                on_change={(v) =>
+                  set_state((prev) => ({
+                    ...prev,
+                    equipments: prev.equipments.map((x) =>
+                      x.id === e.id ? { ...x, months: Math.max(1, Math.round(v * 12)) } : x
+                    ),
+                  }))
+                }
+              />
+              <button
+                type="button"
+                className="px-1 text-lg leading-none text-neutral-300 hover:text-red-500"
+                aria-label={`удалить ${e.name}`}
+                onClick={() => set_state((prev) => ({ ...prev, equipments: prev.equipments.filter((x) => x.id !== e.id) }))}
+              >
+                ×
+              </button>
+            </div>
+          ))
+        : null}
+    </div>
+  );
+
+  if (embedded) {
+    return (
+      <div className="space-y-5" onClick={(e) => e.stopPropagation()}>
+        <section>
+          <p className="mb-2 text-[11px] font-medium uppercase tracking-[0.12em] text-neutral-400">налоги</p>
+          {tax_block}
+        </section>
+        <section>
+          <p className="mb-2 text-[11px] font-medium uppercase tracking-[0.12em] text-neutral-400">
+            постоянные расходы
+          </p>
+          {opex_block}
+        </section>
+        <section>
+          <p className="mb-2 text-[11px] font-medium uppercase tracking-[0.12em] text-neutral-400">техника</p>
+          {gear_block}
+        </section>
+      </div>
     );
   }
 
   return (
     <div className="space-y-4">
-      <BreakEvenCard value={break_even} />
-
-      <Card title="система налогообложения">
-        <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_8rem_8rem_8rem]">
-          <label className="text-xs text-neutral-500">
-            режим
-            <select
-              className={`${field_class} mt-1`}
-              value={state.taxRegime}
-              onChange={(e) => set_regime(e.target.value as tax_regime)}
-            >
-              {tax_choices.map((r) => (
-                <option key={r.id} value={r.id}>
-                  {r.label}
-                </option>
-              ))}
-            </select>
-          </label>
-          {regime.kind === 'patent' ? (
-            <Money label="патент в месяц, ₽">
-              <NumInput
-                value={state.taxPatentMonthly}
-                min={0}
-                on_change={(v) => set_state((p) => ({ ...p, taxPatentMonthly: Math.max(0, v) }))}
-              />
-            </Money>
-          ) : (
-            <Money label={regime.kind === 'profit' ? '% с прибыли' : '% с продаж'}>
-              <NumInput value={state.taxRate} min={0} on_change={(v) => set_state((p) => ({ ...p, taxRate: Math.max(0, v) }))} />
-            </Money>
-          )}
-          <Money label="% налога с зарплат">
-            <NumInput
-              value={state.ndflRate}
-              min={0}
-              on_change={(v) => set_state((p) => ({ ...p, ndflRate: Math.min(99, Math.max(0, v)) }))}
-            />
-          </Money>
-          <Money label="% взносов">
-            <NumInput
-              value={state.insuranceRate}
-              min={0}
-              on_change={(v) => set_state((p) => ({ ...p, insuranceRate: Math.max(0, v) }))}
-            />
-          </Money>
-        </div>
-      </Card>
-
-      <Card
-        title="постоянные расходы"
-        hint="зарплаты, аренда, свет — то, что уходит независимо от продаж"
-        actions={
-          <button
-            type="button"
-            className="text-xs text-accent hover:underline"
-            onClick={() => set_state((prev) => apply_opex_to_all_months(prev, md.opex))}
-          >
-            и в других месяцах так же
-          </button>
-        }
-      >
-        <Line name="зарплаты на руки" name_locked value={salary} on_value={set_salary} />
-        {salary > 0 && (ndfl > 0 || insurance > 0) ? (
-          <p className="mb-2 pl-1 text-xs text-neutral-400">
-            сверху {format_rub(ndfl)} налога
-            {insurance > 0 ? ` и ${format_rub(insurance)} взносов` : ''}
-          </p>
-        ) : null}
-        {rest.map((c) => (
-          <Line
-            key={c.id}
-            name={c.name}
-            value={md.opex[c.id] ?? 0}
-            on_name={(name) =>
-              set_state((prev) => ({
-                ...prev,
-                opexCategories: prev.opexCategories.map((x) => (x.id === c.id ? { ...x, name } : x)),
-              }))
-            }
-            on_value={(v) => set_opex(c.id, v)}
-            on_remove={() => remove_cost(c.id, c.name)}
-          />
-        ))}
-        <form
-          className="mt-2 flex gap-2"
-          onSubmit={(e) => {
-            e.preventDefault();
-            add_cost();
-          }}
-        >
-          <input
-            className={`${field_class} min-w-0 flex-1`}
-            placeholder="ещё расход"
-            value={new_cost}
-            onChange={(e) => set_new_cost(e.target.value)}
-          />
-          <button
-            type="submit"
-            disabled={!new_cost.trim()}
-            className="shrink-0 rounded-pill border border-neutral-200 px-4 py-2 text-sm text-neutral-700 disabled:opacity-40"
-          >
-            добавить
-          </button>
-        </form>
-      </Card>
-
-      <Card
-        title="техника"
-        actions={
-          <button
-            type="button"
-            className="text-xs text-accent hover:underline"
-            onClick={() =>
-              set_state((prev) => ({
-                ...prev,
-                equipments: [...prev.equipments, { id: new_id('eq'), name: 'новая техника', price: 0, months: 24 }],
-              }))
-            }
-          >
-            + техника
-          </button>
-        }
-      >
-        <button
-          type="button"
-          onClick={() => set_gear_open((v) => !v)}
-          className="mb-3 flex w-full items-center justify-between rounded-2xl bg-neutral-50 px-3 py-2.5 text-sm text-neutral-600"
-        >
-          <span>
-            {state.equipments.length ? `${state.equipments.length} позиций · ${format_rub(amort)} в месяц` : 'пока пусто'}
-          </span>
-          <span className="text-neutral-400">{gear_open ? 'свернуть' : 'список'}</span>
-        </button>
-        {gear_open
-          ? state.equipments.map((e) => (
-              <div key={e.id} className="mb-2 grid grid-cols-[minmax(0,1fr)_6.5rem_4.5rem_auto] items-center gap-2">
-                <input
-                  className={field_class}
-                  value={e.name}
-                  onChange={(ev) =>
-                    set_state((prev) => ({
-                      ...prev,
-                      equipments: prev.equipments.map((x) => (x.id === e.id ? { ...x, name: ev.target.value } : x)),
-                    }))
-                  }
-                />
-                <NumInput
-                  value={e.price}
-                  min={0}
-                  on_change={(v) =>
-                    set_state((prev) => ({
-                      ...prev,
-                      equipments: prev.equipments.map((x) => (x.id === e.id ? { ...x, price: v } : x)),
-                    }))
-                  }
-                />
-                <NumInput
-                  value={years_of(e.months)}
-                  min={0.5}
-                  step={0.5}
-                  on_change={(v) =>
-                    set_state((prev) => ({
-                      ...prev,
-                      equipments: prev.equipments.map((x) =>
-                        x.id === e.id ? { ...x, months: Math.max(1, Math.round(v * 12)) } : x
-                      ),
-                    }))
-                  }
-                />
-                <button
-                  type="button"
-                  className="px-1 text-lg leading-none text-neutral-300 hover:text-red-500"
-                  aria-label={`удалить ${e.name}`}
-                  onClick={() => set_state((prev) => ({ ...prev, equipments: prev.equipments.filter((x) => x.id !== e.id) }))}
-                >
-                  ×
-                </button>
-              </div>
-            ))
-          : null}
-      </Card>
+      <Card title="система налогообложения">{tax_block}</Card>
+      <Card title="постоянные расходы">{opex_block}</Card>
+      <Card title="техника">{gear_block}</Card>
     </div>
   );
 }
@@ -347,14 +479,5 @@ function Line({
         <span />
       )}
     </div>
-  );
-}
-
-function Money({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <label className="text-xs text-neutral-500">
-      {label}
-      <div className="mt-1">{children}</div>
-    </label>
   );
 }

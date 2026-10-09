@@ -6,6 +6,7 @@ import {
   ChecklistInstructionMedia,
   ChecklistProofPreview,
 } from '@/components/seller/checklist-item-actions';
+import type { seller_shift_record } from '@/lib/types';
 
 // Звук при отметке пункта
 function play_check_sound() {
@@ -56,12 +57,14 @@ export default function ClosingTaskGuide({
   seller_name,
   on_close,
   on_update,
+  on_shift,
 }: {
   task: closing_task;
   seller_id: string;
   seller_name: string;
   on_close: () => void;
   on_update: (updated: closing_task) => void;
+  on_shift?: (shift: seller_shift_record) => void;
 }) {
   const [busy, set_busy] = useState(false);
   const [error, set_error] = useState('');
@@ -85,6 +88,7 @@ export default function ClosingTaskGuide({
           task_id: task.id,
           seller_id,
           seller_name,
+          spot_id: task.spot_id || undefined,
         }),
       });
 
@@ -124,7 +128,7 @@ export default function ClosingTaskGuide({
       const data = (await res.json()) as { error?: string };
       throw new Error(data.error || 'не удалось обновить');
     }
-    return (await res.json()) as { task: closing_task };
+    return (await res.json()) as { task: closing_task; shift?: seller_shift_record | null };
   }
 
   async function upload_proof(item: closing_task['items'][number], file: File) {
@@ -166,6 +170,7 @@ export default function ClosingTaskGuide({
     try {
       const data = await patch_item(item.id, !current_state);
       on_update(data.task);
+      if (data.shift) on_shift?.(data.shift);
       if (!current_state) play_check_sound();
       if (is_closing_complete(data.task)) {
         play_complete_sound();
@@ -188,6 +193,7 @@ export default function ClosingTaskGuide({
       await upload_proof(item, file);
       const data = await patch_item(item.id, true);
       on_update(data.task);
+      if (data.shift) on_shift?.(data.shift);
       play_check_sound();
       set_pending_id(null);
       if (is_closing_complete(data.task)) {

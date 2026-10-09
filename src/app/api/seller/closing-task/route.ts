@@ -10,8 +10,9 @@ import {
 } from '@/lib/checklist-task-enrich';
 import { proofs_map_for_task } from '@/lib/checklist-proofs-server';
 import { send_push_to_admins } from '@/lib/opening-notify';
+import { close_shift_from_closing, get_spot_day_shift } from '@/lib/shifts-server';
 
-/** GET /api/seller/closing-task - получить задачу закрытия на сегодня */
+/** GET /api/seller/closing-task - одна задача закрытия на точку в день */
 export async function GET(request: NextRequest) {
   if (!is_supabase_configured() || !process.env.SUPABASE_SERVICE_ROLE_KEY) {
     return NextResponse.json(
@@ -23,6 +24,7 @@ export async function GET(request: NextRequest) {
   const url = new URL(request.url);
   const seller_id = url.searchParams.get('seller_id');
   const spot_id = url.searchParams.get('spot_id') || null;
+  const spot_address = url.searchParams.get('spot_address') || null;
   const shift_date = url.searchParams.get('shift_date') || moscow_today_iso();
 
   if (!seller_id) {
@@ -32,18 +34,23 @@ export async function GET(request: NextRequest) {
     );
   }
 
+  if (!spot_id) {
+    return NextResponse.json(
+      { error: 'сначала выберите точку' },
+      { status: 400 }
+    );
+  }
+
   const supabase = create_service_client();
 
-  // Найти задачу закрытия по seller_id и дате
-  let query = supabase
+  // Одна задача закрытия на точку + день
+  const { data: existing_tasks, error: fetch_error } = await supabase
     .from('closing_tasks')
     .select('*')
     .eq('shift_date', shift_date)
-    .or(`seller_id.eq.${seller_id},spot_id.eq.${spot_id || 'null'}`)
+    .eq('spot_id', spot_id)
     .order('created_at', { ascending: false })
     .limit(1);
-
-  const { data: existing_tasks, error: fetch_error } = await query;
 
   if (fetch_error) {
     return NextResponse.json(
@@ -60,7 +67,8 @@ export async function GET(request: NextRequest) {
     const { data: new_task, error: create_error } = await supabase
       .from('closing_tasks')
       .insert({
-        spot_id: spot_id || null,
+        spot_id,
+        spot_address: spot_address || null,
         shift_date,
         seller_id,
       })
@@ -86,11 +94,10 @@ export async function GET(request: NextRequest) {
     }));
 
     await supabase.from('closing_checklist_items').insert(items);
-  } else if (spot_id && !existing_task.spot_id) {
-    // Если смена открылась, обновить spot_id в существующей задаче
+  } else if (spot_address && !existing_task.spot_address) {
     await supabase
       .from('closing_tasks')
-      .update({ spot_id })
+      .update({ spot_address })
       .eq('id', task_id);
   }
 
@@ -246,16 +253,33 @@ export async function PATCH(request: NextRequest) {
   const was_complete = task_data?.completed_at != null;
   const is_complete = is_closing_complete(task);
 
+  let shift: import('@/lib/types').seller_shift_record | null = null;
+
   if (is_complete && !was_complete) {
+    const completed_at = new Date().toISOString();
     // Отметить задачу как завершенную
     await supabase
       .from('closing_tasks')
       .update({
-        completed_at: new Date().toISOString(),
+        completed_at,
         seller_id: body.seller_id || task_data?.seller_id,
         seller_name: body.seller_name || task_data?.seller_name,
       })
       .eq('id', body.task_id);
+
+    const spot_id = task_data?.spot_id || task.spot_id;
+    if (spot_id) {
+      const close_result = await close_shift_from_closing({
+        spot_id,
+        shift_date: task_data?.shift_date || task.shift_date,
+        seller_id: body.seller_id || task_data?.seller_id || undefined,
+        seller_name: body.seller_name || task_data?.seller_name || undefined,
+      });
+      if ('error' in close_result) {
+        return NextResponse.json({ error: close_result.error, task }, { status: 409 });
+      }
+      shift = close_result.shift;
+    }
 
     // Получить всех админов
     const { data: admins } = await supabase
@@ -281,14 +305,14 @@ export async function PATCH(request: NextRequest) {
         body: `${task.spot_address || 'Точка'} — закрытие завершил ${body.seller_name || 'бариста'}`,
         url: '/admin',
         spot_address: task.spot_address,
-        completed_at: new Date().toISOString(),
+        completed_at,
       });
     }
 
-    task.completed_at = new Date().toISOString();
+    task.completed_at = completed_at;
   }
 
-  return NextResponse.json({ task });
+  return NextResponse.json({ task, shift });
 }
 
 /** POST /api/seller/closing-task - начать выполнение закрытия */
@@ -304,6 +328,7 @@ export async function POST(request: NextRequest) {
     task_id: string;
     seller_id: string;
     seller_name: string;
+    spot_id?: string;
   };
 
   if (!body.task_id) {
@@ -315,7 +340,41 @@ export async function POST(request: NextRequest) {
 
   const supabase = create_service_client();
 
-  // Отметить начало выполнения
+  const { data: existing } = await supabase
+    .from('closing_tasks')
+    .select('id, started_at, completed_at, spot_id')
+    .eq('id', body.task_id)
+    .single();
+
+  if (existing?.completed_at) {
+    return NextResponse.json(
+      { error: 'закрытие уже завершено' },
+      { status: 409 }
+    );
+  }
+
+  if (existing?.started_at) {
+    return NextResponse.json({ success: true, already_started: true });
+  }
+
+  const spot_id = body.spot_id || existing?.spot_id;
+  if (spot_id) {
+    const day_shift = await get_spot_day_shift(spot_id);
+    if (day_shift?.closed_at) {
+      return NextResponse.json(
+        { error: 'смена уже закрыта' },
+        { status: 409 }
+      );
+    }
+    if (!day_shift) {
+      return NextResponse.json(
+        { error: 'сначала завершите открытие смены' },
+        { status: 409 }
+      );
+    }
+  }
+
+  // Отметить начало закрытия — смена закроется только после завершения чек-листа
   await supabase
     .from('closing_tasks')
     .update({

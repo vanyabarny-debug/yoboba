@@ -89,10 +89,10 @@ function editor({
 }) {
   const [draft, set_draft] = useState<menu_item>(item);
   const others = items.filter((i) => i.id !== item.id && i.category === draft.category);
-  const volumes = draft.volumes?.length ? draft.volumes : default_drink_volumes;
+  const volumes = get_item_volumes(draft);
   const nutrition = draft.nutrition ?? empty_nutrition();
   const nutrition_preview = get_nutrition(
-    { ...draft, nutrition, has_volumes: item_has_volumes(draft) },
+    { ...draft, nutrition },
     item_has_volumes(draft) ? (volumes[0]?.ml ?? 100) : 100,
     0
   );
@@ -102,11 +102,7 @@ function editor({
       ...item,
       composition: get_composition_text(item),
       nutrition: get_item_nutrition_base(item),
-      volumes: item_has_volumes(item)
-        ? get_item_volumes(item)
-        : normalize_volumes(item.volumes).length > 0
-          ? normalize_volumes(item.volumes)
-          : default_drink_volumes.map((v) => ({ ...v })),
+      volumes: get_item_volumes(item),
     });
   }, [item]);
 
@@ -208,78 +204,6 @@ function editor({
                 className={field_class}
               />
             </label>
-          )}
-          {toggle_row({
-            label: 'объёмы',
-            hint: 'гость выбирает мл в карточке',
-            on: item_has_volumes(draft),
-            on_change: (on) =>
-              set_draft({
-                ...draft,
-                has_volumes: on,
-                volumes:
-                  on && !(draft.volumes && draft.volumes.length)
-                    ? default_drink_volumes.map((v) => ({ ...v }))
-                    : draft.volumes,
-              }),
-          })}
-          {item_has_volumes(draft) && (
-            <div className="space-y-2 rounded-2xl border border-neutral-200 p-3">
-              {volumes.map((row, index) => (
-                <div key={`${row.ml}-${index}`} className="grid grid-cols-[1fr_1fr_auto] gap-2">
-                  <label className="block text-xs text-neutral-500">
-                    мл
-                    <input
-                      type="number"
-                      min={1}
-                      value={row.ml}
-                      onChange={(e) => {
-                        const next = [...volumes];
-                        next[index] = { ...row, ml: Math.max(0, Number(e.target.value) || 0) };
-                        set_draft({ ...draft, volumes: next });
-                      }}
-                      className={field_class}
-                    />
-                  </label>
-                  <label className="block text-xs text-neutral-500">
-                    доплата, ₽
-                    <input
-                      type="number"
-                      min={0}
-                      value={row.add}
-                      onChange={(e) => {
-                        const next = [...volumes];
-                        next[index] = { ...row, add: Math.max(0, Number(e.target.value) || 0) };
-                        set_draft({ ...draft, volumes: next });
-                      }}
-                      className={field_class}
-                    />
-                  </label>
-                  <button
-                    type="button"
-                    aria-label="убрать объём"
-                    onClick={() =>
-                      set_draft({ ...draft, volumes: volumes.filter((_, i) => i !== index) })
-                    }
-                    className="mt-6 h-10 w-10 rounded-xl text-sm text-neutral-400 hover:bg-neutral-50 hover:text-red-500"
-                  >
-                    ×
-                  </button>
-                </div>
-              ))}
-              <button
-                type="button"
-                onClick={() => {
-                  const used = new Set(volumes.map((v) => v.ml));
-                  let ml = 500;
-                  while (used.has(ml)) ml += 50;
-                  set_draft({ ...draft, volumes: [...volumes, { ml, add: 0 }] });
-                }}
-                className="text-sm text-neutral-500 hover:text-neutral-900"
-              >
-                + объём
-              </button>
-            </div>
           )}
           {toggle_row({
             label: 'топпинг',
@@ -399,11 +323,7 @@ function editor({
                   fat: Math.max(0, Number(nutrition.fat) || 0),
                   carb: Math.max(0, Number(nutrition.carb) || 0),
                 },
-                volumes: item_has_volumes(draft)
-                  ? normalize_volumes(volumes).length > 0
-                    ? normalize_volumes(volumes)
-                    : default_drink_volumes.map((v) => ({ ...v }))
-                  : normalize_volumes(draft.volumes),
+                volumes: normalize_volumes(draft.volumes),
               })
             }
             className="flex-1 rounded-pill bg-neutral-900 py-3 text-sm font-semibold text-white"
@@ -466,7 +386,6 @@ export default function menu_settings() {
       is_available: true,
       recommendations: [],
       prep_minutes: 2,
-      has_volumes: true,
       has_toppings: true,
       volumes: default_drink_volumes.map((v) => ({ ...v })),
       composition: '',
@@ -587,7 +506,7 @@ export default function menu_settings() {
               <button
                 type="button"
                 aria-label={
-                  item.is_available ? `скрыть «${item.name}» из меню` : `показать «${item.name}» в меню`
+                  item.is_available ? `скрыть «${item.name}» с сайта` : `показать «${item.name}» на сайте`
                 }
                 aria-pressed={item.is_available}
                 onClick={() => upsert_menu_item({ ...item, is_available: !item.is_available })}

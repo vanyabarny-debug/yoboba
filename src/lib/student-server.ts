@@ -3,7 +3,9 @@ import { read_json_store, write_json_store } from '@/lib/data-store';
 import { normalize_phone } from '@/lib/phone';
 import { session_cookie, seller_name_cookie } from '@/lib/session';
 import {
+  default_student_expiry_iso,
   empty_student_status,
+  is_student_discount_active,
   parse_student_status,
   type student_status,
 } from '@/lib/student-discount';
@@ -18,11 +20,14 @@ type student_row = student_status & {
 };
 
 const student_columns =
-  'student_claimed, student_verified, student_verified_at, student_verified_by';
+  'student_claimed, student_verified, student_verified_at, student_verified_by, student_expires_at';
 
 function is_missing_student_column(message: string | undefined) {
   const msg = message || '';
-  return /student_claimed|student_verified|schema cache/i.test(msg) && /does not exist|schema cache/i.test(msg);
+  return (
+    /student_claimed|student_verified|student_expires_at|schema cache/i.test(msg) &&
+    /does not exist|schema cache/i.test(msg)
+  );
 }
 
 async function load_local(): Promise<student_row[]> {
@@ -76,6 +81,17 @@ export async function read_student_status(input: {
     if (!error && data) {
       return parse_student_status(data as Record<string, unknown>);
     }
+    if (error && is_missing_student_column(error.message)) {
+      const { data: fallback } = await admin
+        .from('profiles')
+        .select(
+          'id, phone, student_claimed, student_verified, student_verified_at, student_verified_by'
+        )
+        .eq('id', input.user_id)
+        .maybeSingle();
+      if (fallback) return parse_student_status(fallback as Record<string, unknown>);
+      return local;
+    }
   }
 
   const phone = normalize_phone(input.phone);
@@ -92,6 +108,19 @@ export async function read_student_status(input: {
   }
 
   return local;
+}
+
+/** для скидки в заказах/корзине — verified только если срок не вышел */
+export async function read_active_student_status(input: {
+  user_id?: string | null;
+  phone?: string | null;
+}): Promise<student_status> {
+  const status = await read_student_status(input);
+  if (is_student_discount_active(status)) return status;
+  return {
+    ...status,
+    student_verified: false,
+  };
 }
 
 async function write_supabase(
@@ -145,13 +174,23 @@ export async function set_student_verified(input: {
   phone?: string | null;
   verified: boolean;
   by: string;
+  /** YYYY-MM-DD — до какой даты действует студенческий */
+  expires_at?: string | null;
 }): Promise<student_status> {
   const current = await read_student_status(input);
+  const expires =
+    input.verified
+      ? (typeof input.expires_at === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(input.expires_at.trim())
+          ? input.expires_at.trim().slice(0, 10)
+          : default_student_expiry_iso())
+      : null;
+
   const next: student_status = {
     student_claimed: input.verified ? true : current.student_claimed,
     student_verified: input.verified,
     student_verified_at: input.verified ? new Date().toISOString() : null,
     student_verified_by: input.verified ? input.by : null,
+    student_expires_at: expires,
   };
 
   await write_supabase(input.user_id || null, input.phone || null, {
@@ -159,6 +198,7 @@ export async function set_student_verified(input: {
     student_verified: next.student_verified,
     student_verified_at: next.student_verified_at,
     student_verified_by: next.student_verified_by,
+    student_expires_at: next.student_expires_at,
   });
   await upsert_local({
     user_id: input.user_id || null,

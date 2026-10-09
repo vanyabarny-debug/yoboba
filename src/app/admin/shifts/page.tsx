@@ -1,11 +1,15 @@
 'use client';
 
-import { createElement } from 'react';
-import AdminShell from '@/components/admin/admin-shell';
-import shifts_manage from '@/components/admin/shifts-manage';
+import { useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 
-export default function admin_shifts_page() {
-  return createElement(AdminShell, {
-    children: createElement(shifts_manage),
-  });
+/** смены переехали в дашборд аналитики */
+export default function admin_shifts_redirect() {
+  const router = useRouter();
+  useEffect(() => {
+    router.replace('/admin');
+  }, [router]);
+  return (
+    <p className="p-8 text-sm text-neutral-500">переходим в аналитику…</p>
+  );
 }

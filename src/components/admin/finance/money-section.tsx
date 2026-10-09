@@ -55,7 +55,7 @@ function Line({
 }
 
 export default function MoneySection(props: section_props) {
-  const { state, month, set_month } = props;
+  const { state, month, set_month, spot_id = '' } = props;
   const [tab, set_tab] = useState<money_tab>('report');
   const [fact, set_fact] = useState<fact_response | null>(null);
   const md = state.monthsData.find((m) => m.month === month);
@@ -66,7 +66,8 @@ export default function MoneySection(props: section_props) {
 
   useEffect(() => {
     let cancelled = false;
-    fetch(`/api/admin/finance/sales?month=${month}`, { credentials: 'same-origin' })
+    const spot_q = spot_id ? `&spot_id=${encodeURIComponent(spot_id)}` : '';
+    fetch(`/api/admin/finance/sales?month=${month}${spot_q}`, { credentials: 'same-origin' })
       .then((r) => r.json())
       .then((body: fact_response) => {
         if (cancelled || body.error) return;
@@ -76,7 +77,7 @@ export default function MoneySection(props: section_props) {
     return () => {
       cancelled = true;
     };
-  }, [month]);
+  }, [month, spot_id]);
 
   if (!md || !cur_plan || !cash_plan) {
     return <EmptyState>месяц {month_label(month)} ещё не создан — добавьте его сверху</EmptyState>;
@@ -140,23 +141,30 @@ export default function MoneySection(props: section_props) {
                 <Line label="чистая прибыль" value={cur.net_profit} bold share={pct(cur.net_profit)} />
               </div>
             </Card>
-            <Card title="касса" hint="что реально пришло и ушло">
+            <Card
+              title="деньги в кармане"
+              hint="сколько заработало и сколько ушло — и что осталось «в кассе» бизнеса"
+            >
+              <p className="mb-3 text-sm leading-snug text-neutral-500">
+                это не ящик на точке. слева прибыль «на бумаге», здесь — проще: пришло минус
+                потратили. минус значит, что расходов больше, чем выручки.
+              </p>
               <div className="divide-y divide-neutral-100">
-                <Line label="на начало" value={cash.opening} bold />
-                <Line label="выручка" value={cash.revenue} sign="+" />
-                {cash.investments > 0 ? <Line label="инвестиции" value={cash.investments} sign="+" /> : null}
-                {cash.other_income > 0 ? <Line label="прочие доходы" value={cash.other_income} sign="+" /> : null}
+                <Line label="было на старте месяца" value={cash.opening} bold />
+                <Line label="пришло с продаж" value={cash.revenue} sign="+" />
+                {cash.investments > 0 ? <Line label="вложили своих" value={cash.investments} sign="+" /> : null}
+                {cash.other_income > 0 ? <Line label="прочие приходы" value={cash.other_income} sign="+" /> : null}
                 <Line
-                  label={cash.cogs_is_actual ? 'закупки сырья' : 'закупки (расчёт)'}
+                  label={cash.cogs_is_actual ? 'купили сырьё' : 'сырьё (оценка)'}
                   value={cash.cogs_cash}
                   sign="−"
                 />
-                <Line label="постоянные расходы" value={cash.opex} sign="−" />
-                <Line label="налоги" value={cash.tax + cash.ndfl + cash.insurance} sign="−" />
-                {cash.capex > 0 ? <Line label="оборудование" value={cash.capex} sign="−" /> : null}
-                {cash.other_expense > 0 ? <Line label="прочие расходы" value={cash.other_expense} sign="−" /> : null}
-                <Line label="чистый поток" value={cash.net} bold />
-                <Line label="на конец" value={cash.closing} bold />
+                <Line label="аренда, зп и прочее" value={cash.opex} sign="−" />
+                <Line label="налоги и взносы" value={cash.tax + cash.ndfl + cash.insurance} sign="−" />
+                {cash.capex > 0 ? <Line label="купили оборудование" value={cash.capex} sign="−" /> : null}
+                {cash.other_expense > 0 ? <Line label="прочие траты" value={cash.other_expense} sign="−" /> : null}
+                <Line label="за месяц осталось" value={cash.net} bold />
+                <Line label="итого сейчас" value={cash.closing} bold />
               </div>
             </Card>
           </div>

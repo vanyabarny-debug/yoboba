@@ -1,8 +1,8 @@
 import type { profile } from '@/lib/auth';
-import { parse_student_status } from '@/lib/student-discount';
+import { is_student_discount_active, parse_student_status } from '@/lib/student-discount';
 
 export const PROFILE_SELECT_WITH_STUDENT =
-  'id, phone, name, bonus_balance, avatar_emoji, avatar_bg, role, student_claimed, student_verified, student_verified_at, student_verified_by';
+  'id, phone, name, bonus_balance, avatar_emoji, avatar_bg, role, student_claimed, student_verified, student_verified_at, student_verified_by, student_expires_at';
 export const PROFILE_SELECT_WITH_BG =
   'id, phone, name, bonus_balance, avatar_emoji, avatar_bg, role';
 export const PROFILE_SELECT_NO_BG =
@@ -39,9 +39,11 @@ export function as_profile_row(
     avatar_bg: typeof row.avatar_bg === 'string' ? row.avatar_bg : null,
     role: (typeof role === 'string' && role ? role : 'user') as profile['role'],
     student_claimed: student.student_claimed,
-    student_verified: student.student_verified,
+    /** для скидки: false, если срок студенческого вышел */
+    student_verified: is_student_discount_active(student),
     student_verified_at: student.student_verified_at,
     student_verified_by: student.student_verified_by,
+    student_expires_at: student.student_expires_at,
   };
 }
 

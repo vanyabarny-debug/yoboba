@@ -6,6 +6,8 @@ import {
   ChecklistInstructionMedia,
   ChecklistProofPreview,
 } from '@/components/seller/checklist-item-actions';
+import { capture_device_geo } from '@/lib/location';
+import type { seller_shift_record, shift_open_geo } from '@/lib/types';
 
 // Звук при отметке пункта
 function play_check_sound() {
@@ -54,19 +56,24 @@ export default function OpeningTaskGuide({
   task,
   seller_id,
   seller_name,
+  spot_city,
   on_close,
   on_update,
+  on_shift,
 }: {
   task: opening_task;
   seller_id: string;
   seller_name: string;
+  spot_city?: string;
   on_close: () => void;
   on_update: (updated: opening_task) => void;
+  on_shift?: (shift: seller_shift_record) => void;
 }) {
   const [busy, set_busy] = useState(false);
   const [error, set_error] = useState('');
   const file_ref = useRef<HTMLInputElement>(null);
   const [pending_id, set_pending_id] = useState<string | null>(null);
+  const open_geo_ref = useRef<shift_open_geo | null>(task.open_geo || null);
   const progress = opening_progress(task);
   const is_complete = is_opening_complete(task);
   const is_started = task.started_at != null;
@@ -77,6 +84,8 @@ export default function OpeningTaskGuide({
     set_error('');
     
     try {
+      const open_geo = await capture_device_geo();
+      open_geo_ref.current = open_geo;
       const res = await fetch('/api/seller/opening-task', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
@@ -85,6 +94,9 @@ export default function OpeningTaskGuide({
           task_id: task.id,
           seller_id,
           seller_name,
+          spot_id: task.spot_id || undefined,
+          spot_address: task.spot_address || undefined,
+          open_geo,
         }),
       });
 
@@ -99,6 +111,7 @@ export default function OpeningTaskGuide({
         started_at: new Date().toISOString(),
         seller_id,
         seller_name,
+        open_geo,
       });
     } catch {
       set_error('не удалось начать задачу');
@@ -118,13 +131,15 @@ export default function OpeningTaskGuide({
         is_checked,
         seller_id,
         seller_name,
+        spot_city: spot_city || undefined,
+        open_geo: open_geo_ref.current || task.open_geo || undefined,
       }),
     });
     if (!res.ok) {
       const data = (await res.json()) as { error?: string };
       throw new Error(data.error || 'не удалось обновить');
     }
-    return (await res.json()) as { task: opening_task };
+    return (await res.json()) as { task: opening_task; shift?: seller_shift_record | null };
   }
 
   async function upload_proof(item: opening_task['items'][number], file: File) {
@@ -166,6 +181,7 @@ export default function OpeningTaskGuide({
     try {
       const data = await patch_item(item.id, !current_state);
       on_update(data.task);
+      if (data.shift) on_shift?.(data.shift);
       if (!current_state) play_check_sound();
       if (is_opening_complete(data.task)) {
         play_complete_sound();
@@ -188,6 +204,7 @@ export default function OpeningTaskGuide({
       await upload_proof(item, file);
       const data = await patch_item(item.id, true);
       on_update(data.task);
+      if (data.shift) on_shift?.(data.shift);
       play_check_sound();
       set_pending_id(null);
       if (is_opening_complete(data.task)) {

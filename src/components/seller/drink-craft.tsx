@@ -45,7 +45,13 @@ function fresh_board(): board {
   return { id: new_key(), caption: '', drops: [] };
 }
 
-export default function drink_craft() {
+export default function drink_craft({
+  on_close,
+  on_saved,
+}: {
+  on_close?: () => void;
+  on_saved?: (item_id?: string) => void;
+} = {}) {
   const [shelves, set_shelves] = useState<craft_shelf[] | null>(null);
   const [categories, set_categories] = useState<string[]>([]);
   const [error, set_error] = useState('');
@@ -235,11 +241,17 @@ export default function drink_craft() {
           })),
         }),
       });
-      const body = (await res.json().catch(() => null)) as { error?: string; price?: number; cost?: number } | null;
+      const body = (await res.json().catch(() => null)) as {
+        error?: string;
+        price?: number;
+        cost?: number;
+        item?: { id?: string };
+      } | null;
       if (!res.ok) {
         set_error(body?.error || 'не удалось поставить в меню');
         return;
       }
+      on_saved?.(body?.item?.id);
       set_saved({ price: body?.price || price, cost: body?.cost || cost });
     } catch {
       set_error('не удалось поставить в меню');
@@ -257,20 +269,27 @@ export default function drink_craft() {
         <p className="mt-1 text-sm text-neutral-400">
           себестоимость {Math.round(saved.cost).toLocaleString('ru-RU')} ₽ · фудкост 18%
         </p>
-        <button
-          type="button"
-          onClick={() => {
-            set_saved(null);
-            set_name('');
-            set_cold(true);
-            set_hot(true);
-            set_boards([fresh_board(), fresh_board(), fresh_board()]);
-            set_error('');
-          }}
-          className="mt-8 rounded-full bg-neutral-900 px-5 py-3 text-sm font-medium text-white"
-        >
-          ещё напиток
-        </button>
+        <div className="mt-8 flex flex-wrap items-center justify-center gap-2">
+          <button
+            type="button"
+            onClick={() => {
+              set_saved(null);
+              set_name('');
+              set_cold(true);
+              set_hot(true);
+              set_boards([fresh_board(), fresh_board(), fresh_board()]);
+              set_error('');
+            }}
+            className="rounded-full bg-neutral-900 px-5 py-3 text-sm font-medium text-white"
+          >
+            ещё напиток
+          </button>
+          {on_close ? (
+            <button type="button" onClick={on_close} className="rounded-full px-5 py-3 text-sm text-neutral-500">
+              к меню
+            </button>
+          ) : null}
+        </div>
       </div>
     );
   }
@@ -281,7 +300,13 @@ export default function drink_craft() {
   return (
     <div className="relative flex h-full min-h-0 flex-col">
       <div className="min-h-0 flex-1 overflow-y-auto px-3 py-3">
-      <div className="sticky top-0 z-10 mb-3 flex items-start justify-between gap-3 bg-white/90 py-1 backdrop-blur">
+      <div className="sticky top-0 z-10 mb-3 bg-white/90 py-1 backdrop-blur">
+        {on_close ? (
+          <button type="button" onClick={on_close} className="mb-2 text-sm text-neutral-400">
+            закрыть
+          </button>
+        ) : null}
+        <div className="flex items-start justify-between gap-3">
         <div className="min-w-0 flex-1">
           <p className="text-[11px] uppercase tracking-[0.16em] text-accent">крафт</p>
           <input
@@ -298,6 +323,7 @@ export default function drink_craft() {
           <p className="mt-1 text-[10px] uppercase tracking-wide text-white/50">в меню</p>
           <p className="text-lg font-semibold tabular-nums">{price ? `${price.toLocaleString('ru-RU')} ₽` : '—'}</p>
           <p className="text-[10px] text-white/40">фудкост {Math.round(craft_food_cost * 100)}%</p>
+        </div>
         </div>
       </div>
 

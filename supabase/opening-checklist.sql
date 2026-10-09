@@ -11,6 +11,8 @@ create table if not exists public.opening_tasks (
   seller_name text,
   started_at timestamptz,
   completed_at timestamptz,
+  /** GPS устройства в момент «начать открытие» */
+  open_geo jsonb,
   created_at timestamptz not null default now(),
   unique (spot_id, shift_date)
 );

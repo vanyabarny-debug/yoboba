@@ -9,7 +9,7 @@ import {
   set_item_categories,
 } from '@/lib/menu-item-categories';
 
-export const store_version = 22;
+export const store_version = 24;
 
 export const WARM_DRINKS_CATEGORY = 'тёплые напитки';
 export const CLASSIC_CATEGORY = 'классика';
@@ -25,15 +25,27 @@ const warm_drink_item_ids = new Set([
 const classic_drink_item_ids = new Set([
   'original-black-led',
   'jasmine-green-led',
-  'matcha-latte-tiger-led',
-  'taro-led',
 ]);
 
 /** тёплые дубли: в меню и техкартах остаётся только вариант со льдом, без этой подписи */
 const iced_only_ids = new Set(['original-black', 'jasmine-green']);
 
+/** «со льдом» слили в одну карточку с cold+hot */
+const dual_temp_led_ids = new Set(['matcha-latte-tiger-led', 'taro-led']);
+const dual_temp_base_ids = new Set(['matcha-latte-tiger', 'taro']);
+const dual_temp_led_to_base: Record<string, string> = {
+  'matcha-latte-tiger-led': 'matcha-latte-tiger',
+  'taro-led': 'taro',
+};
+
 /** позиции, снятые с меню — остаются в админской истории, но не публикуются на сайте */
-export const retired_item_ids = new Set(['golubaya-laguna', 'subzero', 'tropichesky-limonad', ...iced_only_ids]);
+export const retired_item_ids = new Set([
+  'golubaya-laguna',
+  'subzero',
+  'tropichesky-limonad',
+  ...iced_only_ids,
+  ...dual_temp_led_ids,
+]);
 export const retired_item_names = new Set([
   'голубая лагуна',
   'сабзиро',
@@ -138,8 +150,7 @@ function item(
     is_available: true,
     recommendations,
     prep_minutes: DEFAULT_PREP_MINUTES,
-    volumes: is_combo ? undefined : vols(price, price + 50),
-    has_volumes: is_combo ? false : true,
+    volumes: is_combo ? [] : vols(price, price + 50),
     has_toppings: is_combo ? false : true,
     cold: is_combo ? false : true,
     hot: false,
@@ -167,16 +178,16 @@ export const default_menu_items: menu_item[] = [
     composition:
       'молоко, натуральный порошок матчи, вода, сырная шапка, тапиока, сироп «чёрный сахар»',
     volumes: vols(450, 520),
-    cold: false,
+    cold: true,
     hot: true,
-    recommendations: ['matcha-latte-tiger-led', 'taro'],
+    recommendations: ['taro', 'kakao'],
   }),
   item('taro', 'таро', 450, WARM_DRINKS_CATEGORY, local('taro'), {
     composition: 'сухая смесь «таро», вода, сырная шапка, тапиока',
     volumes: vols(450, 520),
-    cold: false,
+    cold: true,
     hot: true,
-    recommendations: ['taro-led', 'matcha-latte-tiger'],
+    recommendations: ['matcha-latte-tiger', 'kakao'],
   }),
   item('kakao', 'какао', 420, WARM_DRINKS_CATEGORY, local('kakao'), {
     composition: 'молоко, какао-порошок, сироп «шоколадный», сырная пенка',
@@ -207,21 +218,6 @@ export const default_menu_items: menu_item[] = [
     cold: true,
     hot: false,
     recommendations: ['original-black-led'],
-  }),
-  item('matcha-latte-tiger-led', 'матча латте со льдом', 450, CLASSIC_CATEGORY, local('matcha-latte-tiger-led'), {
-    composition:
-      'молоко, натуральный порошок матчи, вода, сырная шапка, тапиока, сироп «чёрный сахар», лёд',
-    volumes: vols(450, 520),
-    cold: true,
-    hot: false,
-    recommendations: ['matcha-latte-tiger', 'taro-led'],
-  }),
-  item('taro-led', 'таро со льдом', 450, CLASSIC_CATEGORY, local('taro-led'), {
-    composition: 'сухая смесь «таро», вода, сырная шапка, тапиока, лёд',
-    volumes: vols(450, 520),
-    cold: true,
-    hot: false,
-    recommendations: ['taro', 'matcha-latte-tiger-led'],
   }),
   item('klubnichny-limonad', 'клубничный лимонад', 319, 'лимонады', local('klubnichny-limonad'), {
     composition: 'газированная вода, концентрат клубники, джус-боллы с соком клубники, лёд',
@@ -281,15 +277,18 @@ export const default_menu_items: menu_item[] = [
     badge: { text: 'месяца' },
   }),
   item('combo-dabl-drop', 'двойной', 719, 'комбо', local('combo-dabl-drop'), {
-    composition: 'два любимых напитка 500 мл на выбор',
+    composition: '2 напитка 500 мл на выбор',
+    combo: { drink_count: 2, volume_ml: 500, allow_duplicates: true },
     recommendations: ['combo-semeiny', 'combo-druzhba'],
   }),
   item('combo-semeiny', 'семейный', 1050, 'комбо', local('combo-semeiny'), {
-    composition: 'три любимых напитка 500 мл на выбор',
+    composition: '3 напитка 500 мл на выбор',
+    combo: { drink_count: 3, volume_ml: 500, allow_duplicates: true },
     recommendations: ['combo-dabl-drop', 'combo-druzhba'],
   }),
   item('combo-druzhba', 'дружба', 1990, 'комбо', local('combo-druzhba'), {
-    composition: 'шесть напитков 500 мл на дружную компанию',
+    composition: '6 напитков 500 мл на выбор',
+    combo: { drink_count: 6, volume_ml: 500, allow_duplicates: true },
     recommendations: ['combo-dabl-drop', 'combo-semeiny'],
   }),
 ];
@@ -437,10 +436,17 @@ export function publish_menu_now(store: menu_store = get_menu_store()) {
   });
 }
 
-function schedule_publish(store: menu_store) {
+function schedule_publish(_store: menu_store) {
   if (typeof window === 'undefined') return;
   window.clearTimeout(publish_timer);
-  publish_timer = window.setTimeout(() => publish_menu_now(store), 400);
+  publish_timer = window.setTimeout(() => publish_menu_now(), 400);
+}
+
+/** сразу отправить текущее меню и снять отложенную запись, чтобы она не затёрла более новый снимок */
+export function settle_menu_publish() {
+  if (typeof window === 'undefined') return;
+  window.clearTimeout(publish_timer);
+  publish_menu_now();
 }
 
 function merge_default_badges(items: menu_item[]) {
@@ -501,20 +507,30 @@ export function merge_menu_item_catalog(items: menu_item[], removed_ids: Iterabl
         : {}),
       price: fallback.price,
       volumes: fallback.volumes,
-      has_volumes: fallback.has_volumes,
       has_toppings: fallback.has_toppings,
       cold: typeof item.cold === 'boolean' ? item.cold : fallback.cold,
       hot: typeof item.hot === 'boolean' ? item.hot : fallback.hot,
       composition: item.composition ?? fallback.composition,
       nutrition: item.nutrition ?? fallback.nutrition,
+      combo: item.combo ?? fallback.combo,
     };
   });
   const ids = new Set(merged.map((item) => item.id));
   for (const def of default_menu_items) {
-    if (!ids.has(def.id) && !iced_only_ids.has(def.id) && !removed.has(def.id)) merged.push({ ...def });
+    if (
+      !ids.has(def.id) &&
+      !iced_only_ids.has(def.id) &&
+      !dual_temp_led_ids.has(def.id) &&
+      !removed.has(def.id)
+    ) {
+      merged.push({ ...def });
+    }
   }
   return merged
-    .filter((item) => !iced_only_ids.has(item.id) && !removed.has(item.id))
+    .filter(
+      (item) =>
+        !iced_only_ids.has(item.id) && !dual_temp_led_ids.has(item.id) && !removed.has(item.id)
+    )
     .map((item) => {
       const iced =
         item.id === 'original-black-led'
@@ -527,11 +543,18 @@ export function merge_menu_item_catalog(items: menu_item[], removed_ids: Iterabl
                 image_url: green_jasmine_photo(item.image_url),
               }
             : null;
+      const dual = dual_temp_base_ids.has(item.id)
+        ? { cold: true as const, hot: true as const }
+        : null;
+      const recommendations = (item.recommendations ?? [])
+        .map((id) => dual_temp_led_to_base[id] ?? id)
+        .filter((id) => !retired_item_ids.has(id) && !dual_temp_led_ids.has(id));
       return {
         ...item,
         ...iced,
+        ...dual,
         is_available: is_retired_menu_item(item) ? false : item.is_available,
-        recommendations: (item.recommendations ?? []).filter((id) => !retired_item_ids.has(id)),
+        recommendations: [...new Set(recommendations)],
       };
     });
 }

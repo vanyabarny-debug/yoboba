@@ -4,6 +4,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { menu_item } from '@/lib/types';
 import {
   add_month,
+  apply_tax_regime,
+  backfill_opex_months,
   current_month_id,
   each_day,
   moscow_today,
@@ -21,7 +23,11 @@ export type section_props = {
   set_period: (from: string, to: string) => void;
   menu: menu_item[];
   set_menu?: (fn: (prev: menu_item[]) => menu_item[]) => void;
+  flush?: () => Promise<void>;
+  reload?: () => Promise<void>;
   compact?: boolean;
+  /** '' = все точки; иначе id точки */
+  spot_id?: string;
 };
 
 export type finance_bundle = {
@@ -34,6 +40,8 @@ export type finance_bundle = {
   set_period: (from: string, to: string) => void;
   menu: menu_item[];
   set_menu: (fn: (prev: menu_item[]) => menu_item[]) => void;
+  flush: () => Promise<void>;
+  reload: () => Promise<void>;
   error: string;
   save_status: 'idle' | 'dirty' | 'saving' | 'saved' | 'error';
   months: string[];
@@ -51,29 +59,7 @@ export function use_finance(): finance_bundle {
   const dirty_ref = useRef(false);
   const timer_ref = useRef<ReturnType<typeof setTimeout> | null>(null);
   const latest_ref = useRef<finance_state | null>(null);
-
-  useEffect(() => {
-    let cancelled = false;
-    fetch('/api/admin/finance', { credentials: 'same-origin' })
-      .then((r) => r.json())
-      .then((body: { state?: unknown; menu?: menu_item[]; error?: string }) => {
-        if (cancelled) return;
-        if (body.error) {
-          set_error(body.error);
-          return;
-        }
-        const today = moscow_today();
-        const s0 = normalize_finance_state(body.state);
-        const s = add_month(s0, today.slice(0, 7));
-        latest_ref.current = s;
-        set_state_raw(s);
-        set_menu(body.menu ?? []);
-      })
-      .catch(() => set_error('не удалось загрузить финансы'));
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+  const persist_ref = useRef<() => Promise<void>>(async () => {});
 
   const persist = useCallback(async () => {
     const s = latest_ref.current;
@@ -94,6 +80,63 @@ export function use_finance(): finance_bundle {
       set_save_status('error');
     }
   }, []);
+  persist_ref.current = persist;
+
+  const adopt = useCallback((body: { state?: unknown; menu?: menu_item[]; error?: string }, repair: boolean) => {
+    if (body.error) {
+      set_error(body.error);
+      return;
+    }
+    const today = moscow_today();
+    const s0 = normalize_finance_state(body.state);
+    const tax_fixed = apply_tax_regime(s0, s0.taxRegime);
+    const tax_changed =
+      s0.taxRegime !== tax_fixed.taxRegime ||
+      s0.taxRate !== tax_fixed.taxRate ||
+      s0.insuranceRate !== tax_fixed.insuranceRate ||
+      s0.ndflRate !== tax_fixed.ndflRate ||
+      (s0.injuryMonthly ?? 0) !== (tax_fixed.injuryMonthly ?? 0);
+    const with_month = add_month(tax_fixed, today.slice(0, 7));
+    const s = backfill_opex_months(with_month);
+    const opex_changed = JSON.stringify(s.monthsData) !== JSON.stringify(with_month.monthsData);
+    latest_ref.current = s;
+    set_state_raw(s);
+    set_menu(body.menu ?? []);
+    if (repair && (tax_changed || opex_changed)) {
+      dirty_ref.current = true;
+      set_save_status('dirty');
+      if (timer_ref.current) clearTimeout(timer_ref.current);
+      timer_ref.current = setTimeout(() => void persist_ref.current(), 400);
+    }
+  }, []);
+
+  const reload = useCallback(async () => {
+    if (timer_ref.current) clearTimeout(timer_ref.current);
+    await persist_ref.current();
+    if (dirty_ref.current) return;
+    const res = await fetch('/api/admin/finance', { credentials: 'same-origin' });
+    const body = (await res.json()) as { state?: unknown; menu?: menu_item[]; error?: string };
+    adopt(body, false);
+  }, [adopt]);
+
+  const flush = useCallback(async () => {
+    if (timer_ref.current) clearTimeout(timer_ref.current);
+    await persist_ref.current();
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch('/api/admin/finance', { credentials: 'same-origin' })
+      .then((r) => r.json())
+      .then((body: { state?: unknown; menu?: menu_item[]; error?: string }) => {
+        if (cancelled) return;
+        adopt(body, true);
+      })
+      .catch(() => set_error('не удалось загрузить финансы'));
+    return () => {
+      cancelled = true;
+    };
+  }, [adopt]);
 
   const set_state = useCallback(
     (fn: (prev: finance_state) => finance_state) => {
@@ -157,6 +200,8 @@ export function use_finance(): finance_bundle {
     set_period,
     menu,
     set_menu: set_menu_items,
+    flush,
+    reload,
     error,
     save_status,
     months,

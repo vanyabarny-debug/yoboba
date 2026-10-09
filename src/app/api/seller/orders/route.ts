@@ -4,6 +4,8 @@ import { session_cookie } from '@/lib/session';
 import { calc_order_bonus } from '@/lib/cart-summary';
 import { create_fake_order_from_items, update_demo_order } from '@/lib/demo-orders-server';
 import { load_menu_map } from '@/lib/kitchen-server';
+import { normalize_order_item_fields } from '@/lib/order-item-name';
+import { parse_combo_order_fields } from '@/lib/combo';
 import { allocate_daily_order_number, moscow_today_iso } from '@/lib/order-number';
 import { normalize_phone } from '@/lib/phone';
 import { is_supabase_configured } from '@/lib/supabase/config';
@@ -31,7 +33,7 @@ async function find_profile_by_phone(phone: string) {
   const full = await admin
     .from('profiles')
     .select(
-      'id, name, phone, bonus_balance, student_claimed, student_verified, student_verified_at, student_verified_by'
+      'id, name, phone, bonus_balance, student_claimed, student_verified, student_verified_at, student_verified_by, student_expires_at'
     )
     .eq('phone', phone)
     .maybeSingle();
@@ -66,16 +68,22 @@ async function customer_payload(profile: {
   student_verified_at?: string | null;
   student_verified_by?: string | null;
 }) {
+  const { is_student_discount_active } = await import('@/lib/student-discount');
   const student = await read_student_status({ user_id: profile.id, phone: profile.phone });
+  const merged = {
+    student_claimed: student.student_claimed || profile.student_claimed === true,
+    student_verified: student.student_verified || profile.student_verified === true,
+    student_verified_at: student.student_verified_at || profile.student_verified_at || null,
+    student_verified_by: student.student_verified_by || profile.student_verified_by || null,
+    student_expires_at: student.student_expires_at || null,
+  };
   return {
     id: profile.id,
     name: (profile.name || '').trim() || null,
     phone: profile.phone,
     bonus_balance: profile.bonus_balance ?? 0,
-    student_claimed: student.student_claimed || profile.student_claimed === true,
-    student_verified: student.student_verified || profile.student_verified === true,
-    student_verified_at: student.student_verified_at || profile.student_verified_at || null,
-    student_verified_by: student.student_verified_by || profile.student_verified_by || null,
+    ...merged,
+    student_verified: is_student_discount_active(merged),
   };
 }
 
@@ -249,7 +257,7 @@ export async function GET(request: Request) {
       const full = await admin
         .from('profiles')
         .select(
-          'id, name, phone, bonus_balance, student_claimed, student_verified, student_verified_at, student_verified_by'
+          'id, name, phone, bonus_balance, student_claimed, student_verified, student_verified_at, student_verified_by, student_expires_at'
         )
         .eq('id', resolved.user_id)
         .maybeSingle();
@@ -380,26 +388,27 @@ export async function POST(request: Request) {
 
   const raw_confirm_student = Boolean(body.confirm_student);
   let student_verified = false;
+  const { is_student_discount_active } = await import('@/lib/student-discount');
   if (customer_phone) {
     let student = await read_student_status({ phone: customer_phone });
-    if (raw_confirm_student && !student.student_verified) {
+    if (raw_confirm_student && !is_student_discount_active(student)) {
       student = await set_student_verified({
         phone: customer_phone,
         verified: true,
         by: await staff_actor_name(),
       });
     }
-    student_verified = student.student_verified;
+    student_verified = is_student_discount_active(student);
   } else if (pickup_user_id) {
     let student = await read_student_status({ user_id: pickup_user_id });
-    if (raw_confirm_student && !student.student_verified) {
+    if (raw_confirm_student && !is_student_discount_active(student)) {
       student = await set_student_verified({
         user_id: pickup_user_id,
         verified: true,
         by: await staff_actor_name(),
       });
     }
-    student_verified = student.student_verified;
+    student_verified = is_student_discount_active(student);
   }
 
   const staff = Boolean(body.staff);
@@ -410,13 +419,19 @@ export async function POST(request: Request) {
       const qty = Math.max(1, Math.round(Number(row.quantity) || 1));
       const configured_unit = Math.max(0, Math.round(Number(row.price) || m?.price || 0));
       const volume = typeof row.volume === 'string' && /^\d+$/.test(row.volume) ? row.volume : undefined;
+      const normalized = normalize_order_item_fields({
+        name: row.name || m?.name || 'напиток',
+        volume,
+      });
+      const combo = parse_combo_order_fields(row);
       return {
         menu_id: row.menu_id,
-        name: row.name || m?.name || 'напиток',
+        name: normalized.name,
         configured_unit,
         quantity: qty,
-        volume,
+        volume: normalized.volume,
         category: m?.category,
+        ...combo,
       };
     });
     const lines = configured.map((c) => ({
@@ -429,6 +444,8 @@ export async function POST(request: Request) {
       price: discounted_unit(lines, i, discount, staff),
       quantity: c.quantity,
       ...(c.volume ? { volume: c.volume } : {}),
+      ...(c.combo_picks?.length ? { combo_picks: c.combo_picks } : {}),
+      ...(c.combo_components?.length ? { combo_components: c.combo_components } : {}),
       kind: staff ? ('staff' as const) : ('sale' as const),
     }));
   })();
@@ -568,6 +585,8 @@ export async function POST(request: Request) {
       }
 
       const daily = await allocate_daily_order_number(admin);
+      const spot_id_raw = typeof body.spot_id === 'string' ? body.spot_id.trim() : '';
+      const spot_id = spot_id_raw || null;
       const payload = {
         user_id,
         items,
@@ -580,9 +599,17 @@ export async function POST(request: Request) {
         status: 'new' as const,
         order_number: daily.order_number,
         order_day: daily.order_day,
+        ...(spot_id ? { spot_id } : {}),
       };
 
       let { data, error } = await admin.from('orders').insert(payload).select('*').single();
+
+      if (error && /spot_id/i.test(error.message) && spot_id) {
+        const { spot_id: _drop, ...without_spot } = payload;
+        const retry_spot = await admin.from('orders').insert(without_spot).select('*').single();
+        data = retry_spot.data;
+        error = retry_spot.error;
+      }
 
       if (error && /is_paid|customer_name|customer_phone|payment_type/i.test(error.message)) {
         const retry = await admin
@@ -596,11 +623,30 @@ export async function POST(request: Request) {
             status: 'new',
             order_number: daily.order_number,
             order_day: daily.order_day,
+            ...(spot_id ? { spot_id } : {}),
           })
           .select('*')
           .single();
         data = retry.data;
         error = retry.error;
+        if (error && /spot_id/i.test(error.message) && spot_id) {
+          const retry2 = await admin
+            .from('orders')
+            .insert({
+              user_id,
+              items,
+              total_price: final_total,
+              payment_type: payment_type === 'bonus' ? 'online' : payment_type,
+              pickup_time,
+              status: 'new',
+              order_number: daily.order_number,
+              order_day: daily.order_day,
+            })
+            .select('*')
+            .single();
+          data = retry2.data;
+          error = retry2.error;
+        }
       }
 
       if (error || !data) {

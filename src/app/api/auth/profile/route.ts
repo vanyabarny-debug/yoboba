@@ -118,18 +118,25 @@ export async function GET(request: NextRequest) {
   }
 
   if (resolved_profile) {
+    const { is_student_discount_active } = await import('@/lib/student-discount');
     const student = await read_student_status({
       user_id: user.id,
       phone: resolved_profile.phone,
     });
-    resolved_profile = {
-      ...resolved_profile,
+    const merged = {
       student_claimed: student.student_claimed || resolved_profile.student_claimed,
-      student_verified: student.student_verified || resolved_profile.student_verified,
+      student_verified: student.student_verified || resolved_profile.student_verified === true,
       student_verified_at:
         student.student_verified_at || resolved_profile.student_verified_at || null,
       student_verified_by:
         student.student_verified_by || resolved_profile.student_verified_by || null,
+      student_expires_at:
+        student.student_expires_at || resolved_profile.student_expires_at || null,
+    };
+    resolved_profile = {
+      ...resolved_profile,
+      ...merged,
+      student_verified: is_student_discount_active(merged),
     };
   }
 
@@ -273,6 +280,7 @@ export async function PATCH(request: NextRequest) {
       student_verified: student.student_verified,
       student_verified_at: student.student_verified_at,
       student_verified_by: student.student_verified_by,
+      student_expires_at: student.student_expires_at,
     };
   }
 

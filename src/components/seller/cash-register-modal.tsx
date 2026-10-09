@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import type { order } from '@/lib/types';
 import { format_order_number } from '@/lib/order-number';
+import { normalize_order_item_fields } from '@/lib/order-item-name';
 import { get_topping_portion_price_value } from '@/lib/product-details';
 import { FREE_DRINK_BONUS_THRESHOLD } from '@/lib/cart-summary';
 import { normalize_phone } from '@/lib/phone';
@@ -31,12 +32,15 @@ function parse_item_lines(items: order['items']): line_view[] {
   const portion = get_topping_portion_price_value();
   return items.map((item, i) => {
     const raw = item.name || '';
-    const m = raw.match(/^(.*?)(?:\s*\+топ\.?\s*(\d+)\s*)?$/i);
-    const base = (m?.[1] || raw).replace(/\s*650мл\s*/i, ' ').trim();
-    const topping_count = m?.[2] ? Number(m[2]) : 0;
-    const has_650 = /650\s*мл/i.test(raw);
-    const title_bits = [base || raw];
-    if (has_650) title_bits.push('650 мл');
+    const topping_m = raw.match(/\+топ\.?\s*(\d+)/i);
+    const topping_count = topping_m?.[1] ? Number(topping_m[1]) : 0;
+    const without_topping = raw.replace(/\s*\+топ\.?\s*\d+\s*/gi, ' ').trim();
+    const normalized = normalize_order_item_fields({
+      name: without_topping,
+      volume: item.volume,
+    });
+    const title_bits = [normalized.name];
+    if (normalized.volume) title_bits.push(`${normalized.volume} мл`);
 
     return {
       key: `${item.menu_id}-${i}`,

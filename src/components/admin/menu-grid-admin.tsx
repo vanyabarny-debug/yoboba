@@ -135,7 +135,7 @@ function admin_dish_card({
           <button
             type="button"
             aria-label={
-              item.is_available ? `скрыть «${item.name}» из меню` : `показать «${item.name}» в меню`
+              item.is_available ? `скрыть «${item.name}» с сайта` : `показать «${item.name}» на сайте`
             }
             aria-pressed={item.is_available}
             onClick={() => on_update_item({ ...item, is_available: !item.is_available })}

@@ -23,7 +23,7 @@ import { kopi_boby_name } from '@/components/kopi-boby';
 import { configured_unit_price, get_topping_name } from '@/lib/product-details';
 import { drink_temp_label, type drink_temp } from '@/components/menu-temp-marks';
 import { format_combo_picks } from '@/lib/combo';
-import type { store_spot } from '@/lib/types';
+import type { order_combo_component, store_spot } from '@/lib/types';
 import { STUDENT_DISCOUNT_LABEL, student_line_price } from '@/lib/student-discount';
 
 export type cart_line = {
@@ -37,9 +37,14 @@ export type cart_line = {
   topping?: number;
   /** выбранные напитки в комбо (названия) */
   combo_picks?: string[];
+  /** разложение комбо для склада */
+  combo_components?: order_combo_component[];
 };
 
 export function cart_line_unit_price(line: cart_line): number {
+  if (line.combo_picks?.length || line.combo_components?.length) {
+    return Math.max(0, Math.round(line.item.price));
+  }
   if (line.volume == null && (line.topping == null || line.topping === 0)) {
     return line.item.price;
   }

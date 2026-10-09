@@ -5,6 +5,7 @@ import { adjust_bonus_balance } from '@/lib/bonus-server';
 import { is_supabase_configured } from '@/lib/supabase/config';
 import { create_service_client } from '@/lib/supabase/service';
 import { get_demo_orders } from '@/lib/demo-orders-server';
+import { normalize_order_item_fields } from '@/lib/order-item-name';
 import { normalize_phone } from '@/lib/phone';
 import type { order, order_item } from '@/lib/types';
 
@@ -25,6 +26,7 @@ type profile_row = {
   student_verified?: boolean | null;
   student_verified_at?: string | null;
   student_verified_by?: string | null;
+  student_expires_at?: string | null;
 };
 
 type customer_order = {
@@ -59,6 +61,7 @@ type customer_row = {
   student_verified: boolean;
   student_verified_at: string | null;
   student_verified_by: string | null;
+  student_expires_at: string | null;
   orders_count: number;
   spent: number;
   last_order_at: string | null;
@@ -123,14 +126,17 @@ function to_customer_order(o: order): customer_order {
     status: o.status,
     total_price: Number(o.total_price) || 0,
     payment_type: o.payment_type,
-    items: order_items(o.items).map((item) => ({
-      menu_id: item.menu_id || '',
-      name: item.name,
-      quantity: Number(item.quantity) || 0,
-      price: Number(item.price) || 0,
-      ...(item.volume ? { volume: item.volume } : {}),
-      ...(item.kind ? { kind: item.kind } : {}),
-    })),
+    items: order_items(o.items).map((item) => {
+      const normalized = normalize_order_item_fields({ name: item.name, volume: item.volume });
+      return {
+        menu_id: item.menu_id || '',
+        name: normalized.name,
+        quantity: Number(item.quantity) || 0,
+        price: Number(item.price) || 0,
+        ...(normalized.volume ? { volume: normalized.volume } : {}),
+        ...(item.kind ? { kind: item.kind } : {}),
+      };
+    }),
   };
 }
 
@@ -150,6 +156,7 @@ function empty_customer(input: {
   student_verified?: boolean | null;
   student_verified_at?: string | null;
   student_verified_by?: string | null;
+  student_expires_at?: string | null;
 }): customer_row {
   return {
     id: input.id,
@@ -167,6 +174,10 @@ function empty_customer(input: {
     student_verified: input.student_verified === true,
     student_verified_at: input.student_verified_at || null,
     student_verified_by: input.student_verified_by || null,
+    student_expires_at:
+      typeof input.student_expires_at === 'string'
+        ? input.student_expires_at.slice(0, 10)
+        : null,
     orders_count: 0,
     spent: 0,
     last_order_at: null,
@@ -323,7 +334,7 @@ export async function GET() {
       try {
         profiles = await fetch_all_rows<profile_row>(
           'profiles',
-          'id, name, phone, role, bonus_balance, created_at, avatar_emoji, student_claimed, student_verified, student_verified_at, student_verified_by'
+          'id, name, phone, role, bonus_balance, created_at, avatar_emoji, student_claimed, student_verified, student_verified_at, student_verified_by, student_expires_at'
         );
       } catch (err) {
         const msg = err instanceof Error ? err.message : '';
@@ -354,6 +365,7 @@ export async function GET() {
             student_verified: p.student_verified,
             student_verified_at: p.student_verified_at,
             student_verified_by: p.student_verified_by,
+            student_expires_at: p.student_expires_at,
           })
         );
       }

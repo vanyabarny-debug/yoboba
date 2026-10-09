@@ -11,6 +11,7 @@ import { normalize_phone } from '@/lib/phone';
 import { allocate_daily_order_number } from '@/lib/order-number';
 import { is_pickup_feasible } from '@/lib/kitchen-queue';
 import { load_active_orders, load_menu_map } from '@/lib/kitchen-server';
+import { parse_combo_order_fields } from '@/lib/combo';
 import type { order_item } from '@/lib/types';
 import { student_line_price } from '@/lib/student-discount';
 import { read_student_status } from '@/lib/student-server';
@@ -131,10 +132,16 @@ export async function POST(request: Request) {
   }
 
   const student = await read_student_status({ user_id: user.id, phone: profile_phone });
-  const priced_items = items.map((i) => {
+  const priced_items: order_item[] = items.map((i) => {
     const menu = menu_by_id.get(i.menu_id);
+    const combo = parse_combo_order_fields(i);
     return {
-      ...i,
+      menu_id: i.menu_id,
+      name: i.name,
+      quantity: i.quantity,
+      ...(typeof i.volume === 'string' && /^\d+$/.test(i.volume) ? { volume: i.volume } : {}),
+      ...(i.temp === 'cold' || i.temp === 'hot' ? { temp: i.temp } : {}),
+      ...combo,
       price: student_line_price(
         Number(i.price) || 0,
         { category: menu?.category, menu_id: i.menu_id },
@@ -195,6 +202,8 @@ export async function POST(request: Request) {
     );
   }
 
+  const spot_id_raw = typeof body.spot_id === 'string' ? body.spot_id.trim() : '';
+  const spot_id = spot_id_raw || null;
   const order_payload = {
     user_id: user.id,
     items: priced_items,
@@ -207,9 +216,17 @@ export async function POST(request: Request) {
     customer_phone: profile_phone,
     order_number: daily_number.order_number,
     order_day: daily_number.order_day,
+    ...(spot_id ? { spot_id } : {}),
   };
 
   let { data, error } = await supabase.from('orders').insert(order_payload).select().single();
+
+  if (error && /spot_id/i.test(error.message) && spot_id) {
+    const { spot_id: _drop, ...without_spot } = order_payload;
+    const retry_spot = await supabase.from('orders').insert(without_spot).select().single();
+    data = retry_spot.data;
+    error = retry_spot.error;
+  }
 
   if (error && /is_paid|customer_name|customer_phone|payment_type/i.test(error.message)) {
     const retry = await supabase
@@ -223,6 +240,7 @@ export async function POST(request: Request) {
         status: 'new',
         order_number: daily_number.order_number,
         order_day: daily_number.order_day,
+        ...(spot_id ? { spot_id } : {}),
       })
       .select()
       .single();
@@ -230,6 +248,26 @@ export async function POST(request: Request) {
       ? { ...retry.data, is_paid, customer_name, customer_phone: profile_phone, payment_type: final_payment }
       : retry.data;
     error = retry.error;
+    if (error && /spot_id/i.test(error.message) && spot_id) {
+      const retry2 = await supabase
+        .from('orders')
+        .insert({
+          user_id: user.id,
+          items: priced_items,
+          total_price: final_total,
+          payment_type: final_payment === 'bonus' ? 'online' : final_payment,
+          pickup_time,
+          status: 'new',
+          order_number: daily_number.order_number,
+          order_day: daily_number.order_day,
+        })
+        .select()
+        .single();
+      data = retry2.data
+        ? { ...retry2.data, is_paid, customer_name, customer_phone: profile_phone, payment_type: final_payment }
+        : retry2.data;
+      error = retry2.error;
+    }
   }
 
   if (error || !data) {

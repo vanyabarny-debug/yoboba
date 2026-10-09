@@ -35,10 +35,21 @@ export function normalize_volumes(list: menu_volume[] | undefined): menu_volume[
   return out.sort((a, b) => a.ml - b.ml);
 }
 
+/** volumes позиции из ключей размеров техкарты; доплаты сохраняем */
+export function volumes_from_size_keys(
+  size_keys: string[],
+  previous?: menu_volume[] | null
+): menu_volume[] {
+  const prev = new Map(normalize_volumes(previous ?? undefined).map((v) => [v.ml, v.add]));
+  const mls = size_keys
+    .map((k) => Math.round(Number(k) || 0))
+    .filter((ml) => ml > 0);
+  return normalize_volumes(mls.map((ml) => ({ ml, add: prev.get(ml) ?? 0 })));
+}
+
+/** размеры для карточки гостя — только то, что записано в volumes (из техкарты) */
 export function get_item_volumes(item: menu_item): menu_volume[] {
-  if (!item_has_volumes(item)) return [];
-  const custom = normalize_volumes(item.volumes);
-  return custom.length > 0 ? custom : default_drink_volumes;
+  return normalize_volumes(item.volumes);
 }
 
 export function first_volume_id(item?: menu_item | null): string {

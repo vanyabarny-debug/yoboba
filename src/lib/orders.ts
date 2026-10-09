@@ -1,4 +1,5 @@
 import type { order, order_item } from '@/lib/types';
+import { get_selected_spot } from '@/lib/location';
 
 type create_order_input = {
   user_id: string;
@@ -7,9 +8,11 @@ type create_order_input = {
   payment_type: 'cash' | 'card' | 'online' | 'bonus';
   pickup_time: string;
   redeem_bonus?: boolean;
+  spot_id?: string;
 };
 
 export async function create_order(input: create_order_input) {
+  const spot_id = input.spot_id || get_selected_spot()?.id || undefined;
   const res = await fetch('/api/orders', {
     method: 'POST',
     credentials: 'same-origin',
@@ -20,6 +23,7 @@ export async function create_order(input: create_order_input) {
       payment_type: input.payment_type,
       pickup_time: input.pickup_time,
       redeem_bonus: Boolean(input.redeem_bonus),
+      ...(spot_id ? { spot_id } : {}),
     }),
   });
 

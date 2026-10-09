@@ -4,6 +4,8 @@ import { session_cookie } from '@/lib/session';
 import { is_supabase_configured } from '@/lib/supabase/config';
 import { create_service_client } from '@/lib/supabase/service';
 import { get_demo_orders } from '@/lib/demo-orders-server';
+import { get_transactions } from '@/lib/cash-server';
+import { read_active_spots } from '@/lib/spots-server';
 import type { order, order_item } from '@/lib/types';
 
 async function is_admin() {
@@ -24,10 +26,13 @@ function start_of_day_moscow(d = new Date()) {
   return new Date(`${y}-${m}-${day}T00:00:00+03:00`);
 }
 
-export async function GET() {
+export async function GET(request: Request) {
   if (!(await is_admin())) {
     return NextResponse.json({ error: 'доступ запрещён' }, { status: 403 });
   }
+
+  const spot_q = new URL(request.url).searchParams.get('spot_id')?.trim() || '';
+  const spot_filter = spot_q && spot_q !== 'all' ? spot_q : '';
 
   const since_week = new Date();
   since_week.setDate(since_week.getDate() - 7);
@@ -37,18 +42,44 @@ export async function GET() {
 
   if (is_supabase_configured()) {
     const supabase = create_service_client();
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from('orders')
       .select('*')
       .gte('created_at', since_week.toISOString())
       .neq('status', 'cancelled');
-    orders = (data as order[]) || [];
+    if (error && /spot_id/i.test(error.message)) {
+      const retry = await supabase
+        .from('orders')
+        .select('id, items, status, created_at, total_price, user_id, payment_type, pickup_time')
+        .gte('created_at', since_week.toISOString())
+        .neq('status', 'cancelled');
+      orders = (retry.data as order[]) || [];
+    } else {
+      orders = (data as order[]) || [];
+    }
   }
 
   for (const o of await get_demo_orders(false)) {
     if (new Date(o.created_at) >= since_week && o.status !== 'cancelled') {
       orders.push(o);
     }
+  }
+
+  if (spot_filter) {
+    const active = await read_active_spots();
+    const fallback = active.length === 1 ? active[0].id : null;
+    const cash_map = new Map<string, string>();
+    try {
+      for (const t of await get_transactions({})) {
+        if (t.order_id && t.spot_id && !cash_map.has(t.order_id)) cash_map.set(t.order_id, t.spot_id);
+      }
+    } catch {
+      /* ignore */
+    }
+    orders = orders.filter((o) => {
+      const sid = (o.spot_id || '').trim() || cash_map.get(o.id) || fallback;
+      return sid === spot_filter;
+    });
   }
 
   const week_orders = orders;
@@ -88,6 +119,7 @@ export async function GET() {
   }
 
   return NextResponse.json({
+    spot_id: spot_filter || null,
     orders_today: today_orders.length,
     revenue_today: Math.round(revenue_today),
     orders_week: week_orders.length,

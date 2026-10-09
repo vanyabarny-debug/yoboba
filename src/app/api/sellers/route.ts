@@ -49,6 +49,9 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'такой логин уже у общего входа в кассу' }, { status: 409 });
   }
 
+  const salary_net = Math.max(0, Math.round(Number(body.salary_net) || 0));
+  const with_ndfl =
+    body.with_ndfl != null ? Boolean(body.with_ndfl) : salary_net > 0;
   const record = await upsert_seller({
     id: body.id || `seller-${Date.now()}`,
     login: body.login.trim().toLowerCase(),
@@ -58,6 +61,8 @@ export async function POST(request: Request) {
     access: parse_seller_access(body.access),
     is_active: body.is_active !== false,
     spot_ids: Array.isArray(body.spot_ids) ? body.spot_ids : [],
+    salary_net,
+    with_ndfl,
   });
 
   return NextResponse.json({ seller: record });

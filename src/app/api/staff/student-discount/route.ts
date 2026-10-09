@@ -19,6 +19,7 @@ export async function POST(request: Request) {
     user_id?: string;
     phone?: string;
     verified?: boolean;
+    expires_at?: string;
   };
 
   const user_id = typeof body.user_id === 'string' ? body.user_id.trim() : '';
@@ -27,11 +28,19 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'укажите клиента' }, { status: 400 });
   }
 
+  const verified = body.verified !== false;
+  const expires_raw =
+    typeof body.expires_at === 'string' ? body.expires_at.trim().slice(0, 10) : '';
+  if (verified && expires_raw && !/^\d{4}-\d{2}-\d{2}$/.test(expires_raw)) {
+    return NextResponse.json({ error: 'неверная дата окончания студенческого' }, { status: 400 });
+  }
+
   const status = await set_student_verified({
     user_id: user_id || null,
     phone,
-    verified: body.verified !== false,
+    verified,
     by: await staff_actor_name(),
+    expires_at: verified ? expires_raw || null : null,
   });
 
   return NextResponse.json({ ok: true, ...status });

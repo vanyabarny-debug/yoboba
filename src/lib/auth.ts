@@ -20,6 +20,7 @@ export type profile = {
   student_verified?: boolean;
   student_verified_at?: string | null;
   student_verified_by?: string | null;
+  student_expires_at?: string | null;
 };
 
 export type auth_state = {
@@ -149,6 +150,7 @@ function hydrate_profile(
     student_verified: row?.student_verified === true,
     student_verified_at: row?.student_verified_at || null,
     student_verified_by: row?.student_verified_by || null,
+    student_expires_at: row?.student_expires_at || null,
   };
 }
 

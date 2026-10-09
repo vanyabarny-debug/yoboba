@@ -2,13 +2,17 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import PrepStepsEditor from '@/components/admin/finance/prep-steps-editor';
-import { normalize_finance_state, size_label, type finance_state, type tech_card } from '@/lib/finance/model';
+import {
+  apply_steps_to_card,
+  card_steps_base_ml,
+  resolved_card_prep_steps,
+} from '@/lib/finance/prep-steps';
+import { normalize_finance_state, type finance_state, type tech_card } from '@/lib/finance/model';
 
 export default function MenuPrepSteps({ menu_item_id }: { menu_item_id: string }) {
   const [state, set_state] = useState<finance_state | null>(null);
   const [error, set_error] = useState('');
   const [status, set_status] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
-  const [size_key, set_size_key] = useState<string>('');
   const latest = useRef<finance_state | null>(null);
   const timer = useRef<number | null>(null);
 
@@ -38,14 +42,6 @@ export default function MenuPrepSteps({ menu_item_id }: { menu_item_id: string }
     () => state?.techCards.find((c) => c.menu_item_id === menu_item_id) ?? null,
     [state, menu_item_id]
   );
-  const keys = card ? Object.keys(card.sizes).sort((a, b) => (Number(a) || 0) - (Number(b) || 0) || a.localeCompare(b)) : [];
-  const active = size_key && card?.sizes[size_key] ? size_key : keys[0] || '';
-  const size = card && active ? card.sizes[active] : null;
-
-  useEffect(() => {
-    if (!active) return;
-    if (size_key !== active) set_size_key(active);
-  }, [active, size_key]);
 
   function persist(next: finance_state) {
     latest.current = next;
@@ -79,10 +75,10 @@ export default function MenuPrepSteps({ menu_item_id }: { menu_item_id: string }
 
   if (error) return <p className="mt-3 text-xs text-red-500">{error}</p>;
   if (!state) return <p className="mt-3 text-xs text-neutral-400">загружаю этапы…</p>;
-  if (!card || !size) {
+  if (!card) {
     return (
       <p className="mt-3 text-xs text-neutral-400">
-        техкарта ещё не создана — откройте раздел «техкарты» и выберите напиток
+        рецепт ещё не создан — откройте раздел «меню» и выберите напиток
       </p>
     );
   }
@@ -99,31 +95,12 @@ export default function MenuPrepSteps({ menu_item_id }: { menu_item_id: string }
           <span className="text-[11px] text-red-500">не сохранилось</span>
         ) : null}
       </div>
-      {keys.length > 1 ? (
-        <div className="mb-3 flex flex-wrap gap-1">
-          {keys.map((k) => (
-            <button
-              key={k}
-              type="button"
-              onClick={() => set_size_key(k)}
-              className={`rounded-pill px-3 py-1 text-xs ${
-                k === active ? 'bg-neutral-900 text-white' : 'bg-neutral-100 text-neutral-600'
-              }`}
-            >
-              {size_label(k)}
-            </button>
-          ))}
-        </div>
-      ) : null}
       <PrepStepsEditor
-        size={size}
+        steps={resolved_card_prep_steps(card, state.materials)}
         materials={state.materials}
-        on_change={(next) =>
-          patch_card((c) => ({
-            ...c,
-            sizes: { ...c.sizes, [active]: next },
-          }))
-        }
+        base_ml={card_steps_base_ml(card)}
+        size_keys={Object.keys(card.sizes)}
+        on_change={(next) => patch_card((c) => apply_steps_to_card(c, next, state.materials))}
       />
       <p className="mt-2 text-[11px] text-neutral-400">кассир увидит эти шаги, когда нажмёт карточку заказа</p>
     </div>

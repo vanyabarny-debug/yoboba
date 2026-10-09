@@ -1,0 +1,22 @@
+{
+  "boardW": 1800,
+  "boardH": 2300,
+  "outScale": 2,
+  "variants": [
+    {
+      "id": "blacksugar",
+      "src": "public/posters/flyer-split-blacksugar-hero-coral.png",
+      "out": "public/posters/flyer-split-blacksugar-hero-board-3600.png",
+      "bg": "#FF6B6B",
+      "xform": { "x": 0, "y": 0, "scale": 2.271604938, "rotation": 0 }
+    },
+    {
+      "id": "taro",
+      "src": "public/posters/flyer-split-taro-cheese-face-gen-v1.png",
+      "out": "public/posters/flyer-split-taro-cheese-face-board-3600.png",
+      "bg": "#EBF4FF",
+      "xform": { "x": 0, "y": 0, "scale": 1, "rotation": 0 },
+      "note": "gen full-bleed; script cover-crops to 3600×4600"
+    }
+  ]
+}

@@ -1,30 +1,74 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
-  apply_steps_to_size,
-  resolved_prep_steps,
+  scale_prep_steps,
   unit_label_for_material,
 } from '@/lib/finance/prep-steps';
-import { new_id, type material, type prep_step, type tech_card_size } from '@/lib/finance/model';
+import { base_unit, new_id, type material, type prep_step } from '@/lib/finance/model';
 import { btn_ghost_danger, btn_secondary, cell_input_class, field_class } from '@/components/admin/finance/ui';
 
+function qty_stays(mat: material | undefined) {
+  return !mat || base_unit(mat.unit) === 'pcs' || mat.category === 'packaging';
+}
+
+function to_base_qty(display_qty: number, view_ml: number, base_ml: number, mat: material | undefined) {
+  if (!(display_qty > 0) || qty_stays(mat) || !(view_ml > 0) || Math.abs(view_ml - base_ml) < 0.001) {
+    return display_qty;
+  }
+  return Math.round((display_qty * base_ml) / view_ml * 10) / 10;
+}
+
 export default function PrepStepsEditor({
-  size,
+  steps,
   materials,
+  base_ml = 500,
+  size_keys = [],
+  view_ml: view_ml_prop,
+  on_view_ml,
+  show_header = true,
   on_change,
 }: {
-  size: tech_card_size;
+  steps: prep_step[];
   materials: material[];
-  on_change: (next: tech_card_size) => void;
+  /** объём, в котором хранятся граммовки */
+  base_ml?: number;
+  /** доступные размеры техкарты — плашка выбора */
+  size_keys?: string[];
+  /** контролируемый объём просмотра (если снаружи общий селектор) */
+  view_ml?: number;
+  on_view_ml?: (ml: number) => void;
+  show_header?: boolean;
+  on_change: (next: prep_step[]) => void;
 }) {
-  const steps = resolved_prep_steps(size, materials);
+  const volumes = useMemo(() => {
+    const mls = size_keys
+      .map((k) => Math.round(Number(k) || 0))
+      .filter((ml) => ml > 0)
+      .sort((a, b) => a - b);
+    return mls.length ? mls : [base_ml];
+  }, [size_keys, base_ml]);
+
+  const [inner_ml, set_inner_ml] = useState(view_ml_prop ?? volumes[0] ?? base_ml);
   const [adding, set_adding] = useState('');
   const by_id = new Map(materials.map((m) => [m.id, m]));
+  const controlled = typeof view_ml_prop === 'number';
+  const view_ml = controlled ? view_ml_prop : inner_ml;
 
-  function commit(next: prep_step[]) {
-    on_change(apply_steps_to_size(size, next, materials));
+  function set_view_ml(ml: number) {
+    if (controlled) on_view_ml?.(ml);
+    else set_inner_ml(ml);
   }
+
+  useEffect(() => {
+    if (controlled) return;
+    if (!volumes.includes(inner_ml)) set_inner_ml(volumes[0] ?? base_ml);
+  }, [volumes, inner_ml, base_ml, controlled]);
+
+  const shown = useMemo(
+    () => scale_prep_steps(steps, base_ml, view_ml, materials),
+    [steps, base_ml, view_ml, materials]
+  );
 
   function move(i: number, dir: -1 | 1) {
     const j = i + dir;
@@ -33,11 +77,18 @@ export default function PrepStepsEditor({
     const tmp = next[i];
     next[i] = next[j];
     next[j] = tmp;
-    commit(next);
+    on_change(next);
   }
 
   function patch(i: number, part: Partial<prep_step>) {
-    commit(steps.map((s, idx) => (idx === i ? { ...s, ...part } : s)));
+    on_change(
+      steps.map((s, idx) => {
+        if (idx !== i) return s;
+        if (part.qty === undefined) return { ...s, ...part };
+        const mat = s.materialId ? by_id.get(s.materialId) : undefined;
+        return { ...s, ...part, qty: to_base_qty(part.qty, view_ml, base_ml, mat) };
+      })
+    );
   }
 
   const used = new Set(steps.map((s) => s.materialId).filter(Boolean) as string[]);
@@ -45,13 +96,37 @@ export default function PrepStepsEditor({
 
   return (
     <div>
-      <div className="mb-2 flex items-center justify-between">
-        <p className="text-xs font-medium uppercase tracking-wide text-neutral-400">этапы готовки</p>
-        <p className="text-[11px] text-neutral-400">как видит кассир, по порядку</p>
-      </div>
-      {steps.length ? (
+      {show_header ? (
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+          <p className="text-sm font-bold uppercase tracking-wide text-neutral-900">рецепт</p>
+          {volumes.length > 1 ? (
+            <div className="inline-flex max-w-full flex-wrap rounded-full border border-black/[0.08] bg-white p-0.5">
+              {volumes.map((ml) => {
+                const active = ml === view_ml;
+                return (
+                  <button
+                    key={ml}
+                    type="button"
+                    onClick={() => set_view_ml(ml)}
+                    className={`rounded-full px-3.5 py-1.5 text-sm transition-all ${
+                      active
+                        ? 'bg-accent text-accent-foreground font-semibold shadow-[0_2px_8px_rgba(255,107,107,0.28)]'
+                        : 'text-neutral-600 hover:text-neutral-900'
+                    }`}
+                  >
+                    {ml} мл
+                  </button>
+                );
+              })}
+            </div>
+          ) : volumes[0] ? (
+            <span className="text-xs text-neutral-400">{volumes[0]} мл</span>
+          ) : null}
+        </div>
+      ) : null}
+      {shown.length ? (
         <ol className="space-y-2">
-          {steps.map((s, i) => {
+          {shown.map((s, i) => {
             const mat = s.materialId ? by_id.get(s.materialId) : undefined;
             return (
               <li key={s.id} className="rounded-2xl bg-neutral-50 px-3 py-2.5">
@@ -94,7 +169,7 @@ export default function PrepStepsEditor({
                         <button
                           type="button"
                           className={btn_ghost_danger}
-                          onClick={() => commit(steps.filter((_, idx) => idx !== i))}
+                          onClick={() => on_change(steps.filter((_, idx) => idx !== i))}
                         >
                           ×
                         </button>
@@ -120,7 +195,7 @@ export default function PrepStepsEditor({
               if (!id) return;
               const mat = by_id.get(id);
               if (!mat) return;
-              commit([
+              on_change([
                 ...steps,
                 {
                   id: new_id('step'),
@@ -145,10 +220,7 @@ export default function PrepStepsEditor({
           type="button"
           className={btn_secondary}
           onClick={() =>
-            commit([
-              ...steps,
-              { id: new_id('step'), title: '', hint: 'сделать', qty: 0 },
-            ])
+            on_change([...steps, { id: new_id('step'), title: '', hint: 'сделать', qty: 0 }])
           }
         >
           + действие

@@ -56,6 +56,25 @@ export type menu_nutrition = {
   carb: number;
 };
 
+/** что входит в комбо и как гость его собирает */
+export type menu_combo_include = {
+  menu_id: string;
+  qty: number;
+};
+
+export type menu_combo = {
+  /** сколько напитков выбирает гость */
+  drink_count: number;
+  /** объём каждого напитка, мл */
+  volume_ml: number;
+  /** можно брать один и тот же напиток несколько раз */
+  allow_duplicates?: boolean;
+  /** из каких разделов выбирать; пусто — все напитки */
+  from_categories?: string[];
+  /** фиксированные позиции в комплекте (закуски и т.п.) */
+  includes?: menu_combo_include[];
+};
+
 export type menu_item = {
   id: string;
   name: string;
@@ -66,15 +85,17 @@ export type menu_item = {
   /** все разделы, где показывать позицию; если пусто — только category */
   categories?: string[];
   is_available: boolean;
+  /** в архиве админки — не в основном списке меню */
+  archived?: boolean;
   recommendations: string[];
   prep_minutes?: number;
   badge_text?: string;
   badge_color?: menu_badge_color;
-  /** выбор объёма в карточке; по умолчанию да, кроме закусок */
+  /** @deprecated размеры в карточке берутся из volumes / техкарты */
   has_volumes?: boolean;
   /** порции топпинга в карточке; по умолчанию да, кроме закусок */
   has_toppings?: boolean;
-  /** варианты объёма; если пусто — 500 / 650 */
+  /** варианты объёма (= размеры техкарты); пусто — без выбора мл */
   volumes?: menu_volume[];
   /** состав через запятую; иначе берётся из категории */
   composition?: string;
@@ -88,6 +109,8 @@ export type menu_item = {
   stock_limited?: boolean;
   /** сколько порций осталось (если stock_limited) */
   stock_qty?: number | null;
+  /** сборка комбо: сколько напитков, объём, из каких разделов, что ещё в комплекте */
+  combo?: menu_combo;
 };
 
 export type story = {
@@ -96,6 +119,14 @@ export type story = {
   title: string;
   menu_id: string | null;
   active_until: string;
+};
+
+/** выбранные позиции внутри комбо — для склада и отображения */
+export type order_combo_component = {
+  menu_id: string;
+  name: string;
+  volume?: string;
+  quantity?: number;
 };
 
 export type order_item = {
@@ -109,6 +140,10 @@ export type order_item = {
   temp?: 'cold' | 'hot';
   /** напиток персонала — расход сырья, без выручки */
   kind?: 'sale' | 'staff';
+  /** названия выбранных напитков в комбо (для чека/гостя) */
+  combo_picks?: string[];
+  /** разложение комбо на позиции для склада и себестоимости */
+  combo_components?: order_combo_component[];
 };
 
 export type gift_status =
@@ -157,6 +192,8 @@ export type order = {
   order_number?: number | null;
   /** дата смены нумерации (МСК) */
   order_day?: string | null;
+  /** точка продажи (смена кассы / самовывоз) */
+  spot_id?: string | null;
 };
 
 export type seller = {
@@ -172,6 +209,10 @@ export type seller = {
   created_at: string;
   /** точки, на которых сотрудник может открыть смену */
   spot_ids?: string[];
+  /** оклад «на руки» в месяц, ₽ — база для ФОТ */
+  salary_net?: number;
+  /** платить ли НДФЛ с этой ЗП (по умолчанию да, если salary_net > 0) */
+  with_ndfl?: boolean;
 };
 
 export type cash_transaction = {
@@ -213,12 +254,20 @@ export type shift_open_geo = {
   status: 'ok' | 'denied' | 'unavailable' | 'timeout' | 'error';
 };
 
-/** открытая / закрытая смена кассира на точке */
+/** участник смены на точке */
+export type shift_crew_member = {
+  seller_id: string;
+  seller_name: string;
+  joined_at: string;
+};
+
+/** открытая / закрытая смена на точке (одна на день) */
 export type seller_shift_record = {
   id: string;
   spot_id: string;
   spot_address: string;
   spot_city: string;
+  /** кто открыл / последний активный — для совместимости */
   seller_id: string;
   seller_name: string;
   opened_at: string;
@@ -227,6 +276,8 @@ export type seller_shift_record = {
   shift_date: string;
   /** фактическая геолокация в момент открытия смены */
   open_geo?: shift_open_geo | null;
+  /** все бариста, кто был на этой смене */
+  crew?: shift_crew_member[];
 };
 
 /** одно приготовление напитка баристой */
