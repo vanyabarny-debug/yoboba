@@ -1,9 +1,9 @@
 'use client';
 
-import { useEffect, useState, createElement } from 'react';
-import online_counter from '@/components/admin/online-counter';
-import live_carts from '@/components/admin/live-carts';
-import shifts_manage from '@/components/admin/shifts-manage';
+import { useEffect, useState } from 'react';
+import OnlineCounter from '@/components/admin/online-counter';
+import LiveCarts from '@/components/admin/live-carts';
+import ShiftsManage from '@/components/admin/shifts-manage';
 import { use_finance, save_label } from '@/components/admin/finance/use-finance';
 import { PeriodPicker, chip_active, chip_idle } from '@/components/admin/finance/ui';
 import PlanSection from '@/components/admin/finance/plan-section';
@@ -105,10 +105,14 @@ export default function business_dashboard() {
               <div className="space-y-5">
                 <DashboardSection {...section} pulse={pulse} />
                 <div className="grid gap-4 md:grid-cols-2">
-                  <div className="space-y-4">{createElement(online_counter)}</div>
-                  <div>{createElement(live_carts)}</div>
+                  <div className="space-y-4">
+                    <OnlineCounter />
+                  </div>
+                  <div>
+                    <LiveCarts />
+                  </div>
                 </div>
-                {createElement(shifts_manage, { embedded: true })}
+                <ShiftsManage embedded />
                 <div className="space-y-3 border-t border-neutral-200/80 pt-5">
                   <div>
                     <h2 className="text-lg font-semibold text-neutral-900">деньги</h2>

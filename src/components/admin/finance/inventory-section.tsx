@@ -8,9 +8,9 @@ import {
   apply_receipt,
   apply_writeoff,
   base_unit_label,
-  cost_per_base_unit,
   format_base_qty,
   format_rub,
+  movement_money,
   movements_in_range,
   new_id,
   merge_stock_categories,
@@ -80,6 +80,52 @@ function actor_label(name?: string, role?: string) {
   if (role === 'seller') return `${name} · касса`;
   if (role === 'admin') return `${name} · админ`;
   return name;
+}
+
+type journal_order_row = {
+  kind: 'order';
+  orderId: string;
+  type: 'sale' | 'staff';
+  date: string;
+  lines: stock_movement[];
+  total: number;
+};
+
+type journal_single_row = {
+  kind: 'single';
+  mv: stock_movement;
+  date: string;
+};
+
+type journal_row = journal_order_row | journal_single_row;
+
+function build_journal_rows(period_mv: stock_movement[], materials: material[]): journal_row[] {
+  const by_order = new Map<string, stock_movement[]>();
+  const singles: stock_movement[] = [];
+  for (const mv of period_mv) {
+    if ((mv.type === 'sale' || mv.type === 'staff') && mv.orderId) {
+      const list = by_order.get(mv.orderId) ?? [];
+      list.push(mv);
+      by_order.set(mv.orderId, list);
+    } else {
+      singles.push(mv);
+    }
+  }
+  const rows: journal_row[] = [];
+  for (const [orderId, lines] of by_order) {
+    const date = lines.reduce((best, cur) => (cur.date > best ? cur.date : best), lines[0].date);
+    const type = lines.some((l) => l.type === 'staff') ? 'staff' : 'sale';
+    const total = lines.reduce((s, mv) => {
+      const mat = materials.find((m) => m.id === mv.materialId);
+      return s + movement_money(mat, mv);
+    }, 0);
+    rows.push({ kind: 'order', orderId, type, date, lines, total });
+  }
+  for (const mv of singles) {
+    rows.push({ kind: 'single', mv, date: mv.date });
+  }
+  rows.sort((a, b) => b.date.localeCompare(a.date));
+  return rows;
 }
 
 function today_iso() {
@@ -155,8 +201,8 @@ export default function InventorySection({ state, set_state }: section_props) {
   const [query, set_query] = useState('');
   const [receipt_open, set_receipt_open] = useState(false);
   const [count_open, set_count_open] = useState(false);
-  const [journal_open, set_journal_open] = useState(false);
   const [history_open, set_history_open] = useState(false);
+  const [expanded_orders, set_expanded_orders] = useState<Set<string>>(() => new Set());
   const [writeoff_for, set_writeoff_for] = useState<string | null>(null);
   const [adjust_for, set_adjust_for] = useState<string | null>(null);
   const [cat_menu, set_cat_menu] = useState<{ id: string; x: number; y: number } | null>(null);
@@ -241,8 +287,19 @@ export default function InventorySection({ state, set_state }: section_props) {
     .filter((m) => m.type === 'writeoff')
     .reduce((s, m) => {
       const mat = state.materials.find((x) => x.id === m.materialId);
-      return s + (mat ? m.qty * cost_per_base_unit(mat) : 0);
+      return s + movement_money(mat, m);
     }, 0);
+
+  const journal_rows = useMemo(() => build_journal_rows(period_mv, state.materials), [period_mv, state.materials]);
+
+  function toggle_order(orderId: string) {
+    set_expanded_orders((prev) => {
+      const next = new Set(prev);
+      if (next.has(orderId)) next.delete(orderId);
+      else next.add(orderId);
+      return next;
+    });
+  }
 
   const visible = stock
     .filter((s) => {
@@ -360,50 +417,7 @@ export default function InventorySection({ state, set_state }: section_props) {
   }
 
   return (
-    <div className="space-y-4">
-      <div className="flex flex-wrap items-end justify-end gap-x-6 gap-y-3">
-        <div className="flex flex-wrap items-baseline gap-x-6 gap-y-1 text-sm">
-          <p className="text-neutral-500" title="сколько ещё лежит, по цене закупки">
-            на складе{' '}
-            <span className="font-heading-soft text-lg tabular-nums text-neutral-900">{format_rub(stock_value)}</span>
-          </p>
-          <p className="text-neutral-500" title="граммы и поступления, пересчитанные в рубли закупки">
-            потрачено{' '}
-            <span className="font-heading-soft text-lg tabular-nums text-neutral-900">{format_rub(money.spent)}</span>
-          </p>
-          <p className="text-neutral-500" title="себестоимость сырья, которое уже ушло в напитки">
-            реализовано{' '}
-            <span className="font-heading-soft text-lg tabular-nums text-neutral-900">{format_rub(money.realized)}</span>
-          </p>
-          <p className="text-neutral-500" title="выручка напитков минус себестоимость сырья">
-            заработано{' '}
-            <span className="font-heading-soft text-lg tabular-nums text-neutral-900">
-              {earned == null ? '…' : format_rub(earned)}
-            </span>
-          </p>
-          {writeoffs_sum > 0 ? (
-            <p className="text-neutral-500">
-              списания{' '}
-              <span className="font-heading-soft text-lg tabular-nums text-neutral-900">{format_rub(writeoffs_sum)}</span>
-            </p>
-          ) : null}
-          <button type="button" className={btn_secondary} onClick={() => set_count_open(true)}>
-            инвентаризация
-          </button>
-          <button
-            type="button"
-            className={btn_accent}
-            disabled={must_count}
-            onClick={() => {
-              if (must_count) return;
-              set_receipt_open(true);
-            }}
-          >
-            + поступление
-          </button>
-        </div>
-      </div>
-
+    <div className="space-y-8">
       {(count_open || must_count) && (
         <InventoryCount
           rows={stock_levels(state)}
@@ -430,8 +444,61 @@ export default function InventorySection({ state, set_state }: section_props) {
         />
       )}
 
-      <div className="flex flex-wrap items-end gap-2">
-        <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
+      {/* ——— 1. склад ——— */}
+      <section className="space-y-3">
+        <div className="flex flex-wrap items-end justify-between gap-3">
+          <div>
+            <p className="text-[11px] uppercase tracking-[0.14em] text-neutral-400">раздел 1</p>
+            <h2 className="font-heading-soft text-lg text-neutral-900">склад — что лежит</h2>
+            <p className="mt-0.5 text-sm text-neutral-500">остатки сырья, цена закупки и сумма на полке</p>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <button type="button" className={btn_secondary} onClick={() => set_count_open(true)}>
+              инвентаризация
+            </button>
+            <button
+              type="button"
+              className={btn_accent}
+              disabled={must_count}
+              onClick={() => {
+                if (must_count) return;
+                set_receipt_open(true);
+              }}
+            >
+              + поступление
+            </button>
+          </div>
+        </div>
+
+        <div className="flex flex-wrap items-baseline gap-x-6 gap-y-1 text-sm">
+          <p className="text-neutral-500" title="сколько ещё лежит, по цене закупки">
+            на складе{' '}
+            <span className="font-heading-soft text-lg tabular-nums text-neutral-900">{format_rub(stock_value)}</span>
+          </p>
+          <p className="text-neutral-500" title="граммы и поступления, пересчитанные в рубли закупки">
+            потрачено{' '}
+            <span className="font-heading-soft text-lg tabular-nums text-neutral-900">{format_rub(money.spent)}</span>
+          </p>
+          <p className="text-neutral-500" title="себестоимость сырья, которое уже ушло в напитки">
+            реализовано{' '}
+            <span className="font-heading-soft text-lg tabular-nums text-neutral-900">{format_rub(money.realized)}</span>
+          </p>
+          <p className="text-neutral-500" title="выручка напитков минус себестоимость сырья">
+            заработано{' '}
+            <span className="font-heading-soft text-lg tabular-nums text-neutral-900">
+              {earned == null ? '…' : format_rub(earned)}
+            </span>
+          </p>
+          {writeoffs_sum > 0 ? (
+            <p className="text-neutral-500">
+              списания{' '}
+              <span className="font-heading-soft text-lg tabular-nums text-neutral-900">{format_rub(writeoffs_sum)}</span>
+            </p>
+          ) : null}
+        </div>
+
+        <div className="flex flex-wrap items-end gap-2">
+          <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
             <button
               type="button"
               onClick={() => set_category('все')}
@@ -510,215 +577,335 @@ export default function InventorySection({ state, set_state }: section_props) {
                 + категория
               </button>
             )}
+          </div>
+          <input
+            type="search"
+            className="h-[34px] w-[11.5rem] shrink-0 rounded-pill border border-neutral-200 bg-white px-3 text-sm text-neutral-900 outline-none placeholder:text-neutral-400 focus:border-accent/40"
+            placeholder="найти позицию"
+            value={query}
+            onChange={(e) => set_query(e.target.value)}
+          />
         </div>
-        <div className="relative shrink-0" data-dates-pop>
-          <div className="flex flex-col items-end gap-1">
+
+        <ul className="overflow-hidden rounded-2xl border border-neutral-200 bg-white">
+          {visible.length === 0 && <li className="px-4 py-10 text-center text-sm text-neutral-400">пусто</li>}
+          {visible.map((s) => {
+            const tag = cat_of(cats, s.material.category);
+            return (
+              <li key={s.material.id} className="flex items-center gap-3 border-t border-neutral-100 px-4 py-2.5 first:border-t-0">
+                <button
+                  type="button"
+                  data-cat-pick
+                  className="inline-flex max-w-[9.5rem] shrink-0 items-center gap-1.5 rounded-full px-1 py-0.5 text-left hover:bg-neutral-50"
+                  title="сменить категорию"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    set_cat_pick({ x: e.clientX, y: e.clientY, materialId: s.material.id });
+                  }}
+                >
+                  <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ background: tag?.color ?? '#8E8E93' }} />
+                  <span className="truncate text-xs text-neutral-500">{tag?.name ?? 'категория'}</span>
+                </button>
+                <input
+                  data-mat-name={s.material.id}
+                  className="min-w-0 flex-1 bg-transparent text-sm text-neutral-900 outline-none"
+                  value={s.material.name}
+                  placeholder="название"
+                  onChange={(e) => update_material(s.material.id, { name: e.target.value })}
+                />
+                <span className={`w-24 shrink-0 text-right text-sm tabular-nums ${s.qty < 0 ? 'text-amber-600' : 'text-neutral-800'}`}>
+                  {format_base_qty(s.material, s.qty)}
+                </span>
+                <span
+                  className="hidden w-28 shrink-0 text-right text-xs tabular-nums text-neutral-400 sm:block"
+                  title="средняя цена закупки за единицу"
+                >
+                  {format_rub(s.material.costPerUnit, 2)}/{unit_labels[s.material.unit]}
+                </span>
+                <span className="hidden w-24 shrink-0 text-right text-sm tabular-nums text-neutral-500 md:block">
+                  {format_rub(s.value)}
+                </span>
+                <button
+                  type="button"
+                  className="rounded-lg px-2 py-1 text-xs text-neutral-400 hover:bg-neutral-100 hover:text-neutral-700"
+                  onClick={() => set_writeoff_for(s.material.id)}
+                >
+                  списать
+                </button>
+                <button
+                  type="button"
+                  className="hidden rounded-lg px-2 py-1 text-xs text-neutral-400 hover:bg-neutral-100 hover:text-neutral-700 sm:inline"
+                  onClick={() => set_adjust_for(s.material.id)}
+                >
+                  факт
+                </button>
+                <button type="button" className={btn_ghost_danger} onClick={() => remove_material(s.material.id)}>
+                  ×
+                </button>
+              </li>
+            );
+          })}
+        </ul>
+
+        <div className="flex justify-center">
+          <button
+            type="button"
+            data-cat-pick
+            onClick={(e) => {
+              set_cat_pick({ x: e.clientX, y: e.clientY, materialId: 'new' });
+            }}
+            aria-label="добавить позицию"
+            className="flex h-9 w-9 items-center justify-center rounded-full border border-neutral-200 bg-white text-lg leading-none text-neutral-400 shadow-soft transition-colors hover:border-accent/40 hover:text-accent"
+          >
+            +
+          </button>
+        </div>
+      </section>
+
+      {/* ——— 2. движения ——— */}
+      <section className="space-y-3">
+        <div className="flex flex-wrap items-end justify-between gap-3">
+          <div>
+            <p className="text-[11px] uppercase tracking-[0.14em] text-neutral-400">раздел 2</p>
+            <h2 className="font-heading-soft text-lg text-neutral-900">движения — заказы и накладные</h2>
+            <p className="mt-0.5 text-sm text-neutral-500">
+              заказ одной строкой · нажми — увидишь полный расход сырья
+            </p>
+          </div>
+          <div className="relative shrink-0" data-dates-pop>
             <button
               type="button"
-              aria-label="период склада"
+              aria-label="период движений"
               aria-expanded={dates_open}
               onClick={() => set_dates_open((v) => !v)}
-              className={`flex h-8 w-8 items-center justify-center rounded-full transition-colors ${
-                dates_open || dates_custom ? 'bg-accent/10 text-accent' : 'text-neutral-400 hover:bg-neutral-100 hover:text-neutral-700'
+              className={`inline-flex h-9 items-center gap-2 rounded-full px-3 text-sm transition-colors ${
+                dates_open || dates_custom
+                  ? 'bg-accent/10 text-accent'
+                  : 'border border-neutral-200 bg-white text-neutral-600 hover:border-neutral-300'
               }`}
             >
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true">
                 <rect x="3" y="5" width="18" height="16" rx="3" stroke="currentColor" strokeWidth="2" />
                 <path d="M3 10h18M8 3v4M16 3v4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
               </svg>
+              {range_from === range_to
+                ? range_from
+                : `${range_from.slice(8)}.${range_from.slice(5, 7)} — ${range_to.slice(8)}.${range_to.slice(5, 7)}`}
             </button>
-            <input
-              type="search"
-              className="h-[34px] w-[11.5rem] rounded-pill border border-neutral-200 bg-white px-3 text-sm text-neutral-900 outline-none placeholder:text-neutral-400 focus:border-accent/40"
-              placeholder="найти позицию"
-              value={query}
-              onChange={(e) => set_query(e.target.value)}
-            />
-          </div>
-          {dates_open && (
-            <div className="absolute right-0 top-full z-40 mt-1 w-[16.5rem] rounded-2xl border border-neutral-200/80 bg-white p-3 shadow-soft">
-              <p className="text-[11px] leading-snug text-neutral-400">остаток на «по», журнал и поступления — за эти дни</p>
-              <div className="mt-3 grid grid-cols-2 gap-2">
-                <label className="text-[11px] text-neutral-400">
-                  с
-                  <input
-                    type="date"
-                    max={today}
-                    className={`${field_class} mt-1 rounded-xl px-2 py-1.5`}
-                    value={range_from}
-                    onChange={(e) => set_from(e.target.value || range_from)}
-                  />
-                </label>
-                <label className="text-[11px] text-neutral-400">
-                  по
-                  <input
-                    type="date"
-                    max={today}
-                    className={`${field_class} mt-1 rounded-xl px-2 py-1.5`}
-                    value={range_to}
-                    onChange={(e) => set_to(e.target.value || range_to)}
-                  />
-                </label>
+            {dates_open && (
+              <div className="absolute right-0 top-full z-40 mt-1 w-[16.5rem] rounded-2xl border border-neutral-200/80 bg-white p-3 shadow-soft">
+                <p className="text-[11px] leading-snug text-neutral-400">заказы и поступления за эти дни</p>
+                <div className="mt-3 grid grid-cols-2 gap-2">
+                  <label className="text-[11px] text-neutral-400">
+                    с
+                    <input
+                      type="date"
+                      max={today}
+                      className={`${field_class} mt-1 rounded-xl px-2 py-1.5`}
+                      value={range_from}
+                      onChange={(e) => set_from(e.target.value || range_from)}
+                    />
+                  </label>
+                  <label className="text-[11px] text-neutral-400">
+                    по
+                    <input
+                      type="date"
+                      max={today}
+                      className={`${field_class} mt-1 rounded-xl px-2 py-1.5`}
+                      value={range_to}
+                      onChange={(e) => set_to(e.target.value || range_to)}
+                    />
+                  </label>
+                </div>
+                {dates_custom ? (
+                  <button
+                    type="button"
+                    className="mt-2 text-[11px] text-neutral-400 hover:text-neutral-700"
+                    onClick={() => {
+                      set_from(month_start_iso());
+                      set_to(today);
+                    }}
+                  >
+                    этот месяц
+                  </button>
+                ) : null}
               </div>
-              {dates_custom ? (
-                <button
-                  type="button"
-                  className="mt-2 text-[11px] text-neutral-400 hover:text-neutral-700"
-                  onClick={() => {
-                    set_from(month_start_iso());
-                    set_to(today);
-                  }}
-                >
-                  этот месяц
-                </button>
-              ) : null}
-            </div>
-          )}
+            )}
+          </div>
         </div>
-      </div>
-      <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
-        <button type="button" className="text-xs text-neutral-400 hover:text-neutral-700" onClick={() => set_journal_open((v) => !v)}>
-          {journal_open ? 'скрыть движения' : 'движения за период'}
-        </button>
-        <button type="button" className="text-xs text-neutral-400 hover:text-neutral-700" onClick={() => set_history_open((v) => !v)}>
-          {history_open ? 'скрыть историю' : 'история действий'}
-        </button>
-      </div>
 
-      {journal_open && (
-        <Card title="движения" hint="за выбранные даты">
-          {period_mv.length ? (
-            <TableWrap>
-              <thead>
-                <tr>
-                  <th className={th_class}>дата</th>
-                  <th className={th_class}>тип</th>
-                  <th className={th_class}>позиция</th>
-                  <th className={th_class}>кто</th>
-                  <th className={th_num_class}>кол-во</th>
-                  <th className={th_num_class}>сумма</th>
-                  <th className={th_class}></th>
-                </tr>
-              </thead>
-              <tbody>
-                {[...period_mv]
-                  .sort((a, b) => b.date.localeCompare(a.date))
-                  .slice(0, 200)
-                  .map((mv) => {
-                    const mat = state.materials.find((m) => m.id === mv.materialId);
-                    return (
-                      <tr key={mv.id} className="border-t border-neutral-100">
-                        <td className={`${td_class} whitespace-nowrap text-neutral-500`}>
-                          {new Date(mv.date).toLocaleDateString('ru-RU')}
-                        </td>
-                        <td className={td_class}>
-                          <span className={`rounded-md px-2 py-0.5 text-[11px] font-medium ${movement_tone[mv.type]}`}>
-                            {movement_labels[mv.type]}
+        <Card>
+          {journal_rows.length ? (
+            <ul className="divide-y divide-neutral-100">
+              {journal_rows.slice(0, 120).map((row) => {
+                if (row.kind === 'order') {
+                  const open = expanded_orders.has(row.orderId);
+                  const short = row.orderId.slice(0, 8);
+                  return (
+                    <li key={`ord-${row.orderId}`}>
+                      <button
+                        type="button"
+                        onClick={() => toggle_order(row.orderId)}
+                        className="flex w-full items-center gap-3 px-1 py-2.5 text-left hover:bg-neutral-50/80"
+                      >
+                        <span
+                          className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-neutral-400 transition-transform ${
+                            open ? 'rotate-90' : ''
+                          }`}
+                        >
+                          ▸
+                        </span>
+                        <span className={`rounded-md px-2 py-0.5 text-[11px] font-medium ${movement_tone[row.type]}`}>
+                          {row.type === 'staff' ? 'персонал' : 'заказ'}
+                        </span>
+                        <span className="min-w-0 flex-1">
+                          <span className="font-mono text-sm text-neutral-900">{short}</span>
+                          <span className="ml-2 text-xs text-neutral-400">
+                            {new Date(row.date).toLocaleString('ru-RU', {
+                              day: '2-digit',
+                              month: '2-digit',
+                              hour: '2-digit',
+                              minute: '2-digit',
+                            })}
+                            {' · '}
+                            {row.lines.length} поз.
                           </span>
-                        </td>
-                        <td className={td_class}>{mat?.name || '—'}</td>
-                        <td className={`${td_class} text-neutral-500`}>{actor_label(mv.actorName, mv.actorRole)}</td>
-                        <td className={td_num_class}>
-                          {mv.type === 'adjust' ? '= ' : mv.type === 'in' ? '+ ' : '− '}
-                          {mat ? format_base_qty(mat, mv.qty) : mv.qty}
-                        </td>
-                        <td className={td_num_class}>
-                          {mv.total != null ? format_rub(mv.total) : <span className="text-neutral-300">—</span>}
-                        </td>
-                        <td className={`${td_class} text-right`}>
-                          <button
-                            type="button"
-                            className={btn_ghost_danger}
-                            onClick={() => {
-                              if (!window.confirm('удалить движение?')) return;
-                              set_state((prev) => remove_stock_movement(prev, mv.id, ADMIN_ACTOR));
-                            }}
-                          >
-                            удалить
-                          </button>
-                        </td>
-                      </tr>
-                    );
-                  })}
-              </tbody>
-            </TableWrap>
+                        </span>
+                        <span className="shrink-0 text-sm font-medium tabular-nums text-neutral-900">
+                          −{format_rub(row.total)}
+                        </span>
+                      </button>
+                      {open ? (
+                        <div className="mb-2 ml-9 mr-1 overflow-hidden rounded-xl border border-neutral-100 bg-neutral-50/60">
+                          <table className="w-full text-sm">
+                            <thead>
+                              <tr className="text-[11px] text-neutral-400">
+                                <th className="px-3 py-1.5 text-left font-normal">сырьё</th>
+                                <th className="px-3 py-1.5 text-right font-normal">кол-во</th>
+                                <th className="px-3 py-1.5 text-right font-normal">₽</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {[...row.lines]
+                                .sort((a, b) => {
+                                  const na = state.materials.find((m) => m.id === a.materialId)?.name || '';
+                                  const nb = state.materials.find((m) => m.id === b.materialId)?.name || '';
+                                  return na.localeCompare(nb, 'ru');
+                                })
+                                .map((mv) => {
+                                  const mat = state.materials.find((m) => m.id === mv.materialId);
+                                  return (
+                                    <tr key={mv.id} className="border-t border-neutral-100/80">
+                                      <td className="px-3 py-1.5 text-neutral-800">{mat?.name || mv.materialId}</td>
+                                      <td className="px-3 py-1.5 text-right tabular-nums text-neutral-600">
+                                        {mat ? format_base_qty(mat, mv.qty) : mv.qty}
+                                      </td>
+                                      <td className="px-3 py-1.5 text-right tabular-nums text-neutral-800">
+                                        {format_rub(movement_money(mat, mv))}
+                                      </td>
+                                    </tr>
+                                  );
+                                })}
+                            </tbody>
+                            <tfoot>
+                              <tr className="border-t border-neutral-200">
+                                <td className="px-3 py-1.5 text-xs text-neutral-400" colSpan={2}>
+                                  итого себестоимость
+                                </td>
+                                <td className="px-3 py-1.5 text-right text-sm font-semibold tabular-nums">
+                                  {format_rub(row.total)}
+                                </td>
+                              </tr>
+                            </tfoot>
+                          </table>
+                          <div className="flex justify-end border-t border-neutral-100 px-3 py-1.5">
+                            <button
+                              type="button"
+                              className={btn_ghost_danger}
+                              onClick={() => {
+                                if (!window.confirm(`удалить все списания заказа ${short}?`)) return;
+                                set_state((prev) =>
+                                  row.lines.reduce((s, mv) => remove_stock_movement(s, mv.id, ADMIN_ACTOR), prev)
+                                );
+                              }}
+                            >
+                              удалить заказ со склада
+                            </button>
+                          </div>
+                        </div>
+                      ) : null}
+                    </li>
+                  );
+                }
+
+                const mv = row.mv;
+                const mat = state.materials.find((m) => m.id === mv.materialId);
+                return (
+                  <li key={mv.id} className="flex items-center gap-3 px-1 py-2.5">
+                    <span className="w-6 shrink-0" />
+                    <span className={`rounded-md px-2 py-0.5 text-[11px] font-medium ${movement_tone[mv.type]}`}>
+                      {movement_labels[mv.type]}
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <span className="text-sm text-neutral-900">{mat?.name || '—'}</span>
+                      <span className="ml-2 text-xs text-neutral-400">
+                        {new Date(mv.date).toLocaleString('ru-RU', {
+                          day: '2-digit',
+                          month: '2-digit',
+                          hour: '2-digit',
+                          minute: '2-digit',
+                        })}
+                        {mv.note ? ` · ${mv.note}` : ''}
+                        {mv.actorName ? ` · ${actor_label(mv.actorName, mv.actorRole)}` : ''}
+                      </span>
+                    </span>
+                    <span className="shrink-0 text-sm tabular-nums text-neutral-700">
+                      {mv.type === 'adjust' ? '= ' : mv.type === 'in' ? '+ ' : '− '}
+                      {mat ? format_base_qty(mat, mv.qty) : mv.qty}
+                    </span>
+                    <span className="w-20 shrink-0 text-right text-sm tabular-nums text-neutral-900">
+                      {mv.type === 'adjust' ? '—' : format_rub(movement_money(mat, mv))}
+                    </span>
+                    <button
+                      type="button"
+                      className={btn_ghost_danger}
+                      onClick={() => {
+                        if (!window.confirm('удалить движение?')) return;
+                        set_state((prev) => remove_stock_movement(prev, mv.id, ADMIN_ACTOR));
+                      }}
+                    >
+                      ×
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
           ) : (
             <EmptyState>за эти даты движений нет</EmptyState>
           )}
         </Card>
-      )}
+      </section>
 
-      {history_open && (
-        <AuditHistory entries={state.stockAudit ?? []} materials={state.materials} />
-      )}
-
-      <ul className="overflow-hidden rounded-2xl border border-neutral-200 bg-white">
-        {visible.length === 0 && <li className="px-4 py-10 text-center text-sm text-neutral-400">пусто</li>}
-        {visible.map((s) => {
-          const tag = cat_of(cats, s.material.category);
-          return (
-            <li key={s.material.id} className="flex items-center gap-3 border-t border-neutral-100 px-4 py-2.5 first:border-t-0">
-              <button
-                type="button"
-                data-cat-pick
-                className="inline-flex max-w-[9.5rem] shrink-0 items-center gap-1.5 rounded-full px-1 py-0.5 text-left hover:bg-neutral-50"
-                title="сменить категорию"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  set_cat_pick({ x: e.clientX, y: e.clientY, materialId: s.material.id });
-                }}
-              >
-                <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ background: tag?.color ?? '#8E8E93' }} />
-                <span className="truncate text-xs text-neutral-500">{tag?.name ?? 'категория'}</span>
-              </button>
-              <input
-                data-mat-name={s.material.id}
-                className="min-w-0 flex-1 bg-transparent text-sm text-neutral-900 outline-none"
-                value={s.material.name}
-                placeholder="название"
-                onChange={(e) => update_material(s.material.id, { name: e.target.value })}
-              />
-              <span className={`w-24 shrink-0 text-right text-sm tabular-nums ${s.qty < 0 ? 'text-amber-600' : 'text-neutral-800'}`}>
-                {format_base_qty(s.material, s.qty)}
-              </span>
-              <span className="hidden w-24 shrink-0 text-right text-sm tabular-nums text-neutral-500 sm:block">
-                {format_rub(s.value)}
-              </span>
-              <button
-                type="button"
-                className="rounded-lg px-2 py-1 text-xs text-neutral-400 hover:bg-neutral-100 hover:text-neutral-700"
-                onClick={() => set_writeoff_for(s.material.id)}
-              >
-                списать
-              </button>
-              <button
-                type="button"
-                className="hidden rounded-lg px-2 py-1 text-xs text-neutral-400 hover:bg-neutral-100 hover:text-neutral-700 sm:inline"
-                onClick={() => set_adjust_for(s.material.id)}
-              >
-                факт
-              </button>
-              <button type="button" className={btn_ghost_danger} onClick={() => remove_material(s.material.id)}>
-                ×
-              </button>
-            </li>
-          );
-        })}
-      </ul>
-
-      <div className="flex justify-center">
-        <button
-          type="button"
-          data-cat-pick
-          onClick={(e) => {
-            set_cat_pick({ x: e.clientX, y: e.clientY, materialId: 'new' });
-          }}
-          aria-label="добавить позицию"
-          className="flex h-9 w-9 items-center justify-center rounded-full border border-neutral-200 bg-white text-lg leading-none text-neutral-400 shadow-soft transition-colors hover:border-accent/40 hover:text-accent"
-        >
-          +
-        </button>
-      </div>
+      {/* ——— 3. история ——— */}
+      <section className="space-y-3">
+        <div className="flex flex-wrap items-end justify-between gap-3">
+          <div>
+            <p className="text-[11px] uppercase tracking-[0.14em] text-neutral-400">раздел 3</p>
+            <h2 className="font-heading-soft text-lg text-neutral-900">история правок</h2>
+            <p className="mt-0.5 text-sm text-neutral-500">кто вручную менял остатки — отдельно от склада и заказов</p>
+          </div>
+          <button
+            type="button"
+            className={`rounded-full px-3 py-1.5 text-xs ${
+              history_open ? 'bg-neutral-900 text-white' : 'border border-neutral-200 bg-white text-neutral-600'
+            }`}
+            onClick={() => set_history_open((v) => !v)}
+          >
+            {history_open ? 'свернуть' : 'открыть'}
+          </button>
+        </div>
+        {history_open ? <AuditHistory entries={state.stockAudit ?? []} materials={state.materials} /> : null}
+      </section>
 
       {writeoff_for && (
         <QtyDialog
@@ -837,7 +1024,7 @@ function AuditHistory({
 }) {
   const rows = [...entries].sort((a, b) => b.at.localeCompare(a.at)).slice(0, 300);
   return (
-    <Card title="история действий" hint="кто менял остатки — supabase, храним 3 месяца">
+    <Card hint="храним 3 месяца в supabase">
       {rows.length ? (
         <TableWrap>
           <thead>

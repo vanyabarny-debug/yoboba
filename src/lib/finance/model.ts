@@ -7,7 +7,7 @@ import type { menu_item } from '@/lib/types';
 import { expand_items_for_stock } from '@/lib/combo';
 import { get_item_volumes } from '@/lib/product-details';
 
-export const FINANCE_STATE_VERSION = 5;
+export const FINANCE_STATE_VERSION = 6;
 
 export type plan_horizon = 3 | 6 | 12;
 export type plan_strategy_id = 'launch' | 'conservative' | 'balanced' | 'growth' | 'custom';
@@ -269,7 +269,11 @@ export type stock_movement = {
   materialId: string;
   /** количество в базовых единицах (г / мл / шт); для adjust — новый остаток */
   qty: number;
-  /** стоимость партии, ₽ (для поступлений) */
+  /**
+   * деньги движения, ₽ — фиксируются в момент записи.
+   * поступление: сумма накладной; sale/staff/writeoff: себестоимость по цене на тот день.
+   * без total отчёты падают на текущую цену материала (наследие).
+   */
   total?: number;
   note?: string;
   /** связанная операция закупки */
@@ -867,6 +871,13 @@ export function cost_per_base_unit(m: material) {
   return m.costPerUnit / base_per_unit(m.unit);
 }
 
+/** себестоимость движения: зафиксированный total, иначе текущая цена */
+export function movement_money(mat: material | undefined, mv: Pick<stock_movement, 'qty' | 'total'>) {
+  if (mv.total != null && Number.isFinite(Number(mv.total))) return Number(mv.total);
+  if (!mat) return 0;
+  return mv.qty * cost_per_base_unit(mat);
+}
+
 /** красиво показать количество в базовых единицах */
 export function format_base_qty(m: material, qty: number) {
   const b = base_unit(m.unit);
@@ -1427,8 +1438,9 @@ export function normalize_finance_state(raw: unknown): finance_state {
 
   const incoming_version = num(v.version, 0);
   const wipe_warehouse = incoming_version < 3;
+  const lock_outflow_costs = incoming_version < 6;
 
-  const stockMovements: stock_movement[] = wipe_warehouse
+  let stockMovements: stock_movement[] = wipe_warehouse
     ? []
     : Array.isArray(v.stockMovements)
       ? v.stockMovements
@@ -1450,6 +1462,18 @@ export function normalize_finance_state(raw: unknown): finance_state {
             ...(s.actorRole === 'admin' || s.actorRole === 'seller' ? { actorRole: s.actorRole } : {}),
           }))
       : [];
+
+  // v6: зафиксировать себестоимость расхода, чтобы смена цены закупки не крутила старые продажи
+  if (lock_outflow_costs && stockMovements.length) {
+    const by_id = new Map(materials.map((m) => [m.id, m]));
+    stockMovements = stockMovements.map((mv) => {
+      if (mv.total != null) return mv;
+      if (mv.type !== 'sale' && mv.type !== 'staff' && mv.type !== 'writeoff' && mv.type !== 'out') return mv;
+      const mat = by_id.get(mv.materialId);
+      if (!mat) return mv;
+      return { ...mv, total: Math.round(mv.qty * cost_per_base_unit(mat) * 100) / 100 };
+    });
+  }
 
   const stockAudit: stock_audit_entry[] = Array.isArray((v as { stockAudit?: unknown }).stockAudit)
     ? ((v as { stockAudit?: unknown[] }).stockAudit as unknown[])
@@ -2569,7 +2593,7 @@ export function project_month_net(
   };
 }
 
-/** себестоимость движений за период по текущей средней цене закупки */
+/** себестоимость движений за период (по зафиксированному total, иначе текущая цена) */
 export function movement_cogs_range(state: finance_state, from: string, to: string) {
   let sold = 0;
   let staff = 0;
@@ -2581,7 +2605,7 @@ export function movement_cogs_range(state: finance_state, from: string, to: stri
     if (d < a || d > b) continue;
     const mat = state.materials.find((x) => x.id === mv.materialId);
     if (!mat) continue;
-    const cost = mv.qty * cost_per_base_unit(mat);
+    const cost = movement_money(mat, mv);
     if (mv.type === 'sale') sold += cost;
     else if (mv.type === 'staff') staff += cost;
     else if (mv.type === 'writeoff') writeoff += cost;
@@ -2654,23 +2678,22 @@ export function warehouse_money(state: finance_state, as_of?: string): warehouse
     if (cutoff && day_key(mv.date) > cutoff) continue;
     const mat = mats.get(mv.materialId);
     if (!mat || material_is_infinite(mat)) continue;
-    const cost = cost_per_base_unit(mat);
+    const unit = cost_per_base_unit(mat);
     const prev = qty.get(mv.materialId) ?? 0;
     if (mv.type === 'in') {
       qty.set(mv.materialId, prev + mv.qty);
-      const priced = Number(mv.total) > 0 ? Number(mv.total) : mv.qty * cost;
-      spent += priced;
+      spent += movement_money(mat, mv);
     } else if (mv.type === 'adjust') {
       const delta = mv.qty - prev;
       qty.set(mv.materialId, mv.qty);
-      if (delta > 0) spent += delta * cost;
-      else lost += -delta * cost;
+      if (delta > 0) spent += delta * unit;
+      else lost += -delta * unit;
     } else if (mv.type === 'sale' || mv.type === 'staff') {
       qty.set(mv.materialId, prev - mv.qty);
-      realized += mv.qty * cost;
+      realized += movement_money(mat, mv);
     } else {
       qty.set(mv.materialId, prev - mv.qty);
-      lost += mv.qty * cost;
+      lost += movement_money(mat, mv);
     }
   }
 
@@ -2708,7 +2731,7 @@ export function stock_levels(state: finance_state, as_of?: string): stock_row[] 
     });
 }
 
-/** себестоимость движений месяца по текущей средней цене закупки */
+/** себестоимость движений месяца (по зафиксированному total, иначе текущая цена) */
 export function movement_cogs(state: finance_state, month: string) {
   let sold = 0;
   let staff = 0;
@@ -2717,7 +2740,7 @@ export function movement_cogs(state: finance_state, month: string) {
     if (!mv.date.startsWith(month)) continue;
     const mat = state.materials.find((x) => x.id === mv.materialId);
     if (!mat) continue;
-    const cost = mv.qty * cost_per_base_unit(mat);
+    const cost = movement_money(mat, mv);
     if (mv.type === 'sale') sold += cost;
     else if (mv.type === 'staff') staff += cost;
     else if (mv.type === 'writeoff') writeoff += cost;
@@ -2978,6 +3001,7 @@ export function apply_writeoff(
     type: 'writeoff',
     materialId,
     qty,
+    ...(mat ? { total: Math.round(qty * cost_per_base_unit(mat) * 100) / 100 } : {}),
     ...(note ? { note } : {}),
     ...actor_on_movement(actor),
   };
@@ -3156,15 +3180,18 @@ export function apply_order_consumption(
   const date = opts.date || new Date().toISOString();
   let next = reverse_order_consumption(state, opts.orderId);
   const cons = consumption_for_items(next, opts.items, opts.menu ?? []);
+  const mats = new Map(next.materials.map((m) => [m.id, m]));
   const added: stock_movement[] = [];
   for (const [materialId, qty] of cons) {
     if (qty <= 0) continue;
+    const mat = mats.get(materialId);
     added.push({
       id: new_id('mv'),
       date,
       type: kind,
       materialId,
       qty,
+      ...(mat ? { total: Math.round(qty * cost_per_base_unit(mat) * 100) / 100 } : {}),
       orderId: opts.orderId,
       note: kind === 'staff' ? `персонал ${opts.orderId.slice(0, 8)}` : `заказ ${opts.orderId.slice(0, 8)}`,
     });
@@ -3194,11 +3221,21 @@ export function apply_fact_consumption(
   const [y, mo] = month.split('-').map(Number);
   const last_day = new Date(y, mo, 0).getDate();
   const date = `${month}-${String(last_day).padStart(2, '0')}T21:00:00.000Z`;
+  const mats = new Map(state.materials.map((m) => [m.id, m]));
   const added: stock_movement[] = [];
   for (const [materialId, qty] of needed) {
     const rest = Math.max(0, qty - (already.get(materialId) ?? 0));
     if (rest <= 0) continue;
-    added.push({ id: new_id('mv'), date, type: 'sale', materialId, qty: rest, note });
+    const mat = mats.get(materialId);
+    added.push({
+      id: new_id('mv'),
+      date,
+      type: 'sale',
+      materialId,
+      qty: rest,
+      ...(mat ? { total: Math.round(rest * cost_per_base_unit(mat) * 100) / 100 } : {}),
+      note,
+    });
   }
   return { ...state, stockMovements: [...kept, ...added] };
 }
