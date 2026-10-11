@@ -1,9 +1,10 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
-import { FREE_DRINK_BONUS_THRESHOLD } from '@/lib/cart-summary';
+import { calc_order_bonus, FREE_DRINK_BONUS_THRESHOLD } from '@/lib/cart-summary';
 import { normalize_phone } from '@/lib/phone';
 import { is_supabase_configured } from '@/lib/supabase/config';
 import { create_service_client } from '@/lib/supabase/service';
 import {
+  earn_demo_bonus,
   get_demo_bonus,
   redeem_demo_bonus,
   upsert_demo_bonus,
@@ -288,6 +289,142 @@ export async function earn_bonus_points(input: {
     order_id: input.order_id ?? null,
     actor: input.actor ?? null,
   });
+}
+
+export type earn_for_paid_result = {
+  earned: number;
+  bonus_balance: number | null;
+  skipped?:
+    | 'unpaid'
+    | 'bonus_payment'
+    | 'staff'
+    | 'zero'
+    | 'no_guest'
+    | 'already'
+    | 'failed';
+  error?: string;
+};
+
+/**
+ * начислить бобаллы только за оплаченный заказ.
+ * идемпотентно по order_id (повторная оплата / PATCH не дублирует).
+ * оплата бобаллами и напитки персонала — без начисления.
+ */
+export async function earn_bonus_for_paid_order(input: {
+  order_id: string;
+  user_id?: string | null;
+  customer_phone?: string | null;
+  customer_name?: string | null;
+  items: Array<{
+    menu_id: string;
+    quantity: number;
+    category?: string | null;
+    kind?: string | null;
+  }>;
+  payment_type?: string | null;
+  is_paid: boolean;
+  /** заказ персонала — не копим */
+  staff?: boolean;
+  actor?: string | null;
+}): Promise<earn_for_paid_result> {
+  if (!input.is_paid) {
+    return { earned: 0, bonus_balance: null, skipped: 'unpaid' };
+  }
+  if (input.staff || input.items.some((i) => i.kind === 'staff')) {
+    return { earned: 0, bonus_balance: null, skipped: 'staff' };
+  }
+  if (input.payment_type === 'bonus') {
+    return { earned: 0, bonus_balance: null, skipped: 'bonus_payment' };
+  }
+
+  const phone = normalize_phone(input.customer_phone);
+  let lines = input.items.map((i) => ({
+    menu_id: i.menu_id,
+    quantity: i.quantity,
+    category: i.category,
+  }));
+  if (lines.some((l) => !l.category)) {
+    const { load_menu_map } = await import('@/lib/kitchen-server');
+    const menu = await load_menu_map();
+    lines = lines.map((l) => ({
+      ...l,
+      category: l.category ?? menu.get(l.menu_id)?.category,
+    }));
+  }
+
+  const amount = calc_order_bonus(lines);
+  if (amount <= 0) {
+    return { earned: 0, bonus_balance: null, skipped: 'zero' };
+  }
+
+  if (is_supabase_configured()) {
+    const admin = create_service_client();
+    let user_id = input.user_id || null;
+
+    if (!user_id && phone) {
+      const profile = await find_profile_by_phone(admin, phone);
+      user_id = profile?.id ?? null;
+    }
+    if (!user_id) {
+      return { earned: 0, bonus_balance: null, skipped: 'no_guest' };
+    }
+
+    if (input.order_id) {
+      const prior = await admin
+        .from('bonus_transactions')
+        .select('id')
+        .eq('order_id', input.order_id)
+        .eq('reason', 'earn')
+        .limit(1);
+      if (!prior.error && (prior.data || []).length > 0) {
+        const { data: bal } = await admin
+          .from('profiles')
+          .select('bonus_balance')
+          .eq('id', user_id)
+          .maybeSingle();
+        return {
+          earned: 0,
+          bonus_balance: Number(bal?.bonus_balance) || 0,
+          skipped: 'already',
+        };
+      }
+    }
+
+    const result = await earn_bonus_points({
+      user_id,
+      amount,
+      order_id: input.order_id,
+      actor: input.actor ?? null,
+    });
+    if (!result.ok) {
+      return {
+        earned: 0,
+        bonus_balance: result.bonus_balance ?? null,
+        skipped: 'failed',
+        error: result.error,
+      };
+    }
+    return { earned: amount, bonus_balance: result.bonus_balance };
+  }
+
+  if (!phone) {
+    return { earned: 0, bonus_balance: null, skipped: 'no_guest' };
+  }
+
+  const demo = await earn_demo_bonus({
+    order_id: input.order_id,
+    phone,
+    name: input.customer_name,
+    amount,
+  });
+  if (!demo) {
+    return { earned: 0, bonus_balance: null, skipped: 'failed' };
+  }
+  return {
+    earned: demo.earned,
+    bonus_balance: demo.bonus_balance,
+    skipped: demo.already ? 'already' : undefined,
+  };
 }
 
 /** технический аккаунт: гость точки с кассы или гостевая сессия сайта */

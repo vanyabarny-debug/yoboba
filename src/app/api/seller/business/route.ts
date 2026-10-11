@@ -127,6 +127,7 @@ export async function GET() {
       spent: warehouse.spent,
       on_hand: warehouse.on_hand,
       realized: warehouse.realized,
+      lost: warehouse.lost,
       break_even: Math.round(break_even),
       tone: status.tone,
       detail: status.detail,

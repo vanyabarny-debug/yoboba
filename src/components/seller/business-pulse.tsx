@@ -11,6 +11,7 @@ type pulse = {
   spent: number;
   on_hand: number;
   realized: number;
+  lost: number;
   break_even: number;
   tone: business_tone;
   detail: string;
@@ -47,6 +48,7 @@ export default function business_pulse() {
     { label: 'выручка', value: format_rub(data.revenue), hint: `${data.orders} заказов` },
     { label: 'закупки', value: format_rub(data.spent), hint: `на складе ${format_rub(data.on_hand)}` },
     { label: 'в напитках', value: format_rub(data.realized), hint: 'себестоимость сырья' },
+    { label: 'потеряно', value: format_rub(data.lost ?? 0), hint: 'списания + инвентарь' },
     { label: 'чистая прибыль', value: format_rub(data.profit), hint: 'этот месяц' },
   ];
 

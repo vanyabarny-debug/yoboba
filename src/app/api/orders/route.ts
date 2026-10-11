@@ -1,9 +1,9 @@
 import { NextResponse } from 'next/server';
 import { create_server_client } from '@/lib/supabase/server';
 import { create_service_client } from '@/lib/supabase/service';
-import { calc_order_bonus, FREE_DRINK_BONUS_THRESHOLD } from '@/lib/cart-summary';
+import { FREE_DRINK_BONUS_THRESHOLD } from '@/lib/cart-summary';
 import {
-  earn_bonus_points,
+  earn_bonus_for_paid_order,
   redeem_bonus_points,
   refund_bonus_points,
 } from '@/lib/bonus-server';
@@ -15,7 +15,7 @@ import { parse_combo_order_fields } from '@/lib/combo';
 import type { order_item } from '@/lib/types';
 import { student_line_price } from '@/lib/student-discount';
 import { read_student_status } from '@/lib/student-server';
-import { record_order_stock } from '@/lib/finance/order-stock';
+import { assert_order_stock, record_order_stock } from '@/lib/finance/order-stock';
 
 export async function GET() {
   const supabase = await create_server_client();
@@ -157,6 +157,11 @@ export async function POST(request: Request) {
   let final_payment = payment_type;
   let is_paid = false;
 
+  const stock_ok = await assert_order_stock({ items: priced_items });
+  if (!stock_ok.ok) {
+    return NextResponse.json({ error: stock_ok.error }, { status: 409 });
+  }
+
   // если после списания заказ не создался — возвращаем баллы
   const refund_redeemed = async (why: string) => {
     if (redeemed <= 0) return;
@@ -286,28 +291,29 @@ export async function POST(request: Request) {
 
   await supabase.from('cart_items').delete().eq('user_id', user.id);
 
+  // бобаллы только после оплаты (is_paid); при создании заказа обычно ещё нет
   let earned = 0;
-  if (!redeem_bonus && final_total > 0 && !user.is_anonymous) {
-    const to_earn = calc_order_bonus(
-      priced_items.map((i) => ({
+  if (!redeem_bonus && is_paid && !user.is_anonymous) {
+    const result = await earn_bonus_for_paid_order({
+      order_id: String((data as { id?: string }).id || ''),
+      user_id: user.id,
+      customer_phone: profile_phone,
+      items: priced_items.map((i) => ({
         menu_id: i.menu_id,
         quantity: i.quantity,
         category: menu_by_id.get(i.menu_id)?.category,
-      }))
-    );
-    if (to_earn > 0) {
-      const result = await earn_bonus_points({
-        user_id: user.id,
-        amount: to_earn,
-        order_id: (data as { id?: string }).id ?? null,
-        actor: 'app',
-      });
-      if (result.ok) {
-        earned = to_earn;
+      })),
+      payment_type: final_payment,
+      is_paid,
+      actor: 'app',
+    });
+    if (result.earned > 0) {
+      earned = result.earned;
+      if (typeof result.bonus_balance === 'number') {
         bonus_balance_after = result.bonus_balance;
-      } else {
-        console.error('order: bonus earn failed', user.id, result.error);
       }
+    } else if (result.error) {
+      console.error('order: bonus earn failed', user.id, result.error);
     }
   }
 

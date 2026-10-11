@@ -14,7 +14,11 @@ import { clear_order_prep } from '@/lib/seller-prep-server';
 import type { order, order_item } from '@/lib/types';
 import { student_line_price } from '@/lib/student-discount';
 import { discounted_unit, parse_discount } from '@/lib/pos-pricing';
-import { record_order_stock, release_order_stock } from '@/lib/finance/order-stock';
+import {
+  assert_order_stock,
+  record_order_stock,
+  release_order_stock,
+} from '@/lib/finance/order-stock';
 import {
   read_student_status,
   set_student_verified,
@@ -515,10 +519,20 @@ export async function POST(request: Request) {
     bonus_earned = 0;
   }
 
-  const { redeem_bonus_points, refund_bonus_points, earn_bonus_points, ensure_demo_bonus_row } =
-    await import('@/lib/bonus-server');
+  const {
+    redeem_bonus_points,
+    refund_bonus_points,
+    earn_bonus_for_paid_order,
+    ensure_demo_bonus_row,
+  } = await import('@/lib/bonus-server');
   const { FREE_DRINK_BONUS_THRESHOLD } = await import('@/lib/cart-summary');
   const actor = await staff_actor_name();
+
+  const stock_ok = await assert_order_stock({ items });
+  if (!stock_ok.ok) {
+    return NextResponse.json({ error: stock_ok.error }, { status: 409 });
+  }
+
   // если после списания заказ не создался — баллы возвращаем, а не теряем
   let redeemed_from_user: string | null = null;
   const refund_redeemed = async (why: string) => {
@@ -657,18 +671,29 @@ export async function POST(request: Request) {
         );
       }
 
+      // бобаллы только если заказ уже оплачен (paid_now на кассе); иначе — в PATCH is_paid
       let earned_now = 0;
-      if (bonus_earned > 0 && can_earn_bonus && user_id) {
-        const earned = await earn_bonus_points({
+      if (can_earn_bonus && is_paid && user_id) {
+        const earned = await earn_bonus_for_paid_order({
+          order_id: String((data as { id?: string }).id || ''),
           user_id,
-          amount: bonus_earned,
-          order_id: (data as { id?: string }).id ?? null,
+          customer_phone,
+          customer_name,
+          items: items.map((i) => ({
+            menu_id: i.menu_id,
+            quantity: i.quantity,
+            category: menu.get(i.menu_id)?.category,
+            kind: i.kind,
+          })),
+          payment_type,
+          is_paid,
+          staff,
           actor,
         });
-        if (earned.ok) {
+        if (earned.earned > 0) {
           bonus_balance = earned.bonus_balance;
-          earned_now = bonus_earned;
-        } else {
+          earned_now = earned.earned;
+        } else if (earned.error) {
           console.error('seller order: bonus earn failed', user_id, earned.error);
         }
       }
@@ -701,9 +726,10 @@ export async function POST(request: Request) {
         bonus_earned: earned_now,
         bonus_redeemed,
         bonus_balance,
-        bonus_warning: bonus_earned > 0 && can_earn_bonus && !earned_now
-          ? 'заказ создан, но бобаллы не начислились — проверьте гостя'
-          : undefined,
+        bonus_warning:
+          can_earn_bonus && is_paid && bonus_earned > 0 && !earned_now
+            ? 'заказ создан, но бобаллы не начислились — проверьте гостя'
+            : undefined,
       });
     } catch (e) {
       // supabase настроен — в демо-стор не уходим: баллы там не сохраняются
@@ -729,24 +755,28 @@ export async function POST(request: Request) {
     order.total_price = 0;
     order.payment_type = 'bonus';
     order.is_paid = true;
-  } else if (customer_phone) {
-    const { get_demo_bonus, upsert_demo_bonus } = await import('@/lib/demo-bonus-server');
-    const { FREE_DRINK_BONUS_THRESHOLD } = await import('@/lib/cart-summary');
-    const existing = await get_demo_bonus(customer_phone);
-    const earned = calc_order_bonus(
-      items.map((i) => ({
+  }
+
+  let earned_now = 0;
+  if (can_earn_bonus && is_paid && customer_phone) {
+    const earned = await earn_bonus_for_paid_order({
+      order_id: order.id,
+      user_id,
+      customer_phone,
+      customer_name,
+      items: items.map((i) => ({
         menu_id: i.menu_id,
         quantity: i.quantity,
         category: menu.get(i.menu_id)?.category,
-      }))
-    );
-    bonus_earned = earned;
-    const next = await upsert_demo_bonus({
-      phone: customer_phone,
-      name: customer_name,
-      bonus_balance: (existing?.bonus_balance ?? FREE_DRINK_BONUS_THRESHOLD) + earned,
+        kind: i.kind,
+      })),
+      payment_type,
+      is_paid,
+      staff,
+      actor,
     });
-    bonus_balance = next.bonus_balance;
+    earned_now = earned.earned;
+    if (typeof earned.bonus_balance === 'number') bonus_balance = earned.bonus_balance;
   }
 
   void record_order_stock({
@@ -765,7 +795,7 @@ export async function POST(request: Request) {
 
   return NextResponse.json({
     order,
-    bonus_earned: staff ? 0 : bonus_earned,
+    bonus_earned: staff ? 0 : earned_now,
     bonus_redeemed,
     bonus_balance,
   });
@@ -794,7 +824,30 @@ export async function PATCH(request: Request) {
     if (patch.status === 'cancelled') {
       await release_order_stock(id);
     }
-    return NextResponse.json({ order: updated });
+
+    let bonus_earned = 0;
+    let bonus_balance: number | null = null;
+    if (patch.is_paid) {
+      const { earn_bonus_for_paid_order } = await import('@/lib/bonus-server');
+      const earned = await earn_bonus_for_paid_order({
+        order_id: updated.id,
+        user_id: updated.user_id,
+        customer_phone: updated.customer_phone,
+        customer_name: updated.customer_name,
+        items: (updated.items || []).map((i) => ({
+          menu_id: i.menu_id,
+          quantity: i.quantity,
+          kind: i.kind,
+        })),
+        payment_type: updated.payment_type,
+        is_paid: true,
+        actor: await staff_actor_name(),
+      });
+      bonus_earned = earned.earned;
+      bonus_balance = earned.bonus_balance;
+    }
+
+    return NextResponse.json({ order: updated, bonus_earned, bonus_balance });
   }
 
   if (!is_supabase_configured()) {
@@ -802,9 +855,24 @@ export async function PATCH(request: Request) {
   }
 
   const admin = create_service_client();
+  const marking_paid = Boolean(patch.is_paid);
+  let was_paid = false;
+  if (marking_paid) {
+    const { data: before } = await admin
+      .from('orders')
+      .select('is_paid, payment_type, total_price')
+      .eq('id', id)
+      .maybeSingle();
+    was_paid =
+      Boolean(before?.is_paid) ||
+      before?.payment_type === 'bonus' ||
+      (before?.payment_type === 'online' && Number(before?.total_price) === 0);
+  }
+
   let { data, error } = await admin.from('orders').update(patch).eq('id', id).select('*').single();
 
   if (error && /is_paid|customer_/i.test(error.message)) {
+    const schema_warning = error.message;
     const { is_paid: dropped_paid, customer_name: _n, customer_phone: _ph, ...rest } = patch;
     if (Object.keys(rest).length) {
       const retry = await admin.from('orders').update(rest).eq('id', id).select('*').single();
@@ -815,14 +883,18 @@ export async function PATCH(request: Request) {
         data = { ...data, is_paid: Boolean(dropped_paid) };
       }
     } else if (patch.is_paid != null) {
-      // только is_paid — всё равно подтверждаем клиенту
+      // только is_paid — всё равно подтверждаем клиенту и начисляем бобаллы
       const { data: current } = await admin.from('orders').select('*').eq('id', id).single();
-      return NextResponse.json({
-        order: current ? { ...current, is_paid: Boolean(patch.is_paid) } : { id, ...patch },
-        warning: error.message,
-      });
+      if (!current) {
+        return NextResponse.json({
+          order: { id, ...patch },
+          warning: schema_warning,
+        });
+      }
+      data = { ...current, is_paid: Boolean(patch.is_paid) };
+      error = null;
     } else {
-      return NextResponse.json({ order: null, warning: error.message });
+      return NextResponse.json({ order: null, warning: schema_warning });
     }
   }
 
@@ -842,5 +914,31 @@ export async function PATCH(request: Request) {
     void push_order_status_to_user(data as order).catch(() => {});
   }
 
-  return NextResponse.json({ order: data });
+  let bonus_earned = 0;
+  let bonus_balance: number | null = null;
+  if (marking_paid && data && !was_paid) {
+    const paid_order = data as order;
+    const { earn_bonus_for_paid_order } = await import('@/lib/bonus-server');
+    const earned = await earn_bonus_for_paid_order({
+      order_id: paid_order.id,
+      user_id: paid_order.user_id,
+      customer_phone: paid_order.customer_phone,
+      customer_name: paid_order.customer_name,
+      items: (paid_order.items || []).map((i) => ({
+        menu_id: i.menu_id,
+        quantity: i.quantity,
+        kind: i.kind,
+      })),
+      payment_type: paid_order.payment_type,
+      is_paid: true,
+      actor: await staff_actor_name(),
+    });
+    bonus_earned = earned.earned;
+    bonus_balance = earned.bonus_balance;
+    if (earned.error) {
+      console.error('seller patch: bonus earn failed', paid_order.id, earned.error);
+    }
+  }
+
+  return NextResponse.json({ order: data, bonus_earned, bonus_balance });
 }

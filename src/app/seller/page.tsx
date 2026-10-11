@@ -29,7 +29,10 @@ import cash_register_modal from '@/components/seller/cash-register-modal';
 import barista_analytics_panel from '@/components/seller/barista-analytics';
 import barista_login_sheet from '@/components/seller/barista-login-sheet';
 import pos_panel from '@/components/seller/pos-panel';
+import prep_pots_hud from '@/components/seller/prep-pots-hud';
+import prep_station_card from '@/components/seller/prep-station-card';
 import seller_inventory from '@/components/seller/seller-inventory';
+import type { prep_station_view } from '@/lib/finance/prep-stations';
 import drink_cook_guide from '@/components/seller/drink-cook-guide';
 import task_guide from '@/components/seller/task-guide';
 import shift_task_card from '@/components/seller/shift-task-card';
@@ -360,6 +363,8 @@ export default function seller_board() {
   const [unread_new, set_unread_new] = useState(0);
   const [pos_depth, set_pos_depth] = useState(false);
   const [stock_depth, set_stock_depth] = useState(false);
+  const [prep_stations, set_prep_stations] = useState<prep_station_view[]>([]);
+  const [prep_open_id, set_prep_open_id] = useState<string | null>(null);
   const known_ids = useRef<Set<string> | null>(null);
   const pending_blink_ref = useRef<Set<string>>(new Set());
   const seller_ref = useRef({ id: '', name: 'бариста' });
@@ -382,7 +387,7 @@ export default function seller_board() {
   const { viewport_ref, page_style, width: board_w, height: board_h } = use_page_swipe({
     index: Math.max(0, tab_index),
     count: Math.max(1, panes.length),
-    enabled: !paying && !cook && !revising && !task_guide_id && !need_shift && !need_barista && !switch_barista_open && !(tab === 'pos' && pos_depth) && !(tab === 'stock' && stock_depth),
+    enabled: !paying && !cook && !revising && !task_guide_id && !need_shift && !need_barista && !switch_barista_open && !prep_open_id && !(tab === 'pos' && pos_depth) && !(tab === 'stock' && stock_depth),
     on_index: (next) => set_tab(panes[next]?.id ?? panes[0]?.id ?? 'work'),
   });
 
@@ -1374,7 +1379,11 @@ export default function seller_board() {
   const closing_is_done = closing_task_state?.completed_at != null;
 
   const work_board_count =
-    in_work.length + open_tasks.length + (show_opening ? 1 : 0) + (show_closing ? 1 : 0);
+    in_work.length +
+    open_tasks.length +
+    prep_stations.length +
+    (show_opening ? 1 : 0) +
+    (show_closing ? 1 : 0);
   const ready_board_count =
     handed_out.length + done_tasks.length + (opening_is_done ? 1 : 0) + (closing_is_done ? 1 : 0);
   const guided_task = day_tasks.find((t) => t.id === task_guide_id) ?? null;
@@ -1413,6 +1422,13 @@ export default function seller_board() {
     return render_fill_grid(
       items,
       <>
+        {prep_stations.map((s) =>
+          createElement(prep_station_card, {
+            key: `prep-${s.id}`,
+            station: s,
+            on_open: () => set_prep_open_id(s.id),
+          })
+        )}
         {show_opening && opening_task_state
           ? createElement(opening_task_card, {
               key: 'opening-task',
@@ -1838,6 +1854,12 @@ export default function seller_board() {
         ))}
       </main>
 
+      {createElement(prep_pots_hud, {
+        cards_external: true,
+        open_id: prep_open_id,
+        on_open_change: set_prep_open_id,
+        on_stations: set_prep_stations,
+      })}
       {createElement(cash_register_modal, {
         order: paying,
         seller_name,

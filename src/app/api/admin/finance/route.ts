@@ -2,8 +2,21 @@ import { NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 import { session_cookie } from '@/lib/session';
 import { read_finance_state, write_finance_state } from '@/lib/finance/finance-server';
-import { merge_stock_audit, read_stock_audit } from '@/lib/finance/stock-audit';
-import { filter_stock_audit, normalize_finance_state, sync_tech_cards_with_menu } from '@/lib/finance/model';
+import {
+  delete_writeoff_audits,
+  merge_stock_audit,
+  read_stock_audit,
+} from '@/lib/finance/stock-audit';
+import {
+  filter_stock_audit,
+  moscow_today,
+  normalize_finance_state,
+  purge_writeoff_movements,
+  sync_tech_cards_with_menu,
+  warehouse_money,
+  writeoffs_money,
+} from '@/lib/finance/model';
+import { ensure_prep_materials } from '@/lib/finance/prep-stations';
 import { get_default_store, merge_menu_item_catalog, store_version } from '@/lib/menu-store';
 import { read_published_menu } from '@/lib/menu-catalog-server';
 import type { menu_item } from '@/lib/types';
@@ -66,7 +79,7 @@ export async function PUT(request: Request) {
   if (!payload || typeof payload !== 'object') {
     return NextResponse.json({ error: 'нет данных' }, { status: 400 });
   }
-  const incoming = normalize_finance_state(payload);
+  const incoming = ensure_prep_materials(normalize_finance_state(payload));
   const [cloud, table_audit] = await Promise.all([read_finance_state(), read_stock_audit()]);
   const state = {
     ...incoming,
@@ -78,4 +91,44 @@ export async function PUT(request: Request) {
     return NextResponse.json({ error: e instanceof Error ? e.message : 'ошибка записи' }, { status: 500 });
   }
   return NextResponse.json({ ok: true });
+}
+
+/** служебные действия: обнулить тестовые списания */
+export async function POST(request: Request) {
+  if (!(await is_admin())) {
+    return NextResponse.json({ error: 'доступ запрещён' }, { status: 403 });
+  }
+  let body: unknown;
+  try {
+    body = await request.json();
+  } catch {
+    return NextResponse.json({ error: 'некорректный json' }, { status: 400 });
+  }
+  const kind = (body as { kind?: string })?.kind;
+  if (kind !== 'purge_writeoffs') {
+    return NextResponse.json({ error: 'неизвестное действие' }, { status: 400 });
+  }
+
+  const state = await read_finance_state();
+  const before_wo = writeoffs_money(state);
+  const before_lost = warehouse_money(state).lost;
+  const { state: next, removed, movementIds } = purge_writeoff_movements(state);
+  try {
+    await write_finance_state(next);
+  } catch (e) {
+    return NextResponse.json({ error: e instanceof Error ? e.message : 'ошибка записи' }, { status: 500 });
+  }
+  const audit_deleted = await delete_writeoff_audits(movementIds);
+  const today = moscow_today();
+  const after_wo = writeoffs_money(next, today);
+  const after_lost = warehouse_money(next, today).lost;
+  return NextResponse.json({
+    ok: true,
+    removed,
+    audit_deleted,
+    writeoffs_before: before_wo.sum,
+    writeoffs_after: after_wo.sum,
+    lost_before: before_lost,
+    lost_after: after_lost,
+  });
 }

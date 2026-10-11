@@ -13,6 +13,11 @@ import {
   stock_retention_changed,
   type finance_state,
 } from '@/lib/finance/model';
+import { ensure_prep_materials } from '@/lib/finance/prep-stations';
+
+function finalize_finance(raw: unknown): finance_state {
+  return ensure_prep_materials(normalize_finance_state(raw));
+}
 
 const table = 'finance_state';
 const row_id = 'default';
@@ -30,10 +35,14 @@ function raw_version(raw: unknown) {
 
 async function read_fallback(): Promise<finance_state> {
   const raw = await read_json_store<unknown>(store_key, null);
-  if (!raw) return default_finance_state();
-  const normalized = normalize_finance_state(raw);
+  if (!raw) return ensure_prep_materials(default_finance_state());
+  const normalized = finalize_finance(raw);
   const durable = prune_stock_retention(normalized);
-  if (raw_version(raw) < FINANCE_STATE_VERSION || stock_retention_changed(normalized, durable)) {
+  if (
+    raw_version(raw) < FINANCE_STATE_VERSION ||
+    stock_retention_changed(normalized, durable) ||
+    !Boolean((raw as { prepStockMigrated?: unknown })?.prepStockMigrated)
+  ) {
     await write_json_store(store_key, durable).catch(() => {});
   }
   return durable;
@@ -54,9 +63,13 @@ async function read_row(
   }
   if (!data?.store) return null;
   const raw = (data as store_row).store;
-  const normalized = normalize_finance_state(raw);
+  const normalized = finalize_finance(raw);
   const durable = prune_stock_retention(normalized);
-  if (raw_version(raw) < FINANCE_STATE_VERSION || stock_retention_changed(normalized, durable)) {
+  if (
+    raw_version(raw) < FINANCE_STATE_VERSION ||
+    stock_retention_changed(normalized, durable) ||
+    !Boolean((raw as { prepStockMigrated?: unknown })?.prepStockMigrated)
+  ) {
     await write_row(admin, from, id, durable);
     if (from === table) {
       await write_row(admin, 'menu_catalog', catalog_row_id, durable);
@@ -131,7 +144,7 @@ async function sync_tech_card_temps(state: finance_state): Promise<void> {
 }
 
 export async function write_finance_state(state: finance_state): Promise<void> {
-  const durable = prune_stock_retention(normalize_finance_state(state));
+  const durable = prune_stock_retention(finalize_finance(state));
   await sync_tech_card_temps(durable);
   const local = write_json_store(store_key, durable).catch(() => {});
   if (!is_supabase_configured()) {

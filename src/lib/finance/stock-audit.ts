@@ -157,6 +157,49 @@ export async function persist_stock_audit(entries: stock_audit_entry[]): Promise
   await persist_audit_blob(entries);
 }
 
+/** вычистить записи списаний из cloud audit (таблица + blob) */
+export async function delete_writeoff_audits(movementIds: string[] = []): Promise<number> {
+  if (!is_supabase_configured()) return 0;
+  const admin = create_service_client();
+  let deleted = 0;
+  const id_set = new Set(movementIds);
+
+  if (!table_is_missing(table)) {
+    const { data, error } = await admin.from(table).select('id, action, movement_id').eq('action', 'writeoff');
+    if (!error && data?.length) {
+      const ids = (data as { id: string; movement_id: string | null }[])
+        .filter((r) => !id_set.size || (r.movement_id && id_set.has(r.movement_id)) || !r.movement_id)
+        .map((r) => r.id);
+      if (ids.length) {
+        const { error: del } = await admin.from(table).delete().in('id', ids);
+        if (!del) deleted += ids.length;
+        else if (!missing_table(del.message)) console.error('stock_audit writeoff delete', del.message);
+      }
+    }
+  }
+
+  if (!table_is_missing(blob_table)) {
+    const { data, error } = await admin.from(blob_table).select('store').eq('id', blob_id).maybeSingle();
+    if (!error) {
+      const prev = parse_blob((data as { store?: unknown } | null)?.store);
+      const next = prev.filter(
+        (e) =>
+          e.action !== 'writeoff' &&
+          !(e.movementId && id_set.has(e.movementId))
+      );
+      if (next.length !== prev.length) {
+        await admin.from(blob_table).upsert(
+          { id: blob_id, store: { entries: next }, updated_at: new Date().toISOString() },
+          { onConflict: 'id' }
+        );
+        deleted += prev.length - next.length;
+      }
+    }
+  }
+
+  return deleted;
+}
+
 async function read_audit_blob(): Promise<stock_audit_entry[]> {
   const admin = create_service_client();
   const { data, error } = await admin.from(blob_table).select('store').eq('id', blob_id).maybeSingle();

@@ -1,6 +1,7 @@
 import { read_json_store, write_json_store } from '@/lib/data-store';
 
 const store_key = 'demo-bonuses';
+const earned_orders_key = 'demo-bonus-earned-orders';
 
 type bonus_row = {
   phone: string;
@@ -54,4 +55,40 @@ export async function redeem_demo_bonus(
   };
   await save_all(all);
   return all[idx];
+}
+
+/** уже начисляли бобаллы за этот демо-заказ */
+export async function has_demo_order_earn(order_id: string): Promise<boolean> {
+  const ids = await read_json_store<string[]>(earned_orders_key, []);
+  return ids.includes(order_id);
+}
+
+/** начислить бобаллы за оплаченный демо-заказ (идемпотентно по order_id) */
+export async function earn_demo_bonus(input: {
+  order_id: string;
+  phone: string;
+  name?: string | null;
+  amount: number;
+}): Promise<{ earned: number; bonus_balance: number; already: boolean } | null> {
+  const amount = Math.round(input.amount);
+  if (amount <= 0) return null;
+
+  const ids = await read_json_store<string[]>(earned_orders_key, []);
+  if (ids.includes(input.order_id)) {
+    const existing = await get_demo_bonus(input.phone);
+    return {
+      earned: 0,
+      bonus_balance: existing?.bonus_balance ?? 0,
+      already: true,
+    };
+  }
+
+  const existing = await get_demo_bonus(input.phone);
+  const next = await upsert_demo_bonus({
+    phone: input.phone,
+    name: input.name ?? existing?.name ?? null,
+    bonus_balance: (existing?.bonus_balance ?? 0) + amount,
+  });
+  await write_json_store(earned_orders_key, [...ids, input.order_id]);
+  return { earned: amount, bonus_balance: next.bonus_balance, already: false };
 }

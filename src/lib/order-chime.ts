@@ -119,6 +119,20 @@ export function play_handout_chime() {
   );
 }
 
+/** кастрюля/чайник на исходе — громкое напоминание */
+export function play_prep_low_chime() {
+  play_tones(
+    [
+      { freq: 620, start: 0, dur: 0.14, gain: 0.14, type: 'square' },
+      { freq: 520, start: 0.16, dur: 0.14, gain: 0.14, type: 'square' },
+      { freq: 620, start: 0.32, dur: 0.14, gain: 0.15, type: 'square' },
+      { freq: 420, start: 0.5, dur: 0.28, gain: 0.16, type: 'sawtooth' },
+      { freq: 620, start: 0.85, dur: 0.2, gain: 0.12, type: 'square' },
+    ],
+    1400
+  );
+}
+
 /** задача смены выполнена */
 export function play_task_done_chime() {
   play_tones(

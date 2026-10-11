@@ -1,6 +1,10 @@
 import { forget_cash_for_order, retitle_cash_for_order } from '@/lib/cash-server';
 import { delete_demo_order, get_demo_orders, update_demo_order } from '@/lib/demo-orders-server';
-import { record_order_stock, release_order_stock } from '@/lib/finance/order-stock';
+import {
+  assert_order_stock,
+  record_order_stock,
+  release_order_stock,
+} from '@/lib/finance/order-stock';
 import type { stock_actor } from '@/lib/finance/model';
 import { forget_handed_order, replace_handed_snapshot } from '@/lib/handed-orders-server';
 import { parse_combo_order_fields } from '@/lib/combo';
@@ -130,6 +134,17 @@ export async function revise_order(input: {
 
   const next_status = input.status || existing.status;
   const total_price = input.items.reduce((sum, item) => sum + item.price * item.quantity, 0);
+
+  if (next_status !== 'cancelled' && input.items.some((item) => item.menu_id)) {
+    const stock_ok = await assert_order_stock({
+      items: input.items.filter((item) => item.menu_id),
+      releaseOrderId: input.id,
+    });
+    if (!stock_ok.ok) {
+      return { ok: false, error: stock_ok.error, status: 409 };
+    }
+  }
+
   const patch: Partial<order> = {
     items: input.items,
     total_price,

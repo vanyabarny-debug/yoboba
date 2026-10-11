@@ -12,6 +12,7 @@ import {
   normalize_finance_state,
   type finance_state,
 } from '@/lib/finance/model';
+import { ensure_prep_materials } from '@/lib/finance/prep-stations';
 
 export type section_props = {
   state: finance_state;
@@ -88,7 +89,7 @@ export function use_finance(): finance_bundle {
       return;
     }
     const today = moscow_today();
-    const s0 = normalize_finance_state(body.state);
+    const s0 = ensure_prep_materials(normalize_finance_state(body.state));
     const tax_fixed = apply_tax_regime(s0, s0.taxRegime);
     const tax_changed =
       s0.taxRegime !== tax_fixed.taxRegime ||

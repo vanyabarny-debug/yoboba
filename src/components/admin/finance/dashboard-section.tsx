@@ -865,6 +865,12 @@ export default function DashboardSection({
           sub="остатки по цене закупки"
           bar="#8B9DC3"
         />
+        <Kpi
+          label="потеряно"
+          value={format_rub(warehouse.lost)}
+          sub="списания + инвентарь"
+          bar="#D97706"
+        />
       </div>
 
       <Card

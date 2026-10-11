@@ -6,9 +6,12 @@ import {
   get_demo_orders,
   update_demo_order,
 } from '@/lib/demo-orders-server';
-import { calc_order_bonus, FREE_DRINK_BONUS_THRESHOLD } from '@/lib/cart-summary';
-import { ensure_demo_bonus_row, redeem_bonus_points } from '@/lib/bonus-server';
-import { load_menu_map } from '@/lib/kitchen-server';
+import { FREE_DRINK_BONUS_THRESHOLD } from '@/lib/cart-summary';
+import {
+  earn_bonus_for_paid_order,
+  ensure_demo_bonus_row,
+  redeem_bonus_points,
+} from '@/lib/bonus-server';
 import { normalize_phone } from '@/lib/phone';
 import type { order_item } from '@/lib/types';
 
@@ -116,16 +119,23 @@ export async function POST(request: Request) {
     order.is_paid = true;
   }
 
+  // бобаллы только после оплаты; при создании обычного заказа — 0
   let bonus_earned = 0;
-  if (!redeem_bonus) {
-    const menu = await load_menu_map();
-    bonus_earned = calc_order_bonus(
-      items.map((i) => ({
+  if (!redeem_bonus && is_paid && phone) {
+    const earned = await earn_bonus_for_paid_order({
+      order_id: order.id,
+      customer_phone: phone,
+      customer_name: body.customer_name,
+      items: items.map((i) => ({
         menu_id: i.menu_id,
         quantity: i.quantity,
-        category: menu.get(i.menu_id)?.category,
-      }))
-    );
+      })),
+      payment_type: order.payment_type,
+      is_paid: true,
+      actor: 'demo',
+    });
+    bonus_earned = earned.earned;
+    if (typeof earned.bonus_balance === 'number') bonus_balance = earned.bonus_balance;
   }
 
   return NextResponse.json({
@@ -146,5 +156,27 @@ export async function PATCH(request: Request) {
   if (!updated) {
     return NextResponse.json({ error: 'заказ не найден' }, { status: 404 });
   }
-  return NextResponse.json({ order: updated });
+
+  let bonus_earned = 0;
+  let bonus_balance: number | null = null;
+  if (body.patch?.is_paid) {
+    const earned = await earn_bonus_for_paid_order({
+      order_id: updated.id,
+      user_id: updated.user_id,
+      customer_phone: updated.customer_phone,
+      customer_name: updated.customer_name,
+      items: (updated.items || []).map((i) => ({
+        menu_id: i.menu_id,
+        quantity: i.quantity,
+        kind: i.kind,
+      })),
+      payment_type: updated.payment_type,
+      is_paid: true,
+      actor: 'demo',
+    });
+    bonus_earned = earned.earned;
+    bonus_balance = earned.bonus_balance;
+  }
+
+  return NextResponse.json({ order: updated, bonus_earned, bonus_balance });
 }

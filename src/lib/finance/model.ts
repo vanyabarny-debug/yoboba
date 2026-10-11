@@ -244,7 +244,13 @@ export type stock_actor = {
   role: stock_actor_role;
 };
 
-export type stock_audit_action = 'adjust' | 'inventory' | 'writeoff' | 'receipt' | 'delete_movement';
+export type stock_audit_action =
+  | 'adjust'
+  | 'inventory'
+  | 'writeoff'
+  | 'receipt'
+  | 'delete_movement'
+  | 'prep';
 
 export type stock_audit_entry = {
   id: string;
@@ -300,6 +306,38 @@ export type order_stock_item = {
   }[];
 };
 
+export type stock_guard_settings = {
+  /** блокировать заказ без тапиоки / чая (сваренного и сухого) */
+  prep: boolean;
+  /** блокировать по всем ингредиентам техкарты (молоко, сиропы, стаканы…) */
+  all: boolean;
+};
+
+export const DEFAULT_STOCK_GUARD: stock_guard_settings = { prep: true, all: false };
+
+/** материалы «варка/заваривание» — всегда под галочкой prep */
+export const PREP_GUARD_MATERIAL_IDS = [
+  'tapioca',
+  'tapioca_dry',
+  'tea_black',
+  'tea_black_dry',
+  'tea_jasmine',
+  'tea_jasmine_dry',
+] as const;
+
+export function normalize_stock_guard(raw: unknown): stock_guard_settings {
+  if (!raw || typeof raw !== 'object') return { ...DEFAULT_STOCK_GUARD };
+  const o = raw as Partial<stock_guard_settings>;
+  return {
+    prep: o.prep === false ? false : true,
+    all: o.all === true,
+  };
+}
+
+export function stock_guard_of(state: Pick<finance_state, 'stockGuard'>): stock_guard_settings {
+  return normalize_stock_guard(state.stockGuard);
+}
+
 export type finance_state = {
   version: number;
   materials: material[];
@@ -313,6 +351,15 @@ export type finance_state = {
   removedTechCardIds?: string[];
   /** журнал «кто / что / когда» — дублируется в supabase.stock_audit */
   stockAudit?: stock_audit_entry[];
+  /** станции варки тапиоки / заваривания чая — расход и выход правит кассир */
+  prepStations?: import('@/lib/finance/prep-stations').prep_station[];
+  /** один раз перенесли старый остаток на сухие SKU */
+  prepStockMigrated?: boolean;
+  /**
+   * блокировка заказа при нехватке сырья.
+   * prep — тапиока/чаи (вкл. по умолчанию); all — вся техкарта (выкл. по умолчанию).
+   */
+  stockGuard?: stock_guard_settings;
   /** ISO время последней полной инвентаризации; нет — склад считается неподтверждённым */
   stockCountedAt?: string | null;
   /** ставка налога, % — смысл зависит от taxRegime */
@@ -926,8 +973,10 @@ export function material_is_infinite(m: { id: string; name: string }) {
 }
 
 export const default_materials: material[] = [
-  { id: 'tea_black', name: 'чай чёрный (сухой)', category: 'dry', unit: 'kg', costPerUnit: 1500, minStock: 400 },
-  { id: 'tea_jasmine', name: 'чай зелёный жасмин (сухой)', category: 'dry', unit: 'kg', costPerUnit: 1600, minStock: 400 },
+  { id: 'tea_black', name: 'чай чёрный (заваренный)', category: 'dry', unit: 'kg', costPerUnit: 1500, minStock: 400 },
+  { id: 'tea_jasmine', name: 'чай зелёный жасмин (заваренный)', category: 'dry', unit: 'kg', costPerUnit: 1600, minStock: 400 },
+  { id: 'tea_black_dry', name: 'чай чёрный (сухой лист)', category: 'dry', unit: 'kg', costPerUnit: 1500, minStock: 400 },
+  { id: 'tea_jasmine_dry', name: 'чай жасмин (сухой лист)', category: 'dry', unit: 'kg', costPerUnit: 1600, minStock: 400 },
   { id: 'matcha', name: 'матча (порошок)', category: 'dry', unit: 'kg', costPerUnit: 3500, minStock: 200 },
   { id: 'taro_mix', name: 'смесь «таро»', category: 'dry', unit: 'kg', costPerUnit: 900, minStock: 1000 },
   { id: 'cocoa', name: 'какао-порошок', category: 'dry', unit: 'kg', costPerUnit: 700, minStock: 500 },
@@ -938,7 +987,8 @@ export const default_materials: material[] = [
   { id: 'condensed', name: 'сгущённое молоко', category: 'liquids', unit: 'kg', costPerUnit: 280 },
   { id: 'soda', name: 'газированная вода', category: 'liquids', unit: 'L', costPerUnit: 25, minStock: 5000 },
   { id: 'cheese_foam', name: 'сырная шапка', category: 'liquids', unit: 'kg', costPerUnit: 650, minStock: 1000 },
-  { id: 'tapioca', name: 'тапиока', category: 'toppings', unit: 'kg', costPerUnit: 400, minStock: 2000 },
+  { id: 'tapioca', name: 'тапиока сваренная', category: 'toppings', unit: 'kg', costPerUnit: 400, minStock: 2000 },
+  { id: 'tapioca_dry', name: 'тапиока сухая', category: 'toppings', unit: 'kg', costPerUnit: 400, minStock: 2000 },
   { id: 'syrup_brown_sugar', name: 'сироп «чёрный сахар»', category: 'toppings', unit: 'L', costPerUnit: 420, minStock: 2000 },
   { id: 'syrup_chocolate', name: 'сироп «шоколадный»', category: 'toppings', unit: 'L', costPerUnit: 400, minStock: 1000 },
   { id: 'syrup_curacao', name: 'сироп «блю кюрасао»', category: 'toppings', unit: 'L', costPerUnit: 450, minStock: 1000 },
@@ -1198,6 +1248,7 @@ export function default_finance_state(): finance_state {
     stockMovements: [],
     stockAudit: [],
     stockCountedAt: null,
+    stockGuard: { ...DEFAULT_STOCK_GUARD },
     taxRate: 8,
     ndflRate: 13,
     taxRegime: 'ausn_income',
@@ -1482,7 +1533,11 @@ export function normalize_finance_state(raw: unknown): finance_state {
           const s = row as Partial<stock_audit_entry>;
           const role: stock_actor_role = s.actorRole === 'seller' ? 'seller' : 'admin';
           const action: stock_audit_action =
-            s.action === 'inventory' || s.action === 'writeoff' || s.action === 'receipt' || s.action === 'delete_movement'
+            s.action === 'inventory' ||
+            s.action === 'writeoff' ||
+            s.action === 'receipt' ||
+            s.action === 'delete_movement' ||
+            s.action === 'prep'
               ? s.action
               : 'adjust';
           return {
@@ -1566,6 +1621,11 @@ export function normalize_finance_state(raw: unknown): finance_state {
       return lines.length ? lines : undefined;
     })(),
     businessPlan: normalize_business_plan((v as { businessPlan?: unknown }).businessPlan),
+    prepStations: Array.isArray((v as { prepStations?: unknown }).prepStations)
+      ? ((v as { prepStations?: unknown }).prepStations as finance_state['prepStations'])
+      : undefined,
+    prepStockMigrated: Boolean((v as { prepStockMigrated?: unknown }).prepStockMigrated),
+    stockGuard: normalize_stock_guard((v as { stockGuard?: unknown }).stockGuard),
   };
   return backfill_opex_months(base);
 }
@@ -2623,6 +2683,7 @@ export function warehouse_purchases_range(state: finance_state, from: string, to
     const d = day_key(mv.date);
     if (d < a || d > b) continue;
     if (mv.type !== 'in') continue;
+    if (is_prep_convert_note(mv.note) || is_stock_bookkeeping_note(mv.note)) continue;
     const mat = mats.get(mv.materialId);
     if (!mat || material_is_infinite(mat)) continue;
     spent += Number(mv.total) > 0 ? Number(mv.total) : mv.qty * cost_per_base_unit(mat);
@@ -2650,6 +2711,89 @@ export function stock_qty_map(state: finance_state, as_of?: string): Map<string,
   return qty;
 }
 
+/** партия на складе: остаток в базовых ед. и цена за 1 базу */
+export type stock_batch = { qty: number; unit_cost: number };
+
+function batch_qty_sum(batches: stock_batch[]) {
+  return batches.reduce((s, b) => s + b.qty, 0);
+}
+
+function batch_value_sum(batches: stock_batch[]) {
+  return batches.reduce((s, b) => s + b.qty * b.unit_cost, 0);
+}
+
+/** съесть qty с головы очереди; вернуть себестоимость */
+function fifo_take(batches: stock_batch[], qty: number, fallback_unit: number): number {
+  let left = qty;
+  let cost = 0;
+  while (left > 1e-9 && batches.length) {
+    const b = batches[0];
+    const take = Math.min(b.qty, left);
+    cost += take * b.unit_cost;
+    b.qty -= take;
+    left -= take;
+    if (b.qty <= 1e-9) batches.shift();
+  }
+  if (left > 1e-9) cost += left * fallback_unit;
+  return cost;
+}
+
+function fifo_push(batches: stock_batch[], qty: number, total: number, fallback_unit: number) {
+  if (qty <= 1e-9) return;
+  const unit = total > 0 && Number.isFinite(total) ? total / qty : fallback_unit;
+  batches.push({ qty, unit_cost: unit });
+}
+
+/**
+ * очереди партий по материалам (FIFO).
+ * in — новая партия; sale/staff/writeoff/out — съедают с головы;
+ * adjust — выравнивает остаток (минус с головы / плюс партия по текущей цене).
+ */
+export function fifo_batches_map(state: finance_state, as_of?: string): Map<string, stock_batch[]> {
+  const cutoff = as_of ? day_key(as_of) : null;
+  const mats = new Map(state.materials.map((m) => [m.id, m]));
+  const queues = new Map<string, stock_batch[]>();
+  const sorted = [...state.stockMovements].sort((a, b) => a.date.localeCompare(b.date) || a.id.localeCompare(b.id));
+  for (const mv of sorted) {
+    if (cutoff && day_key(mv.date) > cutoff) continue;
+    const mat = mats.get(mv.materialId);
+    const fallback = mat ? cost_per_base_unit(mat) : 0;
+    const q = queues.get(mv.materialId) ?? [];
+    if (mv.type === 'in') {
+      const total =
+        mv.total != null && Number.isFinite(Number(mv.total)) ? Number(mv.total) : mv.qty * fallback;
+      fifo_push(q, mv.qty, total, fallback);
+    } else if (mv.type === 'adjust') {
+      const cur = batch_qty_sum(q);
+      const target = Math.max(0, mv.qty);
+      if (target < cur - 1e-9) fifo_take(q, cur - target, fallback);
+      else if (target > cur + 1e-9) fifo_push(q, target - cur, (target - cur) * fallback, fallback);
+    } else {
+      fifo_take(q, mv.qty, fallback);
+    }
+    queues.set(mv.materialId, q);
+  }
+  return queues;
+}
+
+/** стоимость остатка по FIFO, ₽ */
+export function fifo_values_map(state: finance_state, as_of?: string): Map<string, number> {
+  const out = new Map<string, number>();
+  for (const [id, batches] of fifo_batches_map(state, as_of)) {
+    out.set(id, batch_value_sum(batches));
+  }
+  return out;
+}
+
+/** себестоимость списания qty базовых ед. по FIFO на текущем состоянии журнала */
+export function fifo_consume_cost(state: finance_state, materialId: string, qty: number): number {
+  if (qty <= 0) return 0;
+  const mat = state.materials.find((m) => m.id === materialId);
+  const fallback = mat ? cost_per_base_unit(mat) : 0;
+  const batches = (fifo_batches_map(state).get(materialId) ?? []).map((b) => ({ ...b }));
+  return Math.round(fifo_take(batches, qty, fallback) * 100) / 100;
+}
+
 export type warehouse_money = {
   /** деньги, которые ещё лежат на складе */
   on_hand: number;
@@ -2661,9 +2805,23 @@ export type warehouse_money = {
   lost: number;
 };
 
+/** варка/заваривание: сухой → готовый, это не закупка и не потеря */
+function is_prep_convert_note(note?: string) {
+  if (!note) return false;
+  return /^(варка|заваривание)\b/i.test(note.trim());
+}
+
+/** миграция / служебный сброс остатков — не закупка и не потеря */
+function is_stock_bookkeeping_note(note?: string) {
+  if (!note) return false;
+  const n = note.trim();
+  return /^миграция:/i.test(n) || /^служебный:/i.test(n);
+}
+
 /**
  * граммы и литры переводятся в деньги по цене закупки.
  * инвентаризация без накладной тоже считается тратой: вбитые граммы стоят своих рублей.
+ * варка (out сухого + in готового) не увеличивает spent/lost — только двигает остаток.
  */
 export function warehouse_money(state: finance_state, as_of?: string): warehouse_money {
   const cutoff = as_of ? day_key(as_of) : null;
@@ -2682,15 +2840,25 @@ export function warehouse_money(state: finance_state, as_of?: string): warehouse
     const prev = qty.get(mv.materialId) ?? 0;
     if (mv.type === 'in') {
       qty.set(mv.materialId, prev + mv.qty);
-      spent += movement_money(mat, mv);
+      if (!is_prep_convert_note(mv.note) && !is_stock_bookkeeping_note(mv.note)) {
+        spent += movement_money(mat, mv);
+      }
+    } else if (mv.type === 'out') {
+      // расход на варку / производство — не потеря
+      qty.set(mv.materialId, prev - mv.qty);
     } else if (mv.type === 'adjust') {
       const delta = mv.qty - prev;
       qty.set(mv.materialId, mv.qty);
-      if (delta > 0) spent += delta * unit;
+      if (is_stock_bookkeeping_note(mv.note)) {
+        /* только двигаем остаток */
+      } else if (delta > 0) spent += delta * unit;
       else lost += -delta * unit;
     } else if (mv.type === 'sale' || mv.type === 'staff') {
       qty.set(mv.materialId, prev - mv.qty);
       realized += movement_money(mat, mv);
+    } else if (mv.type === 'writeoff') {
+      qty.set(mv.materialId, prev - mv.qty);
+      lost += movement_money(mat, mv);
     } else {
       qty.set(mv.materialId, prev - mv.qty);
       lost += movement_money(mat, mv);
@@ -2698,18 +2866,35 @@ export function warehouse_money(state: finance_state, as_of?: string): warehouse
   }
 
   let on_hand = 0;
-  for (const [id, q] of qty) {
-    const mat = mats.get(id);
-    if (!mat || q <= 0) continue;
-    on_hand += q * cost_per_base_unit(mat);
-  }
+  for (const v of fifo_values_map(state, as_of).values()) on_hand += v;
 
   const round = (n: number) => Math.round(n);
   return { on_hand: round(on_hand), spent: round(spent), realized: round(realized), lost: round(lost) };
 }
 
+/** явные списания (writeoff) в деньгах — отдельно от полного lost (инвентарь↓ + writeoff) */
+export function writeoffs_money(
+  state: finance_state,
+  as_of?: string
+): { sum: number; count: number } {
+  const cutoff = as_of ? day_key(as_of) : null;
+  const mats = new Map(state.materials.map((m) => [m.id, m]));
+  let sum = 0;
+  let count = 0;
+  for (const mv of state.stockMovements) {
+    if (mv.type !== 'writeoff') continue;
+    if (cutoff && day_key(mv.date) > cutoff) continue;
+    const mat = mats.get(mv.materialId);
+    if (!mat || material_is_infinite(mat)) continue;
+    sum += movement_money(mat, mv);
+    count += 1;
+  }
+  return { sum: Math.round(sum), count };
+}
+
 export function stock_levels(state: finance_state, as_of?: string): stock_row[] {
   const qty = stock_qty_map(state, as_of);
+  const values = fifo_values_map(state, as_of);
   const last_in = new Map<string, string>();
   for (const mv of state.stockMovements) {
     if (mv.type !== 'in') continue;
@@ -2724,7 +2909,7 @@ export function stock_levels(state: finance_state, as_of?: string): stock_row[] 
       return {
         material: m,
         qty: q,
-        value: Math.max(0, q) * cost_per_base_unit(m),
+        value: Math.max(0, values.get(m.id) ?? 0),
         low: m.minStock != null && q <= m.minStock,
         last_in: last_in.get(m.id),
       };
@@ -2802,7 +2987,7 @@ export function update_month(state: finance_state, month: string, fn: (m: month_
 }
 
 /** журнал склада (движения + кто/что/когда) живёт не дольше этого */
-export const STOCK_KEEP_MONTHS = 3;
+export const STOCK_KEEP_MONTHS = 12;
 
 export function stock_keep_since(now = new Date()): Date {
   return new Date(now.getFullYear(), now.getMonth() - STOCK_KEEP_MONTHS, now.getDate(), now.getHours(), now.getMinutes(), now.getSeconds(), now.getMilliseconds());
@@ -2832,7 +3017,7 @@ export function filter_stock_audit(entries: stock_audit_entry[] | undefined, now
   return (entries ?? []).filter((e) => e.at >= since);
 }
 
-/** старше 3 месяцев выкидываем; остаток на границе сворачиваем в срез, чтобы факт не обнулился */
+/** старше года выкидываем; остаток на границе сворачиваем в срез, чтобы факт не обнулился */
 export function prune_stock_retention(state: finance_state, now = new Date()): finance_state {
   const since_day = stock_keep_since_day(now);
   const since_iso = stock_keep_since_iso(now);
@@ -2856,7 +3041,7 @@ export function prune_stock_retention(state: finance_state, now = new Date()): f
         type: 'adjust',
         materialId,
         qty,
-        note: 'срез — старше 3 месяцев',
+        note: 'срез — старше 12 месяцев',
       });
     }
     snaps.sort((a, b) => a.id.localeCompare(b.id));
@@ -2962,21 +3147,13 @@ export function apply_receipt(state: finance_state, input: receipt_input): finan
       movementId: movement.id,
     },
   ]);
-  if (input.total > 0 && input.quantity > 0) {
-    const on_hand_base = Math.max(0, stock_qty_map(state).get(mat.id) ?? 0);
-    const per = base_per_unit(mat.unit);
-    const on_hand_units = on_hand_base / per;
+  // цена последней партии — только для отображения/фолбэка; остаток в ₽ считает FIFO
+  if (input.total > 0 && input.quantity > 0 && input.update_price !== false) {
     const batch_price = input.total / input.quantity;
-    const next_cost =
-      input.update_price === false
-        ? mat.costPerUnit
-        : on_hand_units > 0
-          ? (on_hand_units * mat.costPerUnit + input.quantity * batch_price) / (on_hand_units + input.quantity)
-          : batch_price;
     next = {
       ...next,
       materials: next.materials.map((m) =>
-        m.id === mat.id ? { ...m, costPerUnit: Math.round(next_cost * 100) / 100 } : m
+        m.id === mat.id ? { ...m, costPerUnit: Math.round(batch_price * 100) / 100 } : m
       ),
     };
   }
@@ -2984,6 +3161,38 @@ export function apply_receipt(state: finance_state, input: receipt_input): finan
 }
 
 /** списание (порча, брак, проба) — количество в базовых единицах */
+/**
+ * убрать все явные списания (writeoff) из журнала — остатки вернутся,
+ * writeoffs_sum и часть lost обнулятся. инвентарные adjust не трогаем.
+ */
+export function purge_writeoff_movements(state: finance_state): {
+  state: finance_state;
+  removed: number;
+  movementIds: string[];
+} {
+  const kept: stock_movement[] = [];
+  const movementIds: string[] = [];
+  for (const mv of state.stockMovements) {
+    if (mv.type === 'writeoff') {
+      movementIds.push(mv.id);
+      continue;
+    }
+    kept.push(mv);
+  }
+  if (!movementIds.length) {
+    return { state, removed: 0, movementIds: [] };
+  }
+  const id_set = new Set(movementIds);
+  const stockAudit = (state.stockAudit ?? []).filter(
+    (e) => e.action !== 'writeoff' && !(e.movementId && id_set.has(e.movementId))
+  );
+  return {
+    state: { ...state, stockMovements: kept, stockAudit },
+    removed: movementIds.length,
+    movementIds,
+  };
+}
+
 export function apply_writeoff(
   state: finance_state,
   materialId: string,
@@ -2995,13 +3204,14 @@ export function apply_writeoff(
   if (qty <= 0) return state;
   const mat = state.materials.find((m) => m.id === materialId);
   const before = stock_qty_map(state).get(materialId) ?? 0;
+  const total = fifo_consume_cost(state, materialId, qty);
   const movement: stock_movement = {
     id: new_id('mv'),
     date,
     type: 'writeoff',
     materialId,
     qty,
-    ...(mat ? { total: Math.round(qty * cost_per_base_unit(mat) * 100) / 100 } : {}),
+    total,
     ...(note ? { note } : {}),
     ...actor_on_movement(actor),
   };
@@ -3163,6 +3373,74 @@ export function consumption_for_items(
   return out;
 }
 
+export type stock_shortage = {
+  materialId: string;
+  name: string;
+  need: number;
+  have: number;
+};
+
+function prep_guard_material_ids(state: finance_state): Set<string> {
+  const ids = new Set<string>(PREP_GUARD_MATERIAL_IDS);
+  for (const s of state.prepStations ?? []) {
+    if (s.dryMaterialId) ids.add(s.dryMaterialId);
+    if (s.cookedMaterialId) ids.add(s.cookedMaterialId);
+  }
+  return ids;
+}
+
+/** чего не хватает для заказа по техкартам (вода/лёд пропускаем; фильтр — stockGuard) */
+export function order_stock_shortages(
+  state: finance_state,
+  items: order_stock_item[],
+  menu: menu_item[] = [],
+  opts?: { releaseOrderId?: string }
+): stock_shortage[] {
+  const guard = stock_guard_of(state);
+  if (!guard.prep && !guard.all) return [];
+
+  const base = opts?.releaseOrderId
+    ? reverse_order_consumption(state, opts.releaseOrderId)
+    : state;
+  const need = consumption_for_items(base, items, menu);
+  const have = stock_qty_map(base);
+  const mats = new Map(base.materials.map((m) => [m.id, m]));
+  const prep_ids = guard.prep ? prep_guard_material_ids(base) : null;
+  const out: stock_shortage[] = [];
+  for (const [materialId, qty] of need) {
+    if (qty <= 0) continue;
+    const mat = mats.get(materialId);
+    if (mat ? material_is_infinite(mat) : is_infinite_stock(materialId)) continue;
+    if (!guard.all && prep_ids && !prep_ids.has(materialId)) continue;
+    const on_hand = have.get(materialId) ?? 0;
+    if (on_hand + 0.5 < qty) {
+      out.push({
+        materialId,
+        name: mat?.name || materialId,
+        need: qty,
+        have: Math.max(0, on_hand),
+      });
+    }
+  }
+  return out.sort((a, b) => a.name.localeCompare(b.name, 'ru'));
+}
+
+export function format_stock_shortages(state: finance_state, shortages: stock_shortage[]): string {
+  if (!shortages.length) return '';
+  const mats = new Map(state.materials.map((m) => [m.id, m]));
+  const parts = shortages.map((s) => {
+    const mat = mats.get(s.materialId) ?? {
+      id: s.materialId,
+      name: s.name,
+      category: 'dry',
+      unit: 'g' as const,
+      costPerUnit: 0,
+    };
+    return `${s.name}: нужно ${format_base_qty(mat, s.need)}, есть ${format_base_qty(mat, s.have)}`;
+  });
+  return `не хватает на складе — ${parts.join('; ')}`;
+}
+
 export function reverse_order_consumption(state: finance_state, orderId: string): finance_state {
   if (!orderId) return state;
   return {
@@ -3180,21 +3458,24 @@ export function apply_order_consumption(
   const date = opts.date || new Date().toISOString();
   let next = reverse_order_consumption(state, opts.orderId);
   const cons = consumption_for_items(next, opts.items, opts.menu ?? []);
-  const mats = new Map(next.materials.map((m) => [m.id, m]));
   const added: stock_movement[] = [];
+  // последовательный FIFO: каждое списание учитывает предыдущие строки этого заказа
+  let cursor: finance_state = next;
   for (const [materialId, qty] of cons) {
     if (qty <= 0) continue;
-    const mat = mats.get(materialId);
-    added.push({
+    const total = fifo_consume_cost(cursor, materialId, qty);
+    const mv: stock_movement = {
       id: new_id('mv'),
       date,
       type: kind,
       materialId,
       qty,
-      ...(mat ? { total: Math.round(qty * cost_per_base_unit(mat) * 100) / 100 } : {}),
+      total,
       orderId: opts.orderId,
       note: kind === 'staff' ? `персонал ${opts.orderId.slice(0, 8)}` : `заказ ${opts.orderId.slice(0, 8)}`,
-    });
+    };
+    added.push(mv);
+    cursor = { ...cursor, stockMovements: [...cursor.stockMovements, mv] };
   }
   return { ...next, stockMovements: [...next.stockMovements, ...added] };
 }

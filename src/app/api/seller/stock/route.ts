@@ -7,15 +7,20 @@ import { sum_order_revenue } from '@/lib/finance/order-revenue';
 import {
   apply_adjust,
   apply_inventory_count,
+  apply_writeoff,
+  cost_per_base_unit,
   material_is_infinite,
   merge_stock_categories,
   moscow_today,
   needs_stock_count,
   stock_levels,
+  stock_qty_map,
   warehouse_money,
+  writeoffs_money,
   type finance_state,
   type stock_category,
 } from '@/lib/finance/model';
+import { prep_station_views } from '@/lib/finance/prep-stations';
 
 export const dynamic = 'force-dynamic';
 
@@ -43,28 +48,47 @@ function public_rows(state: finance_state, with_money: boolean) {
       unit: r.material.unit,
       qty: r.qty,
       low: r.low,
+      /** ₽ за 1 базовую единицу (г/мл/шт) — для превью списания */
+      costPerBase: Math.round(cost_per_base_unit(r.material) * 10_000) / 10_000,
       ...(with_money ? { value: Math.round(r.value) } : {}),
     }));
 }
 
 async function payload(state: finance_state, with_money: boolean) {
   const today = moscow_today();
+  const wm = warehouse_money(state, today);
+  const wo = writeoffs_money(state, today);
   let earned: number | null = null;
   if (with_money) {
     try {
       const fact = await sum_order_revenue('2024-01-01', today);
-      earned = fact.revenue - warehouse_money(state, today).realized;
+      earned = fact.revenue - wm.realized;
     } catch {
       earned = null;
     }
   }
-  const money = with_money ? { ...warehouse_money(state, today), earned } : null;
+  const money = with_money
+    ? {
+        on_hand: wm.on_hand,
+        spent: wm.spent,
+        realized: wm.realized,
+        lost: wm.lost,
+        earned,
+        writeoffs_sum: wo.sum,
+        writeoffs_count: wo.count,
+      }
+    : null;
   return {
     must_count: needs_stock_count(state),
     counted_at: state.stockCountedAt ?? null,
     categories: public_cats(state).map((c) => ({ id: c.id, name: c.name, color: c.color })),
     rows: public_rows(state, with_money),
     money,
+    /** всегда — даже без stock_money */
+    lost: wm.lost,
+    writeoffs_sum: wo.sum,
+    writeoffs_count: wo.count,
+    prep_stations: prep_station_views(state),
   };
 }
 
@@ -89,6 +113,13 @@ type adjust_body = {
 type inventory_body = {
   kind: 'inventory';
   facts?: { materialId?: string; qty?: number }[];
+};
+
+type writeoff_body = {
+  kind: 'writeoff';
+  materialId?: string;
+  qty?: number;
+  note?: string;
 };
 
 export async function POST(request: Request) {
@@ -135,6 +166,32 @@ export async function POST(request: Request) {
       .map((f) => ({ materialId: String(f.materialId || ''), qty: Number(f.qty) }))
       .filter((f) => f.materialId && Number.isFinite(f.qty) && f.qty >= 0);
     next = apply_inventory_count(state, facts, date, actor);
+  } else if (kind === 'writeoff') {
+    const b = body as writeoff_body;
+    const materialId = String(b.materialId || '');
+    const qty = Math.round(Number(b.qty));
+    if (!materialId || !Number.isFinite(qty) || qty <= 0) {
+      return NextResponse.json({ error: 'укажите сколько списать' }, { status: 400 });
+    }
+    const mat = state.materials.find((m) => m.id === materialId);
+    if (!mat || material_is_infinite(mat)) {
+      return NextResponse.json({ error: 'позиция не найдена' }, { status: 404 });
+    }
+    const on_hand = stock_qty_map(state).get(materialId) ?? 0;
+    if (qty > on_hand + 0.5) {
+      return NextResponse.json(
+        { error: `нельзя списать больше остатка (${Math.round(on_hand)})` },
+        { status: 400 }
+      );
+    }
+    next = apply_writeoff(
+      state,
+      materialId,
+      qty,
+      b.note?.trim() || 'списание кассы',
+      date,
+      actor
+    );
   } else {
     return NextResponse.json({ error: 'неизвестное действие' }, { status: 400 });
   }
