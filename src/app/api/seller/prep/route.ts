@@ -63,11 +63,13 @@ export async function POST(request: Request) {
     const b = body as {
       stationId?: string;
       dryG?: number;
+      marinadeCount?: number;
       note?: string;
     };
     const result = apply_prep_cook(state, {
       stationId: String(b.stationId || ''),
       dryG: Number(b.dryG),
+      marinadeCount: b.marinadeCount != null ? Number(b.marinadeCount) : undefined,
       note: b.note,
       actor,
     });

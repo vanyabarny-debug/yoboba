@@ -2,8 +2,8 @@
 
 import { createElement, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  cooked_from_dry,
   pot_fill_ratio,
+  prep_plan_for,
   prep_station_alert,
   type prep_alert_level,
   type prep_station_view,
@@ -44,6 +44,7 @@ export default function prep_stations_board({
   const [busy, set_busy] = useState(false);
   const [error, set_error] = useState('');
   const [dry_g, set_dry_g] = useState('');
+  const [marinade_count, set_marinade_count] = useState('0');
 
   const open_id = open_id_controlled !== undefined ? open_id_controlled : open_local;
   const on_stations_ref = useRef(on_stations);
@@ -106,13 +107,16 @@ export default function prep_stations_board({
   useEffect(() => {
     if (!active) return;
     set_dry_g(String(active.defaultDryG || ''));
+    set_marinade_count(active.marinade?.enabled ? '1' : '0');
     set_error('');
   }, [active?.id]);
 
-  const preview_cooked = useMemo(() => {
-    if (!active) return 0;
-    return cooked_from_dry(active, Number(dry_g));
-  }, [active, dry_g]);
+  const plan = useMemo(() => {
+    if (!active) return null;
+    return prep_plan_for(active, Number(dry_g), Number(marinade_count));
+  }, [active, dry_g, marinade_count]);
+  const preview_cooked = plan?.cookedG ?? 0;
+  const side_lines = (plan?.lines ?? []).filter((l) => l.part !== 'main');
 
   const preview_cups =
     active && preview_cooked > 0
@@ -132,6 +136,7 @@ export default function prep_stations_board({
           kind: 'cook',
           stationId: active.id,
           dryG: Number(dry_g),
+          marinadeCount: Number(marinade_count) || 0,
         }),
       });
       const body = (await res.json()) as { error?: string; stations?: prep_station_view[] };
@@ -252,6 +257,30 @@ export default function prep_stations_board({
                   autoFocus
                 />
               </label>
+              {active.marinade?.enabled ? (
+                <label className="block">
+                  <span className="mb-1 block text-xs font-medium text-neutral-600">
+                    {active.marinade.label}, раз залил
+                  </span>
+                  <input
+                    inputMode="numeric"
+                    value={marinade_count}
+                    onChange={(e) => set_marinade_count(e.target.value)}
+                    className="w-full rounded-xl border border-neutral-200 bg-neutral-50 px-3 py-2.5 text-base tabular-nums outline-none focus:border-accent"
+                  />
+                </label>
+              ) : null}
+              {side_lines.length || (plan?.waterMl ?? 0) > 0 ? (
+                <p className="text-[11px] leading-snug text-neutral-500">
+                  {side_lines
+                    .map((l) => {
+                      const n = active.names[l.materialId];
+                      return `${Math.round(l.qty * 10) / 10} ${n?.unit ?? 'г'} ${n?.name ?? l.materialId}`;
+                    })
+                    .concat((plan?.waterMl ?? 0) > 0 ? [`вода ${plan!.waterMl} мл`] : [])
+                    .join(' · ')}
+                </p>
+              ) : null}
               <p className="text-center text-sm text-neutral-700">
                 дольётся{' '}
                 <span className="font-bold tabular-nums">

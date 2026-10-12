@@ -355,6 +355,8 @@ export type finance_state = {
   prepStations?: import('@/lib/finance/prep-stations').prep_station[];
   /** один раз перенесли старый остаток на сухие SKU */
   prepStockMigrated?: boolean;
+  /** один раз выставили норму чая 25 г / 1 л и маринад тапиоки */
+  prepRecipeV2?: boolean;
   /**
    * блокировка заказа при нехватке сырья.
    * prep — тапиока/чаи (вкл. по умолчанию); all — вся техкарта (выкл. по умолчанию).
@@ -1625,6 +1627,7 @@ export function normalize_finance_state(raw: unknown): finance_state {
       ? ((v as { prepStations?: unknown }).prepStations as finance_state['prepStations'])
       : undefined,
     prepStockMigrated: Boolean((v as { prepStockMigrated?: unknown }).prepStockMigrated),
+    prepRecipeV2: Boolean((v as { prepRecipeV2?: unknown }).prepRecipeV2),
     stockGuard: normalize_stock_guard((v as { stockGuard?: unknown }).stockGuard),
   };
   return backfill_opex_months(base);
@@ -2826,7 +2829,7 @@ export type warehouse_money = {
 /** варка/заваривание: сухой → готовый, это не закупка и не потеря */
 function is_prep_convert_note(note?: string) {
   if (!note) return false;
-  return /^(варка|заваривание)\b/i.test(note.trim());
+  return /^(варка|заваривание)(?![а-яё])/i.test(note.trim());
 }
 
 /** миграция / служебный сброс остатков — не закупка и не потеря */
