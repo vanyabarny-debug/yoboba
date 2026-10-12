@@ -3,6 +3,7 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import {
+  moscow_today,
   apply_adjust,
   apply_inventory_count,
   apply_receipt,
@@ -32,6 +33,12 @@ import {
   type stock_movement,
 } from '@/lib/finance/model';
 import InventoryCount from '@/components/admin/finance/inventory-count';
+import PrepRecipeDialog from '@/components/admin/finance/prep-recipe-dialog';
+import {
+  normalize_prep_stations,
+  save_prep_station,
+  set_material_processing,
+} from '@/lib/finance/prep-stations';
 import {
   Card,
   EmptyState,
@@ -185,6 +192,7 @@ const STOCK_SORT_OPTIONS: { id: stock_sort_id; label: string }[] = [
 ];
 
 function to_iso(date_str: string) {
+  if (date_str === moscow_today()) return new Date().toISOString();
   const d = new Date(`${date_str}T12:00:00`);
   return Number.isNaN(d.getTime()) ? new Date().toISOString() : d.toISOString();
 }
@@ -386,6 +394,7 @@ export default function InventorySection({ state, set_state }: section_props) {
   const [expanded_orders, set_expanded_orders] = useState<Set<string>>(() => new Set());
   const [writeoff_for, set_writeoff_for] = useState<string | null>(null);
   const [adjust_for, set_adjust_for] = useState<string | null>(null);
+  const [prep_for, set_prep_for] = useState<string | null>(null);
   const [cat_menu, set_cat_menu] = useState<{ id: string; x: number; y: number } | null>(null);
   const [renaming, set_renaming] = useState(false);
   const [rename_draft, set_rename_draft] = useState('');
@@ -444,6 +453,10 @@ export default function InventorySection({ state, set_state }: section_props) {
 
   const cats = state.stockCategories?.length ? state.stockCategories : [];
   const stock = useMemo(() => stock_levels(state, range_to), [state, range_to]);
+  const prep_by_material = useMemo(
+    () => new Map(normalize_prep_stations(state.prepStations).map((s) => [s.cookedMaterialId, s])),
+    [state.prepStations]
+  );
   const period_mv = useMemo(() => movements_in_range(state, range_from, range_to), [state, range_from, range_to]);
   const stock_value = stock.reduce((s, r) => s + r.value, 0);
   const money = useMemo(() => warehouse_money(state, range_to), [state, range_to]);
@@ -509,7 +522,7 @@ export default function InventorySection({ state, set_state }: section_props) {
       if (!mat) continue;
       const rub = movement_money(mat, mv);
       const note = (mv.note || '').trim();
-      const is_prep = /^(варка|заваривание)\b/i.test(note);
+      const is_prep = /^(варка|заваривание|маринад)(?![а-яё])/i.test(note);
       const is_book = /^миграция:/i.test(note) || /^служебный:/i.test(note);
       if (mv.type === 'in') {
         // варка/заваривание — не закупка, а перекладка сухого → готового
@@ -546,7 +559,7 @@ export default function InventorySection({ state, set_state }: section_props) {
       receipts: period_mv.filter((m) => {
         if (m.type !== 'in') return false;
         const note = (m.note || '').trim();
-        return !/^(варка|заваривание)\b/i.test(note) && !/^миграция:/i.test(note) && !/^служебный:/i.test(note);
+        return !/^(варка|заваривание|маринад)(?![а-яё])/i.test(note) && !/^миграция:/i.test(note) && !/^служебный:/i.test(note);
       }).length,
     };
   }, [stock, period_mv, mat_by_id, cats, journal_rows]);
@@ -1280,6 +1293,32 @@ export default function InventorySection({ state, set_state }: section_props) {
                   placeholder="название"
                   onChange={(e) => update_material(s.material.id, { name: e.target.value })}
                 />
+                <div className="flex w-36 shrink-0 items-center gap-1">
+                <label
+                  className="inline-flex shrink-0 cursor-pointer items-center gap-1 text-xs text-neutral-500"
+                  title="позиция получается обработкой: варка, заваривание"
+                >
+                  <input
+                    type="checkbox"
+                    checked={Boolean(prep_by_material.get(s.material.id)?.enabled)}
+                    onChange={(e) => {
+                      const on = e.target.checked;
+                      set_state((prev) => set_material_processing(prev, s.material.id, on));
+                      if (on) set_prep_for(s.material.id);
+                    }}
+                  />
+                  обработка
+                </label>
+                {prep_by_material.get(s.material.id)?.enabled ? (
+                  <button
+                    type="button"
+                    className="shrink-0 rounded-lg px-2 py-1 text-xs text-accent hover:bg-accent/10"
+                    onClick={() => set_prep_for(s.material.id)}
+                  >
+                    норма
+                  </button>
+                ) : null}
+                </div>
                 <span className={`w-24 shrink-0 text-right text-sm tabular-nums ${s.qty < 0 ? 'text-amber-600' : 'text-neutral-800'}`}>
                   {format_base_qty(s.material, s.qty)}
                 </span>
@@ -1413,6 +1452,17 @@ export default function InventorySection({ state, set_state }: section_props) {
           on_submit={(qty, note, date) => {
             set_state((prev) => apply_adjust(prev, adjust_for, qty, note, to_iso(date), ADMIN_ACTOR));
             set_adjust_for(null);
+          }}
+        />
+      )}
+      {prep_for && prep_by_material.get(prep_for) && (
+        <PrepRecipeDialog
+          station={prep_by_material.get(prep_for)!}
+          materials={state.materials}
+          on_close={() => set_prep_for(null)}
+          on_save={(station) => {
+            set_state((prev) => save_prep_station(prev, station));
+            set_prep_for(null);
           }}
         />
       )}

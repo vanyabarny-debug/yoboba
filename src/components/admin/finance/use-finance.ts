@@ -60,6 +60,8 @@ export function use_finance(): finance_bundle {
   const dirty_ref = useRef(false);
   const timer_ref = useRef<ReturnType<typeof setTimeout> | null>(null);
   const latest_ref = useRef<finance_state | null>(null);
+  /** id движений склада, которые админка уже видела — чтобы сервер не путал новые с удалёнными */
+  const base_ids_ref = useRef<string[]>([]);
   const persist_ref = useRef<() => Promise<void>>(async () => {});
 
   const persist = useCallback(async () => {
@@ -72,7 +74,7 @@ export function use_finance(): finance_bundle {
         method: 'PUT',
         credentials: 'same-origin',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ state: s }),
+        body: JSON.stringify({ state: s, baseMovementIds: base_ids_ref.current }),
       });
       if (!res.ok) throw new Error('save failed');
       set_save_status(dirty_ref.current ? 'dirty' : 'saved');
@@ -101,6 +103,7 @@ export function use_finance(): finance_bundle {
     const s = backfill_opex_months(with_month);
     const opex_changed = JSON.stringify(s.monthsData) !== JSON.stringify(with_month.monthsData);
     latest_ref.current = s;
+    base_ids_ref.current = s.stockMovements.map((m) => m.id);
     set_state_raw(s);
     set_menu(body.menu ?? []);
     if (repair && (tax_changed || opex_changed)) {

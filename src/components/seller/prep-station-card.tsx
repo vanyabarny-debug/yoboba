@@ -2,6 +2,7 @@
 
 import { createElement } from 'react';
 import {
+  cups_text,
   pot_fill_ratio,
   prep_station_alert,
   type prep_station_view,
@@ -62,6 +63,19 @@ const ALERT_CSS = `
   background: #F59E0B;
   color: #fff;
 }
+.prep-card--marinade {
+  animation: prep-card-marinade 1s ease-in-out infinite;
+  border-width: 3px !important;
+  border-color: #F59E0B !important;
+}
+@keyframes prep-card-marinade {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(245, 158, 11, 0.6); }
+  50% { box-shadow: 0 0 0 10px rgba(245, 158, 11, 0); }
+}
+.prep-card__badge--marinade {
+  background: #F59E0B;
+  color: #fff;
+}
 .prep-card__badge--empty {
   background: #DC2626;
   color: #fff;
@@ -78,12 +92,13 @@ export default function prep_station_card({ station, on_open }: props) {
   const tint = TONE_CARD[tone] ?? color_for_id(station.id);
   const fill = pot_fill_ratio(station, station.cookedQty);
   const alert = prep_station_alert(station);
+  const marinade = station.marinadePending && station.cookedQty > 0;
   const under =
     station.cookedQty <= 0
       ? 'пусто — свари'
-      : alert === 'low'
-        ? `мало! ${format_g(station.cookedQty)} · ~${station.cupsLeft} ст`
-        : `${format_g(station.cookedQty)} · ~${station.cupsLeft} ст`;
+      : marinade
+        ? 'добавьте маринад'
+        : `${alert === 'low' ? 'мало! ' : ''}${format_g(station.cookedQty)} · ${cups_text(station.cupsLeft)}`;
 
   return (
     <>
@@ -94,7 +109,9 @@ export default function prep_station_card({ station, on_open }: props) {
             ? 'prep-card--alert prep-card--alert-empty'
             : alert === 'low'
               ? 'prep-card--alert prep-card--alert-low'
-              : ''
+              : marinade
+                ? 'prep-card--marinade'
+                : ''
         }`}
         style={
           alert === 'ok'
@@ -109,6 +126,9 @@ export default function prep_station_card({ station, on_open }: props) {
       >
         {alert === 'low' ? (
           <span className="prep-card__badge prep-card__badge--low">мало</span>
+        ) : null}
+        {marinade && alert === 'ok' ? (
+          <span className="prep-card__badge prep-card__badge--marinade">маринад</span>
         ) : null}
         {alert === 'empty' ? (
           <span className="prep-card__badge prep-card__badge--empty">пусто</span>
