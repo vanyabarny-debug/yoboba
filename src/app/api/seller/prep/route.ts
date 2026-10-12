@@ -5,6 +5,7 @@ import { read_finance_state, write_finance_state } from '@/lib/finance/finance-s
 import {
   apply_prep_cook,
   apply_prep_discard,
+  apply_prep_marinade,
   heal_prep_batch_scales,
   prep_station_views,
   update_prep_station,
@@ -63,14 +64,33 @@ export async function POST(request: Request) {
     const b = body as {
       stationId?: string;
       dryG?: number;
-      marinadeCount?: number;
       note?: string;
     };
     const result = apply_prep_cook(state, {
       stationId: String(b.stationId || ''),
       dryG: Number(b.dryG),
-      marinadeCount: b.marinadeCount != null ? Number(b.marinadeCount) : undefined,
       note: b.note,
+      actor,
+    });
+    if (!result.ok) {
+      return NextResponse.json({ error: result.error }, { status: 400 });
+    }
+    try {
+      await write_finance_state(result.state);
+    } catch (e) {
+      return NextResponse.json(
+        { error: e instanceof Error ? e.message : 'ошибка записи' },
+        { status: 500 }
+      );
+    }
+    return NextResponse.json({ ok: true, stations: prep_station_views(result.state) });
+  }
+
+  if (kind === 'marinade') {
+    const b = body as { stationId?: string; ml?: number };
+    const result = apply_prep_marinade(state, {
+      stationId: String(b.stationId || ''),
+      ml: Number(b.ml),
       actor,
     });
     if (!result.ok) {

@@ -55,6 +55,8 @@ export type prep_station = {
   marinade: prep_marinade | null;
   /** сколько сварили за последний раз (г) — это и есть 100% шкалы */
   batchFullG: number;
+  /** сварили, маринад ещё не залили */
+  marinadePending: boolean;
   enabled: boolean;
 };
 
@@ -113,7 +115,7 @@ export const DEFAULT_TAPIOCA_MARINADE: prep_marinade = {
   enabled: true,
   label: 'маринад',
   inputs: [
-    { materialId: 'cane_sugar_cube', qty: 4 },
+    { materialId: 'cane_sugar_cube', qty: 5 },
     { materialId: 'syrup_brown_sugar', qty: 40 },
   ],
   waterMl: 500,
@@ -134,6 +136,7 @@ export const DEFAULT_PREP_STATIONS: prep_station[] = [
     defaultCookedG: 600,
     portionG: 50,
     batchFullG: 0,
+    marinadePending: false,
     enabled: true,
     extraInputs: [],
     waterMl: 0,
@@ -149,6 +152,7 @@ export const DEFAULT_PREP_STATIONS: prep_station[] = [
     defaultCookedG: TEA_NORM.defaultCookedG,
     portionG: 150,
     batchFullG: 0,
+    marinadePending: false,
     enabled: true,
     extraInputs: [],
     waterMl: TEA_NORM.waterMl,
@@ -164,6 +168,7 @@ export const DEFAULT_PREP_STATIONS: prep_station[] = [
     defaultCookedG: TEA_NORM.defaultCookedG,
     portionG: 150,
     batchFullG: 0,
+    marinadePending: false,
     enabled: true,
     extraInputs: [],
     waterMl: TEA_NORM.waterMl,
@@ -231,11 +236,16 @@ export function normalize_prep_stations(raw: unknown): prep_station[] {
         defaultCookedG: 0,
         portionG: 50,
         batchFullG: 0,
+        marinadePending: false,
         enabled: true,
         extraInputs: [],
         waterMl: 0,
         marinade: null,
       };
+      const marinade = normalize_marinade(
+        'marinade' in r ? (r as { marinade?: unknown }).marinade : undefined,
+        base.marinade
+      );
       by_id.set(id, {
         ...base,
         label: String(r.label || base.label).trim() || base.label,
@@ -250,10 +260,8 @@ export function normalize_prep_stations(raw: unknown): prep_station[] {
         extraInputs: normalize_inputs(r.extraInputs, base.extraInputs),
         waterMl:
           r.waterMl != null ? Math.max(0, Math.round(Number(r.waterMl) || 0)) : base.waterMl,
-        marinade: normalize_marinade(
-          'marinade' in r ? (r as { marinade?: unknown }).marinade : undefined,
-          base.marinade
-        ),
+        marinade,
+        marinadePending: Boolean(r.marinadePending) && Boolean(marinade?.enabled),
       });
     }
   }
@@ -440,6 +448,20 @@ export function prep_plan_for(station: prep_station, dryG: number, marinadeCount
   return { cookedG, lines, waterMl };
 }
 
+/** маринад на ml мл воды: раскладка задана на marinade.waterMl (например 500 мл) */
+export function prep_marinade_plan(station: prep_station, ml: number): prep_plan {
+  const m = station.marinade;
+  const water = Math.max(0, Math.round(Number(ml) || 0));
+  if (!m || !m.enabled || water <= 0) return { cookedG: 0, lines: [], waterMl: 0 };
+  const scale = m.waterMl > 0 ? water / m.waterMl : 1;
+  const lines: prep_plan_line[] = [];
+  for (const i of m.inputs) {
+    const qty = Math.round(i.qty * scale * 100) / 100;
+    if (qty > 0) lines.push({ materialId: i.materialId, qty, part: 'marinade' });
+  }
+  return { cookedG: Math.round(m.addG * scale), lines, waterMl: water };
+}
+
 /** себестоимость по текущим ценам склада: ₽ за партию и ₽ за кг/л готового */
 export function prep_plan_cost(plan: prep_plan, materials: material[]) {
   const mats = new Map(materials.map((m) => [m.id, m]));
@@ -489,6 +511,7 @@ export function set_material_processing(
     defaultCookedG: 0,
     portionG: 50,
     batchFullG: 0,
+    marinadePending: false,
     enabled: true,
     extraInputs: [],
     waterMl: 0,
@@ -501,7 +524,11 @@ export function save_prep_station(state: finance_state, station: prep_station): 
   const stations = normalize_prep_stations(state.prepStations);
   const next = normalize_prep_stations([station]).find((s) => s.id === station.id)!;
   const keep = stations.find((s) => s.id === station.id);
-  const merged = { ...next, batchFullG: keep?.batchFullG ?? next.batchFullG };
+  const merged = {
+    ...next,
+    batchFullG: keep?.batchFullG ?? next.batchFullG,
+    marinadePending: Boolean(keep?.marinadePending && next.marinade?.enabled),
+  };
   return {
     ...state,
     prepStations: keep
@@ -567,8 +594,6 @@ export function apply_prep_cook(
   input: {
     stationId: string;
     dryG: number;
-    /** сколько раз залили маринад; по умолчанию 1, если у станции он включён */
-    marinadeCount?: number;
     note?: string;
     actor?: stock_actor | null;
     date?: string;
@@ -591,9 +616,7 @@ export function apply_prep_cook(
     };
   }
 
-  const marinade_count =
-    input.marinadeCount != null ? input.marinadeCount : station.marinade?.enabled ? 1 : 0;
-  const plan = prep_plan_for(station, dryG, marinade_count);
+  const plan = prep_plan_for(station, dryG, 0);
   const cookedG = plan.cookedG;
   if (cookedG <= 0) {
     return { ok: false, error: 'не удалось посчитать выход — проверьте норму на складе' };
@@ -610,7 +633,13 @@ export function apply_prep_cook(
     return { ok: false, error: `на складе нет позиции «${missing.materialId}» из нормы — поправьте норму` };
   }
 
-  const cooked_before = Math.max(0, stock_qty_map(state).get(cooked.id) ?? 0);
+  const cooked_before = stock_qty_map(state).get(cooked.id) ?? 0;
+  if (cooked_before > 0) {
+    return {
+      ok: false,
+      error: `в ${station.kind === 'pot' ? 'кастрюле' : 'термобочке'} ещё есть остаток — сначала спишите его`,
+    };
+  }
 
   const date = input.date || new Date().toISOString();
   const note = input.note?.trim() || `${station.kind === 'pot' ? 'варка' : 'заваривание'}: ${station.label}`;
@@ -623,6 +652,18 @@ export function apply_prep_cook(
   }
 
   const out_mvs: stock_movement[] = [];
+  // продажи при пустой кастрюле увели готовое в минус — новая партия начинается с нуля
+  if (cooked_before < 0) {
+    out_mvs.push({
+      id: new_id('mv'),
+      date,
+      type: 'adjust',
+      materialId: cooked.id,
+      qty: 0,
+      note: `служебный: минус готового обнулён перед новой партией (${station.label})`,
+      ...actor_on_movement(input.actor),
+    });
+  }
   let cost_total = 0;
   for (const [materialId, qty] of consume) {
     const cost = fifo_consume_cost(state, materialId, qty);
@@ -660,7 +701,9 @@ export function apply_prep_cook(
   };
 
   const next_stations = stations.map((s) =>
-    s.id === station.id ? { ...s, batchFullG: cooked_before + cookedG } : s
+    s.id === station.id
+      ? { ...s, batchFullG: cookedG, marinadePending: Boolean(s.marinade?.enabled) }
+      : s
   );
 
   let next: finance_state = {
@@ -678,16 +721,80 @@ export function apply_prep_cook(
       action: 'prep',
       materialId: cooked.id,
       materialName: cooked.name,
-      qtyBefore: stock_qty_map(state).get(cooked.id) ?? 0,
-      qtyAfter: (stock_qty_map(state).get(cooked.id) ?? 0) + cookedG,
-      note: `${note} · −${dryG} г сухого${
-        marinade_count > 0 && station.marinade ? ` + ${station.marinade.label}` : ''
-      } → +${cookedG} г (=100%)`,
+      qtyBefore: cooked_before,
+      qtyAfter: cookedG,
+      note: `${note} · −${dryG} г сухого → ${cookedG} г (=100%)`,
       movementId: in_mv.id,
     },
   ]);
 
   return { ok: true, state: next };
+}
+
+/** залить маринад в сваренную партию: сырьё списывается пропорционально мл */
+export function apply_prep_marinade(
+  state: finance_state,
+  input: { stationId: string; ml: number; actor?: stock_actor | null; date?: string }
+): { ok: true; state: finance_state } | { ok: false; error: string } {
+  const stations = normalize_prep_stations(state.prepStations);
+  const station = stations.find((s) => s.id === input.stationId);
+  if (!station || !station.marinade?.enabled) return { ok: false, error: 'у станции нет маринада' };
+  const ml = Math.round(Number(input.ml));
+  if (!Number.isFinite(ml) || ml <= 0) return { ok: false, error: 'укажите сколько мл маринада залили' };
+  const cooked_qty = stock_qty_map(state).get(station.cookedMaterialId) ?? 0;
+  if (cooked_qty <= 0) return { ok: false, error: 'кастрюля пустая — сначала сварите' };
+
+  const plan = prep_marinade_plan(station, ml);
+  const mats = new Map(state.materials.map((m) => [m.id, m]));
+  const missing = plan.lines.find((l) => !mats.has(l.materialId));
+  if (missing) {
+    return { ok: false, error: `на складе нет позиции «${missing.materialId}» из маринада — поправьте норму` };
+  }
+  const date = input.date || new Date().toISOString();
+  // если маринад прибавляет вес — это переработка в готовое, иначе обычный расход
+  const adds = plan.cookedG > 0;
+  const label = station.marinade.label;
+  const note = adds ? `маринад: ${station.label}` : `${label} (${ml} мл): ${station.label}`;
+
+  const mvs: stock_movement[] = [];
+  let cost_total = 0;
+  for (const l of plan.lines) {
+    const m = mats.get(l.materialId)!;
+    if (material_is_infinite(m)) continue;
+    const cost = fifo_consume_cost(state, m.id, l.qty);
+    cost_total += cost;
+    mvs.push({
+      id: new_id('mv'),
+      date,
+      type: 'out',
+      materialId: m.id,
+      qty: l.qty,
+      total: cost,
+      note,
+      ...actor_on_movement(input.actor),
+    });
+  }
+  if (adds) {
+    mvs.push({
+      id: new_id('mv'),
+      date,
+      type: 'in',
+      materialId: station.cookedMaterialId,
+      qty: plan.cookedG,
+      total: Math.round(cost_total * 100) / 100,
+      note,
+      ...actor_on_movement(input.actor),
+    });
+  }
+  const next_stations = stations.map((s) =>
+    s.id === station.id
+      ? { ...s, marinadePending: false, batchFullG: adds ? Math.round(cooked_qty + plan.cookedG) : s.batchFullG }
+      : s
+  );
+  return {
+    ok: true,
+    state: { ...state, prepStations: next_stations, stockMovements: [...state.stockMovements, ...mvs] },
+  };
 }
 
 /** списать весь готовый остаток станции (конец смены / выбросить) */
@@ -725,7 +832,7 @@ export function apply_prep_discard(
   };
 
   const next_stations = stations.map((s) =>
-    s.id === station.id ? { ...s, batchFullG: 0 } : s
+    s.id === station.id ? { ...s, batchFullG: 0, marinadePending: false } : s
   );
 
   let next: finance_state = {

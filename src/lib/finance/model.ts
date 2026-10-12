@@ -2829,7 +2829,7 @@ export type warehouse_money = {
 /** варка/заваривание: сухой → готовый, это не закупка и не потеря */
 function is_prep_convert_note(note?: string) {
   if (!note) return false;
-  return /^(варка|заваривание)(?![а-яё])/i.test(note.trim());
+  return /^(варка|заваривание|маринад)(?![а-яё])/i.test(note.trim());
 }
 
 /** миграция / служебный сброс остатков — не закупка и не потеря */

@@ -3,6 +3,7 @@
 import { createElement, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   pot_fill_ratio,
+  prep_marinade_plan,
   prep_plan_for,
   prep_station_alert,
   type prep_alert_level,
@@ -44,7 +45,7 @@ export default function prep_stations_board({
   const [busy, set_busy] = useState(false);
   const [error, set_error] = useState('');
   const [dry_g, set_dry_g] = useState('');
-  const [marinade_count, set_marinade_count] = useState('0');
+  const [marinade_ml, set_marinade_ml] = useState('');
 
   const open_id = open_id_controlled !== undefined ? open_id_controlled : open_local;
   const on_stations_ref = useRef(on_stations);
@@ -107,23 +108,28 @@ export default function prep_stations_board({
   useEffect(() => {
     if (!active) return;
     set_dry_g(String(active.defaultDryG || ''));
-    set_marinade_count(active.marinade?.enabled ? '1' : '0');
+    set_marinade_ml(String(active.marinade?.waterMl || 500));
     set_error('');
   }, [active?.id]);
 
   const plan = useMemo(() => {
     if (!active) return null;
-    return prep_plan_for(active, Number(dry_g), Number(marinade_count));
-  }, [active, dry_g, marinade_count]);
+    return prep_plan_for(active, Number(dry_g), 0);
+  }, [active, dry_g]);
   const preview_cooked = plan?.cookedG ?? 0;
   const side_lines = (plan?.lines ?? []).filter((l) => l.part !== 'main');
+  const marinade_plan = useMemo(
+    () => (active ? prep_marinade_plan(active, Number(marinade_ml)) : null),
+    [active, marinade_ml]
+  );
+  const has_left = (active?.cookedQty ?? 0) > 0;
 
-  const preview_cups =
-    active && preview_cooked > 0
-      ? Math.floor(preview_cooked / Math.max(1, active.portionG))
-      : 0;
+  function line_text(l: { materialId: string; qty: number }) {
+    const n = active?.names[l.materialId];
+    return `${Math.round(l.qty * 10) / 10} ${n?.unit ?? 'г'} ${n?.name ?? l.materialId}`;
+  }
 
-  async function submit_cook() {
+  async function post(payload: Record<string, unknown>, fail: string) {
     if (!active || busy) return;
     set_busy(true);
     set_error('');
@@ -132,16 +138,11 @@ export default function prep_stations_board({
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         credentials: 'same-origin',
-        body: JSON.stringify({
-          kind: 'cook',
-          stationId: active.id,
-          dryG: Number(dry_g),
-          marinadeCount: Number(marinade_count) || 0,
-        }),
+        body: JSON.stringify({ ...payload, stationId: active.id }),
       });
       const body = (await res.json()) as { error?: string; stations?: prep_station_view[] };
       if (!res.ok) {
-        set_error(body.error || 'не удалось сварить');
+        set_error(body.error || fail);
         return;
       }
       const next = body.stations ?? [];
@@ -155,32 +156,18 @@ export default function prep_stations_board({
     }
   }
 
-  async function submit_discard() {
-    if (!active || busy) return;
+  function submit_cook() {
+    void post({ kind: 'cook', dryG: Number(dry_g) }, 'не удалось сварить');
+  }
+
+  function submit_marinade() {
+    void post({ kind: 'marinade', ml: Number(marinade_ml) }, 'не удалось записать маринад');
+  }
+
+  function submit_discard() {
+    if (!active) return;
     if (!confirm(`списать весь остаток «${active.label}» (${format_g(active.cookedQty)})?`)) return;
-    set_busy(true);
-    set_error('');
-    try {
-      const res = await fetch('/api/seller/prep', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        credentials: 'same-origin',
-        body: JSON.stringify({ kind: 'discard', stationId: active.id }),
-      });
-      const body = (await res.json()) as { error?: string; stations?: prep_station_view[] };
-      if (!res.ok) {
-        set_error(body.error || 'не удалось списать');
-        return;
-      }
-      const next = body.stations ?? [];
-      set_stations(next);
-      on_stations_ref.current?.(next);
-      set_open_id(null);
-    } catch {
-      set_error('сеть недоступна');
-    } finally {
-      set_busy(false);
-    }
+    void post({ kind: 'discard' }, 'не удалось списать');
   }
 
   return (
@@ -213,28 +200,9 @@ export default function prep_stations_board({
                 size="lg"
                 tone={liquid_tone_for(active.id)}
               />
-              <div className="min-w-0 flex-1">
-                <p className="truncate text-lg font-bold tracking-tight text-neutral-900">
-                  {active.label}
-                </p>
-                <p className="mt-0.5 text-xs text-neutral-600">
-                  осталось {format_g(active.cookedQty)}
-                  {active.batchFullG > 0
-                    ? ` · из ${format_g(active.batchFullG)}`
-                    : ''}{' '}
-                  · ~{active.cupsLeft} ст
-                </p>
-                <p className="mt-1 text-[11px] leading-snug text-neutral-500">
-                  % от последней варки · норма {active.defaultDryG}→
-                  {active.defaultCookedG} г
-                </p>
-                <p
-                  className={`mt-0.5 text-[11px] ${active.dryQty < 0 ? 'font-semibold text-red-600' : 'text-neutral-500'}`}
-                >
-                  сухого на складе {format_g(active.dryQty)}
-                  {active.dryQty < 0 ? ' — закроется следующим поступлением' : ''}
-                </p>
-              </div>
+              <p className="min-w-0 flex-1 truncate text-lg font-bold tracking-tight text-neutral-900">
+                {active.label}
+              </p>
               <button
                 type="button"
                 onClick={() => set_open_id(null)}
@@ -245,68 +213,90 @@ export default function prep_stations_board({
             </div>
 
             <div className="space-y-3 px-4 py-4">
-              <label className="block">
-                <span className="mb-1 block text-xs font-medium text-neutral-600">
-                  положил сухого, г
-                </span>
-                <input
-                  inputMode="numeric"
-                  value={dry_g}
-                  onChange={(e) => set_dry_g(e.target.value)}
-                  className="w-full rounded-xl border border-neutral-200 bg-neutral-50 px-3 py-2.5 text-base tabular-nums outline-none focus:border-accent"
-                  autoFocus
-                />
-              </label>
-              {active.marinade?.enabled ? (
-                <label className="block">
-                  <span className="mb-1 block text-xs font-medium text-neutral-600">
-                    {active.marinade.label}, раз залил
-                  </span>
-                  <input
-                    inputMode="numeric"
-                    value={marinade_count}
-                    onChange={(e) => set_marinade_count(e.target.value)}
-                    className="w-full rounded-xl border border-neutral-200 bg-neutral-50 px-3 py-2.5 text-base tabular-nums outline-none focus:border-accent"
-                  />
-                </label>
+              {has_left && active.marinadePending && active.marinade ? (
+                <div className="prep-marinade space-y-2 rounded-2xl border-2 border-amber-400 bg-amber-50 p-3">
+                  <p className="text-sm font-bold text-amber-800">добавьте {active.marinade.label}</p>
+                  <p className="text-[12px] leading-snug text-amber-900">
+                    на {active.marinade.waterMl} мл:{' '}
+                    {active.marinade.inputs.map((i) => line_text(i)).join(' + ')} + горячая вода, размешать
+                  </p>
+                  <label className="block">
+                    <span className="mb-1 block text-xs font-medium text-amber-900">залил, мл</span>
+                    <input
+                      inputMode="numeric"
+                      value={marinade_ml}
+                      onChange={(e) => set_marinade_ml(e.target.value)}
+                      className="w-full rounded-xl border border-amber-300 bg-white px-3 py-2.5 text-base tabular-nums outline-none focus:border-amber-500"
+                    />
+                  </label>
+                  {marinade_plan && Number(marinade_ml) !== active.marinade.waterMl && marinade_plan.lines.length ? (
+                    <p className="text-[11px] text-amber-800">
+                      спишется: {marinade_plan.lines.map(line_text).join(' · ')}
+                    </p>
+                  ) : null}
+                  <button
+                    type="button"
+                    disabled={busy || Number(marinade_ml) <= 0}
+                    onClick={submit_marinade}
+                    className="w-full rounded-2xl bg-amber-500 py-3 text-sm font-bold text-white shadow disabled:opacity-50"
+                  >
+                    {busy ? 'пишем…' : 'залил маринад'}
+                  </button>
+                </div>
               ) : null}
-              {side_lines.length || (plan?.waterMl ?? 0) > 0 ? (
-                <p className="text-[11px] leading-snug text-neutral-500">
-                  {side_lines
-                    .map((l) => {
-                      const n = active.names[l.materialId];
-                      return `${Math.round(l.qty * 10) / 10} ${n?.unit ?? 'г'} ${n?.name ?? l.materialId}`;
-                    })
-                    .concat((plan?.waterMl ?? 0) > 0 ? [`вода ${plan!.waterMl} мл`] : [])
-                    .join(' · ')}
-                </p>
+
+              {!has_left ? (
+                <>
+                  <label className="block">
+                    <span className="mb-1 block text-xs font-medium text-neutral-600">
+                      положил сухого, г
+                    </span>
+                    <input
+                      inputMode="numeric"
+                      value={dry_g}
+                      onChange={(e) => set_dry_g(e.target.value)}
+                      className="w-full rounded-xl border border-neutral-200 bg-neutral-50 px-3 py-2.5 text-base tabular-nums outline-none focus:border-accent"
+                      autoFocus
+                    />
+                  </label>
+                  {side_lines.length || (plan?.waterMl ?? 0) > 0 ? (
+                    <p className="text-[12px] leading-snug text-neutral-600">
+                      {side_lines
+                        .map(line_text)
+                        .concat((plan?.waterMl ?? 0) > 0 ? [`вода ${plan!.waterMl} мл`] : [])
+                        .join(' + ')}
+                    </p>
+                  ) : null}
+                  <p className="text-center text-sm text-neutral-700">
+                    получится{' '}
+                    <span className="font-bold tabular-nums">
+                      {preview_cooked > 0 ? format_g(preview_cooked) : '—'}
+                    </span>
+                  </p>
+                </>
               ) : null}
-              <p className="text-center text-sm text-neutral-700">
-                дольётся{' '}
-                <span className="font-bold tabular-nums">
-                  {preview_cooked > 0 ? format_g(preview_cooked) : '—'}
-                </span>
-                {preview_cups > 0 ? (
-                  <span className="text-neutral-500"> · ~{preview_cups} ст</span>
-                ) : null}
-              </p>
+
               {error ? <p className="text-center text-sm text-red-600">{error}</p> : null}
-              <button
-                type="button"
-                disabled={busy || preview_cooked <= 0}
-                onClick={() => void submit_cook()}
-                className="w-full rounded-2xl bg-accent/95 py-3 text-sm font-bold text-white shadow-lg disabled:opacity-50"
-              >
-                {busy ? 'пишем…' : active.kind === 'pot' ? 'сварить' : 'заварить'}
-              </button>
-              <button
-                type="button"
-                disabled={busy || active.cookedQty <= 0}
-                onClick={() => void submit_discard()}
-                className="w-full rounded-2xl bg-neutral-100 py-2.5 text-sm font-semibold text-red-600 disabled:opacity-40"
-              >
-                списать остаток
-              </button>
+
+              {!has_left ? (
+                <button
+                  type="button"
+                  disabled={busy || preview_cooked <= 0}
+                  onClick={submit_cook}
+                  className="w-full rounded-2xl bg-accent/95 py-3 text-sm font-bold text-white shadow-lg disabled:opacity-50"
+                >
+                  {busy ? 'пишем…' : active.kind === 'pot' ? 'сварить' : 'заварить'}
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={submit_discard}
+                  className="w-full rounded-2xl bg-neutral-100 py-3 text-sm font-semibold text-red-600 disabled:opacity-40"
+                >
+                  списать остаток
+                </button>
+              )}
             </div>
           </div>
         </div>

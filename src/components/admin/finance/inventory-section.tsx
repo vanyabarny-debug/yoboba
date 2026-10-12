@@ -522,7 +522,7 @@ export default function InventorySection({ state, set_state }: section_props) {
       if (!mat) continue;
       const rub = movement_money(mat, mv);
       const note = (mv.note || '').trim();
-      const is_prep = /^(варка|заваривание)(?![а-яё])/i.test(note);
+      const is_prep = /^(варка|заваривание|маринад)(?![а-яё])/i.test(note);
       const is_book = /^миграция:/i.test(note) || /^служебный:/i.test(note);
       if (mv.type === 'in') {
         // варка/заваривание — не закупка, а перекладка сухого → готового
@@ -559,7 +559,7 @@ export default function InventorySection({ state, set_state }: section_props) {
       receipts: period_mv.filter((m) => {
         if (m.type !== 'in') return false;
         const note = (m.note || '').trim();
-        return !/^(варка|заваривание)(?![а-яё])/i.test(note) && !/^миграция:/i.test(note) && !/^служебный:/i.test(note);
+        return !/^(варка|заваривание|маринад)(?![а-яё])/i.test(note) && !/^миграция:/i.test(note) && !/^служебный:/i.test(note);
       }).length,
     };
   }, [stock, period_mv, mat_by_id, cats, journal_rows]);

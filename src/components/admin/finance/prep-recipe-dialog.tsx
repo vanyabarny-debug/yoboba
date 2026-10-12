@@ -221,7 +221,7 @@ export default function PrepRecipeDialog({ station, materials, on_close, on_save
             </label>
             {draft.marinade?.enabled ? (
               <div className="mt-2 space-y-2">
-                <p className="text-[11px] text-neutral-400">на одну кастрюлю; кассир может залить 0, 1, 2… раза</p>
+                <p className="text-[11px] text-neutral-400">раскладка на объём воды ниже; кассир вводит, сколько мл залил — сырьё спишется пропорционально</p>
                 <InputsEditor
                   rows={draft.marinade.inputs}
                   options={options}
@@ -248,7 +248,7 @@ export default function PrepRecipeDialog({ station, materials, on_close, on_save
                     />
                   </label>
                 </div>
-                <p className="text-xs text-neutral-600">маринад: {format_rub(marinade_cost, 2)} за заливку — добавится к себестоимости готового</p>
+                <p className="text-xs text-neutral-600">маринад: {format_rub(marinade_cost, 2)} за {draft.marinade.waterMl} мл</p>
               </div>
             ) : null}
           </div>
