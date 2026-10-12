@@ -2,6 +2,7 @@
 
 import { createElement } from 'react';
 import {
+  cups_text,
   pot_fill_ratio,
   prep_station_alert,
   type prep_station_view,
@@ -97,9 +98,7 @@ export default function prep_station_card({ station, on_open }: props) {
       ? 'пусто — свари'
       : marinade
         ? 'добавьте маринад'
-        : alert === 'low'
-          ? `мало! ${format_g(station.cookedQty)}`
-          : format_g(station.cookedQty);
+        : `${alert === 'low' ? 'мало! ' : ''}${format_g(station.cookedQty)} · ${cups_text(station.cupsLeft)}`;
 
   return (
     <>

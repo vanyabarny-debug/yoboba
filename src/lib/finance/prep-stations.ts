@@ -448,6 +448,14 @@ export function prep_plan_for(station: prep_station, dryG: number, marinadeCount
   return { cookedG, lines, waterMl };
 }
 
+export function cups_text(cups: number): string {
+  const n = Math.max(0, Math.floor(cups));
+  const d = n % 10;
+  const h = n % 100;
+  const word = d === 1 && h !== 11 ? 'стакан' : d >= 2 && d <= 4 && (h < 12 || h > 14) ? 'стакана' : 'стаканов';
+  return `~${n} ${word}`;
+}
+
 /** маринад на ml мл воды: раскладка задана на marinade.waterMl (например 500 мл) */
 export function prep_marinade_plan(station: prep_station, ml: number): prep_plan {
   const m = station.marinade;

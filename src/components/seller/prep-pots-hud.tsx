@@ -3,6 +3,7 @@
 import { createElement, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   pot_fill_ratio,
+  cups_text,
   prep_marinade_plan,
   prep_plan_for,
   prep_station_alert,
@@ -12,6 +13,7 @@ import {
 import PrepVessel, { liquid_tone_for, PREP_VESSEL_CSS } from '@/components/seller/prep-vessel';
 import prep_station_card from '@/components/seller/prep-station-card';
 import { play_prep_low_chime } from '@/lib/order-chime';
+import { FLOATING_CLOSE_BTN_CLASS } from '@/lib/drawer-ui';
 
 const REMIND_MS = 90_000;
 
@@ -192,7 +194,18 @@ export default function prep_stations_board({
             aria-label="закрыть"
             onClick={() => set_open_id(null)}
           />
-          <div className="relative w-full max-w-sm overflow-hidden rounded-[1.5rem] border border-neutral-200 bg-white shadow-[0_20px_50px_rgba(0,0,0,0.22)]">
+          <div className="relative w-full max-w-sm">
+          <button
+            type="button"
+            onClick={() => set_open_id(null)}
+            aria-label="закрыть"
+            className={FLOATING_CLOSE_BTN_CLASS}
+          >
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+              <path d="M6 6l12 12M18 6L6 18" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" />
+            </svg>
+          </button>
+          <div className="relative w-full overflow-hidden rounded-[1.5rem] border border-neutral-200 bg-white shadow-[0_20px_50px_rgba(0,0,0,0.22)]">
             <div className="flex items-center gap-3 px-4 pt-4">
               <PrepVessel
                 kind={active.kind}
@@ -200,16 +213,14 @@ export default function prep_stations_board({
                 size="lg"
                 tone={liquid_tone_for(active.id)}
               />
-              <p className="min-w-0 flex-1 truncate text-lg font-bold tracking-tight text-neutral-900">
-                {active.label}
-              </p>
-              <button
-                type="button"
-                onClick={() => set_open_id(null)}
-                className="rounded-full bg-neutral-100 px-2.5 py-1 text-sm text-neutral-600 hover:bg-neutral-200"
-              >
-                ✕
-              </button>
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-lg font-bold tracking-tight text-neutral-900">{active.label}</p>
+                {has_left ? (
+                  <p className="text-sm text-neutral-600">
+                    {format_g(active.cookedQty)} · {cups_text(active.cupsLeft)}
+                  </p>
+                ) : null}
+              </div>
             </div>
 
             <div className="space-y-3 px-4 py-4">
@@ -294,10 +305,11 @@ export default function prep_stations_board({
                   onClick={submit_discard}
                   className="w-full rounded-2xl bg-neutral-100 py-3 text-sm font-semibold text-red-600 disabled:opacity-40"
                 >
-                  списать остаток
+                  списать {format_g(active.cookedQty)}
                 </button>
               )}
             </div>
+          </div>
           </div>
         </div>
       ) : null}
