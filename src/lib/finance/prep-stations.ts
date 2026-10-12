@@ -271,7 +271,7 @@ export function prep_station_views(state: finance_state): prep_station_view[] {
     .map((s) => {
       const dry = mats.get(s.dryMaterialId);
       const cooked = mats.get(s.cookedMaterialId);
-      const dryQty = Math.max(0, qty.get(s.dryMaterialId) ?? 0);
+      const dryQty = qty.get(s.dryMaterialId) ?? 0;
       const cookedQty = Math.max(0, qty.get(s.cookedMaterialId) ?? 0);
       const portion = Math.max(1, s.portionG);
       return {
@@ -381,13 +381,7 @@ export function apply_prep_cook(
     return { ok: false, error: 'нет позиций склада для этой станции' };
   }
 
-  const dry_on_hand = stock_qty_map(state).get(dry.id) ?? 0;
-  if (dryG > dry_on_hand + 0.5) {
-    return {
-      ok: false,
-      error: `не хватает сухого: есть ${Math.round(dry_on_hand)} г, нужно ${dryG} г`,
-    };
-  }
+  const cooked_before = Math.max(0, stock_qty_map(state).get(cooked.id) ?? 0);
 
   const date = input.date || new Date().toISOString();
   const note = input.note?.trim() || `${station.kind === 'pot' ? 'варка' : 'заваривание'}: ${station.label}`;
@@ -423,7 +417,7 @@ export function apply_prep_cook(
   };
 
   const next_stations = stations.map((s) =>
-    s.id === station.id ? { ...s, batchFullG: cookedG } : s
+    s.id === station.id ? { ...s, batchFullG: cooked_before + cookedG } : s
   );
 
   let next: finance_state = {

@@ -3,6 +3,7 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import {
+  moscow_today,
   apply_adjust,
   apply_inventory_count,
   apply_receipt,
@@ -185,6 +186,7 @@ const STOCK_SORT_OPTIONS: { id: stock_sort_id; label: string }[] = [
 ];
 
 function to_iso(date_str: string) {
+  if (date_str === moscow_today()) return new Date().toISOString();
   const d = new Date(`${date_str}T12:00:00`);
   return Number.isNaN(d.getTime()) ? new Date().toISOString() : d.toISOString();
 }
