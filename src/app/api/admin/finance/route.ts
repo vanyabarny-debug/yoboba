@@ -15,6 +15,7 @@ import {
   sync_tech_cards_with_menu,
   warehouse_money,
   writeoffs_money,
+  type finance_state,
 } from '@/lib/finance/model';
 import { ensure_prep_materials } from '@/lib/finance/prep-stations';
 import { get_default_store, merge_menu_item_catalog, store_version } from '@/lib/menu-store';
@@ -26,6 +27,31 @@ export const dynamic = 'force-dynamic';
 async function is_admin() {
   const store = await cookies();
   return store.get(session_cookie)?.value === 'admin';
+}
+
+/**
+ * админка шлёт состояние целиком — без этого варки/продажи кассы,
+ * сделанные пока админка была открыта, затирались бы старой копией.
+ */
+function keep_concurrent_movements(
+  incoming: finance_state,
+  cloud: finance_state,
+  base_ids: Set<string>
+): finance_state {
+  const known = new Set(incoming.stockMovements.map((m) => m.id));
+  const fresh = cloud.stockMovements.filter((m) => !known.has(m.id) && !base_ids.has(m.id));
+  if (!fresh.length) return incoming;
+  const touched = new Set(fresh.map((m) => m.materialId));
+  const cloud_batch = new Map((cloud.prepStations ?? []).map((s) => [s.id, s.batchFullG]));
+  return {
+    ...incoming,
+    stockMovements: [...incoming.stockMovements, ...fresh],
+    prepStations: incoming.prepStations?.map((s) =>
+      touched.has(s.cookedMaterialId) && cloud_batch.has(s.id)
+        ? { ...s, batchFullG: cloud_batch.get(s.id) ?? s.batchFullG }
+        : s
+    ),
+  };
 }
 
 async function load_menu_items(): Promise<menu_item[]> {
@@ -79,10 +105,14 @@ export async function PUT(request: Request) {
   if (!payload || typeof payload !== 'object') {
     return NextResponse.json({ error: 'нет данных' }, { status: 400 });
   }
+  const base_ids = (body as { baseMovementIds?: unknown })?.baseMovementIds;
   const incoming = ensure_prep_materials(normalize_finance_state(payload));
   const [cloud, table_audit] = await Promise.all([read_finance_state(), read_stock_audit()]);
+  const merged = Array.isArray(base_ids)
+    ? keep_concurrent_movements(incoming, cloud, new Set(base_ids.map(String)))
+    : incoming;
   const state = {
-    ...incoming,
+    ...merged,
     stockAudit: filter_stock_audit(merge_stock_audit(table_audit, [...(cloud.stockAudit ?? []), ...(incoming.stockAudit ?? [])])),
   };
   try {

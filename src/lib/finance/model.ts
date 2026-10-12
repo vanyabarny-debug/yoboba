@@ -2719,14 +2719,17 @@ function batch_qty_sum(batches: stock_batch[]) {
 }
 
 function batch_value_sum(batches: stock_batch[]) {
-  return batches.reduce((s, b) => s + b.qty * b.unit_cost, 0);
+  return batches.reduce((s, b) => s + Math.max(0, b.qty) * b.unit_cost, 0);
 }
 
-/** съесть qty с головы очереди; вернуть себестоимость */
+/**
+ * съесть qty с головы очереди; вернуть себестоимость.
+ * если партий не хватило — остаток уходит в минус (партия с qty < 0) по fallback-цене.
+ */
 function fifo_take(batches: stock_batch[], qty: number, fallback_unit: number): number {
   let left = qty;
   let cost = 0;
-  while (left > 1e-9 && batches.length) {
+  while (left > 1e-9 && batches.length && batches[0].qty > 1e-9) {
     const b = batches[0];
     const take = Math.min(b.qty, left);
     cost += take * b.unit_cost;
@@ -2734,14 +2737,29 @@ function fifo_take(batches: stock_batch[], qty: number, fallback_unit: number): 
     left -= take;
     if (b.qty <= 1e-9) batches.shift();
   }
-  if (left > 1e-9) cost += left * fallback_unit;
+  if (left > 1e-9) {
+    cost += left * fallback_unit;
+    const debt = batches.find((b) => b.qty < 0);
+    if (debt) debt.qty -= left;
+    else batches.push({ qty: -left, unit_cost: fallback_unit });
+  }
   return cost;
 }
 
+/** новая партия: сначала гасит минус, остаток ложится партией по цене этого поступления */
 function fifo_push(batches: stock_batch[], qty: number, total: number, fallback_unit: number) {
   if (qty <= 1e-9) return;
   const unit = total > 0 && Number.isFinite(total) ? total / qty : fallback_unit;
-  batches.push({ qty, unit_cost: unit });
+  let left = qty;
+  const debt_i = batches.findIndex((b) => b.qty < 0);
+  if (debt_i >= 0) {
+    const debt = batches[debt_i];
+    const cover = Math.min(left, -debt.qty);
+    debt.qty += cover;
+    left -= cover;
+    if (debt.qty >= -1e-9) batches.splice(debt_i, 1);
+  }
+  if (left > 1e-9) batches.push({ qty: left, unit_cost: unit });
 }
 
 /**

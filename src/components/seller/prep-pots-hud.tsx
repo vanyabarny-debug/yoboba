@@ -223,6 +223,12 @@ export default function prep_stations_board({
                   % от последней варки · норма {active.defaultDryG}→
                   {active.defaultCookedG} г
                 </p>
+                <p
+                  className={`mt-0.5 text-[11px] ${active.dryQty < 0 ? 'font-semibold text-red-600' : 'text-neutral-500'}`}
+                >
+                  сухого на складе {format_g(active.dryQty)}
+                  {active.dryQty < 0 ? ' — закроется следующим поступлением' : ''}
+                </p>
               </div>
               <button
                 type="button"
