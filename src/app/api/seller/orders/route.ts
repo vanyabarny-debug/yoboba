@@ -24,6 +24,7 @@ import {
   set_student_verified,
   staff_actor_name,
 } from '@/lib/student-server';
+import { guest_level } from '@/lib/guest-rank';
 
 async function is_staff() {
   const store = await cookies();
@@ -62,6 +63,60 @@ async function find_profile_by_phone(phone: string) {
   } | null;
 }
 
+async function orders_for_guest(user_id: string | null, phone: string | null) {
+  if (!is_supabase_configured()) return [];
+  const admin = create_service_client();
+  const select = 'id, created_at, status, items';
+  const rows: { id: string; created_at: string; status: string; items: { quantity?: number; kind?: string }[] }[] = [];
+  if (user_id) {
+    const { data, error } = await admin
+      .from('orders')
+      .select(select)
+      .eq('user_id', user_id)
+      .neq('status', 'cancelled')
+      .limit(400);
+    if (!error && data) rows.push(...(data as typeof rows));
+  }
+  if (phone) {
+    const { data, error } = await admin
+      .from('orders')
+      .select(select)
+      .eq('customer_phone', phone)
+      .neq('status', 'cancelled')
+      .limit(200);
+    if (!error && data) {
+      const seen = new Set(rows.map((row) => row.id));
+      for (const row of data as typeof rows) {
+        if (!seen.has(row.id)) rows.push(row);
+      }
+    }
+  }
+  return rows.map((row) => ({
+    created_at: row.created_at,
+    status: row.status,
+    items: row.items || [],
+  }));
+}
+
+async function level_for_guest(user_id: string | null, phone: string | null) {
+  try {
+    const level = guest_level(await orders_for_guest(user_id, phone));
+    return {
+      rank: level.rank,
+      type_name: level.type_name,
+      color: level.color,
+      weight: level.weight,
+      who: level.who,
+      rush: level.rush,
+      cooling: level.cooling,
+      fresh: level.fresh,
+      days_since: level.days_since,
+    };
+  } catch {
+    return null;
+  }
+}
+
 async function customer_payload(profile: {
   id: string;
   name: string | null;
@@ -88,6 +143,7 @@ async function customer_payload(profile: {
     bonus_balance: profile.bonus_balance ?? 0,
     ...merged,
     student_verified: is_student_discount_active(merged),
+    level: await level_for_guest(profile.id, profile.phone),
   };
 }
 
@@ -295,6 +351,7 @@ export async function GET(request: Request) {
         phone: resolved.phone,
         bonus_balance: resolved.bonus_balance,
         ...student,
+        level: await level_for_guest(resolved.user_id, resolved.phone),
       },
     });
   }
@@ -347,6 +404,7 @@ export async function GET(request: Request) {
         phone: demo.phone,
         bonus_balance: demo.bonus_balance,
         ...student,
+        level: await level_for_guest(null, demo.phone),
       },
     });
   }
@@ -869,11 +927,28 @@ export async function PATCH(request: Request) {
       (before?.payment_type === 'online' && Number(before?.total_price) === 0);
   }
 
-  let { data, error } = await admin.from('orders').update(patch).eq('id', id).select('*').single();
+  let write_patch = patch;
+  const phone = normalize_phone(
+    typeof patch.customer_phone === 'string' ? patch.customer_phone : null
+  );
+  if (phone && !patch.user_id) {
+    try {
+      const resolved = await resolve_walk_in_user_id(
+        (typeof patch.customer_name === 'string' && patch.customer_name.trim()) || 'гость точки',
+        phone
+      );
+      write_patch = { ...patch, customer_phone: phone, user_id: resolved.user_id };
+    } catch (e) {
+      const message = e instanceof Error ? e.message : 'не удалось привязать телефон';
+      return NextResponse.json({ error: message }, { status: 500 });
+    }
+  }
+
+  let { data, error } = await admin.from('orders').update(write_patch).eq('id', id).select('*').single();
 
   if (error && /is_paid|customer_/i.test(error.message)) {
     const schema_warning = error.message;
-    const { is_paid: dropped_paid, customer_name: _n, customer_phone: _ph, ...rest } = patch;
+    const { is_paid: dropped_paid, customer_name: _n, customer_phone: _ph, ...rest } = write_patch;
     if (Object.keys(rest).length) {
       const retry = await admin.from('orders').update(rest).eq('id', id).select('*').single();
       data = retry.data;

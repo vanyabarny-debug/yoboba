@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import type { cash_transaction, seller, store_spot } from '@/lib/types';
 import AdminShell from '@/components/admin/admin-shell';
 import { get_spots, subscribe_spot_store } from '@/lib/spot-store';
+import { PUSH_CATEGORIES, parse_push_categories, push_category_label } from '@/lib/push-categories';
 import {
   default_seller_access,
   parse_seller_access,
@@ -36,6 +37,7 @@ function empty_form() {
     role_title: 'бариста',
     spot_ids: [] as string[],
     access: default_seller_access(),
+    push_categories: [] as string[],
     salary_net: 0,
     with_ndfl: true,
   };
@@ -134,6 +136,7 @@ export default function sellers_manage({ bare = false }: { bare?: boolean } = {}
       role_title: s.role_title?.trim() || 'бариста',
       spot_ids: s.spot_ids ?? [],
       access: parse_seller_access(s.access),
+      push_categories: parse_push_categories(s.push_categories),
       salary_net: Math.max(0, Math.round(Number(s.salary_net) || 0)),
       with_ndfl: s.with_ndfl != null ? Boolean(s.with_ndfl) : (Number(s.salary_net) || 0) > 0,
     });
@@ -165,7 +168,8 @@ export default function sellers_manage({ bare = false }: { bare?: boolean } = {}
           name: form.name,
           role_title: form.role_title,
           spot_ids: form.spot_ids,
-          access: form.access,
+          access: { ...form.access, push: form.push_categories.length > 0 },
+          push_categories: form.push_categories,
           salary_net: form.salary_net,
           with_ndfl: form.with_ndfl,
         }),
@@ -252,10 +256,16 @@ export default function sellers_manage({ bare = false }: { bare?: boolean } = {}
                   )}
                   <p className="text-xs text-neutral-400 mt-1">
                     {seller_right_ids
-                      .filter((id) => parse_seller_access(s.access)[id])
+                      .filter((id) => id !== 'push' && parse_seller_access(s.access)[id])
                       .map((id) => seller_right_label[id])
                       .join(' · ')}
                   </p>
+                  {parse_push_categories(s.push_categories).length ? (
+                    <p className="text-xs text-neutral-400 mt-1">
+                      рассылка без базы ·{' '}
+                      {parse_push_categories(s.push_categories).map(push_category_label).join(' · ')}
+                    </p>
+                  ) : null}
                   <p className="text-xs text-neutral-400 mt-1 truncate">{spot_labels(s.spot_ids)}</p>
                 </div>
                 <div className="flex gap-2 shrink-0">
@@ -390,7 +400,7 @@ export default function sellers_manage({ bare = false }: { bare?: boolean } = {}
             <div>
               <p className="text-sm text-neutral-600 mb-2">что видит на кассе</p>
               <ul className="grid grid-cols-2 gap-1.5">
-                {seller_right_ids.map((id) => (
+                {seller_right_ids.filter((id) => id !== 'push').map((id) => (
                   <li key={id}>
                     <label className="flex items-center gap-2 rounded-xl border border-surface px-3 py-2 text-sm cursor-pointer">
                       <input
@@ -406,6 +416,39 @@ export default function sellers_manage({ bare = false }: { bare?: boolean } = {}
                         }
                       />
                       <span>{seller_right_label[id]}</span>
+                    </label>
+                  </li>
+                ))}
+              </ul>
+            </div>
+
+            <div>
+              <p className="text-sm text-neutral-600 mb-1">рассылка пушей</p>
+              <p className="text-[11px] text-neutral-400 mb-2">
+                может писать этим категориям. имена и телефоны не увидит. вкладки кассы выше по-прежнему
+                открывают заказы — для одной рассылки снимите их
+              </p>
+              <ul className="grid grid-cols-1 gap-1.5">
+                {PUSH_CATEGORIES.map((row) => (
+                  <li key={row.id}>
+                    <label className="flex items-start gap-2 rounded-xl border border-surface px-3 py-2 text-sm cursor-pointer">
+                      <input
+                        type="checkbox"
+                        className="mt-1"
+                        checked={form.push_categories.includes(row.id)}
+                        onChange={() =>
+                          set_form((prev) => ({
+                            ...prev,
+                            push_categories: prev.push_categories.includes(row.id)
+                              ? prev.push_categories.filter((id) => id !== row.id)
+                              : [...prev.push_categories, row.id],
+                          }))
+                        }
+                      />
+                      <span>
+                        <span className="block text-neutral-800">{row.label}</span>
+                        <span className="block text-[11px] text-neutral-400">{row.hint}</span>
+                      </span>
                     </label>
                   </li>
                 ))}

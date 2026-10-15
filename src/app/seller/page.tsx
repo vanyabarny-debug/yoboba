@@ -25,7 +25,7 @@ import type {
   seller_shift_record,
   store_spot,
 } from '@/lib/types';
-import cash_register_modal from '@/components/seller/cash-register-modal';
+import cash_register_modal, { type cash_checkout } from '@/components/seller/cash-register-modal';
 import barista_analytics_panel from '@/components/seller/barista-analytics';
 import barista_login_sheet from '@/components/seller/barista-login-sheet';
 import pos_panel from '@/components/seller/pos-panel';
@@ -60,6 +60,7 @@ import { board_tile_grid } from '@/lib/seller-tile-grid';
 import { default_seller_access, type seller_access, type seller_right } from '@/lib/seller-access';
 import drink_craft from '@/components/seller/drink-craft';
 import business_pulse from '@/components/seller/business-pulse';
+import push_broadcast from '@/components/push-broadcast';
 
 const seller_panes = [
   { id: 'work', label: 'в работе', right: 'work' },
@@ -69,6 +70,7 @@ const seller_panes = [
   { id: 'craft', label: 'крафт', right: 'craft' },
   { id: 'analytics', label: 'аналитика', right: 'analytics' },
   { id: 'business', label: 'бизнес', right: 'business' },
+  { id: 'push', label: 'рассылка', right: 'push' },
 ] as const satisfies readonly { id: string; label: string; right: seller_right }[];
 type tab = (typeof seller_panes)[number]['id'];
 
@@ -1091,19 +1093,55 @@ export default function seller_board() {
     [orders, seller_id, seller_name, shift?.shift_date]
   );
 
-  async function complete_payment(
-    payment_method: 'cash' | 'card' | 'bonus',
-    amount_received?: number
-  ) {
+  async function complete_payment(checkout: cash_checkout) {
     if (!paying) return;
-    const total = payment_method === 'bonus' ? 0 : Number(paying.total_price);
+    const payment_method = checkout.method;
+    const amount_received = checkout.amount_received;
+    const total = payment_method === 'bonus' ? 0 : checkout.total;
     const change =
       payment_method === 'cash' && amount_received != null
-        ? Math.max(0, amount_received - Number(paying.total_price))
+        ? Math.max(0, amount_received - total)
         : null;
 
     const sid = seller_id || seller_ref.current.id || 'seller';
     const sname = seller_name || seller_ref.current.name || 'бариста';
+    const phone = checkout.staff ? null : checkout.phone || paying.customer_phone || null;
+
+    if (checkout.confirm_student && phone && !checkout.staff) {
+      const student_res = await fetch('/api/staff/student-discount', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        credentials: 'same-origin',
+        body: JSON.stringify({
+          phone,
+          user_id: checkout.user_id || undefined,
+          verified: true,
+        }),
+      });
+      if (!student_res.ok) {
+        const body = (await student_res.json().catch(() => null)) as { error?: string } | null;
+        alert(body?.error || 'не удалось подтвердить студенческую скидку');
+        return;
+      }
+    }
+
+    try {
+      await patch_order(paying.id, {
+        items: checkout.items,
+        total_price: total,
+        ...(phone
+          ? {
+              customer_phone: phone,
+              ...(checkout.user_id ? { user_id: checkout.user_id } : {}),
+              ...(checkout.customer_name ? { customer_name: checkout.customer_name } : {}),
+            }
+          : {}),
+        ...(checkout.staff ? { customer_name: sname } : {}),
+      });
+    } catch (e) {
+      alert(e instanceof Error ? e.message : 'не удалось сохранить скидку и телефон');
+      return;
+    }
 
     if (payment_method === 'bonus') {
       const redeem_res = await fetch('/api/seller/redeem-bonus', {
@@ -1111,8 +1149,8 @@ export default function seller_board() {
         headers: { 'content-type': 'application/json' },
         credentials: 'same-origin',
         body: JSON.stringify({
-          phone: paying.customer_phone,
-          user_id: paying.user_id,
+          phone,
+          user_id: checkout.user_id || paying.user_id,
           order_id: paying.id,
         }),
       });
@@ -1132,9 +1170,7 @@ export default function seller_board() {
       payment_method,
       amount_received: payment_method === 'cash' ? amount_received ?? null : null,
       change_given: change,
-      items_summary: (paying.items as order['items'])
-        .map((i) => `${i.name} ×${i.quantity}`)
-        .join('; '),
+      items_summary: checkout.items.map((i) => `${i.name} ×${i.quantity}`).join('; '),
       shift_date: board_day(),
       created_at: new Date().toISOString(),
       spot_id: shift?.spot_id || null,
@@ -1850,6 +1886,7 @@ export default function seller_board() {
                 })
               : null}
             {pane.id === 'business' ? createElement(business_pulse) : null}
+            {pane.id === 'push' ? createElement(push_broadcast) : null}
           </div>
         ))}
       </main>
@@ -1865,6 +1902,10 @@ export default function seller_board() {
         seller_name,
         on_close: () => set_paying(null),
         on_complete: complete_payment,
+        on_gift_redeemed: () => {
+          set_paying(null);
+          void load();
+        },
       })}
       {cook
         ? createElement(drink_cook_guide, {

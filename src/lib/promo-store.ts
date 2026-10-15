@@ -10,7 +10,7 @@ import {
   standard_promo_vignette,
 } from '@/lib/promo-image-vignette';
 
-export const promo_store_version = 45;
+export const promo_store_version = 46;
 
 const storage_key = 'yoboba_promo_store';
 const update_event = 'yoboba-promo-update';

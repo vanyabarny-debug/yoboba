@@ -74,3 +74,44 @@ export function discount_label(discount: pos_discount | null, staff: boolean) {
   if (discount.kind === 'pct') return `скидка ${discount.value}% ${where}`;
   return `скидка ${discount.value} ₽ ${where}`;
 }
+
+/** сумма по меню у позиций, на которые действует скидка */
+export function discount_pool(lines: priced_line[], discount: pos_discount | null) {
+  if (!discount) {
+    return lines.reduce((s, l) => s + l.unit * l.qty, 0);
+  }
+  return lines.reduce((s, l, i) => {
+    const affected = discount.scope === 'check' || discount.lines.includes(i);
+    return affected ? s + l.unit * l.qty : s;
+  }, 0);
+}
+
+/**
+ * скидка из суммы, за которую реально продали.
+ * sold — итого к оплате (не больше суммы по меню).
+ */
+export function discount_from_sold(
+  lines: priced_line[],
+  sold: number,
+  opts?: { scope?: pos_discount_scope; lines?: number[] }
+): pos_discount | null {
+  const scope = opts?.scope ?? 'check';
+  const selected = opts?.lines ?? [];
+  const draft: pos_discount = { scope, kind: 'rub', value: 0, lines: selected };
+  const pool = discount_pool(lines, draft);
+  if (pool <= 0) return null;
+  const target = Math.max(0, Math.min(pool, Math.round(Number(sold) || 0)));
+  const cut = pool - target;
+  if (cut <= 0) return null;
+  if (scope === 'lines' && !selected.length) return null;
+  return { scope, kind: 'rub', value: cut, lines: selected };
+}
+
+/** сколько осталось к оплате при текущей скидке (удобно для поля «продано за») */
+export function sold_amount_from_discount(
+  lines: priced_line[],
+  discount: pos_discount | null,
+  staff: boolean
+) {
+  return cart_total_after_discount(lines, discount, staff);
+}

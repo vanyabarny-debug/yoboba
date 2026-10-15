@@ -1,6 +1,7 @@
 'use client';
 
 import { createElement, useEffect, useMemo, useRef, useState } from 'react';
+import { useSearchParams } from 'next/navigation';
 import AdminShell from '@/components/admin/admin-shell';
 import push_composer from '@/components/admin/push-composer';
 import avatar_circle from '@/components/avatar-circle';
@@ -13,6 +14,8 @@ import {
 } from '@/lib/student-discount';
 import { DRAWER_INLINE_CLOSE_BTN_CLASS } from '@/lib/drawer-ui';
 import { normalize_order_item_fields } from '@/lib/order-item-name';
+import { is_combo_item } from '@/lib/combo';
+import { configured_unit_price } from '@/lib/product-details';
 import {
   active_orders,
   by_hour_bucket,
@@ -27,6 +30,8 @@ import {
   type activity_mode,
   type analytics_period,
 } from '@/lib/customer-analytics';
+import { GuestLevelMark } from '@/components/guest-level-mark';
+import { GUEST_KINDS, guest_level, level_ink, type guest_kind_id } from '@/lib/guest-rank';
 import {
   apply_published_menu_store,
   get_menu_store,
@@ -328,11 +333,25 @@ function student_name_chip({
   );
 }
 
+function kind_flyout({ name, color, who }: { name: string; color: string; who: string }) {
+  return (
+    <span className="pointer-events-none absolute left-0 top-full z-30 mt-1 hidden w-56 rounded-xl border border-neutral-200 bg-white px-2.5 py-2 text-left text-[11px] font-medium leading-snug text-neutral-600 shadow-lg group-hover/kind:block">
+      <span className="block text-xs font-semibold" style={{ color }}>
+        {name}
+      </span>
+      {who}
+    </span>
+  );
+}
+
 export default function customers_page() {
+  const search = useSearchParams();
   const [data, set_data] = useState<payload | null>(null);
   const [error, set_error] = useState('');
   const [query, set_query] = useState('');
   const [only_buyers, set_only_buyers] = useState(false);
+  const [kind_filter, set_kind_filter] = useState<guest_kind_id | 'all'>('all');
+  const [sort_by, set_sort_by] = useState<'recent' | 'color'>('color');
   const [open_id, set_open_id] = useState<string | null>(null);
   const [student_busy, set_student_busy] = useState<string | null>(null);
   const [student_expiry_draft, set_student_expiry_draft] = useState<Record<string, string>>({});
@@ -340,6 +359,8 @@ export default function customers_page() {
   const [bonus_busy, set_bonus_busy] = useState<string | null>(null);
   const [edit_id, set_edit_id] = useState<string | null>(null);
   const [line_draft, set_line_draft] = useState<line_draft[]>([]);
+  /** черновик «продано за» на весь заказ — раскладывает по позициям */
+  const [sold_total_draft, set_sold_total_draft] = useState('');
   const [order_busy, set_order_busy] = useState<string | null>(null);
   const [menu_items, set_menu_items] = useState<menu_item[]>(() => get_menu_store().items);
   const [analytics_period_state, set_analytics_period] = useState<analytics_period>('all');
@@ -367,6 +388,25 @@ export default function customers_page() {
       })
       .catch(() => set_error('не удалось загрузить клиентов'));
   }, []);
+
+  useEffect(() => {
+    const customer = search.get('customer') || search.get('open');
+    const phone = search.get('phone');
+    if (!data?.customers.length) return;
+    if (customer) {
+      const hit = data.customers.find((c) => c.id === customer);
+      if (hit) {
+        set_open_id(hit.id);
+        set_only_buyers(false);
+        return;
+      }
+    }
+    if (phone) {
+      const digits = phone.replace(/\D/g, '');
+      const hit = data.customers.find((c) => (c.phone || '').replace(/\D/g, '').endsWith(digits));
+      if (hit) set_open_id(hit.id);
+    }
+  }, [data, search]);
 
   useEffect(() => {
     if (!open_id) return;
@@ -408,6 +448,41 @@ export default function customers_page() {
     return map;
   }, [menu_items]);
 
+  function catalog_unit(line: { menu_id?: string; name?: string; volume?: string; price?: string | number }) {
+    const item = line.menu_id ? menu_by_id.get(line.menu_id) : undefined;
+    if (!item) return Math.max(0, Math.round(Number(line.price) || 0));
+    if (is_combo_item(item)) return Math.max(0, Math.round(item.price));
+    return Math.max(0, Math.round(configured_unit_price(item, line.volume || null, 0)));
+  }
+
+  function apply_sold_total(raw: string) {
+    const digits = raw.replace(/[^\d]/g, '');
+    set_sold_total_draft(digits);
+    set_line_draft((prev) => {
+      if (!prev.length || digits === '') return prev;
+      const catalog_rows = prev.map((row) => ({
+        row,
+        catalog: catalog_unit(row),
+        qty: Math.max(1, Number(row.quantity) || 1),
+      }));
+      const catalog_sum = catalog_rows.reduce((s, x) => s + x.catalog * x.qty, 0);
+      if (catalog_sum <= 0) return prev;
+      const target = Math.max(0, Math.min(catalog_sum, Number(digits) || 0));
+      let assigned = 0;
+      return catalog_rows.map((x, i) => {
+        if (i === catalog_rows.length - 1) {
+          const rem = Math.max(0, target - assigned);
+          const unit = Math.max(0, Math.round(rem / x.qty));
+          return { ...x.row, price: String(unit) };
+        }
+        const share = (x.catalog * x.qty) / catalog_sum;
+        const unit = Math.max(0, Math.round((target * share) / x.qty));
+        assigned += unit * x.qty;
+        return { ...x.row, price: String(unit) };
+      });
+    });
+  }
+
   function drink_for_line(line: { menu_id?: string; name: string; volume?: string }): menu_item | null {
     const by_id = line.menu_id ? menu_by_id.get(line.menu_id) : null;
     if (by_id) {
@@ -428,8 +503,9 @@ export default function customers_page() {
   const filtered = useMemo(() => {
     const list = data?.customers ?? [];
     const q = query.trim().toLowerCase();
-    return list.filter((c) => {
+    const rows = list.filter((c) => {
       if (only_buyers && c.orders_count === 0) return false;
+      if (kind_filter !== 'all' && guest_level(c.orders).kind !== kind_filter) return false;
       if (!q) return true;
       const hay = [c.name, c.phone, format_phone_display(c.phone), c.via, c.role]
         .filter(Boolean)
@@ -437,7 +513,9 @@ export default function customers_page() {
         .toLowerCase();
       return hay.includes(q);
     });
-  }, [data, query, only_buyers]);
+    if (sort_by !== 'color') return rows;
+    return [...rows].sort((a, b) => guest_level(b.orders).rank - guest_level(a.orders).rank);
+  }, [data, query, only_buyers, kind_filter, sort_by]);
 
   async function set_student(c: customer_row, verified: boolean) {
     set_student_busy(c.id);
@@ -512,6 +590,7 @@ export default function customers_page() {
         };
       })
     );
+    set_sold_total_draft(String(Math.round(Number(o.total_price) || 0)));
     set_error('');
   }
 
@@ -772,6 +851,38 @@ export default function customers_page() {
           </label>
         </div>
 
+        <div className="flex flex-wrap items-center gap-1.5">
+          {GUEST_KINDS.map((kind) => {
+            const on = kind_filter === kind.id;
+            return (
+              <span key={kind.id} className="group/kind relative">
+                <button
+                  type="button"
+                  onClick={() => set_kind_filter(on ? 'all' : kind.id)}
+                  className="rounded-full px-2.5 py-1 text-xs"
+                  style={
+                    on
+                      ? { background: kind.color, color: '#fff', fontWeight: 700 }
+                      : { color: kind.color, fontWeight: kind.weight, boxShadow: `inset 0 0 0 1px ${kind.color}` }
+                  }
+                >
+                  {kind.name}
+                </button>
+                {createElement(kind_flyout, { name: kind.name, color: kind.color, who: kind.who })}
+              </span>
+            );
+          })}
+          <button
+            type="button"
+            onClick={() => set_sort_by((v) => (v === 'color' ? 'recent' : 'color'))}
+            className={`rounded-full px-2.5 py-1 text-xs font-semibold ${
+              sort_by === 'color' ? 'bg-neutral-900 text-white' : 'bg-white text-neutral-600 ring-1 ring-neutral-200'
+            }`}
+          >
+            {sort_by === 'color' ? 'по цвету' : 'по дате'}
+          </button>
+        </div>
+
         {error && (
           <p className="rounded-xl border border-surface bg-white p-3 text-sm text-accent">
             {error}
@@ -789,6 +900,7 @@ export default function customers_page() {
         <ul className="space-y-3">
           {filtered.map((c) => {
             const open = open_id === c.id;
+            const level = guest_level(c.orders);
 
             if (open) {
               return (
@@ -828,9 +940,14 @@ export default function customers_page() {
                       })}
                       <div className="min-w-0">
                         <div className="flex flex-wrap items-center gap-1.5">
-                          <h3 className="font-heading-soft text-lg font-bold tracking-tight text-neutral-900 sm:text-xl">
+                          <h3
+                            className="font-heading-soft text-lg tracking-tight sm:text-xl"
+                            style={{ color: level_ink(level), fontWeight: level.weight }}
+                            title={level.hint}
+                          >
                             {c.name}
                           </h3>
+                          <GuestLevelMark level={level} />
                           {createElement(bonus_name_chip, {
                             c,
                             value: bonus_value(c),
@@ -908,6 +1025,13 @@ export default function customers_page() {
                                 (Number(line.price) || 0) * (Number(line.quantity) || 0),
                               0
                             );
+                            const catalog_total = line_draft.reduce(
+                              (sum, line) =>
+                                sum +
+                                catalog_unit(line) * (Number(line.quantity) || 0),
+                              0
+                            );
+                            const draft_discount = Math.max(0, catalog_total - draft_total);
                             return (
                               <li
                                 key={o.id}
@@ -915,11 +1039,16 @@ export default function customers_page() {
                               >
                               {editing ? (
                                 <div className="space-y-2" data-stop-collapse>
-                                  {line_draft.map((line, i) => (
+                                  {line_draft.map((line, i) => {
+                                      const catalog = catalog_unit(line);
+                                      const paid = Number(line.price) || 0;
+                                      const has_discount = catalog > 0 && paid < catalog;
+                                      return (
                                       <div
                                         key={`${o.id}-${i}`}
-                                        className="flex items-center gap-1.5"
+                                        className="space-y-1 rounded-lg border border-neutral-100 bg-neutral-50/70 p-2"
                                       >
+                                      <div className="flex items-center gap-1.5">
                                         <input
                                           value={line.name}
                                           aria-label="название"
@@ -976,28 +1105,25 @@ export default function customers_page() {
                                           }
                                           className="w-12 rounded-lg border border-neutral-200 bg-white px-1.5 py-1.5 text-right text-sm tabular-nums outline-none focus:ring-2 focus:ring-highlight"
                                         />
-                                        <input
-                                          value={line.price}
-                                          inputMode="numeric"
-                                          aria-label="оплачено за штуку"
-                                          title="оплачено ₽; меньше обычной цены = скидка"
-                                          onChange={(e) =>
-                                            set_line_draft((prev) =>
-                                              prev.map((row, idx) =>
-                                                idx === i
-                                                  ? {
-                                                      ...row,
-                                                      price: e.target.value.replace(
-                                                        /[^\d]/g,
-                                                        ''
-                                                      ),
-                                                    }
-                                                  : row
-                                              )
-                                            )
-                                          }
-                                          className="w-16 rounded-lg border border-neutral-200 bg-white px-1.5 py-1.5 text-right text-sm tabular-nums outline-none focus:ring-2 focus:ring-highlight"
-                                        />
+                                        <label className="flex w-20 shrink-0 items-center gap-0.5">
+                                          <span className="sr-only">продано за штуку</span>
+                                          <input
+                                            value={line.price}
+                                            inputMode="numeric"
+                                            aria-label="продано за штуку"
+                                            title="сколько взяли за 1 шт"
+                                            onChange={(e) => {
+                                              const price = e.target.value.replace(/[^\d]/g, '');
+                                              set_line_draft((prev) =>
+                                                prev.map((row, idx) =>
+                                                  idx === i ? { ...row, price } : row
+                                                )
+                                              );
+                                              set_sold_total_draft('');
+                                            }}
+                                            className="w-full rounded-lg border border-neutral-200 bg-white px-1.5 py-1.5 text-right text-sm tabular-nums outline-none focus:ring-2 focus:ring-highlight"
+                                          />
+                                        </label>
                                         <button
                                           type="button"
                                           aria-label="убрать позицию"
@@ -1011,13 +1137,54 @@ export default function customers_page() {
                                           ×
                                         </button>
                                       </div>
-                                    ))}
+                                      {catalog > 0 ? (
+                                        <p
+                                          className={`text-[11px] ${
+                                            has_discount ? 'text-amber-700' : 'text-neutral-400'
+                                          }`}
+                                        >
+                                          по меню {catalog.toLocaleString('ru-RU')} ₽
+                                          {has_discount
+                                            ? ` · скидка ${(catalog - paid).toLocaleString('ru-RU')} ₽`
+                                            : ''}
+                                        </p>
+                                      ) : null}
+                                      </div>
+                                      );
+                                    })}
+                                    <label className="flex flex-wrap items-center gap-2 rounded-xl border border-neutral-200 bg-white px-2.5 py-2">
+                                      <span className="text-xs font-medium text-neutral-600">
+                                        продано за
+                                      </span>
+                                      <input
+                                        value={sold_total_draft}
+                                        inputMode="numeric"
+                                        aria-label="итого продано за"
+                                        placeholder={String(catalog_total || draft_total || 0)}
+                                        onChange={(e) => apply_sold_total(e.target.value)}
+                                        className="w-24 rounded-lg border border-neutral-200 bg-white px-2 py-1.5 text-right text-sm tabular-nums outline-none focus:ring-2 focus:ring-highlight"
+                                      />
+                                      <span className="text-xs text-neutral-500">₽</span>
+                                      {catalog_total > 0 ? (
+                                        <span className="text-[11px] text-neutral-400">
+                                          меню {catalog_total.toLocaleString('ru-RU')} ₽
+                                        </span>
+                                      ) : null}
+                                    </label>
                                     <p className="text-sm font-bold tabular-nums text-neutral-900">
-                                      итого оплачено {draft_total.toLocaleString('ru-RU')} ₽
+                                      итого в заказе {draft_total.toLocaleString('ru-RU')} ₽
                                     </p>
-                                    <p className="text-[11px] text-neutral-400">
-                                      объём и сумма пишутся в заказ · меньше цены = скидка · в историю правок
-                                    </p>
+                                    {draft_discount > 0 ? (
+                                      <p className="text-xs text-amber-700">
+                                        скидка {draft_discount.toLocaleString('ru-RU')} ₽
+                                        автоматически
+                                      </p>
+                                    ) : (
+                                      <p className="text-[11px] text-neutral-400">
+                                        введите сумму продажи — цены по позициям и скидка
+                                        пересчитаются
+                                      </p>
+                                    )}
                                     <button
                                       type="button"
                                       onClick={() =>
@@ -1036,7 +1203,7 @@ export default function customers_page() {
                                       + позиция
                                     </button>
                                     <p className="text-xs text-neutral-400">
-                                      бобаллы при правке не меняются
+                                      бобаллы при правке не меняются · в историю правок
                                     </p>
                                     <div className="flex flex-wrap gap-2">
                                       <button
@@ -1052,7 +1219,10 @@ export default function customers_page() {
                                       <button
                                         type="button"
                                         disabled={order_busy === o.id}
-                                        onClick={() => set_edit_id(null)}
+                                        onClick={() => {
+                                          set_edit_id(null);
+                                          set_sold_total_draft('');
+                                        }}
                                         className="rounded-xl border border-neutral-200 bg-white px-3 py-1.5 text-sm font-semibold text-neutral-700 disabled:opacity-40"
                                       >
                                         отмена
@@ -1192,6 +1362,9 @@ export default function customers_page() {
                           {period_chip('all', 'всё')}
                         </div>
                       </div>
+                      <p className="text-sm" style={{ color: level_ink(level), fontWeight: level.weight }}>
+                        {level.type_name} · {level.rank} · {level.hint}
+                      </p>
                       <div className="grid grid-cols-3 gap-1.5">
                         <div className="rounded-lg border border-neutral-200/80 bg-white px-2 py-1.5">
                           <p className="text-[10px] font-medium text-neutral-500">заказов</p>
@@ -1323,7 +1496,7 @@ export default function customers_page() {
             return (
               <li
                 key={c.id}
-                className={`overflow-hidden rounded-2xl border border-neutral-200/80 bg-white shadow-sm transition-opacity ${
+                className={`overflow-visible rounded-2xl border border-neutral-200/80 bg-white shadow-sm transition-opacity ${
                   open_id ? 'opacity-40' : ''
                 }`}
               >
@@ -1343,7 +1516,14 @@ export default function customers_page() {
                     </span>
                     <span className="min-w-0 flex-1">
                       <span className="flex flex-wrap items-center gap-1.5">
-                        <span className="font-semibold text-neutral-900">{c.name}</span>
+                        <span
+                          className="text-[15px]"
+                          style={{ color: level_ink(level), fontWeight: level.weight }}
+                          title={level.hint}
+                        >
+                          {c.name}
+                        </span>
+                        <GuestLevelMark level={level} />
                         <span className="inline-flex items-center gap-1 rounded-full bg-[#0039A6] py-0.5 pl-0.5 pr-1.5 text-white">
                           {createElement(TapicoinIcon, {
                             size: 16,

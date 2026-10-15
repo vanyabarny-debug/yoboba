@@ -51,13 +51,6 @@ export default function root_layout({
         ) : null}
       </head>
       <body className="min-h-full bg-page text-foreground font-sans">
-        {process.env.NODE_ENV === 'development' ? (
-          <script
-            dangerouslySetInnerHTML={{
-              __html: `if('serviceWorker' in navigator){navigator.serviceWorker.getRegistrations().then(function(r){r.forEach(function(x){x.unregister()})})}`,
-            }}
-          />
-        ) : null}
         {createElement(pwa_register)}
         {createElement(brand_theme)}
         {createElement(published_hydrate)}

@@ -1,4 +1,4 @@
-import { forget_cash_for_order, retitle_cash_for_order } from '@/lib/cash-server';
+import { forget_cash_for_order, retitle_cash_for_order, set_cash_method_for_order } from '@/lib/cash-server';
 import { delete_demo_order, get_demo_orders, update_demo_order } from '@/lib/demo-orders-server';
 import {
   assert_order_stock,
@@ -229,4 +229,47 @@ export async function delete_order(input: {
   });
 
   return { ok: true };
+}
+
+const pay_label = { cash: 'наличные', card: 'карта' } as const;
+
+/** смена нал ↔ безнал у продажи: заказ, касса и история правок */
+export async function set_sale_payment(input: {
+  id: string;
+  payment: 'cash' | 'card';
+  actor: stock_actor;
+}): Promise<{ ok: true; payment: 'cash' | 'card' } | { ok: false; error: string; status: number }> {
+  if (!order_id_ok(input.id)) return { ok: false, error: 'заказ не найден', status: 400 };
+  const existing = await load_order(input.id);
+  if (!existing) return { ok: false, error: 'заказ не найден', status: 404 };
+  if (existing.status === 'cancelled') return { ok: false, error: 'заказ отменён', status: 400 };
+  if (existing.payment_type === 'bonus') {
+    return { ok: false, error: 'оплата бобаллами не меняется', status: 400 };
+  }
+  const current: 'cash' | 'card' = existing.payment_type === 'cash' ? 'cash' : 'card';
+  if (current === input.payment) return { ok: true, payment: current };
+
+  if (input.id.startsWith('demo-order')) {
+    const updated = await update_demo_order(input.id, { payment_type: input.payment });
+    if (!updated) return { ok: false, error: 'заказ не найден', status: 404 };
+  } else {
+    if (!is_supabase_configured()) return { ok: false, error: 'supabase не настроен', status: 500 };
+    const admin = create_service_client();
+    const { error } = await admin.from('orders').update({ payment_type: input.payment }).eq('id', input.id);
+    if (error) return { ok: false, error: error.message, status: 500 };
+  }
+
+  await set_cash_method_for_order(input.id, input.payment);
+  await record_order_audit({
+    action: 'update',
+    actor_id: input.actor.id,
+    actor_name: input.actor.name,
+    order_id: input.id,
+    order_label: `№${format_order_number(existing)}`,
+    before: `оплата: ${pay_label[current]}`,
+    after: `оплата: ${pay_label[input.payment]}`,
+    before_total: Number(existing.total_price) || 0,
+    after_total: Number(existing.total_price) || 0,
+  });
+  return { ok: true, payment: input.payment };
 }

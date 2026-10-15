@@ -6,6 +6,7 @@ import {
   days_in_month,
   format_rub,
   moscow_today,
+  project_month_net,
   summarize_month,
   summarize_period,
   warehouse_money,
@@ -44,6 +45,9 @@ function month_status(input: {
   month_name: string;
   revenue: number;
   profit: number;
+  /** уже на весь месяц */
+  projected_profit?: number;
+  net_target?: number;
   break_even: number;
   elapsed: number;
   days: number;
@@ -53,24 +57,30 @@ function month_status(input: {
   const elapsed = Math.max(1, input.elapsed);
   const closed = elapsed >= input.days;
   const projected_revenue = closed ? input.revenue : (input.revenue / elapsed) * input.days;
-  const projected_profit = closed ? input.profit : (input.profit / elapsed) * input.days;
+  const projected_profit =
+    input.projected_profit != null
+      ? input.projected_profit
+      : closed
+        ? input.profit
+        : (input.profit / elapsed) * input.days;
   const gap = input.break_even > 0 ? (projected_revenue - input.break_even) / input.break_even : null;
+  const net_target = Math.max(0, Math.round(Number(input.net_target) || 0));
 
   let tone: business_tone;
   if (gap != null) {
     if (gap < -0.03) tone = 'minus';
     else if (gap <= 0.03) tone = 'zero';
     else if (gap < 0.15) tone = 'plus';
-    else if (gap < 0.4) tone = 'ok';
-    else tone = 'great';
+    else tone = 'ok';
   } else if (projected_profit < -1000) {
     tone = 'minus';
   } else if (Math.abs(projected_profit) <= 1000) {
     tone = 'zero';
   } else {
     const margin = projected_revenue > 0 ? projected_profit / projected_revenue : 0;
-    tone = margin < 0.08 ? 'plus' : margin < 0.18 ? 'ok' : 'great';
+    tone = margin < 0.08 ? 'plus' : 'ok';
   }
+  if (net_target > 0 && projected_profit >= net_target) tone = 'great';
 
   let trend = '';
   if (input.prev_daily != null && input.prev_daily > 0) {
@@ -83,7 +93,11 @@ function month_status(input: {
   const when = closed
     ? `${input.month_name} закрывается`
     : `по темпу ${elapsed} ${day_word(elapsed)} ${input.month_name} выйдет`;
-  return { tone, detail: `${trend}${when} на ${money}` };
+  const plan =
+    tone === 'great' && net_target > 0
+      ? ` · план ${format_rub(net_target)} перевыполнен`
+      : '';
+  return { tone, detail: `${trend}${when} на ${money}${plan}` };
 }
 
 export async function GET() {
@@ -104,6 +118,17 @@ export async function GET() {
     ? with_fact_revenue(summarize_month(state, month_md), fact.revenue, state).break_even
     : live.break_even;
   const elapsed = Number(today.slice(8)) || 1;
+  const dim = days_in_month(month_id);
+  const month_end = `${month_id}-${String(dim).padStart(2, '0')}`;
+  const month_open = today < month_end;
+  const projected_profit = month_open
+    ? project_month_net(state, {
+        month_id,
+        today,
+        mtd: live,
+        weekday_avg_revenue: null,
+      }).projected_net
+    : Math.round(live.net_profit);
   const recent = fact.by_day.slice(-7);
   const prev = fact.by_day.slice(-14, -7);
   const avg = (rows: { revenue: number }[]) =>
@@ -112,9 +137,11 @@ export async function GET() {
     month_name: month_title[Number(month_id.slice(5, 7)) - 1] || 'месяц',
     revenue: live.revenue,
     profit: live.net_profit,
+    projected_profit,
+    net_target: state.businessPlan?.monthlyNetTarget ?? 0,
     break_even,
     elapsed,
-    days: days_in_month(month_id),
+    days: dim,
     recent_daily: avg(recent),
     prev_daily: prev.length >= 5 ? avg(prev) : null,
   });

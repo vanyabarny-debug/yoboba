@@ -7,7 +7,7 @@ export const audit_keep_ms = 30 * 24 * 60 * 60 * 1000;
 export type order_audit_event = {
   id: string;
   at: string;
-  action: 'delete' | 'update';
+  action: 'delete' | 'update' | 'create';
   actor_id: string;
   actor_name: string;
   order_id: string;
@@ -29,7 +29,7 @@ function is_event(value: unknown): value is order_audit_event {
   return (
     typeof row.id === 'string' &&
     typeof row.at === 'string' &&
-    (row.action === 'delete' || row.action === 'update') &&
+    (row.action === 'delete' || row.action === 'update' || row.action === 'create') &&
     typeof row.actor_name === 'string' &&
     typeof row.order_label === 'string'
   );

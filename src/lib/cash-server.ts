@@ -90,6 +90,25 @@ export async function forget_cash_for_order(order_id: string) {
   await save_transactions(next);
 }
 
+/** поправить нал/безнал у уже проведённой оплаты */
+export async function set_cash_method_for_order(order_id: string, method: 'cash' | 'card') {
+  const all = await load_transactions();
+  let changed = false;
+  for (const row of all) {
+    if (row.order_id !== order_id || row.payment_method === 'bonus') continue;
+    row.payment_method = method;
+    if (method === 'card') {
+      row.amount_received = null;
+      row.change_given = null;
+    } else if (row.amount_received == null) {
+      row.amount_received = row.order_total;
+      row.change_given = 0;
+    }
+    changed = true;
+  }
+  if (changed) await save_transactions(all);
+}
+
 export async function retitle_cash_for_order(order_id: string, total: number, items_summary: string) {
   const all = await load_transactions();
   let changed = false;

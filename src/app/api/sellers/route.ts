@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 import { session_cookie } from '@/lib/session';
 import { delete_seller, get_sellers, upsert_seller } from '@/lib/sellers-server';
+import { parse_push_categories } from '@/lib/push-categories';
 import { parse_seller_access } from '@/lib/seller-access';
 import type { seller } from '@/lib/types';
 
@@ -52,13 +53,17 @@ export async function POST(request: Request) {
   const salary_net = Math.max(0, Math.round(Number(body.salary_net) || 0));
   const with_ndfl =
     body.with_ndfl != null ? Boolean(body.with_ndfl) : salary_net > 0;
+  const push_categories = parse_push_categories(body.push_categories);
+  const access = parse_seller_access(body.access);
+  access.push = push_categories.length > 0;
   const record = await upsert_seller({
     id: body.id || `seller-${Date.now()}`,
     login: body.login.trim().toLowerCase(),
     password: body.password,
     name: body.name.trim(),
     role_title: (body.role_title || 'бариста').trim().slice(0, 40) || 'бариста',
-    access: parse_seller_access(body.access),
+    access,
+    push_categories,
     is_active: body.is_active !== false,
     spot_ids: Array.isArray(body.spot_ids) ? body.spot_ids : [],
     salary_net,

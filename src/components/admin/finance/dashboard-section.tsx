@@ -47,6 +47,7 @@ import type { section_props } from '@/components/admin/finance/use-finance';
 import ModelSection from '@/components/admin/finance/model-section';
 import StoreRhythmCard from '@/components/admin/finance/store-rhythm-card';
 import type { store_rhythm } from '@/lib/customer-analytics';
+import type { retention_report } from '@/lib/guest-rank';
 import type { seller, store_spot } from '@/lib/types';
 import {
   get_spots,
@@ -80,6 +81,7 @@ type fact_response = {
   sales: Record<string, Record<string, sales_cell>>;
   by_day?: day_row[];
   rhythm?: store_rhythm;
+  returns?: retention_report | null;
   spot_id?: string | null;
   spot_label?: string;
   spots_count?: number;
@@ -128,12 +130,40 @@ function day_word(n: number) {
   return 'дней';
 }
 
+/** пока выручка ниже месячной безубыточности — не показываем «плюс» от доли фиксов */
+function net_vs_month_break_even(input: {
+  revenue: number;
+  cogs: number;
+  break_even: number;
+  accounting_net: number;
+}): number {
+  const be = Math.max(0, Number(input.break_even) || 0);
+  const rev = Math.max(0, Number(input.revenue) || 0);
+  const accounting = Math.round(Number(input.accounting_net) || 0);
+  if (!(be > 0) || rev >= be) return accounting;
+  const cm = rev > 0 ? (rev - Math.max(0, Number(input.cogs) || 0)) / rev : 0;
+  if (cm > 0.02) return Math.round((rev - be) * cm);
+  return Math.round(rev - be);
+}
+
+function break_even_gap_label(revenue: number, break_even: number): string | undefined {
+  const be = Math.round(Number(break_even) || 0);
+  if (!(be > 0)) return undefined;
+  const rev = Math.round(Number(revenue) || 0);
+  const gap = be - rev;
+  if (gap > 0) return `ещё ${format_rub(gap)} до безубыточности`;
+  if (gap < 0) return `+${format_rub(-gap)} сверх безубыточности`;
+  return 'безубыточность достигнута';
+}
+
 function month_status(input: {
   month_name: string;
   revenue: number;
   profit: number;
   /** уже на весь месяц, второй раз не растягивать */
   projected_profit?: number;
+  /** цель чистой из плана — «очень охуенно» только при перевыполнении */
+  net_target?: number;
   salary: number;
   break_even: number;
   elapsed: number;
@@ -151,22 +181,24 @@ function month_status(input: {
         ? input.profit
         : (input.profit / elapsed) * input.days;
   const gap = input.salary > 0 && input.break_even > 0 ? (projected_revenue - input.break_even) / input.break_even : null;
+  const net_target = Math.max(0, Math.round(Number(input.net_target) || 0));
 
   let tone: business_tone;
   if (gap != null) {
     if (gap < -0.03) tone = 'minus';
     else if (gap <= 0.03) tone = 'zero';
     else if (gap < 0.15) tone = 'plus';
-    else if (gap < 0.4) tone = 'ok';
-    else tone = 'great';
+    else tone = 'ok';
   } else if (projected_profit < -1000) {
     tone = 'minus';
   } else if (Math.abs(projected_profit) <= 1000) {
     tone = 'zero';
   } else {
     const margin = projected_revenue > 0 ? projected_profit / projected_revenue : 0;
-    tone = margin < 0.08 ? 'plus' : margin < 0.18 ? 'ok' : 'great';
+    tone = margin < 0.08 ? 'plus' : 'ok';
   }
+  // запредельно — только когда ориентир/факт чистой бьёт цель из вкладки «план»
+  if (net_target > 0 && projected_profit >= net_target) tone = 'great';
   if (input.salary <= 0 && (tone === 'great' || tone === 'ok')) tone = 'plus';
 
   let trend = '';
@@ -179,7 +211,245 @@ function month_status(input: {
     ? `${input.month_name} закрывается`
     : `по темпу ${elapsed} ${day_word(elapsed)} ${input.month_name}`;
   const wage = input.salary > 0 ? '' : ' · без фот';
-  return { tone, detail: `${trend}${when}${wage}` };
+  const plan =
+    tone === 'great' && net_target > 0
+      ? ` · план ${format_rub(net_target)} перевыполнен`
+      : '';
+  return { tone, detail: `${trend}${when}${wage}${plan}` };
+}
+
+function pct(rate: number | null | undefined) {
+  return rate != null ? `${rate}%` : '—';
+}
+
+function ru_day(ymd: string) {
+  const [y, m, d] = ymd.split('-');
+  if (!y || !m || !d) return ymd;
+  return `${d}.${m}.${y}`;
+}
+
+function habit_label(avg: number | null | undefined) {
+  if (avg == null) return '—';
+  const per_week = avg / (30 / 7);
+  if (per_week >= 1.5) return `${Math.round(per_week * 10) / 10}× в неделю`;
+  return `${avg}× в месяц`;
+}
+
+function Ask({ what, why }: { what: string; why: string }) {
+  const [open, set_open] = useState(false);
+  return (
+    <span className="relative inline-flex">
+      <button
+        type="button"
+        aria-label="что это"
+        aria-expanded={open}
+        onClick={() => set_open((v) => !v)}
+        className="inline-flex h-4 w-4 items-center justify-center rounded-full border border-neutral-300 text-[10px] font-bold leading-none text-neutral-500 hover:border-neutral-500 hover:text-neutral-800"
+      >
+        ?
+      </button>
+      {open ? (
+        <>
+          <button
+            type="button"
+            aria-label="закрыть"
+            className="fixed inset-0 z-20 cursor-default"
+            onClick={() => set_open(false)}
+          />
+          <span className="absolute right-0 top-6 z-30 w-72 rounded-2xl border border-neutral-200 bg-white p-3 text-left shadow-lg">
+            <span className="block text-[11px] font-semibold text-neutral-800">что это</span>
+            <span className="mt-0.5 block text-[11px] font-normal leading-snug text-neutral-600">{what}</span>
+            <span className="mt-2 block text-[11px] font-semibold text-neutral-800">зачем</span>
+            <span className="mt-0.5 block text-[11px] font-normal leading-snug text-neutral-600">{why}</span>
+          </span>
+        </>
+      ) : null}
+    </span>
+  );
+}
+
+function MetricCard({
+  title,
+  what,
+  why,
+  value,
+  sub,
+}: {
+  title: string;
+  what: string;
+  why: string;
+  value: string;
+  sub: string;
+}) {
+  return (
+    <section className="rounded-3xl border border-neutral-200/80 bg-white p-4 shadow-soft">
+      <div className="flex items-start justify-between gap-2">
+        <h2 className="font-heading-soft text-sm text-neutral-900">{title}</h2>
+        <Ask what={what} why={why} />
+      </div>
+      <p className="mt-2 font-heading-soft text-3xl tabular-nums text-neutral-900">{value}</p>
+      <p className="mt-1 text-[12px] leading-snug text-neutral-500">{sub}</p>
+    </section>
+  );
+}
+
+function rub_or_dash(n: number | null | undefined) {
+  return n != null ? `${Math.round(n).toLocaleString('ru-RU')} ₽` : '—';
+}
+
+function ReturnRateCard({ stats }: { stats: retention_report | null | undefined }) {
+  const [open, set_open] = useState(false);
+  const head = stats?.within_30;
+  const drop_labels = ['3 дня', '7 дней', '14 дней', '30 дней'];
+  return (
+    <Card
+      className={open ? 'lg:col-span-2' : ''}
+      title="вернулись за 30 дней"
+      hint="30 суток после первой покупки, срез на последний день периода сверху. только гости с телефоном, напитки себе не входят"
+      actions={
+        <button
+          type="button"
+          onClick={() => set_open((v) => !v)}
+          className="rounded-full bg-neutral-900 px-2.5 py-1 text-[11px] font-semibold text-white"
+        >
+          {open ? 'свернуть' : 'разбор'}
+        </button>
+      }
+    >
+      <p className="font-heading-soft text-3xl tabular-nums text-neutral-900">
+        {head && head.rate != null ? `${head.rate}%` : '—'}
+      </p>
+      <p className="mt-1 text-[12px] text-neutral-500">
+        {head && head.eligible > 0
+          ? `${head.returned} из ${head.eligible} взяли второй раз за 30 дней`
+          : 'пока некому считать'}
+      </p>
+      {open && stats ? (
+        <div className="mt-4 space-y-4 border-t border-neutral-100 pt-4">
+          <section>
+            <h3 className="text-[12px] font-semibold text-neutral-800">как быстро отваливаются</h3>
+            <p className="mt-0.5 text-[11px] text-neutral-400">
+              вторая покупка в этом окне. у каждого окна свой знаменатель: только те, у кого оно уже закрылось
+            </p>
+            <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-4">
+              {stats.dropoff.map((row, i) => (
+                <div key={drop_labels[i]} className="rounded-xl bg-neutral-50 px-2.5 py-2">
+                  <p className="text-[11px] font-semibold text-neutral-500">{drop_labels[i]}</p>
+                  <p className="mt-0.5 font-heading-soft text-xl tabular-nums text-neutral-900">{pct(row.rate)}</p>
+                  <p className="text-[11px] text-neutral-400">
+                    {row.eligible ? `${row.returned} из ${row.eligible}` : 'рано считать'}
+                  </p>
+                </div>
+              ))}
+            </div>
+          </section>
+
+          <section>
+            <h3 className="text-[12px] font-semibold text-neutral-800">визиты за всё время</h3>
+            <p className="mt-0.5 text-[11px] text-neutral-400">
+              среди {head?.eligible ?? 0}, у кого 30 дней после первой покупки уже прошли
+            </p>
+            <ul className="mt-2 divide-y divide-neutral-100">
+              {stats.frequency.map((row) => (
+                <li key={row.id} className="flex items-baseline justify-between gap-3 py-1.5 text-sm">
+                  <span className="text-neutral-700">{row.label}</span>
+                  <span className="shrink-0 tabular-nums text-neutral-900">
+                    {row.people}
+                    <span className="ml-2 text-neutral-400">{pct(row.pct)}</span>
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </section>
+
+          <section>
+            <h3 className="text-[12px] font-semibold text-neutral-800">первый напиток и возврат за 30 дней</h3>
+            <p className="mt-0.5 text-[11px] text-neutral-400">категории как на сайте, под ними напитки первого визита</p>
+            <ul className="mt-2 divide-y divide-neutral-100">
+              {stats.families.map((row) => (
+                <li key={row.id} className="py-1.5">
+                  <div className="flex items-baseline justify-between gap-3 text-sm">
+                    <span className="min-w-0 text-neutral-800">{row.label}</span>
+                    <span className="shrink-0 tabular-nums text-neutral-900">
+                      {pct(row.rate)}
+                      <span className="ml-2 text-neutral-400">
+                        {row.buyers ? `${row.returned} из ${row.buyers}` : 'нет'}
+                      </span>
+                    </span>
+                  </div>
+                  {row.drinks.length ? (
+                    <p className="mt-0.5 text-[11px] leading-snug text-neutral-400">{row.drinks.join(' · ')}</p>
+                  ) : null}
+                </li>
+              ))}
+            </ul>
+          </section>
+
+          <section>
+            <h3 className="text-[12px] font-semibold text-neutral-800">чек и скидка первой покупки</h3>
+            <div className="mt-2 grid gap-2 sm:grid-cols-2">
+              {(
+                [
+                  ['вернулись', stats.checks.returned],
+                  ['не вернулись', stats.checks.once],
+                ] as const
+              ).map(([label, row]) => (
+                <div key={label} className="rounded-xl bg-neutral-50 px-3 py-2">
+                  <p className="text-[11px] font-semibold text-neutral-500">
+                    {label} · {row.people}
+                  </p>
+                  <p className="mt-1 text-sm text-neutral-800">
+                    средний чек <span className="tabular-nums font-semibold">{rub_or_dash(row.avg_check)}</span>
+                  </p>
+                  <p className="text-[12px] text-neutral-500">
+                    скидка у {row.discounted} из {row.people}
+                    {row.avg_discount != null ? ` · в среднем ${rub_or_dash(row.avg_discount)}` : ''}
+                  </p>
+                </div>
+              ))}
+            </div>
+          </section>
+
+          <section>
+            <h3 className="text-[12px] font-semibold text-neutral-800">через сколько дней вторая покупка</h3>
+            <p className="mt-1 text-sm text-neutral-800">
+              {stats.speed.people
+                ? `в среднем ${stats.speed.avg_days ?? '—'} дн. · середина ${stats.speed.median_days ?? '—'} дн. · ${stats.speed.people} человек`
+                : 'пока никто не успел вернуться за 30 дней'}
+            </p>
+          </section>
+
+          <section>
+            <h3 className="text-[12px] font-semibold text-neutral-800">что брали в первый визит</h3>
+            <div className="mt-2 grid gap-2 sm:grid-cols-2">
+              {(
+                [
+                  ['не вернулись', stats.first_drinks.once],
+                  ['вернулись', stats.first_drinks.returned],
+                ] as const
+              ).map(([label, rows]) => (
+                <div key={label}>
+                  <p className="text-[11px] font-semibold text-neutral-500">{label}</p>
+                  <ul className="mt-1 space-y-1">
+                    {rows.length ? (
+                      rows.map((row) => (
+                        <li key={row.name} className="flex items-baseline justify-between gap-2 text-sm">
+                          <span className="min-w-0 truncate text-neutral-800">{row.name}</span>
+                          <span className="shrink-0 tabular-nums text-neutral-400">{row.guests}</span>
+                        </li>
+                      ))
+                    ) : (
+                      <li className="text-sm text-neutral-400">нет</li>
+                    )}
+                  </ul>
+                </div>
+              ))}
+            </div>
+          </section>
+        </div>
+      ) : null}
+    </Card>
+  );
 }
 
 function Kpi({
@@ -593,6 +863,39 @@ export default function DashboardSection({
     return rows;
   }, [fact, state, mix_with_cogs]);
 
+  const unit = useMemo(() => {
+    const source = fact?.sales;
+    const empty = { fixed: 0, rows: [] as { name: string; qty: number; ingredient: number; net: number }[] };
+    if (!source) return empty;
+    const raw: { name: string; qty: number; revenue: number; cost: number }[] = [];
+    for (const card of state.techCards) {
+      const by_size = source[card.id];
+      if (!by_size) continue;
+      let qty = 0;
+      let revenue = 0;
+      let cost = 0;
+      for (const [size, cell] of Object.entries(by_size)) {
+        if (!cell?.qty) continue;
+        qty += cell.qty;
+        revenue += (cell.price || 0) * cell.qty;
+        cost += tech_card_cost(state, card, size) * cell.qty;
+      }
+      if (qty <= 0) continue;
+      raw.push({ name: card.name, qty, revenue, cost });
+    }
+    const cups = raw.reduce((sum, row) => sum + row.qty, 0);
+    const fixed = cups > 0 ? live.opex / cups : 0;
+    const rows = raw
+      .map((row) => ({
+        name: row.name,
+        qty: row.qty,
+        ingredient: Math.round(row.cost / row.qty),
+        net: Math.round(row.revenue / row.qty - row.cost / row.qty - fixed),
+      }))
+      .sort((a, b) => b.qty - a.qty);
+    return { fixed, rows };
+  }, [fact, state, live.opex]);
+
   const month_md = state.monthsData.find((m) => m.month === month_id);
   const month_name = month_title[Number(month_id.slice(5, 7)) - 1] || 'месяц';
   const elapsed = should_project ? Number(today.slice(8)) || 1 : dim;
@@ -601,6 +904,7 @@ export default function DashboardSection({
       ? fact?.rhythm
       : mtd_fact?.rhythm
     : fact?.rhythm;
+  const guest_returns = fact?.returns ?? mtd_fact?.returns ?? null;
   const month_proj = should_project
     ? project_month_net(state, {
         month_id,
@@ -609,13 +913,6 @@ export default function DashboardSection({
         weekday_avg_revenue: rhythm_src?.weekday.map((b) => b.avg_revenue) ?? null,
       })
     : null;
-  const plaque_net = period_exact ? Math.round(live.net_profit) : (month_proj?.projected_net ?? 0);
-  const plaque_rent =
-    period_exact
-      ? live.revenue > 0
-        ? live.net_profit / live.revenue
-        : 0
-      : (month_proj?.rentability ?? 0);
   const margin_pct = live.revenue > 0 ? (live.revenue - live.cogs) / live.revenue : 0;
   const period_days = Math.max(1, each_day(from, to).length);
   const staff_wo_monthly =
@@ -624,6 +921,31 @@ export default function DashboardSection({
     margin_pct,
     staff_writeoff_monthly: staff_wo_monthly,
   });
+  /** в статусе — ориентир чистой к концу месяца (экстраполяция), не недобор до BE */
+  const plaque_net = period_exact
+    ? Math.round(live.net_profit)
+    : (month_proj?.projected_net ?? 0);
+  const plaque_revenue = period_exact
+    ? live.revenue
+    : (month_proj?.projected_revenue ?? live.revenue);
+  /** маленькая плашка «чистая» — с учётом безубыточности месяца */
+  const kpi_net = net_vs_month_break_even({
+    revenue: live.revenue,
+    cogs: live.cogs,
+    break_even,
+    accounting_net: live.net_profit,
+  });
+  /** рентабельность только от ориентира/факта чистой — никогда от «до безубыточности» */
+  const plaque_rent = period_exact
+    ? live.revenue > 0
+      ? live.net_profit / live.revenue
+      : 0
+    : (month_proj?.rentability ??
+      (plaque_revenue > 0 ? plaque_net / plaque_revenue : 0));
+  const rent_detail = period_exact
+    ? period
+    : `ориентир к концу ${month_name}`;
+  const revenue_be_sub = break_even_gap_label(live.revenue, break_even);
   const month_tot = month_fixed_totals(state, month_id);
 
   const trend_days =
@@ -700,6 +1022,7 @@ export default function DashboardSection({
         revenue: should_project ? mtd_live.revenue : live.revenue,
         profit: should_project ? mtd_live.net_profit : live.net_profit,
         projected_profit: plaque_net,
+        net_target: state.businessPlan?.monthlyNetTarget ?? 0,
         salary: fot_month,
         break_even,
         elapsed: period_exact ? dim : elapsed,
@@ -742,7 +1065,7 @@ export default function DashboardSection({
             detail={status.detail}
             net={plaque_net}
             net_approx={!period_exact}
-            net_label={period_exact ? 'чистая' : 'ориентир чистой'}
+            net_label={period_exact ? 'чистая' : 'ориентировочная чистая к концу месяца'}
           />
         ) : (
           <div className="rounded-3xl bg-[#20181B] px-6 py-7 text-white shadow-soft">
@@ -750,14 +1073,14 @@ export default function DashboardSection({
             <p className="mt-3 font-heading-soft text-3xl text-white/70">считаем месяц</p>
           </div>
         )}
-        <RentabilityCard value={plaque_rent} approx={!period_exact} detail={period} />
+        <RentabilityCard value={plaque_rent} approx={!period_exact} detail={rent_detail} />
       </div>
 
       <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
         <Kpi
           label="выручка"
           value={format_rub(live.revenue)}
-          sub={break_even > 0 ? `безубыточность ${format_rub(Math.round(break_even))}` : undefined}
+          sub={revenue_be_sub}
           bar="#3B82F6"
         />
         <Kpi
@@ -853,7 +1176,7 @@ export default function DashboardSection({
           value={format_rub(-(fot_ndfl_month + month_tot.insurance))}
           bar="#7C6FF7"
         />
-        <Kpi label="чистая" value={format_rub(live.net_profit)} bar="#20181B" />
+        <Kpi label="чистая" value={format_rub(kpi_net)} bar="#20181B" />
         <Kpi
           label="закупки"
           value={format_rub(live.cogs_actual > 0 ? live.cogs_actual : warehouse.spent)}
@@ -871,6 +1194,110 @@ export default function DashboardSection({
           sub="списания + инвентарь"
           bar="#D97706"
         />
+        <Kpi
+          label="вернулись"
+          value={guest_returns?.within_30.rate != null ? `${guest_returns.within_30.rate}%` : '—'}
+          sub={
+            guest_returns?.within_30.eligible
+              ? `${guest_returns.within_30.returned} из ${guest_returns.within_30.eligible} за 30 дней`
+              : 'вторая покупка за 30 дней'
+          }
+          bar="#0f766e"
+        />
+      </div>
+
+      <p className="text-[11px] text-neutral-400">
+        возврат, частота и база — срез на {ru_day(to)}. 30 суток от покупки, не длина периода
+      </p>
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        <MetricCard
+          title="со 2-го на 3-й"
+          what="процент людей, которые после второй покупки возвращаются за третьей и четвёртой. окно — 30 реальных суток после визита, не длина периода сверху. срез на последний день выбранных дат: заказы после него не считаются. гости без телефона и напитки себе не входят."
+          why="если 1-ю покупку человек делает на волне любопытства, а 2-ю — по акции, то 3-ю и далее он делает только потому, что продукт ему реально полюбился. это главный маркер здоровья бизнеса."
+          value={pct(guest_returns?.to_third?.rate)}
+          sub={
+            guest_returns?.to_third?.eligible
+              ? `${guest_returns.to_third.returned} из ${guest_returns.to_third.eligible} за 30 дней после 2-го${
+                  guest_returns.to_fourth?.eligible
+                    ? ` · до 4-го ${guest_returns.to_fourth.returned} из ${guest_returns.to_fourth.eligible}`
+                    : ''
+                }`
+              : 'пока рано считать'
+          }
+        />
+        <MetricCard
+          title="до 2-й покупки"
+          what="сколько в среднем дней проходит между 1-й и 2-й покупкой. цель — сжимать ближе к 3–5 дням."
+          why="показывает окно жизни клиента. если в этот период не напомнить о себе, человек забывает дорогу к точке."
+          value={
+            guest_returns?.speed?.avg_days != null ? `${guest_returns.speed.avg_days} дн.` : '—'
+          }
+          sub={
+            guest_returns?.speed?.people
+              ? `середина ${guest_returns.speed.median_days ?? '—'} дн. · ${guest_returns.speed.people} человек`
+              : 'ещё никто не вернулся за 30 дней'
+          }
+        />
+        <MetricCard
+          title="частота визитов"
+          what="сколько раз в месяц один постоянный гость приходит за напитком. постоянный — тот, кто уже был хотя бы дважды и заходил в последние 30 дней."
+          why="позволяет прогнозировать выручку и понимать, превратилась ли точка в привычное место для местной молодёжи."
+          value={habit_label(guest_returns?.habit?.avg_per_month)}
+          sub={
+            guest_returns?.habit?.people
+              ? `${guest_returns.habit.people} постоянных за последние 30 дней`
+              : 'постоянных в этом месяце нет'
+          }
+        />
+        <MetricCard
+          title="мёртвая база"
+          what="какой процент от всех собранных в crm контактов не появлялся на точке дольше 30 дней. рядом — кто пропал уже дольше 45 дней."
+          why="показывает эффективность реактивации: как работают триггерные рассылки и сезонные акции, которые возвращают людей на тёплое меню."
+          value={pct(guest_returns?.churn?.rate_30)}
+          sub={
+            guest_returns?.churn?.contacts
+              ? `${guest_returns.churn.silent_30} из ${guest_returns.churn.contacts} дольше 30 дней · дольше 45 дней ${guest_returns.churn.silent_45} из ${guest_returns.churn.contacts}`
+              : 'в crm пока нет номеров'
+          }
+        />
+        <Card
+          className="sm:col-span-2 xl:col-span-4"
+          title="юнит-экономика"
+          actions={
+            <Ask
+              what="чистая с каждого напитка: цена минус сырьё по техкарте (тапиока, джус-боллы, сиропы) и минус аренда с зарплатой этого периода, размазанные поровну на стакан."
+              why="чтобы не получилось так, что лимонады или акционные позиции приносят огромный вал чеков, но съедают всю прибыль из-за высокой себестоимости расходников."
+            />
+          }
+        >
+          {unit.rows.length ? (
+            <>
+              <p className="text-[12px] text-neutral-500">
+                аренда и зарплата периода: {format_rub(Math.round(unit.fixed))} на стакан · ходовые сверху
+              </p>
+              <ul className="mt-2 divide-y divide-neutral-100">
+                {unit.rows.slice(0, 8).map((row) => (
+                  <li key={row.name} className="flex items-baseline justify-between gap-3 py-1.5 text-sm">
+                    <span className="min-w-0">
+                      <span className="block truncate text-neutral-800">{row.name}</span>
+                      <span className="text-[11px] text-neutral-400">
+                        {row.qty} ст. · сырьё {row.ingredient} ₽
+                      </span>
+                    </span>
+                    <span
+                      className={`shrink-0 tabular-nums ${row.net < 0 ? 'font-semibold text-red-500' : 'text-neutral-900'}`}
+                    >
+                      {row.net < 0 ? '−' : ''}
+                      {Math.abs(row.net).toLocaleString('ru-RU')} ₽
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </>
+          ) : (
+            <p className="text-sm text-neutral-400">нет продаж с техкартой за этот период</p>
+          )}
+        </Card>
       </div>
 
       <Card
@@ -937,6 +1364,7 @@ export default function DashboardSection({
 
       <div className="grid gap-4 lg:grid-cols-2">
         <StoreRhythmCard rhythm={fact?.rhythm} period={period} />
+        <ReturnRateCard stats={guest_returns} />
 
         <Card
           title={`структура выручки · ${period}`}

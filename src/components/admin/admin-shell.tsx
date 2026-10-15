@@ -18,6 +18,11 @@ export const admin_tabs = [
     match: (p: string) => p.startsWith('/admin/customers') || p.startsWith('/admin/push'),
   },
   {
+    href: '/admin/operations',
+    label: 'операции',
+    match: (p: string) => p.startsWith('/admin/operations'),
+  },
+  {
     href: '/admin/menu',
     label: 'меню',
     match: (p: string) => p.startsWith('/admin/menu') || p.startsWith('/admin/techcards') || p.startsWith('/admin/craft'),

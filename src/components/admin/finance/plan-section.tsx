@@ -48,6 +48,8 @@ type fact_response = {
   month: string;
   orders: number;
   revenue: number;
+  /** стаканы с разворотом комбо — как на дашборде */
+  cups?: number;
   sales: Record<string, Record<string, sales_cell>>;
   by_spot?: { spot_id: string | null; revenue: number; orders: number; label: string }[];
   rhythm?: store_rhythm;
@@ -130,6 +132,7 @@ export default function PlanSection(props: section_props) {
       month,
       fact_sales: fact.sales ?? {},
       fact_revenue: fact.revenue ?? 0,
+      fact_cups: fact.cups ?? 0,
       menu: props.menu,
       spot_share: share,
       rhythm: fact.rhythm,
@@ -307,31 +310,48 @@ export default function PlanSection(props: section_props) {
           <label className="block w-36">
             <span className="mb-1 block text-xs text-neutral-500">шт / день</span>
             <NumInput
-              value={bp.assumedCupsPerDay}
+              value={
+                bp.assumedCupsPerDay > 0
+                  ? bp.assumedCupsPerDay
+                  : Math.max(0, Math.round(baseline?.fact_cups_per_day ?? 0))
+              }
               min={0}
               step={1}
               on_change={(v) => set_plan({ assumedCupsPerDay: Math.max(0, Math.round(v)) })}
             />
           </label>
           <div className="flex flex-wrap gap-1 pb-0.5">
-            {[0, 15, 20, 25, 30].map((n) => (
-              <button
-                key={n}
-                type="button"
-                className={bp.assumedCupsPerDay === n ? chip_active : chip_idle}
-                onClick={() => set_plan({ assumedCupsPerDay: n })}
-              >
-                {n === 0 ? 'только факт' : `${n}`}
-              </button>
-            ))}
+            {[0, 15, 20, 25, 30].map((n) => {
+              const fact_n = Math.max(0, Math.round(baseline?.fact_cups_per_day ?? 0));
+              const active = n === 0 ? bp.assumedCupsPerDay === 0 : bp.assumedCupsPerDay === n;
+              return (
+                <button
+                  key={n}
+                  type="button"
+                  className={active ? chip_active : chip_idle}
+                  onClick={() => set_plan({ assumedCupsPerDay: n })}
+                >
+                  {n === 0 ? (fact_n > 0 ? `только факт · ${fact_n}` : 'только факт') : `${n}`}
+                </button>
+              );
+            })}
           </div>
         </div>
-        {bp.assumedCupsPerDay > 0 && baseline ? (
+        {baseline && baseline.fact_cups_per_day > 0 ? (
           <p className="mt-2 text-xs text-neutral-500">
-            ёмкость от оценки ≈ {format_rub(baseline.capacity_revenue)}
-            {baseline.fact_capacity_revenue > 0
-              ? ` · факт тянул бы только ${format_rub(baseline.fact_capacity_revenue)}`
-              : ''}
+            {bp.assumedCupsPerDay > 0 ? (
+              <>
+                ёмкость от оценки ≈ {format_rub(baseline.capacity_revenue)}
+                {baseline.fact_capacity_revenue > 0
+                  ? ` · факт (~${baseline.fact_cups_per_day.toFixed(1)}/день) → ${format_rub(baseline.fact_capacity_revenue)}`
+                  : ''}
+              </>
+            ) : (
+              <>
+                факт · ср. {baseline.fact_cups_per_day.toFixed(1)} шт/день → ёмкость ≈{' '}
+                {format_rub(baseline.capacity_revenue)}
+              </>
+            )}
           </p>
         ) : null}
       </Card>

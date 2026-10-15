@@ -127,7 +127,14 @@ export type plan_baseline = {
   fixed_total: number;
   break_even: number;
   /** откуда взяли ёмкость */
-  capacity_source: 'projected' | 'previous' | 'full_month' | 'break_even' | 'assumed' | 'none';
+  capacity_source:
+    | 'projected'
+    | 'previous'
+    | 'full_month'
+    | 'fact_cups'
+    | 'break_even'
+    | 'assumed'
+    | 'none';
   /** ёмкость только из факта (без твоей оценки стаканов/день) */
   fact_capacity_revenue: number;
   margin_capped: boolean;
@@ -332,6 +339,11 @@ export function build_baseline(input: {
   prev_fact_sales?: Record<string, Record<string, sales_cell>>;
   /** твоя оценка: сколько стаканов/день реально при рекламе/узнаваемости */
   assumed_cups_per_day?: number;
+  /**
+   * стаканы с разворотом комбо (как на дашборде / в sales API).
+   * если не передали — падаем на qty по техкартам (комбо = 1 шт).
+   */
+  fact_cups?: number;
 }): plan_baseline {
   const { state, month, menu } = input;
   const menu_by_id = new Map(menu.map((m) => [m.id, m]));
@@ -417,6 +429,28 @@ export function build_baseline(input: {
   const prev_rev = Math.max(0, Number(input.prev_month_revenue) || 0);
   const today = moscow_today();
   const is_current_month = today.startsWith(month);
+  const elapsed = is_current_month
+    ? Math.max(1, Math.min(days, Number(today.slice(8)) || 1))
+    : days;
+
+  /** темп стаканов — с разворотом комбо, иначе qty техкарт */
+  const cups_for_pace =
+    Number(input.fact_cups) > 0 ? Math.round(Number(input.fact_cups)) : fact_drinks;
+
+  // средний чек на один стакан (тот же знаменатель, что и темп)
+  const avg_check =
+    cups_for_pace > 0 && raw_fact > 0
+      ? raw_fact / cups_for_pace
+      : usable.length > 0
+        ? usable.reduce((s, r) => s + r.weight * r.price, 0)
+        : 350;
+
+  /** реальное среднее стаканов/день за прошедшие дни (не делим MTD на 31) */
+  const fact_cups_per_day = cups_for_pace > 0 ? cups_for_pace / elapsed : 0;
+  const fact_cups_capacity =
+    fact_cups_per_day > 0 && avg_check > 0
+      ? Math.round(fact_cups_per_day * days * avg_check)
+      : 0;
 
   let capacity_revenue = 0;
   let capacity_source: plan_baseline['capacity_source'] = 'none';
@@ -437,29 +471,19 @@ export function build_baseline(input: {
     capacity_source = 'projected';
   }
 
-  const fact_cups_per_day =
-    capacity_revenue > 0 && raw_fact > 0 && fact_drinks > 0
-      ? (fact_drinks * (capacity_revenue / raw_fact)) / days
-      : fact_drinks / days;
-
-  const fact_capacity_revenue = capacity_revenue;
-
-  // средний чек: из факта или из микса цен
-  const avg_check =
-    fact_drinks > 0 && raw_fact > 0
-      ? raw_fact / fact_drinks
-      : usable.length > 0
-        ? usable.reduce((s, r) => s + r.weight * r.price, 0)
-        : 350;
-
+  const revenue_capacity = capacity_revenue;
   const assumed = Math.max(0, Number(input.assumed_cups_per_day) || 0);
   if (assumed > 0 && avg_check > 0) {
-    const assumed_rev = Math.round(assumed * days * avg_check);
-    if (assumed_rev > capacity_revenue) {
-      capacity_revenue = assumed_rev;
-      capacity_source = 'assumed';
-    }
+    // явная оценка / пресет — ёмкость строго от стаканов/день
+    capacity_revenue = Math.round(assumed * days * avg_check);
+    capacity_source = 'assumed';
+  } else if (fact_cups_capacity > 0) {
+    // «только факт» — среднее шт/день × чек на полный месяц
+    capacity_revenue = fact_cups_capacity;
+    capacity_source = 'fact_cups';
   }
+
+  const fact_capacity_revenue = fact_cups_capacity > 0 ? fact_cups_capacity : revenue_capacity;
 
   const be = break_even_revenue(state, month, { margin_pct: gross_margin_pct }) * share;
   if (capacity_revenue <= 0 && be > 0) {
@@ -474,7 +498,7 @@ export function build_baseline(input: {
     fact_revenue: raw_fact,
     capacity_revenue,
     fact_capacity_revenue,
-    fact_drinks,
+    fact_drinks: cups_for_pace,
     fact_cups_per_day,
     spot_share: share,
     fixed_opex: fixed.opex,
@@ -730,6 +754,7 @@ export const CAPACITY_SOURCE_HINT: Record<plan_baseline['capacity_source'], stri
   projected: 'ёмкость = экстраполяция текущего месяца на полный',
   previous: 'ёмкость = прошлый полный месяц',
   full_month: 'ёмкость = факт выбранного месяца',
+  fact_cups: 'ёмкость = среднее стаканов/день по факту × средний чек',
   break_even: 'нет продаж — ориентир по безубыточности',
   assumed: 'ёмкость = твоя оценка стаканов/день × средний чек (запуск / реклама)',
   none: 'нет базы продаж',

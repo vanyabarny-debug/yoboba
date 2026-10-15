@@ -9,6 +9,8 @@ import {
   subscribe_menu_store,
 } from '@/lib/menu-store';
 import { item_in_category } from '@/lib/menu-item-categories';
+import { GuestLevelMark, type level_mark } from '@/components/guest-level-mark';
+import { level_ink } from '@/lib/guest-rank';
 import { format_phone_display, format_phone_input, phone_input_to_e164 } from '@/lib/phone';
 import { parse_pickup_code_input } from '@/lib/pickup-code';
 import { read_json_response } from '@/lib/read-json-response';
@@ -22,6 +24,7 @@ import type { gift, menu_item, order_combo_component, order_item } from '@/lib/t
 import { STUDENT_DISCOUNT_LABEL, student_line_price } from '@/lib/student-discount';
 import {
   cart_total_after_discount,
+  discount_from_sold,
   discounted_unit,
   discount_label,
   type pos_discount,
@@ -75,6 +78,7 @@ type found_customer = {
   bonus_balance: number;
   student_claimed?: boolean;
   student_verified?: boolean;
+  level?: level_mark | null;
 };
 
 
@@ -187,6 +191,8 @@ export default function pos_panel({
   const [staff_drink, set_staff_drink] = useState(false);
   const [discount, set_discount] = useState<pos_discount | null>(null);
   const [discount_open, set_discount_open] = useState(false);
+  /** черновик поля «продано за» — пока кассир печатает, скидка считается из него */
+  const [sold_draft, set_sold_draft] = useState('');
 
   function open_confirm(_mode: 'order' | 'gift' = 'order') {
     set_confirm_open(true);
@@ -541,6 +547,7 @@ export default function pos_panel({
       if (next) {
         set_discount(null);
         set_discount_open(false);
+        set_sold_draft('');
         set_pay_with_bonus(false);
         set_confirm_student(false);
       }
@@ -552,8 +559,44 @@ export default function pos_panel({
     set_discount((prev) => {
       if (!prev || prev.scope !== 'lines') return prev;
       const has = prev.lines.includes(index);
-      return { ...prev, lines: has ? prev.lines.filter((i) => i !== index) : [...prev.lines, index] };
+      const lines = has ? prev.lines.filter((i) => i !== index) : [...prev.lines, index];
+      if (prev.kind === 'rub' && sold_draft !== '') {
+        return (
+          discount_from_sold(priced_lines, Number(sold_draft) || 0, {
+            scope: 'lines',
+            lines,
+          }) || { ...prev, lines, value: 0 }
+        );
+      }
+      return { ...prev, lines };
     });
+  }
+
+  function apply_sold_amount(raw: string, scope?: pos_discount['scope'], lines?: number[]) {
+    const digits = raw.replace(/[^\d]/g, '');
+    set_sold_draft(digits);
+    const next_scope = scope ?? discount?.scope ?? 'check';
+    const next_lines = lines ?? discount?.lines ?? [];
+    if (!digits) {
+      set_discount({
+        scope: next_scope,
+        kind: 'rub',
+        value: 0,
+        lines: next_lines,
+      });
+      return;
+    }
+    set_discount(
+      discount_from_sold(priced_lines, Number(digits), {
+        scope: next_scope,
+        lines: next_lines,
+      }) || {
+        scope: next_scope,
+        kind: 'rub',
+        value: 0,
+        lines: next_lines,
+      }
+    );
   }
 
   async function redeem_gift(gift_id: string) {
@@ -716,6 +759,7 @@ export default function pos_panel({
       set_staff_drink(false);
       set_discount(null);
       set_discount_open(false);
+      set_sold_draft('');
       close_confirm();
       set_step('categories');
       set_category('');
@@ -866,8 +910,20 @@ export default function pos_panel({
             <>
           {customer ? (
             <div className="rounded-xl border border-neutral-200 bg-neutral-50 px-3 py-3">
-              <p className="text-sm font-semibold text-neutral-900">
+              <p
+                className="text-sm"
+                style={{
+                  color: customer.level ? level_ink(customer.level) : '#171717',
+                  fontWeight: customer.level?.weight || 600,
+                }}
+                title={customer.level?.who}
+              >
                 {customer.name || 'гость'}
+                {customer.level ? (
+                  <span className="ml-1.5">
+                    <GuestLevelMark level={customer.level} />
+                  </span>
+                ) : null}
               </p>
               {customer.phone ? (
                 <p className="mt-0.5 text-xs text-neutral-500">
@@ -936,6 +992,23 @@ export default function pos_panel({
                 className="w-full bg-transparent text-sm outline-none"
               />
             </div>
+            {customer ? (
+              <p
+                className="mt-1.5 text-sm"
+                style={{
+                  color: customer.level ? level_ink(customer.level) : '#171717',
+                  fontWeight: customer.level?.weight || 600,
+                }}
+                title={customer.level?.who}
+              >
+                {customer.name || 'гость'}
+                {customer.level ? (
+                  <span className="ml-1.5">
+                    <GuestLevelMark level={customer.level} />
+                  </span>
+                ) : null}
+              </p>
+            ) : null}
           </label>
 
           {lookup_busy ? (
@@ -1022,7 +1095,7 @@ export default function pos_panel({
                 себе −50%
               </label>
               {!staff_drink ? (
-                <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-neutral-700">
+                <div className="space-y-2 text-sm text-neutral-700">
                   <label className="flex items-center gap-2">
                     <input
                       type="checkbox"
@@ -1030,88 +1103,76 @@ export default function pos_panel({
                       onChange={(e) => {
                         const on = e.target.checked;
                         set_discount_open(on);
-                        set_discount(
-                          on
-                            ? {
-                                scope: discount?.scope ?? 'check',
-                                kind: discount?.kind ?? 'pct',
-                                value: 0,
-                                lines: discount?.lines ?? [],
-                              }
-                            : null
-                        );
+                        if (on) {
+                          set_sold_draft(String(bar_total || ''));
+                          set_discount({
+                            scope: 'check',
+                            kind: 'rub',
+                            value: 0,
+                            lines: [],
+                          });
+                        } else {
+                          set_discount(null);
+                          set_sold_draft('');
+                        }
                       }}
                       className="rounded"
                     />
-                    скидка
+                    другая сумма
                   </label>
                   {discount_open ? (
-                    <>
-                      <input
-                        type="number"
-                        inputMode="numeric"
-                        min={0}
-                        placeholder="0"
-                        className="w-16 rounded-lg border border-neutral-200 px-2 py-1 text-sm tabular-nums"
-                        value={discount?.value ? discount.value : ''}
-                        onChange={(e) =>
-                          set_discount((prev) => ({
-                            scope: prev?.scope ?? 'check',
-                            kind: prev?.kind ?? 'pct',
-                            value: Math.max(0, Number(e.target.value) || 0),
-                            lines: prev?.lines ?? [],
-                          }))
-                        }
-                      />
-                      <button
-                        type="button"
-                        onClick={() =>
-                          set_discount((prev) => ({
-                            scope: prev?.scope ?? 'check',
-                            kind: 'pct',
-                            value: prev?.value ?? 0,
-                            lines: prev?.lines ?? [],
-                          }))
-                        }
-                        className={`text-sm font-semibold ${
-                          (discount?.kind ?? 'pct') === 'pct' ? 'text-neutral-900' : 'text-neutral-400'
-                        }`}
-                      >
-                        %
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() =>
-                          set_discount((prev) => ({
-                            scope: prev?.scope ?? 'check',
-                            kind: 'rub',
-                            value: prev?.value ?? 0,
-                            lines: prev?.lines ?? [],
-                          }))
-                        }
-                        className={`text-sm font-semibold ${
-                          discount?.kind === 'rub' ? 'text-neutral-900' : 'text-neutral-400'
-                        }`}
-                      >
-                        ₽
-                      </button>
+                    <div className="ml-6 space-y-2">
+                      <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                        <span className="text-xs text-neutral-500">
+                          по меню {bar_total.toLocaleString('ru-RU')} ₽
+                        </span>
+                        <span className="text-neutral-300">·</span>
+                        <label className="flex items-center gap-1.5">
+                          <span className="text-xs text-neutral-500">продано за</span>
+                          <input
+                            type="text"
+                            inputMode="numeric"
+                            placeholder={String(bar_total || 0)}
+                            className="w-20 rounded-lg border border-neutral-200 px-2 py-1 text-sm tabular-nums"
+                            value={sold_draft}
+                            onChange={(e) => apply_sold_amount(e.target.value)}
+                          />
+                          <span className="text-xs text-neutral-500">₽</span>
+                        </label>
+                      </div>
+                      {discount && discount.value > 0 ? (
+                        <p className="text-xs text-amber-700">
+                          скидка {(bar_total - total).toLocaleString('ru-RU')} ₽ автоматически
+                        </p>
+                      ) : (
+                        <p className="text-[11px] text-neutral-400">
+                          введите сумму продажи — скидка посчитается сама
+                        </p>
+                      )}
                       <label className="flex items-center gap-1.5 text-xs text-neutral-500">
                         <input
                           type="checkbox"
                           checked={discount?.scope === 'lines'}
-                          onChange={(e) =>
-                            set_discount((prev) => ({
-                              scope: e.target.checked ? 'lines' : 'check',
-                              kind: prev?.kind ?? 'pct',
-                              value: prev?.value ?? 0,
-                              lines: prev?.lines ?? [],
-                            }))
-                          }
+                          onChange={(e) => {
+                            const on_lines = e.target.checked;
+                            const scope = on_lines ? 'lines' : 'check';
+                            const lines = on_lines ? discount?.lines ?? [] : [];
+                            if (sold_draft !== '') {
+                              apply_sold_amount(sold_draft, scope, lines);
+                            } else {
+                              set_discount({
+                                scope,
+                                kind: 'rub',
+                                value: 0,
+                                lines,
+                              });
+                            }
+                          }}
                           className="rounded"
                         />
-                        на позиции
+                        только на отмеченные позиции
                       </label>
-                    </>
+                    </div>
                   ) : null}
                 </div>
               ) : null}

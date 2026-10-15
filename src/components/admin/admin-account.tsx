@@ -14,7 +14,7 @@ type login_event = {
 type order_event = {
   id: string;
   at: string;
-  action: 'delete' | 'update';
+  action: 'delete' | 'update' | 'create';
   actor_name: string;
   order_label: string;
   before: string;
@@ -217,14 +217,22 @@ export default function AdminAccount() {
                 <li key={row.id} className="py-3">
                   <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
                     <p className="text-sm text-neutral-900">
-                      {row.actor_name} {row.action === 'delete' ? 'удалил' : 'изменил'} {row.order_label}
+                      {row.actor_name}{' '}
+                      {row.action === 'delete'
+                        ? 'удалил'
+                        : row.action === 'create'
+                          ? 'добавил'
+                          : 'изменил'}{' '}
+                      {row.order_label}
                     </p>
                     <p className="text-sm tabular-nums text-neutral-500">{format_when(row.at)}</p>
                   </div>
                   <p className="mt-1 text-xs text-neutral-500">
                     {row.action === 'delete'
                       ? `${row.before} · ${row.before_total.toLocaleString('ru-RU')} ₽`
-                      : `было: ${row.before} · ${row.before_total.toLocaleString('ru-RU')} ₽ → стало: ${row.after} · ${(row.after_total ?? 0).toLocaleString('ru-RU')} ₽`}
+                      : row.action === 'create'
+                        ? `${row.after} · ${(row.after_total ?? 0).toLocaleString('ru-RU')} ₽`
+                        : `было: ${row.before} · ${row.before_total.toLocaleString('ru-RU')} ₽ → стало: ${row.after} · ${(row.after_total ?? 0).toLocaleString('ru-RU')} ₽`}
                   </p>
                 </li>
               ))}

@@ -1,4 +1,5 @@
 import { read_json_store, write_json_store } from '@/lib/data-store';
+import { parse_push_categories } from '@/lib/push-categories';
 import { parse_seller_access } from '@/lib/seller-access';
 import type { seller } from '@/lib/types';
 
@@ -39,6 +40,7 @@ export async function upsert_seller(
     login: input.login.trim().toLowerCase(),
     role_title: (input.role_title || 'бариста').trim().slice(0, 40) || 'бариста',
     access: parse_seller_access(input.access),
+    push_categories: parse_push_categories(input.push_categories),
     created_at: input.created_at || new Date().toISOString(),
   };
   if (idx >= 0) sellers[idx] = record;

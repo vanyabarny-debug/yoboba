@@ -9,6 +9,7 @@ export const seller_right_ids = [
   'craft',
   'analytics',
   'business',
+  'push',
 ] as const;
 
 export type seller_right = (typeof seller_right_ids)[number];
@@ -24,6 +25,7 @@ export const seller_right_label: Record<seller_right, string> = {
   craft: 'крафт напитка',
   analytics: 'аналитика смены',
   business: 'общая аналитика',
+  push: 'рассылка',
 };
 
 export function default_seller_access(): seller_access {
@@ -36,6 +38,7 @@ export function default_seller_access(): seller_access {
     craft: true,
     analytics: true,
     business: false,
+    push: false,
   };
 }
 
@@ -49,6 +52,7 @@ export function full_seller_access(): seller_access {
     craft: true,
     analytics: true,
     business: true,
+    push: true,
   };
 }
 

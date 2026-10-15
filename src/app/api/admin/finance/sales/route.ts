@@ -8,6 +8,9 @@ import { read_finance_state } from '@/lib/finance/finance-server';
 import { read_published_menu } from '@/lib/menu-catalog-server';
 import { get_default_store, merge_menu_item_catalog, store_version } from '@/lib/menu-store';
 import { compute_store_rhythm } from '@/lib/customer-analytics';
+import { retention_report, type retention_report as retention_stats } from '@/lib/guest-rank';
+import { normalize_phone } from '@/lib/phone';
+import { configured_unit_price } from '@/lib/product-details';
 import { count_order_cups } from '@/lib/combo';
 import { each_day, menu_price_for_size, type sales_cell } from '@/lib/finance/model';
 import { get_transactions } from '@/lib/cash-server';
@@ -84,6 +87,117 @@ async function cash_spot_by_order(): Promise<Map<string, string>> {
     /* касса недоступна — ок */
   }
   return map;
+}
+
+type identity_order = tagged_order & {
+  user_id?: string | null;
+  customer_phone?: string | null;
+};
+
+/** все не отменённые заказы: первый напиток может быть вне выбранного периода */
+/** номер с профиля, если на самом заказе его нет — иначе гостя с картой не узнать */
+async function profile_phones(user_ids: string[]): Promise<Map<string, string>> {
+  const map = new Map<string, string>();
+  const unique = [...new Set(user_ids.filter(Boolean))];
+  if (!unique.length || !is_supabase_configured()) return map;
+  const supabase = create_service_client();
+  for (let i = 0; i < unique.length; i += 80) {
+    const chunk = unique.slice(i, i + 80);
+    const { data } = await supabase.from('profiles').select('id, phone').in('id', chunk);
+    for (const row of data || []) {
+      const phone = normalize_phone((row as { phone?: string | null }).phone);
+      if (phone && row.id) map.set(row.id as string, phone);
+    }
+  }
+  return map;
+}
+
+/** телефоны из карточек гостей. технический аккаунт кассы без номера не контакт */
+async function crm_contact_keys(): Promise<string[]> {
+  if (!is_supabase_configured()) return [];
+  try {
+    const supabase = create_service_client();
+    const keys = new Set<string>();
+    for (let from = 0; from < 8000; from += 500) {
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('phone')
+        .range(from, from + 499);
+      if (error || !data?.length) break;
+      for (const row of data) {
+        const phone = normalize_phone((row as { phone?: string | null }).phone);
+        if (!phone) continue;
+        const digits = phone.replace(/\D/g, '');
+        if (digits.length >= 10) keys.add(`p:${digits.slice(-10)}`);
+      }
+      if (data.length < 500) break;
+    }
+    return [...keys];
+  } catch {
+    return [];
+  }
+}
+
+async function load_identity_orders(): Promise<identity_order[]> {
+  const out: identity_order[] = [];
+  if (is_supabase_configured()) {
+    const supabase = create_service_client();
+    const page = 500;
+    let columns = 'id, user_id, customer_phone, items, status, created_at, total_price, spot_id';
+    let from = 0;
+    while (from < 8000) {
+      const { data, error } = await supabase
+        .from('orders')
+        .select(columns)
+        .neq('status', 'cancelled')
+        .order('created_at', { ascending: true })
+        .range(from, from + page - 1);
+      if (error) {
+        if (from === 0 && /spot_id/i.test(error.message) && columns.includes('spot_id')) {
+          columns = columns.replace(', spot_id', '');
+          continue;
+        }
+        if (from === 0 && /total_price/i.test(error.message) && columns.includes('total_price')) {
+          columns = columns.replace(', total_price', '');
+          continue;
+        }
+        break;
+      }
+      const rows = (data as identity_order[]) || [];
+      out.push(...rows);
+      if (rows.length < page) break;
+      from += page;
+    }
+  }
+  for (const o of await get_demo_orders(false)) {
+    if (o.status !== 'cancelled') out.push(o as identity_order);
+  }
+  return out;
+}
+
+function plain_drink_name(name: string) {
+  return name
+    .replace(/\d+\s*мл/gi, '')
+    .replace(/холодн\w+|горяч\w+|со льдом/gi, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toLowerCase();
+}
+
+function resolve_menu_line(
+  item: { menu_id?: string; name?: string },
+  by_id: Map<string, menu_item>,
+  by_name: Map<string, menu_item[]>
+) {
+  const by_menu = item.menu_id ? by_id.get(item.menu_id) : undefined;
+  if (by_menu) return by_menu;
+  const hits = by_name.get(plain_drink_name(item.name || '')) || [];
+  if (hits.length === 1) return hits[0];
+  if (!hits.length) return undefined;
+  const raw = (item.name || '').toLowerCase();
+  if (/горяч/.test(raw)) return hits.find((row) => row.category === 'тёплые напитки') || hits[0];
+  if (/холодн|лёд|лед/.test(raw)) return hits.find((row) => row.category === 'классика') || hits[0];
+  return hits.find((row) => row.category === 'классика') || hits[0];
 }
 
 function resolve_order_spot(
@@ -300,6 +414,86 @@ export async function GET(request: Request) {
 
   const selected = spot_filter ? spot_meta.find((s) => s.id === spot_filter) : null;
 
+  let returns: retention_stats | null = null;
+  try {
+    const [identity, contacts] = await Promise.all([load_identity_orders(), crm_contact_keys()]);
+    const phones = await profile_phones(
+      identity
+        .filter((o) => !normalize_phone(o.customer_phone) && o.user_id)
+        .map((o) => o.user_id as string)
+    );
+    const as_of = new Date(Math.min(Date.now(), end.getTime() - 1));
+    const scoped_identity = (spot_filter
+      ? identity
+          .map((o) => ({ ...o, spot_id: resolve_order_spot(o, cash_map, fallback_spot_id) }))
+          .filter((o) => o.spot_id === spot_filter)
+      : identity
+    ).filter((o) => {
+      const at = new Date(o.created_at).getTime();
+      return Number.isFinite(at) && at <= as_of.getTime();
+    });
+    const menu_by_plain = new Map<string, menu_item[]>();
+    for (const row of menu) {
+      const key = plain_drink_name(row.name);
+      const list = menu_by_plain.get(key) || [];
+      list.push(row);
+      menu_by_plain.set(key, list);
+    }
+    returns = retention_report(
+      scoped_identity.map((o) => {
+        const items = ((o.items as {
+          quantity?: number;
+          kind?: string;
+          name?: string;
+          menu_id?: string;
+          price?: number;
+          volume?: string;
+        }[]) || []);
+        let catalog = 0;
+        let sold = 0;
+        let known = false;
+        const lines = items.map((item) => {
+          const menu_item = resolve_menu_line(item, menu_by_id, menu_by_plain);
+          const qty = Math.max(0, Number(item.quantity) || 0);
+          const unit = Math.max(0, Number(item.price) || 0);
+          if (item.kind !== 'staff' && qty > 0) {
+            sold += unit * qty;
+            if (menu_item) {
+              known = true;
+              const volume = item.volume || /(\d{3})\s*мл/i.exec(item.name || '')?.[1] || null;
+              catalog += configured_unit_price(menu_item, volume, 0) * qty;
+            }
+          }
+          return {
+            quantity: item.quantity,
+            kind: item.kind,
+            name: item.name,
+            category: menu_item?.category,
+          };
+        });
+        const total_price = o.total_price == null ? null : Number(o.total_price) || 0;
+        const gap = known ? Math.max(0, catalog - sold) : 0;
+        const comp = total_price === 0 && sold > 0 ? Math.max(catalog, sold) : 0;
+        return {
+          created_at: o.created_at,
+          status: o.status,
+          items: lines,
+          user_id: o.user_id ?? null,
+          customer_phone:
+            normalize_phone(o.customer_phone) ||
+            (o.user_id ? phones.get(o.user_id) : null) ||
+            null,
+          total_price,
+          discount_rub: Math.max(gap, comp),
+        };
+      }),
+      as_of,
+      contacts
+    );
+  } catch {
+    returns = null;
+  }
+
   return NextResponse.json(
     {
       month,
@@ -320,6 +514,7 @@ export async function GET(request: Request) {
       sales,
       by_day,
       rhythm,
+      returns,
       unmatched: [...unmatched.values()].sort((a, b) => b.qty - a.qty),
     },
     { headers: { 'cache-control': 'private, no-store, max-age=0' } }

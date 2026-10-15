@@ -205,6 +205,8 @@ export type seller = {
   role_title?: string;
   /** какие вкладки кассы ему открыты */
   access?: Partial<seller_access>;
+  /** каким категориям гостей можно слать пуш, без списка людей */
+  push_categories?: string[];
   is_active: boolean;
   created_at: string;
   /** точки, на которых сотрудник может открыть смену */
