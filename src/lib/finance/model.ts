@@ -2815,7 +2815,7 @@ function is_prep_convert_note(note?: string) {
 function is_stock_bookkeeping_note(note?: string) {
   if (!note) return false;
   const n = note.trim();
-  return /^миграция:/i.test(n) || /^служебный:/i.test(n);
+  return /^миграция:/i.test(n) || /^служебный:/i.test(n) || /^сверка:/i.test(n);
 }
 
 /**
@@ -2910,7 +2910,7 @@ export function stock_levels(state: finance_state, as_of?: string): stock_row[] 
         material: m,
         qty: q,
         value: Math.max(0, values.get(m.id) ?? 0),
-        low: m.minStock != null && q <= m.minStock,
+        low: q < 0 || (m.minStock != null && q <= m.minStock),
         last_in: last_in.get(m.id),
       };
     });

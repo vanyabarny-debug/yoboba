@@ -2,8 +2,8 @@ import { forget_cash_for_order, retitle_cash_for_order, set_cash_method_for_orde
 import { delete_demo_order, get_demo_orders, update_demo_order } from '@/lib/demo-orders-server';
 import {
   assert_order_stock,
-  record_order_stock,
   release_order_stock,
+  replace_order_stock,
 } from '@/lib/finance/order-stock';
 import type { stock_actor } from '@/lib/finance/model';
 import { forget_handed_order, replace_handed_snapshot } from '@/lib/handed-orders-server';
@@ -106,16 +106,15 @@ async function load_order(id: string): Promise<order | null> {
 }
 
 async function sync_stock(id: string, items: order_item[], status: order['status'], date?: string) {
-  await release_order_stock(id);
-  if (status === 'cancelled') return;
   const stock_items = items.filter((item) => item.menu_id);
-  if (!stock_items.length) return;
-  await record_order_stock({
+  const result = await replace_order_stock({
     orderId: id,
     items: stock_items,
+    keep: status !== 'cancelled' && stock_items.length > 0,
     date,
     kind: stock_items.every((item) => item.kind === 'staff') ? 'staff' : 'sale',
   });
+  if (!result.ok) console.error('sync_stock', id, result.error);
 }
 
 export async function revise_order(input: {

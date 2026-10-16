@@ -366,7 +366,7 @@ export default function SellerInventory({
             варка и заваривание
           </p>
           <p className="mt-1 text-xs text-neutral-500">
-            норма выхода и цена сухого — отсюда. варка на доске «в работе».
+            норма выхода и цена сухого — отсюда. сколько стаканов на доске считается по рецептам, а сверка кастрюли уточняет выход.
           </p>
           <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-3">
             {prep_stations.map((s) => (

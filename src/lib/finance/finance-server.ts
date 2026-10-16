@@ -143,7 +143,90 @@ async function sync_tech_card_temps(state: finance_state): Promise<void> {
   await write_published_menu({ ...menu, items });
 }
 
+let finance_tail: Promise<void> = Promise.resolve();
+
+/** одна очередь на процесс, чтобы варка и заказ не затирали друг друга */
+function enqueue_finance<T>(job: () => Promise<T>): Promise<T> {
+  const run = finance_tail.then(job, job);
+  finance_tail = run.then(
+    () => undefined,
+    () => undefined
+  );
+  return run;
+}
+
+async function read_cloud_pair(): Promise<{ state: finance_state; updatedAt: string | null } | null> {
+  if (!is_supabase_configured()) return null;
+  const admin = create_service_client();
+  const { data, error } = await admin.from(table).select('store, updated_at').eq('id', row_id).maybeSingle();
+  if (error || !data) return null;
+  const row = data as { store?: unknown; updated_at?: string | null };
+  if (!row.store) return null;
+  return {
+    state: prune_stock_retention(finalize_finance(row.store)),
+    updatedAt: row.updated_at || null,
+  };
+}
+
+async function write_finance_cas(
+  state: finance_state,
+  expected_updated_at: string | null,
+  previous?: finance_state | null
+): Promise<'ok' | 'conflict' | 'fail'> {
+  const durable = prune_stock_retention(finalize_finance(state));
+  await sync_tech_card_temps(durable);
+  if (!is_supabase_configured()) {
+    await write_json_store(store_key, durable);
+    return 'ok';
+  }
+  const admin = create_service_client();
+  const next_stamp = new Date().toISOString();
+  let query = admin.from(table).update({ store: durable, updated_at: next_stamp }).eq('id', row_id);
+  if (expected_updated_at) query = query.eq('updated_at', expected_updated_at);
+  const { data, error } = await query.select('id');
+  if (error) {
+    if (note_table_error(table, error.message)) return 'fail';
+    console.error('finance cas', error.message);
+    return 'fail';
+  }
+  if (!data?.length) return 'conflict';
+  await write_row(admin, 'menu_catalog', catalog_row_id, durable);
+  await write_json_store(store_key, durable).catch(() => {});
+  const prev_ids = new Set((previous?.stockAudit ?? []).map((entry) => entry.id));
+  const added = (durable.stockAudit ?? []).filter((entry) => !prev_ids.has(entry.id));
+  if (added.length) {
+    void persist_stock_audit(added).catch((e) => console.error('stock_audit persist', e));
+  }
+  return 'ok';
+}
+
+/**
+ * прочитать склад, поменять, записать.
+ * если за это время кто-то успел сохранить свою версию — читаем заново и повторяем.
+ */
+export async function mutate_finance_state<T>(
+  fn: (state: finance_state) => { state: finance_state | null; value: T } | Promise<{ state: finance_state | null; value: T }>
+): Promise<T> {
+  return enqueue_finance(async () => {
+    for (let attempt = 0; attempt < 5; attempt++) {
+      const cloud = await read_cloud_pair();
+      const state = cloud?.state ?? (await read_finance_state());
+      const stamp = cloud?.updatedAt ?? null;
+      const result = await fn(state);
+      if (!result.state) return result.value;
+      const wrote = await write_finance_cas(result.state, stamp, state);
+      if (wrote === 'ok') return result.value;
+      if (wrote === 'fail') throw new Error('не удалось записать склад');
+    }
+    throw new Error('склад только что изменился, повторите');
+  });
+}
+
 export async function write_finance_state(state: finance_state): Promise<void> {
+  return enqueue_finance(() => write_finance_state_unlocked(state));
+}
+
+async function write_finance_state_unlocked(state: finance_state): Promise<void> {
   const durable = prune_stock_retention(finalize_finance(state));
   await sync_tech_card_temps(durable);
   const local = write_json_store(store_key, durable).catch(() => {});

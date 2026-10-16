@@ -80,10 +80,10 @@ export default function prep_station_card({ station, on_open }: props) {
   const alert = prep_station_alert(station);
   const under =
     station.cookedQty <= 0
-      ? 'пусто — свари'
+      ? 'пусто'
       : alert === 'low'
-        ? `мало! ${format_g(station.cookedQty)} · ~${station.cupsLeft} ст`
-        : `${format_g(station.cookedQty)} · ~${station.cupsLeft} ст`;
+        ? `мало · ${format_g(station.cookedQty)}`
+        : format_g(station.cookedQty);
 
   return (
     <>

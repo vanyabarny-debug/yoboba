@@ -7,7 +7,7 @@ import {
   reverse_order_consumption,
   type order_stock_item,
 } from '@/lib/finance/model';
-import { read_finance_state, write_finance_state } from '@/lib/finance/finance-server';
+import { mutate_finance_state, read_finance_state } from '@/lib/finance/finance-server';
 import type { menu_item } from '@/lib/types';
 
 async function load_menu(): Promise<menu_item[]> {
@@ -46,24 +46,27 @@ export async function record_order_stock(opts: {
 }): Promise<{ ok: true } | { ok: false; error: string }> {
   if (!opts.orderId || !opts.items.length) return { ok: true };
   try {
-    const [state, menu] = await Promise.all([read_finance_state(), load_menu()]);
-    const shortages = order_stock_shortages(state, opts.items, menu, {
-      releaseOrderId: opts.orderId,
+    const menu = await load_menu();
+    return await mutate_finance_state<{ ok: true } | { ok: false; error: string }>((state) => {
+      const shortages = order_stock_shortages(state, opts.items, menu, {
+        releaseOrderId: opts.orderId,
+      });
+      if (shortages.length) {
+        const error = format_stock_shortages(state, shortages);
+        console.error('record_order_stock blocked', opts.orderId, error);
+        return { state: null, value: { ok: false as const, error } };
+      }
+      return {
+        state: apply_order_consumption(state, {
+          orderId: opts.orderId,
+          items: opts.items,
+          kind: opts.kind,
+          date: opts.date,
+          menu,
+        }),
+        value: { ok: true as const },
+      };
     });
-    if (shortages.length) {
-      const error = format_stock_shortages(state, shortages);
-      console.error('record_order_stock blocked', opts.orderId, error);
-      return { ok: false, error };
-    }
-    const next = apply_order_consumption(state, {
-      orderId: opts.orderId,
-      items: opts.items,
-      kind: opts.kind,
-      date: opts.date,
-      menu,
-    });
-    await write_finance_state(next);
-    return { ok: true };
   } catch (e) {
     console.error('record_order_stock', opts.orderId, e instanceof Error ? e.message : e);
     return { ok: false, error: 'не удалось списать со склада' };
@@ -73,11 +76,55 @@ export async function record_order_stock(opts: {
 export async function release_order_stock(orderId: string) {
   if (!orderId) return;
   try {
-    const state = await read_finance_state();
-    const next = reverse_order_consumption(state, orderId);
-    if (next.stockMovements.length === state.stockMovements.length) return;
-    await write_finance_state(next);
+    await mutate_finance_state((state) => {
+      const next = reverse_order_consumption(state, orderId);
+      if (next.stockMovements.length === state.stockMovements.length) {
+        return { state: null, value: undefined };
+      }
+      return { state: next, value: undefined };
+    });
   } catch (e) {
     console.error('release_order_stock', orderId, e instanceof Error ? e.message : e);
+  }
+}
+
+/** снять старый расход заказа и записать новый одним сохранением */
+export async function replace_order_stock(opts: {
+  orderId: string;
+  items: order_stock_item[];
+  keep: boolean;
+  kind?: 'sale' | 'staff';
+  date?: string;
+}): Promise<{ ok: true } | { ok: false; error: string }> {
+  if (!opts.orderId) return { ok: true };
+  try {
+    const menu = opts.keep ? await load_menu() : [];
+    return await mutate_finance_state<{ ok: true } | { ok: false; error: string }>((state) => {
+      const released = reverse_order_consumption(state, opts.orderId);
+      if (!opts.keep || !opts.items.length) {
+        const changed = released.stockMovements.length !== state.stockMovements.length;
+        return { state: changed ? released : null, value: { ok: true as const } };
+      }
+      const shortages = order_stock_shortages(released, opts.items, menu);
+      if (shortages.length) {
+        return {
+          state: null,
+          value: { ok: false as const, error: format_stock_shortages(released, shortages) },
+        };
+      }
+      return {
+        state: apply_order_consumption(released, {
+          orderId: opts.orderId,
+          items: opts.items,
+          kind: opts.kind,
+          date: opts.date,
+          menu,
+        }),
+        value: { ok: true as const },
+      };
+    });
+  } catch (e) {
+    console.error('replace_order_stock', opts.orderId, e instanceof Error ? e.message : e);
+    return { ok: false, error: 'не удалось обновить склад' };
   }
 }

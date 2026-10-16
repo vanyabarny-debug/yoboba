@@ -500,7 +500,10 @@ export default function InventorySection({ state, set_state }: section_props) {
             : 'custom';
 
   const analytics = useMemo(() => {
-    const low = stock.filter((s) => s.low).sort((a, b) => a.qty - b.qty).slice(0, 8);
+      const low = stock
+        .filter((s) => s.low || s.qty < 0)
+        .sort((a, b) => a.qty - b.qty)
+        .slice(0, 8);
     const spent_by = new Map<string, number>();
     const bought_by = new Map<string, number>();
     const cat_spent = new Map<string, number>();
@@ -510,7 +513,7 @@ export default function InventorySection({ state, set_state }: section_props) {
       const rub = movement_money(mat, mv);
       const note = (mv.note || '').trim();
       const is_prep = /^(варка|заваривание)\b/i.test(note);
-      const is_book = /^миграция:/i.test(note) || /^служебный:/i.test(note);
+      const is_book = /^миграция:/i.test(note) || /^служебный:/i.test(note) || /^сверка:/i.test(note);
       if (mv.type === 'in') {
         // варка/заваривание — не закупка, а перекладка сухого → готового
         if (is_prep || is_book) continue;
@@ -546,7 +549,7 @@ export default function InventorySection({ state, set_state }: section_props) {
       receipts: period_mv.filter((m) => {
         if (m.type !== 'in') return false;
         const note = (m.note || '').trim();
-        return !/^(варка|заваривание)\b/i.test(note) && !/^миграция:/i.test(note) && !/^служебный:/i.test(note);
+        return !/^(варка|заваривание)\b/i.test(note) && !/^миграция:/i.test(note) && !/^служебный:/i.test(note) && !/^сверка:/i.test(note);
       }).length,
     };
   }, [stock, period_mv, mat_by_id, cats, journal_rows]);
@@ -811,17 +814,24 @@ export default function InventorySection({ state, set_state }: section_props) {
       </div>
 
       <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-        <Card title="заканчивается" hint="ниже минимума">
+        <Card title="заканчивается" hint="минус и ниже минимума">
           {analytics.low.length ? (
             <ul className="space-y-2">
               {analytics.low.map((s) => (
                 <li key={s.material.id} className="flex items-baseline justify-between gap-3 text-sm">
-                  <span className="truncate text-neutral-800">{s.material.name}</span>
-                  <span className="shrink-0 tabular-nums text-red-500">
+                  <span className="truncate text-neutral-800">
+                    {s.material.name}
+                    {s.qty < 0 ? (
+                      <span className="ml-1 text-[11px] font-semibold text-red-500">минус</span>
+                    ) : null}
+                  </span>
+                  <span className={`shrink-0 tabular-nums ${s.qty < 0 ? 'font-semibold text-red-600' : 'text-red-500'}`}>
                     {format_base_qty(s.material, s.qty)}
-                    <span className="ml-1 text-[11px] text-neutral-400">
-                      / {format_base_qty(s.material, s.material.minStock ?? 0)}
-                    </span>
+                    {s.material.minStock != null && s.qty >= 0 ? (
+                      <span className="ml-1 text-[11px] text-neutral-400">
+                        / {format_base_qty(s.material, s.material.minStock)}
+                      </span>
+                    ) : null}
                   </span>
                 </li>
               ))}
