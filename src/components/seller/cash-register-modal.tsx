@@ -1,15 +1,15 @@
 'use client';
 
 import { createElement, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { GuestLevelMark, type level_mark } from '@/components/guest-level-mark';
+import { type level_mark } from '@/components/guest-level-mark';
 import { bills_icon, card_icon } from '@/components/pay-marks';
-import { level_ink } from '@/lib/guest-rank';
+import found_guest_card from '@/components/seller/found-guest-card';
 import pos_qr_scanner from '@/components/seller/pos-qr-scanner';
 import { calc_order_bonus, FREE_DRINK_BONUS_THRESHOLD } from '@/lib/cart-summary';
 import { gift_items_label } from '@/lib/gifts';
 import { format_order_number } from '@/lib/order-number';
 import { normalize_order_item_fields } from '@/lib/order-item-name';
-import { format_phone_display, format_phone_input, phone_input_to_e164 } from '@/lib/phone';
+import { format_phone_input, phone_input_to_e164 } from '@/lib/phone';
 import { parse_pickup_code_input } from '@/lib/pickup-code';
 import {
   cart_total_after_discount,
@@ -499,38 +499,6 @@ export default function cash_register_modal({
 
             {!staff_drink ? (
               <>
-                {customer ? (
-                  <div className="rounded-xl border border-neutral-200 bg-neutral-50 px-3 py-3">
-                    <p
-                      className="text-sm"
-                      style={{
-                        color: customer.level ? level_ink(customer.level) : '#171717',
-                        fontWeight: customer.level?.weight || 600,
-                      }}
-                      title={customer.level?.who}
-                    >
-                      {customer.name || 'гость'}
-                      {customer.level ? (
-                        <span className="ml-1.5">
-                          <GuestLevelMark level={customer.level} />
-                        </span>
-                      ) : null}
-                    </p>
-                    {customer.phone ? (
-                      <p className="mt-0.5 text-xs text-neutral-500">{format_phone_display(customer.phone)}</p>
-                    ) : (
-                      <p className="mt-0.5 text-xs text-neutral-400">телефон не указан в профиле</p>
-                    )}
-                    <p className="mt-2 text-sm tabular-nums text-neutral-800">
-                      <span className="font-semibold text-accent">{customer.bonus_balance}</span>
-                      <span className="text-neutral-500"> бобаллов</span>
-                    </p>
-                    {active_pickup_code ? (
-                      <p className="mt-1 text-xs font-semibold text-accent">найден по коду {active_pickup_code}</p>
-                    ) : null}
-                  </div>
-                ) : null}
-
                 <label className="block">
                   <span className="text-xs text-neutral-500">код гостя (из приложения)</span>
                   <div className="mt-1 flex items-center gap-2">
@@ -579,24 +547,13 @@ export default function cash_register_modal({
                       className="w-full bg-transparent text-sm outline-none"
                     />
                   </div>
-                  {customer ? (
-                    <p
-                      className="mt-1.5 text-sm"
-                      style={{
-                        color: customer.level ? level_ink(customer.level) : '#171717',
-                        fontWeight: customer.level?.weight || 600,
-                      }}
-                      title={customer.level?.who}
-                    >
-                      {customer.name || 'гость'}
-                      {customer.level ? (
-                        <span className="ml-1.5">
-                          <GuestLevelMark level={customer.level} />
-                        </span>
-                      ) : null}
-                    </p>
-                  ) : null}
                 </label>
+                {customer ? (
+                  createElement(found_guest_card, {
+                    customer,
+                    pickup_code: active_pickup_code,
+                  })
+                ) : null}
 
                 <p
                   className={`min-h-[1.125rem] text-xs leading-snug ${
@@ -607,9 +564,13 @@ export default function cash_register_modal({
                     ? code_draft.length === 6
                       ? 'ищем гостя по коду…'
                       : 'ищем гостя с этим телефоном…'
-                    : code_draft.length === 6 && !customer
+                    : code_draft.length === 6 &&
+                      !customer &&
+                      lookup_key.current === `c:${parse_pickup_code_input(code_draft) || ''}`
                       ? error || 'гость по коду не найден — пусть обновит «мой код» в приложении'
-                      : phone_input_to_e164(phone_draft) && !customer
+                      : phone_input_to_e164(phone_draft) &&
+                          !customer &&
+                          lookup_key.current === `p:${phone_input_to_e164(phone_draft)}`
                         ? 'гостя с этим телефоном нет в базе — карточку создадим при оплате'
                         : ''}
                 </p>
