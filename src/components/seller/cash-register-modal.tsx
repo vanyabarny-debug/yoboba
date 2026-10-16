@@ -122,6 +122,7 @@ export default function cash_register_modal({
   const [discount_open, set_discount_open] = useState(false);
   const [sold_draft, set_sold_draft] = useState('');
   const lookup_seq = useRef(0);
+  const lookup_key = useRef('');
   const skip_phone_lookup = useRef(false);
 
   const order_id = order?.id ?? null;
@@ -145,6 +146,7 @@ export default function cash_register_modal({
     set_discount(null);
     set_discount_open(false);
     set_sold_draft('');
+    lookup_key.current = '';
     set_phone_draft(e164_to_phone_draft(order_phone_ref.current));
   }, [order_id]);
 
@@ -152,9 +154,12 @@ export default function cash_register_modal({
     const seq = ++lookup_seq.current;
     const code = opts.code ? parse_pickup_code_input(opts.code) : null;
     const e164 = opts.phone_e164 || null;
+    const key = code ? `c:${code}` : e164 ? `p:${e164}` : '';
+    lookup_key.current = key;
 
     if (!code && !e164) {
       if (seq !== lookup_seq.current) return;
+      set_lookup_busy(false);
       set_customer(null);
       set_confirm_student(false);
       set_lookup_gifts([]);
@@ -238,23 +243,15 @@ export default function cash_register_modal({
       }
       const code = parse_pickup_code_input(code_draft);
       const e164 = phone_input_to_e164(phone_draft);
-      if (customer && code && active_pickup_code === code) return;
-      if (customer && !code && e164 && customer.phone === e164) return;
+      const key = code ? `c:${code}` : e164 ? `p:${e164}` : '';
+      if (key === lookup_key.current) return;
       void lookup_guest({
         code: code ? code_draft : null,
         phone_e164: code ? null : e164,
       });
     }, 350);
     return () => window.clearTimeout(t);
-  }, [
-    phone_draft,
-    code_draft,
-    order_id,
-    staff_drink,
-    active_pickup_code,
-    customer,
-    lookup_guest,
-  ]);
+  }, [phone_draft, code_draft, order_id, staff_drink, lookup_guest]);
 
   const items = useMemo(() => (order?.items || []) as order_item[], [order?.items]);
   const apply_student =
@@ -601,19 +598,23 @@ export default function cash_register_modal({
                   ) : null}
                 </label>
 
-                {lookup_busy ? (
-                  <p className="text-xs text-neutral-400">ищем в базе…</p>
-                ) : code_draft.length === 6 && !customer ? (
-                  <p className="text-xs text-accent">
-                    {error || 'гость по коду не найден — пусть обновит «мой код» в приложении'}
-                  </p>
-                ) : phone_input_to_e164(phone_draft) && !customer && !lookup_busy ? (
-                  <p className="text-xs text-neutral-400">
-                    гостя с этим телефоном ещё нет — при оплате создадим карточку и начислим бобаллы
-                  </p>
-                ) : null}
+                <p
+                  className={`min-h-[1.125rem] text-xs leading-snug ${
+                    !lookup_busy && code_draft.length === 6 && !customer ? 'text-accent' : 'text-neutral-400'
+                  }`}
+                >
+                  {lookup_busy
+                    ? code_draft.length === 6
+                      ? 'ищем гостя по коду…'
+                      : 'ищем гостя с этим телефоном…'
+                    : code_draft.length === 6 && !customer
+                      ? error || 'гость по коду не найден — пусть обновит «мой код» в приложении'
+                      : phone_input_to_e164(phone_draft) && !customer
+                        ? 'гостя с этим телефоном нет в базе — карточку создадим при оплате'
+                        : ''}
+                </p>
 
-                {customer && !customer.student_verified ? (
+                {!lookup_busy && customer && !customer.student_verified ? (
                   <label className="flex items-start gap-3 rounded-xl border border-accent/30 bg-accent/10 px-3 py-3">
                     <input
                       type="checkbox"

@@ -231,15 +231,19 @@ export default function pos_panel({
 
 
   const lookup_seq = useRef(0);
+  const lookup_key = useRef('');
   const skip_phone_lookup = useRef(false);
 
   const lookup_guest = useCallback(async (opts: { code?: string | null; phone_e164?: string | null }) => {
     const seq = ++lookup_seq.current;
     const code = opts.code ? parse_pickup_code_input(opts.code) : null;
     const e164 = opts.phone_e164 || null;
+    const key = code ? `c:${code}` : e164 ? `p:${e164}` : '';
+    lookup_key.current = key;
 
     if (!code && !e164) {
       if (seq !== lookup_seq.current) return;
+      set_lookup_busy(false);
       set_customer(null);
       set_confirm_student(false);
       set_lookup_gifts([]);
@@ -334,14 +338,15 @@ export default function pos_panel({
       }
       const code = parse_pickup_code_input(code_draft);
       const e164 = phone_input_to_e164(phone_draft);
-      if (code && active_pickup_code === code && customer) return;
+      const key = code ? `c:${code}` : e164 ? `p:${e164}` : '';
+      if (key === lookup_key.current) return;
       void lookup_guest({
         code: code ? code_draft : null,
         phone_e164: code ? null : e164,
       });
     }, 350);
     return () => window.clearTimeout(t);
-  }, [phone_draft, code_draft, confirm_open, active_pickup_code, customer, lookup_guest]);
+  }, [phone_draft, code_draft, confirm_open, lookup_guest]);
 
   const filtered = useMemo(() => {
     if (!category) return [];
@@ -1011,15 +1016,23 @@ export default function pos_panel({
             ) : null}
           </label>
 
-          {lookup_busy ? (
-            <p className="text-xs text-neutral-400">ищем в базе…</p>
-          ) : code_draft.length === 6 && !customer ? (
-            <p className="text-xs text-accent">
-              {error || 'гость по коду не найден — пусть обновит «мой код» в приложении'}
-            </p>
-          ) : null}
+          <p
+            className={`min-h-[1.125rem] text-xs leading-snug ${
+              !lookup_busy && code_draft.length === 6 && !customer ? 'text-accent' : 'text-neutral-400'
+            }`}
+          >
+            {lookup_busy
+              ? code_draft.length === 6
+                ? 'ищем гостя по коду…'
+                : 'ищем гостя с этим телефоном…'
+              : code_draft.length === 6 && !customer
+                ? error || 'гость по коду не найден — пусть обновит «мой код» в приложении'
+                : phone_input_to_e164(phone_draft) && !customer
+                  ? 'гостя с этим телефоном нет в базе — карточку создадим при оплате'
+                  : ''}
+          </p>
 
-          {customer && !customer.student_verified ? (
+          {!lookup_busy && customer && !customer.student_verified ? (
             <label className="flex items-start gap-3 rounded-xl border border-accent/30 bg-accent/10 px-3 py-3">
               <input
                 type="checkbox"
