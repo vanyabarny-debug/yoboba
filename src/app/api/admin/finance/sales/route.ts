@@ -163,7 +163,7 @@ async function load_identity_orders(): Promise<identity_order[]> {
         }
         break;
       }
-      const rows = (data as identity_order[]) || [];
+      const rows = (data as unknown as identity_order[]) || [];
       out.push(...rows);
       if (rows.length < page) break;
       from += page;

@@ -583,7 +583,7 @@ function check_of(rows: { paid: number; discount: number }[]): retention_check {
   };
 }
 
-function top_drinks(rows: guest_visit['lines'][][], limit = 3): retention_drink[] {
+function top_drinks(rows: guest_visit['lines'][], limit = 3): retention_drink[] {
   const map = new Map<string, { guests: number; cups: number }>();
   for (const lines of rows) {
     const seen = new Set<string>();
