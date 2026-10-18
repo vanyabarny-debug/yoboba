@@ -1356,8 +1356,14 @@ export default function seller_board() {
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ action: 'update', id: revising.id, items }),
       });
-      const body = (await res.json().catch(() => ({}))) as { error?: string; order?: order };
+      const body = (await res.json().catch(() => ({}))) as {
+        error?: string;
+        order?: order;
+        shortages?: { stationId: string | null }[];
+      };
       if (!res.ok || !body.order) {
+        const station = body.shortages?.find((s) => s.stationId)?.stationId;
+        if (station) set_prep_open_id(station);
         set_revise_error(body.error || 'не удалось сохранить заказ');
         return;
       }
@@ -1860,6 +1866,9 @@ export default function seller_board() {
                     void load();
                   },
                   on_nav_depth: set_pos_depth,
+                  on_prep_shortage: (stationId) => {
+                    set_prep_open_id(stationId);
+                  },
                   seller_id,
                   seller_name,
                   shift_id:

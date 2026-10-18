@@ -25,7 +25,12 @@ export async function POST(request: Request) {
     const parsed = parse_order_items(body.items);
     if (!parsed.ok) return NextResponse.json({ error: parsed.error }, { status: 400 });
     const result = await revise_order({ id, items: parsed.items, actor });
-    if (!result.ok) return NextResponse.json({ error: result.error }, { status: result.status });
+    if (!result.ok) {
+      return NextResponse.json(
+        { error: result.error, ...(result.shortages ? { shortages: result.shortages } : {}) },
+        { status: result.status }
+      );
+    }
     return NextResponse.json({ order: result.order });
   }
 

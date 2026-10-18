@@ -101,10 +101,13 @@ export function get_card_steps(card: tech_card): prep_step[] | undefined {
 function decorate_steps(steps: prep_step[], materials: material[]): prep_step[] {
   return steps.map((s) => {
     const mat = s.materialId ? materials.find((m) => m.id === s.materialId) : undefined;
+    // не trim'аем значение целиком — иначе в инпуте нельзя набрать пробел между словами
+    const title = s.title ?? '';
+    const hint = s.hint ?? '';
     return {
       ...s,
-      title: s.title.trim() || (mat ? barista_title(mat.name) : 'шаг'),
-      hint: (s.hint || '').trim() || (mat ? hint_for(mat) : 'сделать'),
+      title: title.trim() ? title : mat ? barista_title(mat.name) : 'шаг',
+      hint: hint.trim() ? hint : mat ? hint_for(mat) : 'сделать',
     };
   });
 }

@@ -35,6 +35,8 @@ import {
   card_steps_base_ml,
   resolved_card_prep_steps,
 } from '@/lib/finance/prep-steps';
+import { ttk_card_number } from '@/lib/finance/ttk-document';
+import TtkCopyModal from '@/components/admin/finance/ttk-copy-modal';
 import {
   default_drink_volumes,
   get_composition_text,
@@ -323,6 +325,8 @@ export default function TechcardsSection({
   const [store_categories, set_store_categories] = useState<string[]>([]);
   const [purge_error, set_purge_error] = useState('');
   const [craft_open, set_craft_open] = useState(start_craft);
+  const [ttk_status, set_ttk_status] = useState<'idle' | 'ok' | 'err'>('idle');
+  const [ttk_card, set_ttk_card] = useState<tech_card | null>(null);
   const [draft, set_draft] = useState<menu_item | null>(null);
   const [recipe_size_key, set_recipe_size_key] = useState('');
   const [recipe_temp, set_recipe_temp] = useState<drink_temp>('cold');
@@ -663,8 +667,17 @@ export default function TechcardsSection({
     }
   }
 
-  const raw_materials = state.materials.filter((m) => m.category !== 'packaging' && !material_is_infinite(m));
-  const pack_materials = state.materials.filter((m) => m.category === 'packaging' && !material_is_infinite(m));
+  function open_ttk(card: tech_card) {
+    set_ttk_status('idle');
+    set_ttk_card(card);
+  }
+
+  const raw_materials = state.materials.filter(
+    (m) => m.category !== 'packaging' && !material_is_infinite(m)
+  );
+  const pack_materials = state.materials.filter(
+    (m) => m.category === 'packaging' && !material_is_infinite(m)
+  );
   const show_detail = Boolean(selected_drink && draft);
   const drink_selected = Boolean(draft && is_drink(draft));
 
@@ -979,15 +992,26 @@ export default function TechcardsSection({
                 {visibility_button({ item: draft, on_toggle: () => toggle_visible(draft) })}
                 {archive_button({ item: draft, on_toggle: () => toggle_archive(draft) })}
               </div>
-              {card ? (
-                <button type="button" className={btn_ghost_danger} onClick={() => remove_card(card)}>
-                  убрать рецепт
-                </button>
-              ) : (
-                <button type="button" className={btn_ghost_danger} onClick={() => void purge_item(draft)}>
-                  удалить
-                </button>
-              )}
+              <div className="flex flex-wrap items-center gap-2">
+                {card ? (
+                  <>
+                    <button type="button" className={btn_secondary} onClick={() => open_ttk(card)}>
+                      {ttk_status === 'ok'
+                        ? 'скопировано'
+                        : ttk_status === 'err'
+                          ? 'не удалось'
+                          : 'скопировать ТТК'}
+                    </button>
+                    <button type="button" className={btn_ghost_danger} onClick={() => remove_card(card)}>
+                      убрать рецепт
+                    </button>
+                  </>
+                ) : (
+                  <button type="button" className={btn_ghost_danger} onClick={() => void purge_item(draft)}>
+                    удалить
+                  </button>
+                )}
+              </div>
             </div>
             {!card && drink_selected ? (
               <button type="button" className={btn_secondary} onClick={() => ensure_card(draft)}>
@@ -1066,6 +1090,31 @@ export default function TechcardsSection({
             <DrinkCraft on_close={close_craft} on_saved={(id) => void after_craft(id)} />
           </div>
         </div>
+      ) : null}
+
+      {ttk_card ? (
+        <TtkCopyModal
+          open
+          card={ttk_card}
+          materials={state.materials}
+          number={ttk_card_number(state.techCards, ttk_card.id)}
+          on_close={() => set_ttk_card(null)}
+          on_save_fill={(fill) => {
+            const id = ttk_card.id;
+            set_state((prev) => ({
+              ...prev,
+              techCards: prev.techCards.map((c) => (c.id === id ? { ...c, ttk: fill } : c)),
+            }));
+          }}
+          on_copied={() => {
+            set_ttk_status('ok');
+            window.setTimeout(() => set_ttk_status('idle'), 2000);
+          }}
+          on_error={() => {
+            set_ttk_status('err');
+            window.setTimeout(() => set_ttk_status('idle'), 2500);
+          }}
+        />
       ) : null}
     </div>
     </>

@@ -9,7 +9,7 @@ import {
   apply_inventory_count,
   apply_writeoff,
   cost_per_base_unit,
-  material_is_infinite,
+  material_excluded_from_warehouse,
   merge_stock_categories,
   moscow_today,
   needs_stock_count,
@@ -32,7 +32,7 @@ function public_rows(state: finance_state, with_money: boolean) {
   const cats = public_cats(state);
   const order = cats.map((c) => c.id);
   return stock_levels(state)
-    .filter((r) => r.material.name.trim() && !material_is_infinite(r.material))
+    .filter((r) => r.material.name.trim() && !material_excluded_from_warehouse(r.material))
     .sort((a, b) => {
       const ia = order.indexOf(a.material.category);
       const ib = order.indexOf(b.material.category);
@@ -156,7 +156,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'нужны позиция и количество' }, { status: 400 });
     }
     const mat = state.materials.find((m) => m.id === materialId);
-    if (!mat || material_is_infinite(mat)) {
+    if (!mat || material_excluded_from_warehouse(mat)) {
       return NextResponse.json({ error: 'позиция не найдена' }, { status: 404 });
     }
     next = apply_adjust(state, materialId, qty, b.note?.trim() || 'правка кассы', date, actor, 'adjust');
@@ -174,7 +174,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'укажите сколько списать' }, { status: 400 });
     }
     const mat = state.materials.find((m) => m.id === materialId);
-    if (!mat || material_is_infinite(mat)) {
+    if (!mat || material_excluded_from_warehouse(mat)) {
       return NextResponse.json({ error: 'позиция не найдена' }, { status: 404 });
     }
     const on_hand = stock_qty_map(state).get(materialId) ?? 0;

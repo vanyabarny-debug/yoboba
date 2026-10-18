@@ -13,6 +13,7 @@ import {
   type finance_state,
 } from '@/lib/finance/model';
 import { ensure_prep_materials } from '@/lib/finance/prep-stations';
+import { hydrate_ttk_finance } from '@/lib/finance/ttk-presets';
 
 export type section_props = {
   state: finance_state;
@@ -89,7 +90,18 @@ export function use_finance(): finance_bundle {
       return;
     }
     const today = moscow_today();
-    const s0 = ensure_prep_materials(normalize_finance_state(body.state));
+    const base = ensure_prep_materials(normalize_finance_state(body.state));
+    const s0 = hydrate_ttk_finance(base, false);
+    const ttk_changed =
+      s0.materials.length !== base.materials.length ||
+      s0.techCards.some((c, i) => {
+        const prev = base.techCards[i];
+        return (
+          (c.steps?.length || 0) !== (prev?.steps?.length || 0) ||
+          Boolean(c.ttk?.appearance) !== Boolean(prev?.ttk?.appearance) ||
+          Boolean(c.sizes['500']?.ingredients?.ice) !== Boolean(prev?.sizes['500']?.ingredients?.ice)
+        );
+      });
     const tax_fixed = apply_tax_regime(s0, s0.taxRegime);
     const tax_changed =
       s0.taxRegime !== tax_fixed.taxRegime ||
@@ -103,7 +115,7 @@ export function use_finance(): finance_bundle {
     latest_ref.current = s;
     set_state_raw(s);
     set_menu(body.menu ?? []);
-    if (repair && (tax_changed || opex_changed)) {
+    if (repair && (tax_changed || opex_changed || ttk_changed)) {
       dirty_ref.current = true;
       set_save_status('dirty');
       if (timer_ref.current) clearTimeout(timer_ref.current);

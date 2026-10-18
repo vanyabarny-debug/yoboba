@@ -14,9 +14,10 @@ import {
   type finance_state,
 } from '@/lib/finance/model';
 import { ensure_prep_materials } from '@/lib/finance/prep-stations';
+import { hydrate_ttk_finance } from '@/lib/finance/ttk-presets';
 
 function finalize_finance(raw: unknown): finance_state {
-  return ensure_prep_materials(normalize_finance_state(raw));
+  return hydrate_ttk_finance(ensure_prep_materials(normalize_finance_state(raw)), false);
 }
 
 const table = 'finance_state';

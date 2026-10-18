@@ -1214,9 +1214,12 @@ export default function InventorySection({ state, set_state }: section_props) {
         </Card>
       </section>
 
-      {/* ——— склад ——— */}
+      {/* ——— ингредиенты ——— */}
       <section className="space-y-3">
-        <h2 className="font-heading-soft text-lg text-neutral-900">склад</h2>
+        <div>
+          <h2 className="font-heading-soft text-lg text-neutral-900">ингредиенты</h2>
+          <p className="mt-0.5 text-xs text-neutral-500">остатки, цена закупки за единицу и сумма на полке</p>
+        </div>
 
         <CategoryChips
           cats={cats}
@@ -1269,7 +1272,10 @@ export default function InventorySection({ state, set_state }: section_props) {
           {visible.map((s) => {
             const tag = cat_of(cats, s.material.category);
             return (
-              <li key={s.material.id} className="flex items-center gap-3 border-t border-neutral-100 px-4 py-2.5 first:border-t-0">
+              <li
+                key={s.material.id}
+                className="flex flex-wrap items-center gap-x-3 gap-y-2 border-t border-neutral-100 px-4 py-2.5 first:border-t-0 sm:flex-nowrap"
+              >
                 <button
                   type="button"
                   data-cat-pick
@@ -1293,12 +1299,15 @@ export default function InventorySection({ state, set_state }: section_props) {
                 <span className={`w-24 shrink-0 text-right text-sm tabular-nums ${s.qty < 0 ? 'text-amber-600' : 'text-neutral-800'}`}>
                   {format_base_qty(s.material, s.qty)}
                 </span>
-                <span
-                  className="hidden w-28 shrink-0 text-right text-xs tabular-nums text-neutral-400 sm:block"
-                  title="цена последней партии"
-                >
-                  {format_rub(s.material.costPerUnit, 2)}/{unit_labels[s.material.unit]}
-                </span>
+                <label className="flex w-[7.5rem] shrink-0 items-center gap-1" title="цена закупки за единицу">
+                  <NumInput
+                    value={s.material.costPerUnit}
+                    min={0}
+                    className={`${cell_input_class} w-[4.75rem]`}
+                    on_change={(v) => update_material(s.material.id, { costPerUnit: v })}
+                  />
+                  <span className="text-[10px] text-neutral-400">₽/{unit_labels[s.material.unit]}</span>
+                </label>
                 <span className="hidden w-24 shrink-0 text-right text-sm tabular-nums text-neutral-500 md:block">
                   {format_rub(s.value)}
                 </span>
@@ -1311,7 +1320,7 @@ export default function InventorySection({ state, set_state }: section_props) {
                 </button>
                 <button
                   type="button"
-                  className="hidden rounded-lg px-2 py-1 text-xs text-neutral-400 hover:bg-neutral-100 hover:text-neutral-700 sm:inline"
+                  className="rounded-lg px-2 py-1 text-xs text-neutral-400 hover:bg-neutral-100 hover:text-neutral-700"
                   onClick={() => set_adjust_for(s.material.id)}
                 >
                   факт

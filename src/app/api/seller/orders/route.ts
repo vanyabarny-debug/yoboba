@@ -588,7 +588,10 @@ export async function POST(request: Request) {
 
   const stock_ok = await assert_order_stock({ items });
   if (!stock_ok.ok) {
-    return NextResponse.json({ error: stock_ok.error }, { status: 409 });
+    return NextResponse.json(
+      { error: stock_ok.error, shortages: stock_ok.shortages },
+      { status: 409 }
+    );
   }
 
   // если после списания заказ не создался — баллы возвращаем, а не теряем

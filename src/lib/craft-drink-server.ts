@@ -1,7 +1,7 @@
 import { read_finance_state, write_finance_state } from '@/lib/finance/finance-server';
 import {
   cost_per_base_unit,
-  material_is_infinite,
+  material_excluded_from_warehouse,
   merge_stock_categories,
   new_id,
   stock_category_for,
@@ -11,6 +11,7 @@ import {
   type tech_card_size,
 } from '@/lib/finance/model';
 import { apply_steps_to_size } from '@/lib/finance/prep-steps';
+import { ttk_card_number } from '@/lib/finance/ttk-document';
 import { craft_cup_ml, menu_price_from_cost } from '@/lib/craft-math';
 import { read_published_menu, write_published_menu } from '@/lib/menu-catalog-server';
 import { default_categories, store_version, type menu_store } from '@/lib/menu-store';
@@ -53,7 +54,7 @@ export async function craft_catalog(): Promise<{ categories: string[]; shelves: 
   const by_shelf = new Map(shelves.map((shelf) => [shelf.id, shelf]));
 
   for (const mat of state.materials) {
-    if (!mat.name.trim() || material_is_infinite(mat)) continue;
+    if (!mat.name.trim() || material_excluded_from_warehouse(mat)) continue;
     const shelf_id = stock_category_for(mat);
     const shelf = by_shelf.get(shelf_id) ?? by_shelf.get('raw');
     if (!shelf) continue;
@@ -188,7 +189,14 @@ export async function create_crafted_drink(input: {
   cold?: boolean;
   hot?: boolean;
   boards: { caption?: string; drops?: { material_id?: string; qty?: number; action?: string }[] }[];
-}): Promise<{ item: menu_item; cost: number; price: number }> {
+}): Promise<{
+  item: menu_item;
+  cost: number;
+  price: number;
+  card: tech_card;
+  materials: material[];
+  ttk_number: number;
+}> {
   const name = input.name.trim().replace(/\s+/g, ' ');
   if (name.length < 2 || name.length > 40) {
     throw new Error('название от 2 до 40 букв');
@@ -262,10 +270,11 @@ export async function create_crafted_drink(input: {
   };
   await write_published_menu(next_menu);
 
+  const next_cards = [...state.techCards, card];
   try {
     await write_finance_state({
       ...state,
-      techCards: [...state.techCards, card],
+      techCards: next_cards,
     });
   } catch (error) {
     await write_published_menu({
@@ -275,5 +284,21 @@ export async function create_crafted_drink(input: {
     throw error;
   }
 
-  return { item, cost, price };
+  const used = new Set<string>();
+  for (const size of Object.values(card.sizes)) {
+    for (const id of Object.keys(size.ingredients || {})) used.add(id);
+    for (const id of Object.keys(size.packaging || {})) used.add(id);
+  }
+  for (const step of card.steps || []) {
+    if (step.materialId) used.add(step.materialId);
+  }
+
+  return {
+    item,
+    cost,
+    price,
+    card,
+    materials: state.materials.filter((m) => used.has(m.id)),
+    ttk_number: ttk_card_number(next_cards, card.id),
+  };
 }

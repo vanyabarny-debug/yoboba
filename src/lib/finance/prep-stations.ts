@@ -788,8 +788,8 @@ function later_iso(iso: string) {
 }
 
 /**
- * в программе пусто / мало, а в кастрюле ещё есть граммы.
- * стаканы на карточке — только ориентир; в склад пишем граммы.
+ * факт в кастрюле (в т.ч. 0 г — пусто).
+ * стаканы на карточке — ориентир; в склад уходит adjust в историю.
  */
 export function apply_prep_still_have(
   state: finance_state,
@@ -805,8 +805,8 @@ export function apply_prep_still_have(
   if (!station) return { ok: false, error: 'станция не найдена' };
 
   const actual = Math.round(Number(input.cookedG));
-  if (!Number.isFinite(actual) || actual <= 0 || actual > 8000) {
-    return { ok: false, error: 'укажите, сколько грамм реально в кастрюле' };
+  if (!Number.isFinite(actual) || actual < 0 || actual > 8000) {
+    return { ok: false, error: 'укажите факт: сколько грамм в кастрюле (можно 0)' };
   }
 
   const result = apply_prep_reconcile(state, {
@@ -817,18 +817,22 @@ export function apply_prep_still_have(
   });
   if (!result.ok) return result;
 
+  if (actual <= 0) {
+    return { ...result, message: result.message || 'факт: 0 г — кастрюля пустая' };
+  }
+
   const bounds = portion_bounds(result.state, station.cookedMaterialId, station.portionG);
   const orient = cups_from_grams(actual, bounds);
   const approx = cups_label(orient.cupsMin, orient.cupsMax);
   if (result.learned) {
     return {
       ...result,
-      message: `в кастрюле ${actual} г (${approx}) · ${result.message}`,
+      message: `факт ${actual} г (${approx}) · ${result.message}`,
     };
   }
   return {
     ...result,
-    message: `записал ${actual} г в кастрюле (${approx} — ориентир)`,
+    message: `факт ${actual} г (${approx})`,
   };
 }
 
@@ -876,7 +880,7 @@ export function apply_prep_reconcile(
       type: 'adjust',
       materialId: cooked.id,
       qty: actual,
-      note: `сверка: ${station.label}`,
+      note: `факт: ${station.label} → ${actual} г`,
       ...actor_on_movement(input.actor),
     });
   }
@@ -887,7 +891,7 @@ export function apply_prep_reconcile(
       type: 'adjust',
       materialId: dry.id,
       qty: dry_given,
-      note: `сверка: ${dry.name}`,
+      note: `факт: ${dry.name} → ${dry_given} г`,
       ...actor_on_movement(input.actor),
     });
   }
@@ -895,9 +899,14 @@ export function apply_prep_reconcile(
   let learned = false;
   let samples = station.yieldSamples;
   let openBatch = station.openBatch;
-  let message = 'записал как в жизни';
+  let message =
+    actual <= 0
+      ? 'факт: 0 г — кастрюля пустая'
+      : Math.abs(actual - book_cooked) > 0.5
+        ? `факт: ${actual} г`
+        : 'так и есть, ничего не менял';
   const batch = station.openBatch;
-  if (batch) {
+  if (batch && actual > 0) {
     const implied = Math.round(batch.predictedG + (actual - book_cooked));
     const lo = batch.predictedG * 0.25;
     const hi = batch.predictedG * 4;
@@ -905,19 +914,19 @@ export function apply_prep_reconcile(
       samples = [...samples, { dryG: batch.dryG, cookedG: implied }].slice(-YIELD_KEEP);
       learned = true;
       const per100 = Math.round((implied / batch.dryG) * 100);
-      message = `записал. по этой варке из 100 г сухого вышло около ${per100} г — следующая варка будет точнее`;
+      message = `факт ${actual} г. по варке из 100 г сухого ≈ ${per100} г`;
     } else {
-      message = 'остаток записал. норму выхода не менял: разрыв слишком большой для одной сверки';
+      message = `факт ${actual} г. норму выхода не менял — разрыв слишком большой`;
     }
     openBatch = null;
-  } else if (!movements.length) {
-    message = 'так и есть, ничего не менял';
+  } else if (batch && actual <= 0) {
+    openBatch = null;
   }
 
   const next_stations = stations.map((s) => {
     if (s.id !== station.id) return s;
-    const full = actual > 0 ? Math.max(s.batchFullG, actual) : s.batchFullG;
-    return { ...s, yieldSamples: samples, openBatch, batchFullG: actual > 0 ? full : s.batchFullG };
+    const full = actual > 0 ? Math.max(s.batchFullG, actual) : 0;
+    return { ...s, yieldSamples: samples, openBatch, batchFullG: full };
   });
 
   if (!movements.length && !learned && openBatch === station.openBatch) {
@@ -1048,6 +1057,20 @@ export function apply_prep_marinade(
     },
   ]);
   return { ok: true, state: next };
+}
+
+/** кастрюля/чайник по id сырья (варёное или сухое) */
+export function prep_station_id_for_material(
+  state: Pick<finance_state, 'prepStations'>,
+  materialId: string
+): string | null {
+  const id = String(materialId || '').trim();
+  if (!id) return null;
+  for (const s of normalize_prep_stations(state.prepStations)) {
+    if (!s.enabled) continue;
+    if (s.cookedMaterialId === id || s.dryMaterialId === id) return s.id;
+  }
+  return null;
 }
 
 export function update_prep_station(

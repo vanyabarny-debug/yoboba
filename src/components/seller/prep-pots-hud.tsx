@@ -107,11 +107,7 @@ export default function prep_stations_board({
   useEffect(() => {
     if (!active) return;
     set_dry_g('');
-    set_still_g(
-      String(
-        Math.max(Math.round(active.portionTypicalG) || 50, Math.round(active.cookedQty) || 0)
-      )
-    );
+    set_still_g(String(Math.max(0, Math.round(active.cookedQty) || 0)));
     set_error('');
     set_notice('');
   }, [active?.id]);
@@ -146,11 +142,7 @@ export default function prep_stations_board({
     on_stations_ref.current?.(next);
     const fresh = next.find((s) => s.id === active?.id);
     if (fresh) {
-      set_still_g(
-        String(
-          Math.max(Math.round(fresh.portionTypicalG) || 50, Math.round(fresh.cookedQty) || 0)
-        )
-      );
+      set_still_g(String(Math.max(0, Math.round(fresh.cookedQty) || 0)));
     }
     if (body.message) set_notice(body.message);
     if (close) set_open_id(null);
@@ -186,10 +178,7 @@ export default function prep_stations_board({
   }
 
   const empty = !active || active.cookedQty <= 0;
-  const low = Boolean(active && active.cookedQty > 0 && active.cookedQty < active.portionTypicalG);
-  // «ещё есть» только если уже варили (пустая кастрюля с утра — просто сварить)
-  const had_batch = Boolean(active && (active.batchFullG > 0 || active.openBatch));
-  const show_still = (empty || low) && had_batch;
+  const still_ok = still_g.trim() !== '' && Number.isFinite(Number(still_g)) && Number(still_g) >= 0;
   const cook_label = active?.kind === 'pot' ? 'сварить' : 'заварить';
 
   return (
@@ -207,7 +196,7 @@ export default function prep_stations_board({
         : null}
 
       {active ? (
-        <div className="fixed inset-0 z-[75] flex items-end justify-center p-3 sm:items-center">
+        <div className="fixed inset-0 z-[90] flex items-end justify-center p-3 sm:items-center">
           <button
             type="button"
             className="absolute inset-0 cursor-default bg-black/25 backdrop-blur-[2px]"
@@ -261,31 +250,32 @@ export default function prep_stations_board({
                   </button>
                 ) : null}
 
-                {show_still ? (
-                  <div className="flex gap-2">
-                    <input
-                      inputMode="numeric"
-                      value={still_g}
-                      onChange={(e) => set_still_g(e.target.value)}
-                      placeholder="г"
-                      aria-label="осталось, г"
-                      className="w-28 shrink-0 rounded-2xl border border-neutral-200 bg-neutral-50 px-3 py-3 text-center text-base font-bold tabular-nums outline-none focus:border-accent"
-                    />
-                    <button
-                      type="button"
-                      disabled={busy || Number(still_g) <= 0}
-                      onClick={() =>
-                        void post(
-                          { kind: 'still_have', cookedG: Number(still_g) },
-                          'не удалось записать'
-                        )
-                      }
-                      className="min-w-0 flex-1 rounded-2xl bg-emerald-600 py-3 text-sm font-bold text-white disabled:opacity-50"
-                    >
-                      {busy ? '…' : 'ещё есть'}
-                    </button>
-                  </div>
-                ) : null}
+                <div className="flex gap-2">
+                  <input
+                    inputMode="numeric"
+                    value={still_g}
+                    onChange={(e) => set_still_g(e.target.value)}
+                    placeholder="г"
+                    aria-label="факт, г"
+                    className="w-28 shrink-0 rounded-2xl border border-neutral-200 bg-neutral-50 px-3 py-3 text-center text-base font-bold tabular-nums outline-none focus:border-accent"
+                  />
+                  <button
+                    type="button"
+                    disabled={busy || !still_ok}
+                    onClick={() =>
+                      void post(
+                        { kind: 'still_have', cookedG: Number(still_g) },
+                        'не удалось записать факт'
+                      )
+                    }
+                    className="min-w-0 flex-1 rounded-2xl bg-emerald-600 py-3 text-sm font-bold text-white disabled:opacity-50"
+                  >
+                    {busy ? '…' : 'факт'}
+                  </button>
+                </div>
+                <p className="text-center text-[11px] text-neutral-400">
+                  сколько реально в кастрюле сейчас — можно 0
+                </p>
 
                 <div className="space-y-2">
                   <div className="flex gap-2">

@@ -6,9 +6,23 @@ import {
   order_stock_shortages,
   reverse_order_consumption,
   type order_stock_item,
+  type stock_shortage,
 } from '@/lib/finance/model';
+import { prep_station_id_for_material } from '@/lib/finance/prep-stations';
 import { mutate_finance_state, read_finance_state } from '@/lib/finance/finance-server';
 import type { menu_item } from '@/lib/types';
+
+export type stock_shortage_row = stock_shortage & { stationId: string | null };
+
+function enrich_shortages(
+  state: Parameters<typeof prep_station_id_for_material>[0],
+  rows: stock_shortage[]
+): stock_shortage_row[] {
+  return rows.map((s) => ({
+    ...s,
+    stationId: prep_station_id_for_material(state, s.materialId),
+  }));
+}
 
 async function load_menu(): Promise<menu_item[]> {
   const stored = await read_published_menu();
@@ -23,18 +37,21 @@ export async function assert_order_stock(opts: {
   items: order_stock_item[];
   /** при правке заказа: сначала «вернуть» его прошлый расход */
   releaseOrderId?: string;
-}): Promise<{ ok: true } | { ok: false; error: string }> {
+}): Promise<{ ok: true } | { ok: false; error: string; shortages: stock_shortage_row[] }> {
   if (!opts.items.length) return { ok: true };
   try {
     const [state, menu] = await Promise.all([read_finance_state(), load_menu()]);
-    const shortages = order_stock_shortages(state, opts.items, menu, {
-      releaseOrderId: opts.releaseOrderId,
-    });
+    const shortages = enrich_shortages(
+      state,
+      order_stock_shortages(state, opts.items, menu, {
+        releaseOrderId: opts.releaseOrderId,
+      })
+    );
     if (!shortages.length) return { ok: true };
-    return { ok: false, error: format_stock_shortages(state, shortages) };
+    return { ok: false, error: format_stock_shortages(state, shortages), shortages };
   } catch (e) {
     console.error('assert_order_stock', e instanceof Error ? e.message : e);
-    return { ok: false, error: 'не удалось проверить склад' };
+    return { ok: false, error: 'не удалось проверить склад', shortages: [] };
   }
 }
 

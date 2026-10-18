@@ -60,9 +60,19 @@ type cart_line = order_item & {
   combo_components?: order_combo_component[];
 };
 
+type stock_shortage_hint = {
+  materialId: string;
+  name: string;
+  need: number;
+  have: number;
+  stationId: string | null;
+};
+
 type props = {
   on_created: () => void;
   on_nav_depth?: (in_products: boolean) => void;
+  /** закончилось prep-сырьё — открыть модалку кастрюли */
+  on_prep_shortage?: (stationId: string, shortages: stock_shortage_hint[]) => void;
   seller_id?: string;
   seller_name?: string;
   shift_id?: string | null;
@@ -157,6 +167,7 @@ function warm_menu_image_cache(list: menu_item[]) {
 export default function pos_panel({
   on_created,
   on_nav_depth,
+  on_prep_shortage,
   seller_id = 'seller',
   seller_name = 'бариста',
   shift_id = null,
@@ -689,7 +700,18 @@ export default function pos_panel({
         }),
       });
       if (!res.ok) {
-        const body = await read_json_response<{ error?: string }>(res).catch(() => null);
+        const body = await read_json_response<{
+          error?: string;
+          shortages?: stock_shortage_hint[];
+        }>(res).catch(() => null);
+        const shortages = Array.isArray(body?.shortages) ? body.shortages : [];
+        const station =
+          shortages.find((s) => s.stationId)?.stationId ||
+          shortages.map((s) => s.stationId).find(Boolean) ||
+          null;
+        if (station && on_prep_shortage) {
+          on_prep_shortage(station, shortages);
+        }
         throw new Error(body?.error || 'не удалось создать заказ');
       }
       const created = await read_json_response<{

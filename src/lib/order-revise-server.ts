@@ -122,7 +122,10 @@ export async function revise_order(input: {
   items: order_item[];
   status?: order['status'];
   actor: stock_actor;
-}): Promise<{ ok: true; order: order } | { ok: false; error: string; status: number }> {
+}): Promise<
+  | { ok: true; order: order }
+  | { ok: false; error: string; status: number; shortages?: { materialId: string; name: string; need: number; have: number; stationId: string | null }[] }
+> {
   if (!order_id_ok(input.id)) return { ok: false, error: 'заказ не найден', status: 400 };
   if (input.status && !statuses.has(input.status)) {
     return { ok: false, error: 'неверный статус', status: 400 };
@@ -140,7 +143,12 @@ export async function revise_order(input: {
       releaseOrderId: input.id,
     });
     if (!stock_ok.ok) {
-      return { ok: false, error: stock_ok.error, status: 409 };
+      return {
+        ok: false,
+        error: stock_ok.error,
+        status: 409,
+        shortages: stock_ok.shortages,
+      };
     }
   }
 

@@ -8,6 +8,8 @@ import {
   ingredient_actions,
   menu_price_from_cost,
 } from '@/lib/craft-math';
+import type { material, tech_card } from '@/lib/finance/model';
+import TtkCopyModal from '@/components/admin/finance/ttk-copy-modal';
 
 type craft_material = {
   id: string;
@@ -68,7 +70,16 @@ export default function drink_craft({
   const [new_measure, set_new_measure] = useState<'g' | 'ml' | 'pcs'>('g');
   const [new_cost, set_new_cost] = useState('');
   const [saving, set_saving] = useState(false);
-  const [saved, set_saved] = useState<{ price: number; cost: number } | null>(null);
+  const [saved, set_saved] = useState<{
+    price: number;
+    cost: number;
+    name: string;
+    card: tech_card;
+    materials: material[];
+    ttk_number: number;
+  } | null>(null);
+  const [ttk_status, set_ttk_status] = useState<'idle' | 'ok' | 'err'>('idle');
+  const [ttk_open, set_ttk_open] = useState(false);
 
   useEffect(() => {
     let stop = false;
@@ -245,14 +256,31 @@ export default function drink_craft({
         error?: string;
         price?: number;
         cost?: number;
-        item?: { id?: string };
+        card?: tech_card;
+        materials?: material[];
+        ttk_number?: number;
+        item?: { id?: string; name?: string };
       } | null;
       if (!res.ok) {
         set_error(body?.error || 'не удалось поставить в меню');
         return;
       }
+      if (!body?.card) {
+        set_error('напиток сохранён, но техкарта не вернулась');
+        on_saved?.(body?.item?.id);
+        return;
+      }
       on_saved?.(body?.item?.id);
-      set_saved({ price: body?.price || price, cost: body?.cost || cost });
+      set_ttk_status('idle');
+      set_ttk_open(false);
+      set_saved({
+        price: body?.price || price,
+        cost: body?.cost || cost,
+        name: body?.item?.name || name.trim(),
+        card: body.card,
+        materials: Array.isArray(body.materials) ? body.materials : [],
+        ttk_number: Math.max(1, Math.round(body.ttk_number || 1)),
+      });
     } catch {
       set_error('не удалось поставить в меню');
     } finally {
@@ -260,38 +288,15 @@ export default function drink_craft({
     }
   }
 
-  if (saved) {
-    return (
-      <div className="flex h-full min-h-0 flex-col items-center justify-center overflow-y-auto px-4 py-8 text-center">
-        <p className="text-sm uppercase tracking-[0.16em] text-accent">крафт</p>
-        <h1 className="mt-3 text-3xl font-semibold">{name.trim()}</h1>
-        <p className="mt-3 text-neutral-500">в меню за {Math.round(saved.price).toLocaleString('ru-RU')} ₽</p>
-        <p className="mt-1 text-sm text-neutral-400">
-          себестоимость {Math.round(saved.cost).toLocaleString('ru-RU')} ₽ · фудкост 18%
-        </p>
-        <div className="mt-8 flex flex-wrap items-center justify-center gap-2">
-          <button
-            type="button"
-            onClick={() => {
-              set_saved(null);
-              set_name('');
-              set_cold(true);
-              set_hot(true);
-              set_boards([fresh_board(), fresh_board(), fresh_board()]);
-              set_error('');
-            }}
-            className="rounded-full bg-neutral-900 px-5 py-3 text-sm font-medium text-white"
-          >
-            ещё напиток
-          </button>
-          {on_close ? (
-            <button type="button" onClick={on_close} className="rounded-full px-5 py-3 text-sm text-neutral-500">
-              к меню
-            </button>
-          ) : null}
-        </div>
-      </div>
-    );
+  function reset_craft() {
+    set_saved(null);
+    set_ttk_open(false);
+    set_ttk_status('idle');
+    set_name('');
+    set_cold(true);
+    set_hot(true);
+    set_boards([fresh_board(), fresh_board(), fresh_board()]);
+    set_error('');
   }
 
   const cost_label =
@@ -534,6 +539,74 @@ export default function drink_craft({
       </button>
 
       </div>
+      {saved ? (
+        <div className="absolute inset-0 z-30 flex items-end justify-center bg-black/40 p-3 sm:items-center">
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="craft-saved-title"
+            className="w-full max-w-md rounded-3xl bg-white p-6 text-center shadow-soft"
+          >
+            <p className="text-sm uppercase tracking-[0.16em] text-accent">напиток создан</p>
+            <h2 id="craft-saved-title" className="mt-3 text-2xl font-semibold text-neutral-900">
+              {saved.name}
+            </h2>
+            <p className="mt-3 text-neutral-500">
+              в меню за {Math.round(saved.price).toLocaleString('ru-RU')} ₽
+            </p>
+            <p className="mt-1 text-sm text-neutral-400">
+              себестоимость {Math.round(saved.cost).toLocaleString('ru-RU')} ₽ · фудкост 18%
+            </p>
+            <button
+              type="button"
+              onClick={() => set_ttk_open(true)}
+              className="mt-6 w-full rounded-full border border-neutral-200 bg-white px-5 py-3 text-sm font-medium text-neutral-800"
+            >
+              {ttk_status === 'ok'
+                ? 'ТТК скопирована'
+                : ttk_status === 'err'
+                  ? 'не удалось скопировать'
+                  : 'скопировать ТТК'}
+            </button>
+            <div className="mt-3 flex flex-wrap items-center justify-center gap-2">
+              <button
+                type="button"
+                onClick={reset_craft}
+                className="rounded-full bg-neutral-900 px-5 py-3 text-sm font-medium text-white"
+              >
+                ещё напиток
+              </button>
+              {on_close ? (
+                <button
+                  type="button"
+                  onClick={on_close}
+                  className="rounded-full px-5 py-3 text-sm text-neutral-500"
+                >
+                  к меню
+                </button>
+              ) : null}
+            </div>
+          </div>
+          {ttk_open ? (
+            <TtkCopyModal
+              open
+              card={saved.card}
+              materials={saved.materials}
+              number={saved.ttk_number}
+              on_close={() => set_ttk_open(false)}
+              on_copied={() => {
+                set_ttk_status('ok');
+                window.setTimeout(() => set_ttk_status('idle'), 2000);
+              }}
+              on_error={() => {
+                set_ttk_status('err');
+                window.setTimeout(() => set_ttk_status('idle'), 2500);
+              }}
+            />
+          ) : null}
+        </div>
+      ) : null}
+
       {pick_board ? (
         <div className="absolute inset-0 z-20 flex items-end justify-center bg-black/30 p-3 sm:items-center">
           <div className="max-h-[80vh] w-full max-w-lg overflow-y-auto rounded-3xl bg-white p-4">

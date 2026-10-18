@@ -152,6 +152,17 @@ export type tech_card_size = {
   manual?: boolean;
 };
 
+/** сохранённые поля ТТК (разделы 4–6) — заполняются пресетом или вручную перед копированием */
+export type tech_card_ttk = {
+  appearance: string;
+  color: string;
+  taste: string;
+  consistency: string;
+  serveTemp?: string;
+  storage: string;
+  nutrition: Record<string, { protein: string; fat: string; carbs: string; energy: string }>;
+};
+
 export type tech_card = {
   id: string;
   name: string;
@@ -163,6 +174,8 @@ export type tech_card = {
   hot?: boolean;
   /** этапы готовки общие для всех объёмов; граммовка — для базового (обычно 500 мл) */
   steps?: prep_step[];
+  /** поля ТТК для копирования документа */
+  ttk?: tech_card_ttk;
   /** ключи размеров: S/M/L (наследие) или объём в мл ('500', '650') */
   sizes: Record<string, tech_card_size>;
 };
@@ -958,19 +971,22 @@ export function new_id(prefix = 'id') {
 /* дефолты (из Bubble Manager)                                          */
 /* ------------------------------------------------------------------ */
 
-/** вода из фильтра, лёд, снег — не считаем на складе */
+/**
+ * «бесплатные» позиции без учёта на складе.
+ * лёд / вода / розовая вода — обычный склад (для ТТК и списания), не сюда.
+ */
 export function is_infinite_stock(id_or_name: string) {
   const s = id_or_name.trim().toLowerCase().replace(/ё/g, 'е');
-  if (s === 'water' || s === 'ice' || s === 'snow' || s === 'filtered_water') return true;
-  if (s === 'лед' || s === 'снег') return true;
-  if (s === 'вода' || s === 'вода (фильтрованная)') return true;
-  if (s.includes('фильтрован') && s.includes('вод')) return true;
-  return false;
+  // наследие: только явный id снега (если был)
+  return s === 'snow';
 }
 
 export function material_is_infinite(m: { id: string; name: string }) {
-  return is_infinite_stock(m.id) || is_infinite_stock(m.name);
+  return is_infinite_stock(m.id);
 }
+
+/** то же, что material_is_infinite — алиас для склада/API */
+export const material_excluded_from_warehouse = material_is_infinite;
 
 export const default_materials: material[] = [
   { id: 'tea_black', name: 'чай чёрный (заваренный)', category: 'dry', unit: 'kg', costPerUnit: 1500, minStock: 400 },
@@ -986,6 +1002,8 @@ export const default_materials: material[] = [
   { id: 'cream', name: 'сливки', category: 'liquids', unit: 'L', costPerUnit: 220 },
   { id: 'condensed', name: 'сгущённое молоко', category: 'liquids', unit: 'kg', costPerUnit: 280 },
   { id: 'soda', name: 'газированная вода', category: 'liquids', unit: 'L', costPerUnit: 25, minStock: 5000 },
+  { id: 'ice', name: 'лёд пищевой', category: 'liquids', unit: 'kg', costPerUnit: 15, minStock: 5000 },
+  { id: 'water', name: 'вода (фильтрованная)', category: 'liquids', unit: 'L', costPerUnit: 10, minStock: 10000 },
   { id: 'cheese_foam', name: 'сырная шапка', category: 'liquids', unit: 'kg', costPerUnit: 650, minStock: 1000 },
   { id: 'tapioca', name: 'тапиока сваренная', category: 'toppings', unit: 'kg', costPerUnit: 400, minStock: 2000 },
   { id: 'tapioca_dry', name: 'тапиока сухая', category: 'toppings', unit: 'kg', costPerUnit: 400, minStock: 2000 },
@@ -993,10 +1011,11 @@ export const default_materials: material[] = [
   { id: 'syrup_chocolate', name: 'сироп «шоколадный»', category: 'toppings', unit: 'L', costPerUnit: 400, minStock: 1000 },
   { id: 'syrup_curacao', name: 'сироп «блю кюрасао»', category: 'toppings', unit: 'L', costPerUnit: 450, minStock: 1000 },
   { id: 'syrup_raspberry', name: 'сироп «малина»', category: 'toppings', unit: 'L', costPerUnit: 400, minStock: 1000 },
+  { id: 'syrup_strawberry', name: 'сироп «клубника»', category: 'toppings', unit: 'L', costPerUnit: 400, minStock: 1000 },
   { id: 'syrup_coconut_caramel', name: 'сироп «кокос карамельный»', category: 'toppings', unit: 'L', costPerUnit: 450, minStock: 1000 },
   { id: 'conc_strawberry', name: 'концентрат клубники', category: 'toppings', unit: 'L', costPerUnit: 480, minStock: 1000 },
   { id: 'puree_strawberry', name: 'пюре клубника', category: 'toppings', unit: 'kg', costPerUnit: 550, minStock: 1000 },
-  { id: 'rose_water', name: 'розовая вода', category: 'toppings', unit: 'L', costPerUnit: 900 },
+  { id: 'rose_water', name: 'розовая вода', category: 'toppings', unit: 'L', costPerUnit: 900, minStock: 200 },
   { id: 'menthol', name: 'экстракт ментола', category: 'toppings', unit: 'ml', costPerUnit: 8 },
   { id: 'jb_strawberry', name: 'джус-боллы клубника', category: 'toppings', unit: 'kg', costPerUnit: 620, minStock: 1500 },
   { id: 'jb_passion', name: 'джус-боллы маракуйя', category: 'toppings', unit: 'kg', costPerUnit: 620, minStock: 1500 },
@@ -1300,6 +1319,39 @@ function read_prep_steps(raw: unknown): prep_step[] | undefined {
   return steps.length ? steps : undefined;
 }
 
+function read_tech_card_ttk(raw: unknown): tech_card_ttk | undefined {
+  if (!raw || typeof raw !== 'object') return undefined;
+  const t = raw as Record<string, unknown>;
+  const appearance = String(t.appearance || '').trim();
+  const color = String(t.color || '').trim();
+  const taste = String(t.taste || '').trim();
+  const consistency = String(t.consistency || '').trim();
+  const storage = String(t.storage || '').trim();
+  if (!appearance && !color && !taste && !consistency && !storage) return undefined;
+  const nutrition: tech_card_ttk['nutrition'] = {};
+  if (t.nutrition && typeof t.nutrition === 'object') {
+    for (const [k, row] of Object.entries(t.nutrition as Record<string, unknown>)) {
+      if (!row || typeof row !== 'object') continue;
+      const r = row as Record<string, unknown>;
+      nutrition[k] = {
+        protein: String(r.protein || '').trim(),
+        fat: String(r.fat || '').trim(),
+        carbs: String(r.carbs || '').trim(),
+        energy: String(r.energy || '').trim(),
+      };
+    }
+  }
+  return {
+    appearance,
+    color,
+    taste,
+    consistency,
+    storage,
+    ...(String(t.serveTemp || '').trim() ? { serveTemp: String(t.serveTemp).trim() } : {}),
+    nutrition,
+  };
+}
+
 export function normalize_finance_state(raw: unknown): finance_state {
   const def = default_finance_state();
   if (!raw || typeof raw !== 'object') return def;
@@ -1307,7 +1359,13 @@ export function normalize_finance_state(raw: unknown): finance_state {
 
   let materials: material[] = Array.isArray(v.materials)
     ? v.materials
-        .filter((m) => m && typeof m === 'object' && m.id && !material_is_infinite(m))
+        .filter(
+          (m) =>
+            m &&
+            typeof m === 'object' &&
+            m.id &&
+            !material_excluded_from_warehouse({ id: String(m.id), name: String(m.name || '') })
+        )
         .map((m) => ({
           id: String(m.id),
           name: String(m.name || m.id).trim(),
@@ -1316,12 +1374,12 @@ export function normalize_finance_state(raw: unknown): finance_state {
           costPerUnit: num(m.costPerUnit),
           ...(m.minStock != null ? { minStock: num(m.minStock) } : {}),
         }))
-        .filter((m) => !material_is_infinite(m))
+        .filter((m) => !material_excluded_from_warehouse(m))
     : def.materials;
   {
     const have = new Set(materials.map((m) => m.id));
     for (const extra of default_materials) {
-      if (!have.has(extra.id) && !material_is_infinite(extra)) materials.push({ ...extra });
+      if (!have.has(extra.id) && !material_excluded_from_warehouse(extra)) materials.push({ ...extra });
     }
     materials = materials.map((m) => {
       const cat = stock_category_for(m);
@@ -1355,6 +1413,7 @@ export function normalize_finance_state(raw: unknown): finance_state {
                 .find((s) => s?.length);
             if (preferred?.length) card_steps = preferred.map((s) => ({ ...s }));
           }
+          const ttk = read_tech_card_ttk((t as { ttk?: unknown }).ttk);
           return {
             id: String(t.id),
             name: String(t.name || t.id).trim(),
@@ -1362,6 +1421,7 @@ export function normalize_finance_state(raw: unknown): finance_state {
             ...(typeof t.cold === 'boolean' ? { cold: t.cold } : {}),
             ...(typeof t.hot === 'boolean' ? { hot: t.hot } : {}),
             ...(card_steps?.length ? { steps: card_steps } : {}),
+            ...(ttk ? { ttk } : {}),
             sizes,
           };
         })
@@ -1562,7 +1622,7 @@ export function normalize_finance_state(raw: unknown): finance_state {
   {
     const moved = new Set(stockMovements.map((m) => m.materialId));
     materials = materials.filter((m) => {
-      if (material_is_infinite(m)) return false;
+      if (material_excluded_from_warehouse(m)) return false;
       if (!lumped_material_ids.has(m.id)) return true;
       return moved.has(m.id);
     });
@@ -2815,7 +2875,12 @@ function is_prep_convert_note(note?: string) {
 function is_stock_bookkeeping_note(note?: string) {
   if (!note) return false;
   const n = note.trim();
-  return /^миграция:/i.test(n) || /^служебный:/i.test(n) || /^сверка:/i.test(n);
+  return (
+    /^миграция:/i.test(n) ||
+    /^служебный:/i.test(n) ||
+    /^сверка:/i.test(n) ||
+    /^факт:/i.test(n)
+  );
 }
 
 /**
@@ -2903,7 +2968,7 @@ export function stock_levels(state: finance_state, as_of?: string): stock_row[] 
     if (!prev || mv.date > prev) last_in.set(mv.materialId, mv.date);
   }
   return state.materials
-    .filter((m) => !material_is_infinite(m))
+    .filter((m) => !material_excluded_from_warehouse(m))
     .map((m) => {
       const q = qty.get(m.id) ?? 0;
       return {
@@ -3378,6 +3443,8 @@ export type stock_shortage = {
   name: string;
   need: number;
   have: number;
+  /** кастрюля/чайник, если нехватка по prep-станции */
+  stationId?: string | null;
 };
 
 function prep_guard_material_ids(state: finance_state): Set<string> {
