@@ -7,7 +7,7 @@ import type { menu_item } from '@/lib/types';
 import { expand_items_for_stock } from '@/lib/combo';
 import { get_item_volumes } from '@/lib/product-details';
 
-export const FINANCE_STATE_VERSION = 6;
+export const FINANCE_STATE_VERSION = 7;
 
 export type plan_horizon = 3 | 6 | 12;
 export type plan_strategy_id = 'launch' | 'conservative' | 'balanced' | 'growth' | 'custom';
@@ -148,7 +148,7 @@ export type tech_card_size = {
   packaging: Record<string, number>;
   /** @deprecated этапы теперь на tech_card.steps */
   steps?: prep_step[];
-  /** 650 мл правится отдельно и больше не следует за 500 мл */
+  /** если true — 650 мл правится отдельно; иначе всегда от 500 мл × 1,3 */
   manual?: boolean;
 };
 
@@ -176,7 +176,7 @@ export type tech_card = {
   steps?: prep_step[];
   /** поля ТТК для копирования документа */
   ttk?: tech_card_ttk;
-  /** ключи размеров: S/M/L (наследие) или объём в мл ('500', '650') */
+  /** ключи размеров: только объём в мл ('500', '650') */
   sizes: Record<string, tech_card_size>;
 };
 
@@ -1012,6 +1012,10 @@ export const default_materials: material[] = [
   { id: 'syrup_curacao', name: 'сироп «блю кюрасао»', category: 'toppings', unit: 'L', costPerUnit: 450, minStock: 1000 },
   { id: 'syrup_raspberry', name: 'сироп «малина»', category: 'toppings', unit: 'L', costPerUnit: 400, minStock: 1000 },
   { id: 'syrup_strawberry', name: 'сироп «клубника»', category: 'toppings', unit: 'L', costPerUnit: 400, minStock: 1000 },
+  { id: 'syrup_vanilla', name: 'сироп «ванильный»', category: 'toppings', unit: 'L', costPerUnit: 400, minStock: 1000 },
+  { id: 'syrup_caramel', name: 'сироп «карамельный»', category: 'toppings', unit: 'L', costPerUnit: 420, minStock: 1000 },
+  { id: 'topping_caramel', name: 'топинг «карамель»', category: 'toppings', unit: 'kg', costPerUnit: 480, minStock: 1000 },
+  { id: 'juice_lemon', name: 'сок лимона', category: 'toppings', unit: 'L', costPerUnit: 350, minStock: 500 },
   { id: 'syrup_coconut_caramel', name: 'сироп «кокос карамельный»', category: 'toppings', unit: 'L', costPerUnit: 450, minStock: 1000 },
   { id: 'conc_strawberry', name: 'концентрат клубники', category: 'toppings', unit: 'L', costPerUnit: 480, minStock: 1000 },
   { id: 'puree_strawberry', name: 'пюре клубника', category: 'toppings', unit: 'kg', costPerUnit: 550, minStock: 1000 },
@@ -1045,51 +1049,85 @@ const lidded = (ingredients: Record<string, number>, volume: number): tech_card_
   packaging: { cup_plastic: 1, lid: 1, straw: 1 },
 });
 
-function sizes_sml(
-  make: (scale: number, volume: number) => tech_card_size
+function scale_ml_ing(ing: Record<string, number>, from_ml: number, to_ml: number) {
+  const k = from_ml > 0 ? to_ml / from_ml : 1;
+  return Object.fromEntries(
+    Object.entries(ing).map(([id, q]) => [id, Math.round(q * k * 10) / 10])
+  );
+}
+
+/** только два объёма меню: 500 и 650 мл (650 по умолчанию авто от 500) */
+function sizes_500_650(
+  ingredients_500: Record<string, number>,
+  kind: 'sealed' | 'lidded' = 'sealed'
 ): Record<string, tech_card_size> {
+  const wrap = kind === 'sealed' ? sealed : lidded;
   return {
-    S: make(1, 350),
-    M: make(1.4, 450),
-    L: make(1.8, 600),
+    '500': wrap(ingredients_500, 500),
+    '650': wrap(scale_ml_ing(ingredients_500, 500, 650), 650),
   };
 }
 
-function qty(base: number, scale: number) {
-  return Math.round(base * scale * 10) / 10;
-}
-
-/** исходные техкарты Bubble Manager + рецепты живого меню (S/M/L → при синхронизации станут 500/650 мл) */
+/** исходные техкарты — только 500/650 мл (S/M/L больше не используем) */
 export const default_tech_cards: tech_card[] = [
   {
     id: 'tc_classic_milk',
     name: 'классический милк бабл ти',
     menu_item_id: 'original-black',
-    sizes: sizes_sml((k, v) => sealed({ tea_black: qty(5, k), milk: qty(150, k), syrup_brown_sugar: qty(20, k), tapioca: qty(50, k) }, v)),
+    sizes: sizes_500_650({ tea_black: 5, milk: 150, syrup_brown_sugar: 20, tapioca: 50 }),
   },
   {
     id: 'tc_jasmine_milk',
     name: 'зелёный жасмин',
     menu_item_id: 'jasmine-green',
-    sizes: sizes_sml((k, v) => sealed({ tea_jasmine: qty(5, k), milk: qty(150, k), syrup_brown_sugar: qty(20, k), tapioca: qty(50, k) }, v)),
+    sizes: sizes_500_650({ tea_jasmine: 5, milk: 150, syrup_brown_sugar: 20, tapioca: 50 }),
   },
   {
     id: 'tc_fruit_juiceballs',
     name: 'фруктовый чай с джус-болами',
     menu_item_id: 'klubnika-mango',
-    sizes: sizes_sml((k, v) =>
-      lidded({ puree_strawberry: qty(40, k), cane_sugar: qty(15, k), milk: qty(120, k), jb_mango: qty(50, k) }, v)
+    sizes: sizes_500_650(
+      { puree_strawberry: 40, cane_sugar: 15, milk: 120, jb_mango: 50 },
+      'lidded'
     ),
   },
   {
     id: 'tc_matcha_latte',
-    name: 'матча латте с тапиокой',
+    name: 'матча латте',
     menu_item_id: 'matcha-latte-tiger',
     cold: true,
     hot: true,
-    sizes: sizes_sml((k, v) =>
-      sealed({ matcha: qty(3, k), milk: qty(200, k), syrup_brown_sugar: qty(20, k), tapioca: qty(40, k), cheese_foam: qty(30, k) }, v)
-    ),
+    sizes: sizes_500_650({
+      tapioca: 50,
+      syrup_brown_sugar: 40,
+      matcha: 7,
+      water: 20,
+      milk: 248,
+      ice: 100,
+      cheese_foam: 35,
+    }),
+  },
+  {
+    id: 'tc_matcha_lichi',
+    name: 'матча личи',
+    menu_item_id: 'matcha-lichi',
+    cold: false,
+    hot: true,
+    sizes: sizes_500_650({ jelly_lychee: 50, matcha: 7, water: 20, milk: 413 }),
+  },
+  {
+    id: 'tc_vanilny_milktea',
+    name: 'ванильный милкти',
+    menu_item_id: 'vanilny-milktea',
+    cold: true,
+    hot: false,
+    sizes: sizes_500_650({
+      tapioca: 50,
+      syrup_brown_sugar: 10,
+      syrup_vanilla: 40,
+      milk: 390,
+      ice: 100,
+    }),
   },
   {
     id: 'tc_taro',
@@ -1097,63 +1135,94 @@ export const default_tech_cards: tech_card[] = [
     menu_item_id: 'taro',
     cold: true,
     hot: true,
-    sizes: sizes_sml((k, v) => sealed({ taro_mix: qty(40, k), tapioca: qty(50, k), cheese_foam: qty(35, k) }, v)),
+    sizes: sizes_500_650({ taro_mix: 40, tapioca: 50, cheese_foam: 35 }),
   },
   {
     id: 'tc_cocoa',
     name: 'какао',
     menu_item_id: 'kakao',
-    sizes: sizes_sml((k, v) => sealed({ cocoa: qty(18, k), milk: qty(220, k), syrup_chocolate: qty(20, k), cheese_foam: qty(30, k) }, v)),
+    sizes: sizes_500_650({ cocoa: 18, milk: 220, syrup_chocolate: 20, cheese_foam: 30 }),
   },
   {
     id: 'tc_masala',
     name: 'масала чай',
     menu_item_id: 'masala-chai',
-    sizes: sizes_sml((k, v) =>
-      sealed({ tea_black: qty(6, k), cane_sugar: qty(12, k), spices: qty(3, k), cream: qty(40, k), tapioca: qty(50, k), cheese_foam: qty(30, k) }, v)
-    ),
+    sizes: sizes_500_650({
+      tea_black: 6,
+      cane_sugar: 12,
+      spices: 3,
+      cream: 40,
+      tapioca: 50,
+      cheese_foam: 30,
+    }),
   },
   {
     id: 'tc_strawberry_lemonade',
     name: 'клубничный лимонад',
     menu_item_id: 'klubnichny-limonad',
-    sizes: sizes_sml((k, v) => lidded({ soda: qty(250, k), conc_strawberry: qty(40, k), jb_strawberry: qty(50, k) }, v)),
+    sizes: sizes_500_650({ soda: 250, conc_strawberry: 40, jb_strawberry: 50 }, 'lidded'),
   },
   {
     id: 'tc_tropic_fusion',
     name: 'тропический фьюжн',
     menu_item_id: 'tropichesky-limonad',
-    sizes: sizes_sml((k, v) => lidded({ soda: qty(250, k), syrup_curacao: qty(35, k), jb_passion: qty(50, k), jelly_lychee: qty(20, k) }, v)),
+    sizes: sizes_500_650(
+      { soda: 250, syrup_curacao: 35, jb_passion: 50, jelly_lychee: 20 },
+      'lidded'
+    ),
   },
   {
     id: 'tc_rose_milk',
     name: 'нежная роза',
     menu_item_id: 'nezhnaya-roza',
-    sizes: sizes_sml((k, v) => lidded({ milk: qty(220, k), conc_strawberry: qty(30, k), jb_strawberry: qty(50, k), rose_water: qty(8, k) }, v)),
+    sizes: sizes_500_650(
+      { milk: 220, conc_strawberry: 30, jb_strawberry: 50, rose_water: 8 },
+      'lidded'
+    ),
   },
   {
     id: 'tc_raspberry_yogurt',
     name: 'малиновый йогурт',
     menu_item_id: 'malinovy-yogurt',
-    sizes: sizes_sml((k, v) => lidded({ milk: qty(200, k), syrup_raspberry: qty(30, k), condensed: qty(20, k), jb_yogurt: qty(50, k) }, v)),
+    sizes: sizes_500_650(
+      { milk: 200, syrup_raspberry: 30, condensed: 20, jb_yogurt: 50 },
+      'lidded'
+    ),
   },
   {
     id: 'tc_tropic_mango',
     name: 'тропический манго',
     menu_item_id: 'tropichesky-mango',
-    sizes: sizes_sml((k, v) =>
-      lidded({ milk: qty(200, k), syrup_coconut_caramel: qty(30, k), jb_mango_passion: qty(50, k), jelly_lychee: qty(20, k) }, v)
+    sizes: sizes_500_650(
+      { milk: 200, syrup_coconut_caramel: 30, jb_mango_passion: 50, jelly_lychee: 20 },
+      'lidded'
     ),
   },
   {
     id: 'tc_subzero',
     name: 'сабзиро',
     menu_item_id: 'subzero',
-    sizes: sizes_sml((k, v) => lidded({ soda: qty(280, k), syrup_curacao: qty(35, k), jb_yogurt: qty(60, k), menthol: qty(2, k) }, v)),
+    sizes: sizes_500_650(
+      { soda: 280, syrup_curacao: 35, jb_yogurt: 60, menthol: 2 },
+      'lidded'
+    ),
   },
 ];
 
-const lumped_material_ids = new Set(['juiceballs', 'syrup', 'tea', 'fruits', 'toppings', 'water', 'ice']);
+/** только наследие Bubble Manager — не канонические water/ice из ТТК */
+const lumped_material_ids = new Set(['juiceballs', 'syrup', 'tea', 'fruits', 'toppings']);
+
+/** снятые эксперименты меню — вычищаем техкарты при нормализации */
+const dropped_menu_item_ids = new Set([
+  'cherny-karamel',
+  'cherny-karamel-led',
+  'malinovy-fuz',
+]);
+const dropped_tech_card_ids = new Set([
+  'tc_cherny_karamel',
+  'tc_cherny_karamel_led',
+  'tc_malinovy_fuz',
+]);
 
 function recipe_hint(card: { id: string; name: string; menu_item_id?: string | null }) {
   return `${card.id} ${card.menu_item_id || ''} ${card.name}`.toLowerCase();
@@ -1161,7 +1230,7 @@ function recipe_hint(card: { id: string; name: string; menu_item_id?: string | n
 
 function closest_size(sizes: Record<string, tech_card_size>, key: string): tech_card_size | undefined {
   if (sizes[key]) return sizes[key];
-  const want = Number(key) || { S: 350, M: 450, L: 600 }[key] || 0;
+  const want = Number(key) || 0;
   const entries = Object.entries(sizes);
   if (!entries.length) return undefined;
   return entries.reduce((best, cur) => {
@@ -1169,6 +1238,40 @@ function closest_size(sizes: Record<string, tech_card_size>, key: string): tech_
     const cv = cur[1].volume || Number(cur[0]) || 0;
     return Math.abs(cv - want) < Math.abs(bv - want) ? cur : best;
   })[1];
+}
+
+/** наследие Bubble Manager S/M/L → только 500/650 */
+export function migrate_sizes_to_ml(
+  sizes: Record<string, tech_card_size>
+): Record<string, tech_card_size> {
+  const has_sml = Boolean(sizes.S || sizes.M || sizes.L);
+  if (!has_sml) {
+    // выкинуть любые нечисловые ключи на всякий случай
+    const only_ml = Object.fromEntries(
+      Object.entries(sizes).filter(([k]) => /^\d+$/.test(k))
+    );
+    return Object.keys(only_ml).length ? only_ml : sizes;
+  }
+  const next: Record<string, tech_card_size> = {};
+  for (const [k, s] of Object.entries(sizes)) {
+    if (/^\d+$/.test(k)) next[k] = s;
+  }
+  if (!next['500']) {
+    const src = sizes.M || sizes.S || sizes.L;
+    if (src) next['500'] = { ...src, volume: 500, ingredients: { ...src.ingredients }, packaging: { ...src.packaging } };
+  }
+  if (!next['650']) {
+    const src = sizes.L || sizes.M || next['500'];
+    if (src) {
+      next['650'] = {
+        ...src,
+        volume: 650,
+        ingredients: { ...src.ingredients },
+        packaging: { ...src.packaging },
+      };
+    }
+  }
+  return next;
 }
 
 function remap_ingredients(ing: Record<string, number>, hint: string): Record<string, number> {
@@ -1422,13 +1525,18 @@ export function normalize_finance_state(raw: unknown): finance_state {
             ...(typeof t.hot === 'boolean' ? { hot: t.hot } : {}),
             ...(card_steps?.length ? { steps: card_steps } : {}),
             ...(ttk ? { ttk } : {}),
-            sizes,
+            sizes: migrate_sizes_to_ml(sizes),
           };
         })
     : def.techCards.map((c) => ({
         ...c,
-        sizes: Object.fromEntries(
-          Object.entries(c.sizes).map(([k, s]) => [k, { ...s, ingredients: { ...s.ingredients }, packaging: { ...s.packaging } }]),
+        sizes: migrate_sizes_to_ml(
+          Object.fromEntries(
+            Object.entries(c.sizes).map(([k, s]) => [
+              k,
+              { ...s, ingredients: { ...s.ingredients }, packaging: { ...s.packaging } },
+            ])
+          )
         ),
       }));
 
@@ -1446,9 +1554,25 @@ export function normalize_finance_state(raw: unknown): finance_state {
   fold_dual_temp_tech_cards(techCards);
 
   const removedTechCardIds = Array.isArray(v.removedTechCardIds)
-    ? [...new Set(v.removedTechCardIds.map((id) => String(id)).filter(Boolean))]
-    : [];
+    ? [
+        ...new Set([
+          ...v.removedTechCardIds.map((id) => String(id)).filter(Boolean),
+          ...dropped_tech_card_ids,
+        ]),
+      ]
+    : [...dropped_tech_card_ids];
   const removed_tech = new Set(removedTechCardIds);
+
+  // выкинуть снятые эксперименты из сохранённого стейта
+  for (let i = techCards.length - 1; i >= 0; i--) {
+    const c = techCards[i];
+    if (
+      dropped_tech_card_ids.has(c.id) ||
+      (c.menu_item_id && dropped_menu_item_ids.has(c.menu_item_id))
+    ) {
+      techCards.splice(i, 1);
+    }
+  }
 
   for (const d of default_tech_cards) {
     if (tech_card_is_removed(removed_tech, d)) continue;
@@ -1550,6 +1674,18 @@ export function normalize_finance_state(raw: unknown): finance_state {
   const incoming_version = num(v.version, 0);
   const wipe_warehouse = incoming_version < 3;
   const lock_outflow_costs = incoming_version < 6;
+  // v7: раньше 650 всегда писался с manual — сбрасываем, чтобы считался от 500
+  if (incoming_version < 7) {
+    for (const card of techCards) {
+      const base = card.sizes['500'];
+      if (!base || !card.sizes['650']) continue;
+      const pack = card.sizes['650'].packaging || base.packaging || {};
+      card.sizes['650'] = {
+        ...derive_size_from_base(base, 650, materials),
+        packaging: { ...pack },
+      };
+    }
+  }
 
   let stockMovements: stock_movement[] = wipe_warehouse
     ? []
@@ -1963,37 +2099,27 @@ export function sync_tech_cards_with_menu(state: finance_state, menu: menu_item[
       const target = existing_empty && existing ? existing : by_name;
       target.menu_item_id = item.id;
       target.name = item.name;
-      // переносим старые размеры S/M/L на объёмы меню, если они ещё не заданы
-      const legacy = ['S', 'M', 'L'].filter((k) => by_name.sizes[k]);
-      if (legacy.length && !keys.some((k) => target.sizes[k] && Object.keys(target.sizes[k].ingredients).length)) {
+      // если ещё нет 500/650 — подтянуть из наследия и сразу в мл
+      const migrated = migrate_sizes_to_ml(by_name.sizes);
+      if (
+        !keys.some((k) => target.sizes[k] && Object.keys(target.sizes[k].ingredients).length) &&
+        Object.keys(migrated).length
+      ) {
         const renames: Record<string, string> = {};
-        const legacy_vol = (k: string) => by_name.sizes[k].volume || { S: 400, M: 500, L: 650 }[k] || 0;
         const next_sizes: Record<string, tech_card_size> = { ...target.sizes };
         keys.forEach((k) => {
-          const target_vol = Number(k) || 0;
-          const src_key = legacy.reduce((best, cur) =>
-            Math.abs(legacy_vol(cur) - target_vol) < Math.abs(legacy_vol(best) - target_vol) ? cur : best
-          );
-          const src = by_name.sizes[src_key];
+          const src = migrated[k] || closest_size(migrated, k);
+          if (!src) return;
           next_sizes[k] = {
-            volume: target_vol || src.volume,
+            volume: Number(k) || src.volume,
             ingredients: { ...src.ingredients },
             packaging: { ...src.packaging },
             ...(src.steps?.length ? { steps: src.steps.map((s) => ({ ...s, id: new_id('step') })) } : {}),
           };
-          if (!renames[src_key]) renames[src_key] = k;
+          renames[k] = k;
         });
-        for (const k of legacy) {
-          if (!renames[k]) {
-            const nearest = keys.reduce((best, cur) =>
-              Math.abs((Number(cur) || 0) - legacy_vol(k)) < Math.abs((Number(best) || 0) - legacy_vol(k)) ? cur : best
-            );
-            renames[k] = nearest;
-          }
-          delete next_sizes[k];
-        }
         target.sizes = next_sizes;
-        size_renames.set(target.id, renames);
+        if (Object.keys(renames).length) size_renames.set(target.id, renames);
       } else if (existing_empty && existing) {
         existing.sizes = Object.fromEntries(
           Object.entries(by_name.sizes).map(([k, s]) => [
@@ -2096,8 +2222,23 @@ export function material_cost(state: finance_state, material_id: string, qty: nu
 const auto_large_ml = '650';
 const auto_base_ml = '500';
 
+const LOCKED_PORTION_MATERIAL_IDS = new Set([
+  'tapioca',
+  'jelly_lychee',
+  'jb_passion',
+  'jb_yogurt',
+  'jb_mango',
+  'jb_strawberry',
+  'topping_caramel',
+  'matcha',
+  'juice_lemon',
+]);
+
 function qty_stays(mat: material | undefined) {
-  return !mat || base_unit(mat.unit) === 'pcs' || mat.category === 'packaging';
+  if (!mat) return true;
+  if (base_unit(mat.unit) === 'pcs' || mat.category === 'packaging') return true;
+  if (LOCKED_PORTION_MATERIAL_IDS.has(mat.id)) return true;
+  return false;
 }
 
 /** 650 мл из 500: сырьё по объёму, штучная упаковка без изменений */

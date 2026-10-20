@@ -144,7 +144,7 @@ export default function drink_craft({
     return sum;
   }, 0);
   const skip = Math.min(craft_cup_ml - 1, Math.max(0, Math.round(Number(headspace) || 0)));
-  const room = craft_cup_ml - skip;
+  const room = craft_cup_ml - skip; // цель продукта, г ≈ мл (база 490 на 500)
   const gap = Math.round((room - filled) * 10) / 10;
 
   function patch_board(id: string, recipe: (board: board) => board) {
@@ -510,20 +510,28 @@ export default function drink_craft({
 
       <div className="mt-4 rounded-2xl border border-neutral-200 bg-white px-4 py-3 text-center">
         <p className="text-sm text-neutral-500">
-          стакан {craft_cup_ml} мл, не доливаем{' '}
+          стакан {craft_cup_ml} мл · цель {room} г продукта, запас{' '}
           <input
             value={headspace}
             onChange={(e) => set_headspace(e.target.value.replace(/[^\d]/g, ''))}
             inputMode="numeric"
             className="w-12 border-b border-neutral-300 bg-transparent text-center tabular-nums outline-none"
           />{' '}
-          мл
+          г от края
         </p>
-        <p className="mt-1 text-2xl font-semibold tabular-nums">
-          {gap > 0 ? `не хватает ${gap.toLocaleString('ru-RU')} мл` : gap < 0 ? `больше на ${Math.abs(gap).toLocaleString('ru-RU')} мл` : 'объём собран'}
+        <p
+          className={`mt-1 text-2xl font-semibold tabular-nums ${
+            gap > 2 ? 'text-amber-600' : gap < -2 ? 'text-rose-600' : 'text-emerald-700'
+          }`}
+        >
+          {gap > 0
+            ? `не хватает ${gap.toLocaleString('ru-RU')} г`
+            : gap < 0
+              ? `лишнее ${Math.abs(gap).toLocaleString('ru-RU')} г`
+              : 'граммовка собрана'}
         </p>
         <p className="mt-1 text-xs text-neutral-400">
-          уже {Math.round(filled).toLocaleString('ru-RU')} мл из {room} · штуки в объём не входят
+          итого {Math.round(filled).toLocaleString('ru-RU')} г · цель {room} г · штуки не считаются
         </p>
       </div>
 

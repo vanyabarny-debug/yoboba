@@ -255,10 +255,7 @@ export async function create_crafted_drink(input: {
     steps,
     sizes: {
       '500': size_from_steps(steps, state.materials, craft_cup_ml),
-      '650': {
-        ...size_from_steps(large_steps, state.materials, 650),
-        manual: true,
-      },
+      '650': size_from_steps(large_steps, state.materials, 650),
     },
   };
 

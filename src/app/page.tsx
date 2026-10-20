@@ -3,13 +3,9 @@ import { create_server_client } from '@/lib/supabase/server';
 import { is_supabase_configured } from '@/lib/supabase/config';
 import { demo_stories } from '@/lib/demo-data';
 import {
-  default_categories,
   apply_menu_item_badges,
   default_menu_items,
-  fold_warm_drink_categories,
-  get_default_store,
-  merge_menu_item_catalog,
-  store_version,
+  upgrade_menu_store,
 } from '@/lib/menu-store';
 import { read_published_menu, write_published_menu } from '@/lib/menu-catalog-server';
 import { default_promos } from '@/lib/promo-store';
@@ -24,32 +20,14 @@ export const dynamic = 'force-dynamic';
 
 async function resolve_live_menu() {
   const stored = await read_published_menu();
-  if (stored && stored.version >= store_version && stored.items?.length) {
-    const merged_items = merge_menu_item_catalog(stored.items, stored.removed_item_ids ?? []);
-    const merged_store = {
-      ...stored,
-      items: merged_items,
-    };
-    await write_published_menu(merged_store).catch((e) =>
-      console.error('menu publish skipped', e instanceof Error ? e.message : e)
-    );
-    return {
-      items: apply_menu_item_badges(merged_items),
-      categories: fold_warm_drink_categories(
-        stored.categories?.length ? stored.categories : default_categories
-      ),
-      demo_mode: false,
-    };
-  }
-
-  const fresh = get_default_store();
-  await write_published_menu(fresh).catch((e) =>
+  const store = upgrade_menu_store(stored);
+  await write_published_menu(store).catch((e) =>
     console.error('menu publish skipped', e instanceof Error ? e.message : e)
   );
   return {
-    items: apply_menu_item_badges(fresh.items),
-    categories: fresh.categories,
-    demo_mode: true,
+    items: apply_menu_item_badges(store.items),
+    categories: store.categories,
+    demo_mode: !stored?.items?.length,
   };
 }
 

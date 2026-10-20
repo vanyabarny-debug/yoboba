@@ -1,5 +1,5 @@
 import { read_published_menu } from '@/lib/menu-catalog-server';
-import { get_default_store, merge_menu_item_catalog, store_version } from '@/lib/menu-store';
+import { upgrade_menu_store } from '@/lib/menu-store';
 import {
   apply_order_consumption,
   format_stock_shortages,
@@ -25,11 +25,7 @@ function enrich_shortages(
 }
 
 async function load_menu(): Promise<menu_item[]> {
-  const stored = await read_published_menu();
-  if (stored && stored.version >= store_version && stored.items?.length) {
-    return merge_menu_item_catalog(stored.items, stored.removed_item_ids ?? []);
-  }
-  return get_default_store().items;
+  return upgrade_menu_store(await read_published_menu()).items;
 }
 
 /** проверка до создания/правки заказа — без списания */

@@ -72,8 +72,24 @@ function step_from_material(mat: material, qty: number): prep_step {
   };
 }
 
+/** порции топпингов — не масштабировать с объёмом (тапиока 50 остаётся 50) */
+const LOCKED_COOK_PORTION_IDS = new Set([
+  'tapioca',
+  'jelly_lychee',
+  'jb_passion',
+  'jb_yogurt',
+  'jb_mango',
+  'jb_strawberry',
+  'topping_caramel',
+  'matcha',
+  'juice_lemon',
+]);
+
 function qty_stays(mat: material | undefined) {
-  return !mat || base_unit(mat.unit) === 'pcs' || mat.category === 'packaging';
+  if (!mat) return true;
+  if (base_unit(mat.unit) === 'pcs' || mat.category === 'packaging') return true;
+  if (LOCKED_COOK_PORTION_IDS.has(mat.id)) return true;
+  return false;
 }
 
 /** базовый объём для граммовок в общих этапах */
@@ -180,6 +196,20 @@ export function resolved_prep_steps_for_volume(
 ): prep_step[] {
   const saved = get_card_steps(card);
   const volume = size?.volume || Number(size_key) || card_steps_base_ml(card);
+  // ручной 650: граммы из sizes['650'], а не слепой ×1.3 от шагов 500
+  if (size?.manual && size.ingredients && Object.keys(size.ingredients).length > 0) {
+    if (saved?.length) {
+      return decorate_steps(
+        saved.map((s) => {
+          if (!s.materialId) return s;
+          const q = size.ingredients[s.materialId];
+          return q != null && q > 0 ? { ...s, qty: q } : s;
+        }),
+        materials
+      );
+    }
+    return steps_from_size_ingredients(size, materials);
+  }
   if (saved?.length) {
     return scale_prep_steps(saved, card_steps_base_ml(card), volume, materials);
   }
@@ -215,15 +245,18 @@ export function ingredients_from_steps(
   const packaging: Record<string, number> = {};
   let saw_pack = false;
   for (const s of steps) {
-    if (!s.materialId || !(s.qty > 0)) continue;
+    if (!s.materialId) continue;
+    const q = Number(s.qty);
+    // 0 г оставляем — только что добавленная позиция в редакторе
+    if (!Number.isFinite(q) || q < 0) continue;
     const mat = by_id.get(s.materialId);
     if (!mat) continue;
     const cat = stock_category_for(mat);
     if (cat === 'packaging') {
       saw_pack = true;
-      packaging[s.materialId] = (packaging[s.materialId] || 0) + s.qty;
+      packaging[s.materialId] = (packaging[s.materialId] || 0) + q;
     } else {
-      ingredients[s.materialId] = (ingredients[s.materialId] || 0) + s.qty;
+      ingredients[s.materialId] = (ingredients[s.materialId] || 0) + q;
     }
   }
   return { ingredients, packaging, saw_pack };
@@ -267,6 +300,123 @@ export function apply_steps_to_card(
     ...card,
     steps: steps.length ? steps : undefined,
     sizes: { ...card.sizes, [base_key]: next_base },
+  };
+}
+
+/**
+ * ингредиенты → этапы (и обратно через apply_steps_to_card).
+ * действия без materialId сохраняем; граммы по складу обновляем.
+ * qty 0 оставляем — только что добавленная строка в UI.
+ */
+export function apply_ingredients_to_card(
+  card: tech_card,
+  ingredients: Record<string, number>,
+  materials: material[]
+): tech_card {
+  const by_id = new Map(materials.map((m) => [m.id, m]));
+  const existing = get_card_steps(card) ?? [];
+  const assigned = new Set<string>();
+  const next: prep_step[] = [];
+  const kept = Object.fromEntries(
+    Object.entries(ingredients).filter(([, q]) => Number.isFinite(Number(q)) && Number(q) >= 0)
+  );
+
+  for (const s of existing) {
+    if (!s.materialId) {
+      next.push(s);
+      continue;
+    }
+    const mat = by_id.get(s.materialId);
+    if (mat && stock_category_for(mat) === 'packaging') {
+      next.push(s);
+      continue;
+    }
+    if (assigned.has(s.materialId)) continue;
+    if (!(s.materialId in kept)) continue;
+    const q = Number(kept[s.materialId]) || 0;
+    next.push({ ...s, qty: q });
+    assigned.add(s.materialId);
+  }
+
+  for (const [id, raw] of Object.entries(kept)) {
+    if (assigned.has(id)) continue;
+    const q = Number(raw) || 0;
+    const mat = by_id.get(id);
+    if (!mat || stock_category_for(mat) === 'packaging') continue;
+    next.push(step_from_material(mat, q));
+    assigned.add(id);
+  }
+
+  const synced = apply_steps_to_card(card, next, materials);
+  const base_key = synced.sizes['500']
+    ? '500'
+    : Object.keys(synced.sizes).sort((a, b) => (Number(a) || 0) - (Number(b) || 0))[0];
+  if (!base_key || !synced.sizes[base_key]) return synced;
+  return {
+    ...synced,
+    sizes: {
+      ...synced.sizes,
+      [base_key]: {
+        ...synced.sizes[base_key],
+        ingredients: { ...kept },
+      },
+    },
+  };
+}
+
+/** упаковка → этапы упаковки + состав; съедобные этапы не трогаем */
+export function apply_packaging_to_card(
+  card: tech_card,
+  packaging: Record<string, number>,
+  materials: material[]
+): tech_card {
+  const by_id = new Map(materials.map((m) => [m.id, m]));
+  const existing = get_card_steps(card) ?? [];
+  const assigned = new Set<string>();
+  const next: prep_step[] = [];
+
+  for (const s of existing) {
+    if (!s.materialId) {
+      next.push(s);
+      continue;
+    }
+    const mat = by_id.get(s.materialId);
+    if (!mat || stock_category_for(mat) !== 'packaging') {
+      next.push(s);
+      continue;
+    }
+    if (assigned.has(s.materialId)) continue;
+    const q = Number(packaging[s.materialId]);
+    if (Number.isFinite(q) && q > 0) {
+      next.push({ ...s, qty: q });
+      assigned.add(s.materialId);
+    }
+  }
+
+  for (const [id, raw] of Object.entries(packaging)) {
+    if (assigned.has(id)) continue;
+    const q = Number(raw);
+    if (!(q > 0)) continue;
+    const mat = by_id.get(id);
+    if (!mat || stock_category_for(mat) !== 'packaging') continue;
+    next.push(step_from_material(mat, q));
+    assigned.add(id);
+  }
+
+  const with_steps = apply_steps_to_card(card, next, materials);
+  const base_key = with_steps.sizes['500']
+    ? '500'
+    : Object.keys(with_steps.sizes).sort((a, b) => (Number(a) || 0) - (Number(b) || 0))[0];
+  if (!base_key || !with_steps.sizes[base_key]) return with_steps;
+  return {
+    ...with_steps,
+    sizes: {
+      ...with_steps.sizes,
+      [base_key]: {
+        ...with_steps.sizes[base_key],
+        packaging: { ...packaging },
+      },
+    },
   };
 }
 

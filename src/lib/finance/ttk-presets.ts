@@ -167,6 +167,28 @@ const BY_KEY: Record<string, () => ttk_preset> = {
     },
   }),
 
+  /** горячий матча с желе личи */
+  'matcha-lichi': () => ({
+    steps: [
+      step('желе «личи»', 'выложить на дно термостойкого стакана', 50, 'jelly_lychee'),
+      step('матча (порошок)', 'отмерить', 7, 'matcha'),
+      step('вода (фильтрованная)', 'взбить с матчей до однородности', 20, 'water'),
+      step('молоко', 'налить в питчер', 413, 'milk'),
+      step('прогрев', 'прогреть матчу с молоком до 65–70 °C без кипения, выход ~490 г', 0),
+      step('сборка и подача', 'перелить к желе; закрыть термостойкой крышкой', 0),
+    ],
+    ttk: {
+      appearance:
+        'Термостойкий стакан с кубиками желе «личи» на дне и однородным горячим молочно-матча слоем.',
+      color: 'Приглушённый оливково-зелёный матча, однородный.',
+      taste: 'Яркий вкус матчи с молочной мягкостью и лёгкой сладостью желе личи.',
+      consistency: 'Напиток — умеренно густой, горячий; желе — упругие прозрачные кубики.',
+      serveTemp: SERVE_HOT,
+      storage: STORAGE_TEA,
+      nutrition: n(['4,0', '5,5', '42,0', '245 / 1025'], ['5,2', '7,2', '54,5', '318 / 1331']),
+    },
+  }),
+
   taro: () => ({
     // 50+56+245+49+100 = 500
     steps: [
@@ -186,6 +208,28 @@ const BY_KEY: Record<string, () => ttk_preset> = {
       serveTemp: SERVE_DUAL,
       storage: STORAGE_MILK,
       nutrition: n(['3,8', '7,2', '52,0', '290 / 1213'], ['4,9', '9,4', '67,5', '377 / 1577']),
+    },
+  }),
+
+  'vanilny-milktea': () => ({
+    steps: [
+      step('тапиока вареная', 'выложить на дно стакана', 50, 'tapioca'),
+      step('сироп «чёрный сахар»', 'нарисовать лёгкие разводы по стенкам (~10 г)', 10, 'syrup_brown_sugar'),
+      step('сироп «ванильный»', 'внести в шейкер (~4 пшика помпой)', 40, 'syrup_vanilla'),
+      step('молоко питьевое 3,2%', 'налить в шейкер', 390, 'milk'),
+      step('лёд пищевой', 'засыпать в шейкер', ICE_G_PER_500, 'ice'),
+      step('взбивание', 'интенсивно взбивать 10–15 сек до пены и охлаждения', 0),
+      step('сборка и подача', 'перелить из шейкера в стакан к тапиоке; запаять / закрыть; трубочка от 12 мм', 0),
+    ],
+    ttk: {
+      appearance:
+        'Прозрачный стакан с тапиокой на дне, лёгкими разводами и кремово-ванильной молочной эмульсией со льдом.',
+      color: 'Светло-кремовый / ванильно-молочный.',
+      taste: 'Мягкий ванильный милкти с лёгкой нотой чёрного сахара и жевательной тапиокой.',
+      consistency: 'Напиток — жидкий, со льдом и пенкой; тапиока — упругая.',
+      serveTemp: SERVE_COLD,
+      storage: STORAGE_TEA,
+      nutrition: n(['3,2', '3,5', '52,0', '255 / 1067'], ['4,2', '4,6', '67,5', '332 / 1389']),
     },
   }),
 
@@ -282,17 +326,18 @@ const BY_KEY: Record<string, () => ttk_preset> = {
   'malinovy-yogurt': () => ({
     // 30+50+295+25+100 = 500
     steps: [
-      step('сироп «малина»', 'внести на дно стакана', 30, 'syrup_raspberry'),
-      step('джус-болы «йогурт»', 'выложить на дно', 50, 'jb_yogurt'),
+      step('джус-болы «йогурт»', 'выложить на дно стакана', 50, 'jb_yogurt'),
+      step('сироп «малина»', 'нарисовать разводы по стенкам стакана (~30 г)', 30, 'syrup_raspberry'),
       step('молоко', 'налить в шейкер', 295, 'milk'),
       step('сгущённое молоко', 'добавить в шейкер', 25, 'condensed'),
       step('лёд пищевой', 'засыпать в шейкер', ICE_G_PER_500, 'ice'),
-      step('взбивание', 'взбивать 10–15 сек до однородности', 0),
-      step('сборка и подача', 'перелить в стакан; запаять / закрыть; трубочка от 12 мм', 0),
+      step('взбивание', 'взбивать 10–15 сек до однородности и лёгкой пены', 0),
+      step('сборка и подача', 'перелить в стакан к джус-болам; запаять / закрыть; трубочка от 12 мм', 0),
     ],
     ttk: {
-      appearance: 'Стакан с малиновым сиропом и йогуртными джус-болами на дне, сверху — молочно-малиновая эмульсия со льдом.',
-      color: 'Нежно-розовый с малиновыми переливами.',
+      appearance:
+        'Стакан с йогуртными джус-болами на дне, малиновыми разводами на стенках и нежно-розовой молочной эмульсией со льдом и пенкой.',
+      color: 'Нежно-розовый с яркими малиновыми разводами на стенках.',
       taste: 'Сливочно-йогуртный вкус с яркой малиной и лёгкой сладостью сгущёнки.',
       consistency: 'Напиток — жидкий, со льдом; джус-болы — сочные, лопающиеся.',
       serveTemp: SERVE_COLD,
@@ -397,15 +442,22 @@ const BY_KEY: Record<string, () => ttk_preset> = {
       nutrition: n(['1,2', '4,5', '52,0', '250 / 1046'], ['1,6', '5,9', '67,5', '325 / 1360']),
     },
   }),
+
 };
 
-function key_aliases(card: Pick<tech_card, 'id' | 'name' | 'menu_item_id'>): string[] {
+function key_aliases(card: Pick<tech_card, 'id' | 'name' | 'menu_item_id' | 'cold' | 'hot'>): string[] {
   const name = (card.name || '').trim().toLowerCase().replace(/ё/g, 'е');
   const keys = [card.id, card.menu_item_id || '', name].filter(Boolean) as string[];
-  if (/черн.*сахар|black/.test(name)) keys.push('original-black-led');
+  if (/черн.*сахар|black/.test(name) && !/карамел/.test(name)) keys.push('original-black-led');
   if (/жасмин|jasmine/.test(name)) keys.push('jasmine-green-led');
-  if (/троп.*фьюж|троп.*лимон|fusion/.test(name)) keys.push('tropichesky-limonad');
-  if (/матча/.test(name)) keys.push('matcha-latte-tiger');
+  if (/троп.*фьюж|троп.*лимон|fusion/.test(name)) {
+    keys.push('tropichesky-limonad');
+  }
+  if (/матча.*личи|личи.*матча|matcha-lichi/.test(name) || card.menu_item_id === 'matcha-lichi') {
+    keys.push('matcha-lichi');
+  } else if (/матча/.test(name)) {
+    keys.push('matcha-latte-tiger');
+  }
   if (/^таро$|таро\b/.test(name)) keys.push('taro');
   if (/какао|kakao/.test(name)) keys.push('kakao');
   if (/масала/.test(name)) keys.push('masala-chai');
@@ -416,6 +468,9 @@ function key_aliases(card: Pick<tech_card, 'id' | 'name' | 'menu_item_id'>): str
   if (/сабзиро|subzero/.test(name)) keys.push('subzero');
   if (/клубника.*манго|манго.*клубник/.test(name)) keys.push('klubnika-mango');
   if (/глинтвейн/.test(name)) keys.push('glintvein');
+  if (/ванил.*милк|милкти.*ванил|vanilny-milktea/.test(name) || card.menu_item_id === 'vanilny-milktea') {
+    keys.push('vanilny-milktea');
+  }
   return [...new Set(keys)];
 }
 
@@ -434,6 +489,30 @@ function scale_ing(ing: Record<string, number>, from_ml: number, to_ml: number) 
   );
 }
 
+/** порции топпингов/рисунка — фиксированные граммы бариста, не ×1.3 */
+const LOCKED_PORTION_IDS = new Set([
+  'tapioca',
+  'jelly_lychee',
+  'jb_passion',
+  'jb_yogurt',
+  'jb_mango',
+  'jb_strawberry',
+  'topping_caramel',
+  'matcha',
+  'water',
+  'juice_lemon',
+]);
+
+/** 650: жидкости масштабируем, порции топпингов оставляем как в 500 */
+function scale_ing_lock_portions(ing: Record<string, number>, from_ml: number, to_ml: number) {
+  const scaled = scale_ing(ing, from_ml, to_ml);
+  const out: Record<string, number> = { ...scaled };
+  for (const id of LOCKED_PORTION_IDS) {
+    if (ing[id] != null) out[id] = ing[id];
+  }
+  return out;
+}
+
 /** синхронизировать sizes 500/650 из шагов (граммы = рецептура) */
 export function sync_sizes_from_steps(
   card: tech_card,
@@ -441,26 +520,24 @@ export function sync_sizes_from_steps(
   materials: material[]
 ): Record<string, tech_card_size> {
   const { ingredients, packaging, saw_pack } = ingredients_from_steps(steps, materials);
-  const base_key = card.sizes['500'] ? '500' : Object.keys(card.sizes).sort((a, b) => Number(a) - Number(b))[0] || '500';
-  const base_ml = Number(base_key) || 500;
-  const prev_base = card.sizes[base_key];
-  const next: Record<string, tech_card_size> = { ...card.sizes };
-  next[base_key] = {
-    volume: base_ml,
-    ingredients,
-    packaging: saw_pack ? packaging : { ...(prev_base?.packaging || {}) },
-    ...(prev_base?.manual ? { manual: true } : {}),
-  };
-  if (card.sizes['650'] || base_key === '500') {
-    const prev650 = card.sizes['650'];
-    next['650'] = {
+  const prev_base = card.sizes['500'] || Object.values(card.sizes)[0];
+  const prev650 = card.sizes['650'];
+  const pack = saw_pack
+    ? packaging
+    : { ...(prev_base?.packaging || prev650?.packaging || {}) };
+  // канон меню: только 500/650 (S/M/L сбрасываем при применении ТТК)
+  return {
+    '500': {
+      volume: 500,
+      ingredients,
+      packaging: pack,
+    },
+    '650': {
       volume: 650,
-      ingredients: scale_ing(ingredients, base_ml, 650),
-      packaging: saw_pack ? packaging : { ...(prev650?.packaging || prev_base?.packaging || {}) },
-      manual: true,
-    };
-  }
-  return next;
+      ingredients: scale_ing_lock_portions(ingredients, 500, 650),
+      packaging: pack,
+    },
+  };
 }
 
 /** применить пресет: этапы, ttk и рецептуру 500/650 из шагов */
@@ -570,34 +647,17 @@ export function ensure_aux_stock_materials(state: finance_state): finance_state 
   return { ...state, materials, techCards, stockMovements };
 }
 
+/**
+ * пресет подставляем только в пустые карты.
+ * иначе любое сохранение затирало ручные граммовки (лёд/сумма/«канон»).
+ */
 function recipe_needs_refresh(card: tech_card): boolean {
   if (!ttk_preset_for(card)) return false;
-  if (!card.steps?.length || !card.ttk?.appearance?.trim()) return true;
+  if (!card.steps?.length) return true;
+  if (!card.ttk?.appearance?.trim()) return true;
   const size = card.sizes['500'] || Object.values(card.sizes)[0];
   if (!size?.ingredients) return true;
-  const sum = Object.values(size.ingredients).reduce((a, q) => a + (Number(q) || 0), 0);
-  const target = size.volume || 500;
-  if (Math.abs(sum - target) > 8) return true;
-  const cold = card.cold !== false;
-  const hot_only = card.hot === true && card.cold === false;
-  if (cold && !hot_only) {
-    const ice = Number(size.ingredients.ice) || 0;
-    // канон: 100 г льда на 500 мл (масштаб 650 → 130)
-    const expect = Math.round(ICE_G_PER_500 * ((size.volume || 500) / 500) * 10) / 10;
-    if (Math.abs(ice - expect) > 0.6) return true;
-  }
-  // розовая вода: должно быть ~½ ст.л. на 500 мл
-  if (/нежн.*роз/i.test(card.name) && Math.abs((size.ingredients.rose_water || 0) - ROSE_WATER_TBSP_HALF_G) > 0.5) {
-    return true;
-  }
-  // клубника-манго: молочный слоистый, не чай с чёрным сахаром
-  if (/клубника.*манго|манго.*клубник/i.test(card.name)) {
-    const ing = size.ingredients;
-    if (!(ing.puree_strawberry > 0) || !(ing.milk > 0) || ing.tea_black || ing.syrup_brown_sugar) {
-      return true;
-    }
-  }
-  return false;
+  return !Object.keys(size.ingredients).some((id) => Number(size.ingredients[id]) > 0);
 }
 
 export function hydrate_ttk_finance(state: finance_state, force = false): finance_state {

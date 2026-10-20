@@ -5,6 +5,7 @@ import {
   scale_prep_steps,
   unit_label_for_material,
 } from '@/lib/finance/prep-steps';
+import { cup_fill_summary, edible_grams_from_steps } from '@/lib/finance/cup-fill';
 import { base_unit, new_id, type material, type prep_step } from '@/lib/finance/model';
 import { btn_ghost_danger, btn_secondary, cell_input_class, field_class } from '@/components/admin/finance/ui';
 
@@ -27,6 +28,7 @@ export default function PrepStepsEditor({
   view_ml: view_ml_prop,
   on_view_ml,
   show_header = true,
+  show_fill_total = false,
   on_change,
 }: {
   steps: prep_step[];
@@ -39,6 +41,8 @@ export default function PrepStepsEditor({
   view_ml?: number;
   on_view_ml?: (ml: number) => void;
   show_header?: boolean;
+  /** итого г съедобного и сколько до цели 490/637 */
+  show_fill_total?: boolean;
   on_change: (next: prep_step[]) => void;
 }) {
   const volumes = useMemo(() => {
@@ -93,6 +97,9 @@ export default function PrepStepsEditor({
 
   const used = new Set(steps.map((s) => s.materialId).filter(Boolean) as string[]);
   const available = materials.filter((m) => m.name.trim() && !used.has(m.id));
+  const fill = show_fill_total
+    ? cup_fill_summary(edible_grams_from_steps(shown, materials), view_ml)
+    : null;
 
   return (
     <div>
@@ -185,6 +192,19 @@ export default function PrepStepsEditor({
       ) : (
         <p className="text-xs text-neutral-400">пока пусто — добавьте шаг из склада или своё действие</p>
       )}
+      {fill ? (
+        <p
+          className={`mt-2 text-xs tabular-nums ${
+            fill.tone === 'ok'
+              ? 'text-emerald-600'
+              : fill.tone === 'short'
+                ? 'text-amber-600'
+                : 'text-rose-600'
+          }`}
+        >
+          {fill.label}
+        </p>
+      ) : null}
       <div className="mt-2 flex flex-wrap gap-2">
         {available.length > 0 ? (
           <select

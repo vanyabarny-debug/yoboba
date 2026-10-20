@@ -100,6 +100,7 @@ export default function MenuPrepSteps({ menu_item_id }: { menu_item_id: string }
         materials={state.materials}
         base_ml={card_steps_base_ml(card)}
         size_keys={Object.keys(card.sizes)}
+        show_fill_total
         on_change={(next) => patch_card((c) => apply_steps_to_card(c, next, state.materials))}
       />
       <p className="mt-2 text-[11px] text-neutral-400">кассир увидит эти шаги, когда нажмёт карточку заказа</p>

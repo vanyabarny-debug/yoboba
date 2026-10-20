@@ -9,7 +9,7 @@ import {
   set_item_categories,
 } from '@/lib/menu-item-categories';
 
-export const store_version = 24;
+export const store_version = 28;
 
 export const WARM_DRINKS_CATEGORY = 'тёплые напитки';
 export const CLASSIC_CATEGORY = 'классика';
@@ -18,6 +18,7 @@ const warm_drink_item_ids = new Set([
   'original-black',
   'jasmine-green',
   'matcha-latte-tiger',
+  'matcha-lichi',
   'taro',
   'kakao',
   'masala-chai',
@@ -25,6 +26,14 @@ const warm_drink_item_ids = new Set([
 const classic_drink_item_ids = new Set([
   'original-black-led',
   'jasmine-green-led',
+  'vanilny-milktea',
+]);
+
+/** снятые с меню эксперименты — не возвращать через merge */
+export const dropped_menu_item_ids = new Set([
+  'cherny-karamel',
+  'cherny-karamel-led',
+  'malinovy-fuz',
 ]);
 
 /** тёплые дубли: в меню и техкартах остаётся только вариант со льдом, без этой подписи */
@@ -43,6 +52,7 @@ export const retired_item_ids = new Set([
   'golubaya-laguna',
   'subzero',
   'tropichesky-limonad',
+  ...dropped_menu_item_ids,
   ...iced_only_ids,
   ...dual_temp_led_ids,
 ]);
@@ -50,6 +60,9 @@ export const retired_item_names = new Set([
   'голубая лагуна',
   'сабзиро',
   'тропический фьюжн',
+  'чёрный карамель',
+  'черный карамель',
+  'малиновый фуз',
 ]);
 
 export function is_retired_menu_item(item: Pick<menu_item, 'id' | 'name'>): boolean {
@@ -174,13 +187,20 @@ export const default_menu_items: menu_item[] = [
     hot: true,
     recommendations: ['jasmine-green-led', 'original-black'],
   }),
-  item('matcha-latte-tiger', 'матча латте', 450, WARM_DRINKS_CATEGORY, local('matcha-latte-tiger'), {
+  item('matcha-latte-tiger', 'матча латте', 450, WARM_DRINKS_CATEGORY, `${local('matcha-latte-tiger')}?v=3`, {
     composition:
       'молоко, натуральный порошок матчи, вода, сырная шапка, тапиока, сироп «чёрный сахар»',
     volumes: vols(450, 520),
     cold: true,
     hot: true,
-    recommendations: ['taro', 'kakao'],
+    recommendations: ['matcha-lichi', 'taro', 'kakao'],
+  }),
+  item('matcha-lichi', 'матча личи', 450, WARM_DRINKS_CATEGORY, `${local('matcha-lichi')}?v=2`, {
+    composition: 'молоко, натуральный порошок матчи, вода, желе «личи»',
+    volumes: vols(450, 520),
+    cold: false,
+    hot: true,
+    recommendations: ['matcha-latte-tiger', 'taro'],
   }),
   item('taro', 'таро', 450, WARM_DRINKS_CATEGORY, local('taro'), {
     composition: 'сухая смесь «таро», вода, сырная шапка, тапиока',
@@ -210,14 +230,21 @@ export const default_menu_items: menu_item[] = [
     volumes: vols(390, 450),
     cold: true,
     hot: false,
-    recommendations: ['jasmine-green-led'],
+    recommendations: ['jasmine-green-led', 'vanilny-milktea'],
   }),
   item('jasmine-green-led', 'зелёный жасмин', 390, CLASSIC_CATEGORY, local('jasmine-green'), {
     composition: 'зелёный чай с жасмином, молоко, тапиока, сироп «чёрный сахар», лёд',
     volumes: vols(390, 450),
     cold: true,
     hot: false,
-    recommendations: ['original-black-led'],
+    recommendations: ['original-black-led', 'vanilny-milktea'],
+  }),
+  item('vanilny-milktea', 'ванильный милкти', 390, CLASSIC_CATEGORY, `${local('vanilny-milktea')}?v=2`, {
+    composition: 'молоко, сироп «ванильный», тапиока, сироп «чёрный сахар», лёд',
+    volumes: vols(390, 450),
+    cold: true,
+    hot: false,
+    recommendations: ['original-black-led', 'jasmine-green-led'],
   }),
   item('klubnichny-limonad', 'клубничный лимонад', 319, 'лимонады', local('klubnichny-limonad'), {
     composition: 'газированная вода, концентрат клубники, джус-боллы с соком клубники, лёд',
@@ -249,7 +276,7 @@ export const default_menu_items: menu_item[] = [
     hot: false,
     recommendations: ['malinovy-yogurt', 'tropichesky-mango'],
   }),
-  item('malinovy-yogurt', 'малиновый йогурт', 420, 'молочные', local('malinovy-yogurt'), {
+  item('malinovy-yogurt', 'малиновый йогурт', 420, 'молочные', `${local('malinovy-yogurt')}?v=2`, {
     composition: 'молоко, сироп «малина», сгущённое молоко, джус-боллы йогурт, лёд',
     volumes: vols(420, 480),
     cold: true,
@@ -494,9 +521,9 @@ export function normalize_menu_item_images(items: menu_item[]) {
 
 /** цены, объёмы и флаги карточки — из актуального меню в коде */
 export function merge_menu_item_catalog(items: menu_item[], removed_ids: Iterable<string> = []): menu_item[] {
-  const removed = new Set(removed_ids);
+  const removed = new Set([...removed_ids, ...dropped_menu_item_ids]);
   const { by_id, by_name } = get_default_lookups();
-  const merged = items.filter((item) => !removed.has(item.id)).map((item) => {
+  const merged = items.filter((item) => !removed.has(item.id) && !dropped_menu_item_ids.has(item.id)).map((item) => {
     const fallback = find_default_item(item, by_id, by_name);
     if (!fallback) return item;
     const moved_category = resolve_catalog_category(item.id, item.category, fallback.id);
@@ -642,6 +669,32 @@ export function get_default_store(): menu_store {
   };
 }
 
+/**
+ * bump store_version: подтянуть дефолты, но не выкидывать кастомные позиции.
+ * пустой/битый снимок → только дефолтное меню.
+ */
+export function upgrade_menu_store(stored: menu_store | null | undefined): menu_store {
+  if (!stored?.items?.length) return get_default_store();
+  const defaults = get_default_store();
+  const default_ids = new Set(defaults.items.map((i) => i.id));
+  // снятые эксперименты держим в removed; позиции из актуального каталога — возвращаем
+  const removed_item_ids = [
+    ...new Set([...(stored.removed_item_ids ?? []), ...dropped_menu_item_ids]),
+  ].filter((id) => dropped_menu_item_ids.has(id) || !default_ids.has(id));
+  return {
+    version: store_version,
+    categories: fold_warm_drink_categories(
+      stored.categories?.length ? stored.categories : defaults.categories
+    ),
+    items: merge_menu_item_catalog(stored.items, removed_item_ids),
+    removed_item_ids,
+    category_heading_styles: {
+      ...default_category_heading_styles,
+      ...(stored.category_heading_styles ?? {}),
+    },
+  };
+}
+
 export function get_menu_store(): menu_store {
   if (typeof window === 'undefined') return get_default_store();
   const raw = localStorage.getItem(storage_key);
@@ -653,10 +706,9 @@ export function get_menu_store(): menu_store {
   try {
     const parsed = JSON.parse(raw) as menu_store;
     if (!parsed.version || parsed.version < store_version) {
-      // v19: полное меню из YoDesigner — старые позиции не мержим
-      const defaults = get_default_store();
-      localStorage.setItem(storage_key, JSON.stringify(defaults));
-      return defaults;
+      const upgraded = upgrade_menu_store(parsed);
+      localStorage.setItem(storage_key, JSON.stringify(upgraded));
+      return upgraded;
     }
     return repair_menu_store(parsed);
   } catch {

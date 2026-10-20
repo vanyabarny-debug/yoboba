@@ -2,6 +2,7 @@
 
 import { createElement, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
+  apply_published_menu_store,
   default_categories,
   get_menu_store,
   normalize_menu_item_images,
@@ -234,7 +235,9 @@ export default function pos_panel({
     void fetch('/api/menu', { cache: 'no-store' })
       .then((r) => r.json())
       .then((body: { store?: ReturnType<typeof get_menu_store> | null }) => {
-        if (body.store?.items?.length) apply(body.store);
+        if (!body.store?.items?.length) return;
+        const synced = apply_published_menu_store(body.store);
+        apply(synced ?? body.store);
       })
       .catch(() => {});
     return unsub;

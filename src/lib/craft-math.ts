@@ -1,11 +1,16 @@
+import { CUP_FILL_G_PER_500 } from '@/lib/finance/cup-fill';
+
 /** доля себестоимости в цене меню */
 export const craft_food_cost = 0.18;
 
 /** стакан, который собираем в крафте */
 export const craft_cup_ml = 500;
 
-/** сколько миллилитров сверху оставляем пустыми */
-export const craft_headspace_ml = 40;
+/** целевой выход продукта в стакане (г ≈ мл), запас от края */
+export const craft_fill_g = CUP_FILL_G_PER_500;
+
+/** сколько сверху оставляем пустыми (500 − 490 = 10) */
+export const craft_headspace_ml = craft_cup_ml - craft_fill_g;
 
 export function menu_price_from_cost(cost: number) {
   if (!(cost > 0)) return 0;

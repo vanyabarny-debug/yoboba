@@ -31,11 +31,18 @@ import {
 } from '@/components/menu-temp-marks';
 import { item_categories, item_in_category } from '@/lib/menu-item-categories';
 import {
+  apply_ingredients_to_card,
+  apply_packaging_to_card,
   apply_steps_to_card,
   card_steps_base_ml,
   resolved_card_prep_steps,
 } from '@/lib/finance/prep-steps';
+import { scale_ing_for_volume } from '@/lib/finance/cup-fill';
 import { ttk_card_number } from '@/lib/finance/ttk-document';
+import {
+  cup_fill_summary,
+  edible_grams_from_map,
+} from '@/lib/finance/cup-fill';
 import TtkCopyModal from '@/components/admin/finance/ttk-copy-modal';
 import {
   default_drink_volumes,
@@ -1332,11 +1339,15 @@ function RecipeBox({
             onClick={() =>
               on_update_card((c) => {
                 if (!c.sizes['500']) return c;
+                const derived = derive_size_from_base(c.sizes['500'], 650, materials);
                 return {
                   ...c,
                   sizes: {
                     ...c.sizes,
-                    '650': derive_size_from_base(c.sizes['500'], 650, materials),
+                    '650': {
+                      ...derived,
+                      packaging: { ...(c.sizes['650']?.packaging || derived.packaging) },
+                    },
                   },
                 };
               })
@@ -1370,7 +1381,32 @@ function RecipeBox({
           options={raw_materials}
           state_materials={materials}
           cost_of={(mid, q) => material_cost(state, mid, q)}
-          on_change={(rows) => on_update_size(active_key, (s) => ({ ...s, ingredients: rows }))}
+          on_change={(rows) => {
+            const base_ml = card_steps_base_ml(card);
+            on_update_card((c) => {
+              const for_steps =
+                Math.abs(view_ml - base_ml) < 0.001
+                  ? rows
+                  : scale_ing_for_volume(rows, view_ml, base_ml);
+              let next = apply_ingredients_to_card(c, for_steps, materials);
+              if (Math.abs(view_ml - base_ml) >= 0.001) {
+                const prev = next.sizes[active_key] ?? {
+                  volume: view_ml,
+                  ingredients: {},
+                  packaging: {},
+                };
+                next = {
+                  ...next,
+                  sizes: {
+                    ...next.sizes,
+                    [active_key]: { ...prev, volume: view_ml, ingredients: rows, manual: true },
+                  },
+                };
+              }
+              return next;
+            });
+          }}
+          fill_volume_ml={view_ml}
         />
         <div className="my-3 border-t border-dashed border-neutral-200" />
         <IngredientList
@@ -1379,7 +1415,26 @@ function RecipeBox({
           options={pack_materials}
           state_materials={materials}
           cost_of={(mid, q) => material_cost(state, mid, q)}
-          on_change={(rows) => on_update_size(active_key, (s) => ({ ...s, packaging: rows }))}
+          on_change={(rows) => {
+            on_update_card((c) => {
+              let next = apply_packaging_to_card(c, rows, materials);
+              if (Math.abs(view_ml - card_steps_base_ml(c)) >= 0.001) {
+                const prev = next.sizes[active_key] ?? {
+                  volume: view_ml,
+                  ingredients: {},
+                  packaging: {},
+                };
+                next = {
+                  ...next,
+                  sizes: {
+                    ...next.sizes,
+                    [active_key]: { ...prev, volume: view_ml, packaging: rows, manual: true },
+                  },
+                };
+              }
+              return next;
+            });
+          }}
           quick_pack_ml={view_ml}
         />
       </div>
@@ -1397,6 +1452,7 @@ function RecipeBox({
             on_size_key(key);
           }}
           show_header={false}
+          show_fill_total
           on_change={(next) => on_update_card((c) => apply_steps_to_card(c, next, materials))}
         />
       </div>
@@ -1439,6 +1495,7 @@ function IngredientList({
   cost_of,
   on_change,
   quick_pack_ml,
+  fill_volume_ml,
 }: {
   title: string;
   rows: Record<string, number>;
@@ -1448,6 +1505,8 @@ function IngredientList({
   on_change: (rows: Record<string, number>) => void;
   /** если задан — кнопка «стакан + плёнка + трубочка» под этот объём */
   quick_pack_ml?: number;
+  /** объём стакана — показать итого г и сколько не хватает до цели */
+  fill_volume_ml?: number;
 }) {
   const [adding, set_adding] = useState('');
   const entries = Object.entries(rows);
@@ -1459,6 +1518,10 @@ function IngredientList({
       ? default_sealed_pack(state_materials, quick_pack_ml)
       : null;
   const can_quick = Boolean(quick && Object.keys(quick).length > 0);
+  const fill =
+    fill_volume_ml && fill_volume_ml > 0
+      ? cup_fill_summary(edible_grams_from_map(rows, state_materials), fill_volume_ml)
+      : null;
 
   return (
     <div>
@@ -1496,6 +1559,19 @@ function IngredientList({
       ) : (
         <p className="text-xs text-neutral-400">пусто</p>
       )}
+      {fill ? (
+        <p
+          className={`mt-2 text-xs tabular-nums ${
+            fill.tone === 'ok'
+              ? 'text-emerald-600'
+              : fill.tone === 'short'
+                ? 'text-amber-600'
+                : 'text-rose-600'
+          }`}
+        >
+          {fill.label}
+        </p>
+      ) : null}
       <div className="mt-2 flex flex-wrap items-center gap-2">
         {can_quick && quick ? (
           <button
@@ -1513,7 +1589,8 @@ function IngredientList({
             onChange={(e) => {
               const id = e.target.value;
               if (!id) return;
-              on_change({ ...rows, [id]: 0 });
+              // 0 г — валидная новая строка (подкрутят граммы); раньше 0 сразу выкидывался
+              on_change({ ...rows, [id]: rows[id] ?? 0 });
               set_adding('');
             }}
           >

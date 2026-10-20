@@ -102,8 +102,11 @@ export async function write_published_menu(store: menu_store): Promise<void> {
     return;
   }
 
-  await write_json_store(store_key, store);
-  published_cache = { at: Date.now(), store };
+  // локальный диск тоже мержим — иначе GET с дефолтом мог стереть кастомные позиции
+  const previous = await read_fallback();
+  const durable = merge_stores(previous, store);
+  await write_json_store(store_key, durable);
+  published_cache = { at: Date.now(), store: durable };
 }
 
 export function is_menu_store_payload(value: unknown): value is menu_store {

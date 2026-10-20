@@ -6,7 +6,7 @@ import { create_service_client } from '@/lib/supabase/service';
 import { get_demo_orders } from '@/lib/demo-orders-server';
 import { read_finance_state } from '@/lib/finance/finance-server';
 import { read_published_menu } from '@/lib/menu-catalog-server';
-import { get_default_store, merge_menu_item_catalog, store_version } from '@/lib/menu-store';
+import { upgrade_menu_store } from '@/lib/menu-store';
 import { compute_store_rhythm } from '@/lib/customer-analytics';
 import { retention_report, type retention_report as retention_stats } from '@/lib/guest-rank';
 import { normalize_phone } from '@/lib/phone';
@@ -284,10 +284,7 @@ export async function GET(request: Request) {
     : tagged;
 
   const [state, stored_menu] = await Promise.all([read_finance_state(), read_published_menu()]);
-  const menu: menu_item[] =
-    stored_menu && stored_menu.version >= store_version && stored_menu.items?.length
-      ? merge_menu_item_catalog(stored_menu.items, stored_menu.removed_item_ids ?? [])
-      : get_default_store().items;
+  const menu: menu_item[] = upgrade_menu_store(stored_menu).items;
   const menu_by_id = new Map(menu.map((m) => [m.id, m]));
   const card_by_menu = new Map(
     state.techCards.filter((c) => c.menu_item_id).map((c) => [c.menu_item_id as string, c])

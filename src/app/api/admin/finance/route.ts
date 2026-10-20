@@ -17,7 +17,7 @@ import {
   writeoffs_money,
 } from '@/lib/finance/model';
 import { ensure_prep_materials } from '@/lib/finance/prep-stations';
-import { get_default_store, merge_menu_item_catalog, store_version } from '@/lib/menu-store';
+import { upgrade_menu_store } from '@/lib/menu-store';
 import { read_published_menu } from '@/lib/menu-catalog-server';
 import type { menu_item } from '@/lib/types';
 
@@ -29,11 +29,7 @@ async function is_admin() {
 }
 
 async function load_menu_items(): Promise<menu_item[]> {
-  const stored = await read_published_menu();
-  if (stored && stored.version >= store_version && stored.items?.length) {
-    return merge_menu_item_catalog(stored.items, stored.removed_item_ids ?? []);
-  }
-  return get_default_store().items;
+  return upgrade_menu_store(await read_published_menu()).items;
 }
 
 /** состояние финансов + меню (для связки техкарт) */
