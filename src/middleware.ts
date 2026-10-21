@@ -2,6 +2,7 @@ import { NextResponse, type NextRequest } from 'next/server';
 import { update_session } from '@/lib/supabase/middleware';
 import { createServerClient } from '@supabase/ssr';
 import { session_cookie } from '@/lib/session';
+import { bind_staff_request } from '@/lib/staff-session';
 
 function is_supabase_live() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
@@ -44,6 +45,8 @@ function canonical_host_redirect(request: NextRequest): NextResponse | null {
 }
 
 export async function middleware(request: NextRequest) {
+  await bind_staff_request(request.cookies);
+
   const path = request.nextUrl.pathname;
   const code = request.nextUrl.searchParams.get('code');
   const token_hash = request.nextUrl.searchParams.get('token_hash');

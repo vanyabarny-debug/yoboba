@@ -1130,6 +1130,35 @@ export const default_tech_cards: tech_card[] = [
     }),
   },
   {
+    id: 'tc_cherny_karamel',
+    name: 'карамельный чёрный чай',
+    menu_item_id: 'cherny-karamel',
+    cold: false,
+    hot: true,
+    sizes: sizes_500_650({
+      tapioca: 50,
+      topping_caramel: 10,
+      syrup_caramel: 45,
+      tea_black: 220,
+      milk: 165,
+    }),
+  },
+  {
+    id: 'tc_cherny_karamel_led',
+    name: 'карамельный чёрный чай',
+    menu_item_id: 'cherny-karamel-led',
+    cold: true,
+    hot: false,
+    sizes: sizes_500_650({
+      tapioca: 50,
+      topping_caramel: 10,
+      syrup_caramel: 45,
+      tea_black: 220,
+      milk: 85,
+      ice: 100,
+    }),
+  },
+  {
     id: 'tc_taro',
     name: 'таро',
     menu_item_id: 'taro',
@@ -1213,16 +1242,8 @@ export const default_tech_cards: tech_card[] = [
 const lumped_material_ids = new Set(['juiceballs', 'syrup', 'tea', 'fruits', 'toppings']);
 
 /** снятые эксперименты меню — вычищаем техкарты при нормализации */
-const dropped_menu_item_ids = new Set([
-  'cherny-karamel',
-  'cherny-karamel-led',
-  'malinovy-fuz',
-]);
-const dropped_tech_card_ids = new Set([
-  'tc_cherny_karamel',
-  'tc_cherny_karamel_led',
-  'tc_malinovy_fuz',
-]);
+const dropped_menu_item_ids = new Set(['malinovy-fuz']);
+const dropped_tech_card_ids = new Set(['tc_malinovy_fuz']);
 
 function recipe_hint(card: { id: string; name: string; menu_item_id?: string | null }) {
   return `${card.id} ${card.menu_item_id || ''} ${card.name}`.toLowerCase();

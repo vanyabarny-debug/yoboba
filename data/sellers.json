@@ -2,7 +2,7 @@
   {
     "id": "seller-test-1",
     "login": "kassa",
-    "password": "1234",
+    "password": "scrypt1$d64495421f05407f813a071c11fb13cc$48c08e23a765c46faf8eb518244658f68c406f52a6861a6da4bcbc736064152e",
     "name": "Аня",
     "is_active": true,
     "created_at": "2026-06-28T13:32:41.772Z"
@@ -10,7 +10,7 @@
   {
     "id": "seller-1782654274274-uw3o4",
     "login": "ваня",
-    "password": "ваня",
+    "password": "scrypt1$e4c7c6da9b2358383a3bd50133e04dfc$cef00e17c8ec0756b6f940ee7a4dfb282aa419ebfffa76f3ac6868252368b067",
     "name": "ваня",
     "is_active": true,
     "created_at": "2026-06-28T13:44:41.456Z"

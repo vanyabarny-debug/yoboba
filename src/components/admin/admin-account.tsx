@@ -46,6 +46,7 @@ export default function AdminAccount() {
   const [saving, set_saving] = useState(false);
   const [error, set_error] = useState('');
   const [saved, set_saved] = useState('');
+  const [password_is_default, set_password_is_default] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -58,6 +59,7 @@ export default function AdminAccount() {
         const data = (await account_res.json().catch(() => ({}))) as {
           login?: string;
           logins?: login_event[];
+          password_is_default?: boolean;
           error?: string;
         };
         const audit = (await audit_res.json().catch(() => ({}))) as { events?: order_event[] };
@@ -67,6 +69,7 @@ export default function AdminAccount() {
           return;
         }
         set_login(data.login || '');
+        set_password_is_default(Boolean(data.password_is_default));
         set_logins(data.logins || []);
         set_order_events(audit.events || []);
       } catch {
@@ -106,6 +109,7 @@ export default function AdminAccount() {
         return;
       }
       set_login(data.login || login);
+      set_password_is_default(false);
       set_current_password('');
       set_new_password('');
       set_repeat_password('');
@@ -125,6 +129,11 @@ export default function AdminAccount() {
       <div className="mt-6 grid gap-4 lg:grid-cols-[minmax(0,22rem)_1fr]">
         <form onSubmit={handle_save} className="rounded-2xl border border-neutral-200 bg-white p-5 space-y-4">
           <h2 className="text-sm font-semibold text-neutral-900">сменить вход</h2>
+          {password_is_default && (
+            <p className="text-sm text-accent">
+              пароль ещё заводской. задайте новый, от 8 символов, и сохраните.
+            </p>
+          )}
           <label className="block">
             <span className="text-sm text-neutral-600">логин</span>
             <input
@@ -154,7 +163,7 @@ export default function AdminAccount() {
               value={new_password}
               onChange={(e) => set_new_password(e.target.value)}
               autoComplete="new-password"
-              placeholder="пусто — оставить как есть"
+              placeholder="от 8 символов, пусто — оставить"
               className="mt-1 w-full rounded-xl border border-neutral-200 px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-highlight"
             />
           </label>

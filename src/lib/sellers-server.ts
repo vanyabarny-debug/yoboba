@@ -1,4 +1,5 @@
 import { read_json_store, write_json_store } from '@/lib/data-store';
+import { hash_staff_password, is_hashed_password, verify_staff_password } from '@/lib/password-hash';
 import { parse_push_categories } from '@/lib/push-categories';
 import { parse_seller_access } from '@/lib/seller-access';
 import type { seller } from '@/lib/types';
@@ -23,11 +24,13 @@ export async function find_seller_by_credentials(
 ): Promise<seller | null> {
   const normalized = login.trim().toLowerCase();
   const sellers = await load_sellers();
-  return (
-    sellers.find(
-      (s) => s.is_active && s.login.toLowerCase() === normalized && s.password === password
-    ) || null
-  );
+  const seller = sellers.find((s) => s.is_active && s.login.toLowerCase() === normalized) || null;
+  if (!seller || !verify_staff_password(seller.password, password)) return null;
+  if (!is_hashed_password(seller.password)) {
+    seller.password = hash_staff_password(password);
+    await save_sellers(sellers);
+  }
+  return seller;
 }
 
 export async function upsert_seller(

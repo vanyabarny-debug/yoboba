@@ -11,19 +11,25 @@ export default function pos_account_card() {
   const [saving, set_saving] = useState(false);
   const [error, set_error] = useState('');
   const [saved, set_saved] = useState('');
+  const [password_is_default, set_password_is_default] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
     void (async () => {
       try {
         const res = await fetch('/api/admin/pos-account', { credentials: 'same-origin' });
-        const data = (await res.json().catch(() => ({}))) as { login?: string; error?: string };
+        const data = (await res.json().catch(() => ({}))) as {
+          login?: string;
+          password_is_default?: boolean;
+          error?: string;
+        };
         if (cancelled) return;
         if (!res.ok) {
           set_error(data.error || 'не удалось загрузить вход кассы');
           return;
         }
-        set_login(data.login || 'kassa');
+        set_login(data.login || '');
+        set_password_is_default(Boolean(data.password_is_default));
       } catch {
         if (!cancelled) set_error('ошибка сети');
       } finally {
@@ -61,6 +67,7 @@ export default function pos_account_card() {
         return;
       }
       set_login(data.login || login);
+      set_password_is_default(false);
       set_current_password('');
       set_new_password('');
       set_repeat_password('');
@@ -82,9 +89,9 @@ export default function pos_account_card() {
         <p className="text-xs text-neutral-500 mt-0.5">
           один логин на устройство · внутри уже выбирают бариста своим паролем
         </p>
-        <p className="text-[11px] text-neutral-400 mt-1">
-          по умолчанию: kassa / kassa
-        </p>
+        {password_is_default && (
+          <p className="text-xs text-accent mt-1">пароль ещё заводской — задайте новый, от 8 символов</p>
+        )}
       </div>
       <label className="block">
         <span className="text-xs text-neutral-600">логин кассы</span>
@@ -115,7 +122,7 @@ export default function pos_account_card() {
           value={new_password}
           onChange={(e) => set_new_password(e.target.value)}
           autoComplete="new-password"
-          placeholder="пусто — оставить"
+          placeholder="от 8 символов, пусто — оставить"
           className="mt-1 w-full rounded-xl border border-neutral-200 px-3 py-2.5 text-sm"
         />
       </label>

@@ -131,7 +131,7 @@ export default function sellers_manage({ bare = false }: { bare?: boolean } = {}
     set_editing(s);
     set_form({
       login: s.login,
-      password: s.password,
+      password: '',
       name: s.name,
       role_title: s.role_title?.trim() || 'бариста',
       spot_ids: s.spot_ids ?? [],
@@ -337,12 +337,13 @@ export default function sellers_manage({ bare = false }: { bare?: boolean } = {}
             <label className="block">
               <span className="text-sm text-neutral-600">пароль</span>
               <input
-                type="text"
+                type="password"
                 value={form.password}
                 onChange={(e) => set_form({ ...form, password: e.target.value })}
                 autoComplete="new-password"
+                placeholder={editing.created_at ? 'новый, от 8 символов — или пусто' : 'от 8 символов'}
                 className="mt-1 w-full rounded-xl border border-surface px-4 py-2.5 text-sm"
-                required
+                required={!editing.created_at}
               />
             </label>
 

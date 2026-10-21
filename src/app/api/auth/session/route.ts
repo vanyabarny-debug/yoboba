@@ -11,16 +11,11 @@ import {
 import { record_admin_login, verify_admin_login } from '@/lib/admin-account-server';
 import { verify_pos_login } from '@/lib/pos-account-server';
 import { find_seller_by_credentials } from '@/lib/sellers-server';
+import { client_ip, note_staff_login_failure, staff_login_blocked } from '@/lib/login-rate-limit';
+import { apply_staff_cookies, base_cookie_options, clear_staff_cookies, staff_proof_cookie } from '@/lib/staff-session';
 
 const allowed_roles: user_role[] = ['guest', 'user', 'admin', 'barista', 'seller'];
 const staff_roles: user_role[] = ['admin', 'barista', 'seller'];
-
-const cookie_opts = {
-  httpOnly: true,
-  path: '/',
-  maxAge: 60 * 60 * 24 * 7,
-  sameSite: 'lax' as const,
-};
 
 const debug_log_path = join(process.cwd(), '.cursor/debug-470d82.log');
 
@@ -74,16 +69,22 @@ export async function POST(request: Request) {
   if (body.login !== undefined && body.password !== undefined) {
     const login = String(body.login).trim();
     const password = String(body.password);
+    const ip = client_ip(request);
+    if (staff_login_blocked(ip, login)) {
+      return NextResponse.json(
+        { error: 'слишком много попыток, подождите 10 минут' },
+        { status: 429 }
+      );
+    }
 
     if (await verify_admin_login(login, password)) {
       await record_admin_login(request).catch((error) =>
         console.error('admin login history', error instanceof Error ? error.message : error)
       );
       const res = NextResponse.json({ ok: true, role: 'admin' as user_role, name: 'админ' });
-      res.cookies.set(session_cookie, 'admin', cookie_opts);
-      res.cookies.set(seller_id_cookie, '', { ...cookie_opts, maxAge: 0 });
-      res.cookies.set(seller_name_cookie, '', { ...cookie_opts, maxAge: 0 });
-      res.cookies.set('yoboba_admin', '', { ...cookie_opts, maxAge: 0 });
+      if (!(await apply_staff_cookies(res, { role: 'admin', name: 'админ' }))) {
+        return NextResponse.json({ error: 'вход временно недоступен' }, { status: 500 });
+      }
       return res;
     }
 
@@ -97,9 +98,9 @@ export async function POST(request: Request) {
         name: null,
         spot_ids: [] as string[],
       });
-      res.cookies.set(session_cookie, 'seller', cookie_opts);
-      res.cookies.set(seller_id_cookie, '', { ...cookie_opts, maxAge: 0 });
-      res.cookies.set(seller_name_cookie, '', { ...cookie_opts, maxAge: 0 });
+      if (!(await apply_staff_cookies(res, { role: 'seller' }))) {
+        return NextResponse.json({ error: 'вход временно недоступен' }, { status: 500 });
+      }
       return res;
     }
 
@@ -113,12 +114,13 @@ export async function POST(request: Request) {
         name: seller.name,
         spot_ids: seller.spot_ids ?? [],
       });
-      res.cookies.set(session_cookie, 'seller', cookie_opts);
-      res.cookies.set(seller_id_cookie, seller.id, cookie_opts);
-      res.cookies.set(seller_name_cookie, seller.name, cookie_opts);
+      if (!(await apply_staff_cookies(res, { role: 'seller', seller_id: seller.id, name: seller.name }))) {
+        return NextResponse.json({ error: 'вход временно недоступен' }, { status: 500 });
+      }
       return res;
     }
 
+    note_staff_login_failure(ip, login);
     return NextResponse.json({ error: 'неверный логин или пароль' }, { status: 401 });
   }
 
@@ -127,25 +129,24 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'неверная роль' }, { status: 400 });
   }
 
+  if (staff_roles.includes(role)) {
+    return NextResponse.json({ error: 'нужны логин и пароль' }, { status: 401 });
+  }
+
   // не сбрасывать сессию персонала при входе гостя с сайта
-  if (
-    existing &&
-    staff_roles.includes(existing) &&
-    !staff_roles.includes(role)
-  ) {
+  if (existing && staff_roles.includes(existing)) {
     return NextResponse.json({ ok: true, role: existing, protected: true });
   }
 
   const res = NextResponse.json({ ok: true, role });
+  const cookie_opts = base_cookie_options();
   res.cookies.set(session_cookie, role, cookie_opts);
+  res.cookies.set(staff_proof_cookie, '', { ...cookie_opts, maxAge: 0 });
   return res;
 }
 
 export async function DELETE() {
   const res = NextResponse.json({ ok: true });
-  res.cookies.set(session_cookie, '', { ...cookie_opts, maxAge: 0 });
-  res.cookies.set(seller_id_cookie, '', { ...cookie_opts, maxAge: 0 });
-  res.cookies.set(seller_name_cookie, '', { ...cookie_opts, maxAge: 0 });
-  res.cookies.set('yoboba_admin', '', { ...cookie_opts, maxAge: 0 });
+  clear_staff_cookies(res);
   return res;
 }

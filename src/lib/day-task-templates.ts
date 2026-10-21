@@ -217,8 +217,14 @@ export function is_template_active_on(schedule: day_task_schedule, day: string):
     }
     case 'monthly':
       return day_num === schedule.month_day;
-    case 'yearly':
-      return month_num === schedule.month && day_num === schedule.month_day;
+    case 'yearly': {
+      if (month_num !== schedule.month || day_num !== schedule.month_day) return false;
+      const every = Math.max(1, schedule.every || 1);
+      if (every <= 1) return true;
+      const year = Number(day.slice(0, 4));
+      const from_year = Number((schedule.from || day).slice(0, 4));
+      return year >= from_year && (year - from_year) % every === 0;
+    }
     default:
       return true;
   }
@@ -236,7 +242,9 @@ export function schedule_summary(schedule: day_task_schedule): string {
     return `раз в ${schedule.every} дн. с ${schedule.from}`;
   }
   if (schedule.repeat === 'monthly') return `${schedule.month_day}-го числа каждого месяца`;
-  return `${schedule.month_day}.${String(schedule.month).padStart(2, '0')} каждый год`;
+  const stamp = `${schedule.month_day}.${String(schedule.month).padStart(2, '0')}`;
+  if ((schedule.every || 1) <= 1) return `${stamp} каждый год`;
+  return `${stamp} раз в ${schedule.every} лет`;
 }
 
 export function parse_day_tasks(raw: unknown): day_task_template[] | null {

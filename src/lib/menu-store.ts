@@ -9,7 +9,7 @@ import {
   set_item_categories,
 } from '@/lib/menu-item-categories';
 
-export const store_version = 28;
+export const store_version = 29;
 
 export const WARM_DRINKS_CATEGORY = 'тёплые напитки';
 export const CLASSIC_CATEGORY = 'классика';
@@ -19,6 +19,7 @@ const warm_drink_item_ids = new Set([
   'jasmine-green',
   'matcha-latte-tiger',
   'matcha-lichi',
+  'cherny-karamel',
   'taro',
   'kakao',
   'masala-chai',
@@ -27,14 +28,11 @@ const classic_drink_item_ids = new Set([
   'original-black-led',
   'jasmine-green-led',
   'vanilny-milktea',
+  'cherny-karamel-led',
 ]);
 
 /** снятые с меню эксперименты — не возвращать через merge */
-export const dropped_menu_item_ids = new Set([
-  'cherny-karamel',
-  'cherny-karamel-led',
-  'malinovy-fuz',
-]);
+export const dropped_menu_item_ids = new Set(['malinovy-fuz']);
 
 /** тёплые дубли: в меню и техкартах остаётся только вариант со льдом, без этой подписи */
 const iced_only_ids = new Set(['original-black', 'jasmine-green']);
@@ -60,8 +58,6 @@ export const retired_item_names = new Set([
   'голубая лагуна',
   'сабзиро',
   'тропический фьюжн',
-  'чёрный карамель',
-  'черный карамель',
   'малиновый фуз',
 ]);
 
@@ -200,7 +196,14 @@ export const default_menu_items: menu_item[] = [
     volumes: vols(450, 520),
     cold: false,
     hot: true,
-    recommendations: ['matcha-latte-tiger', 'taro'],
+    recommendations: ['matcha-latte-tiger', 'taro', 'cherny-karamel'],
+  }),
+  item('cherny-karamel', 'карамельный чёрный чай', 390, WARM_DRINKS_CATEGORY, local('cherny-karamel'), {
+    composition: 'чёрный чай, молоко, тапиока, сироп «карамельный», топинг «карамель»',
+    volumes: vols(390, 450),
+    cold: false,
+    hot: true,
+    recommendations: ['cherny-karamel-led', 'vanilny-milktea', 'original-black'],
   }),
   item('taro', 'таро', 450, WARM_DRINKS_CATEGORY, local('taro'), {
     composition: 'сухая смесь «таро», вода, сырная шапка, тапиока',
@@ -230,7 +233,7 @@ export const default_menu_items: menu_item[] = [
     volumes: vols(390, 450),
     cold: true,
     hot: false,
-    recommendations: ['jasmine-green-led', 'vanilny-milktea'],
+    recommendations: ['jasmine-green-led', 'vanilny-milktea', 'cherny-karamel-led'],
   }),
   item('jasmine-green-led', 'зелёный жасмин', 390, CLASSIC_CATEGORY, local('jasmine-green'), {
     composition: 'зелёный чай с жасмином, молоко, тапиока, сироп «чёрный сахар», лёд',
@@ -244,7 +247,14 @@ export const default_menu_items: menu_item[] = [
     volumes: vols(390, 450),
     cold: true,
     hot: false,
-    recommendations: ['original-black-led', 'jasmine-green-led'],
+    recommendations: ['cherny-karamel-led', 'original-black-led', 'jasmine-green-led'],
+  }),
+  item('cherny-karamel-led', 'карамельный чёрный чай', 390, CLASSIC_CATEGORY, local('cherny-karamel'), {
+    composition: 'чёрный чай, молоко, тапиока, сироп «карамельный», топинг «карамель», лёд',
+    volumes: vols(390, 450),
+    cold: true,
+    hot: false,
+    recommendations: ['vanilny-milktea', 'original-black-led', 'cherny-karamel'],
   }),
   item('klubnichny-limonad', 'клубничный лимонад', 319, 'лимонады', local('klubnichny-limonad'), {
     composition: 'газированная вода, концентрат клубники, джус-боллы с соком клубники, лёд',

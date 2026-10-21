@@ -1,4 +1,5 @@
 import { randomBytes, scryptSync, timingSafeEqual } from 'crypto';
+import { min_staff_password_length } from '@/lib/password-hash';
 import { read_durable_json, write_durable_json } from '@/lib/durable-json';
 import { read_admin_account_public } from '@/lib/admin-account-server';
 import { get_sellers } from '@/lib/sellers-server';
@@ -60,7 +61,7 @@ export async function verify_pos_login(login: string, password: string) {
 
 export async function read_pos_account_public() {
   const account = await read_account();
-  return { login: account.login };
+  return { login: account.login, password_is_default: !account.password_hash };
 }
 
 export async function update_pos_account(input: {
@@ -89,8 +90,11 @@ export async function update_pos_account(input: {
   }
 
   const next_password = input.new_password || input.current_password;
-  if (next_password.length < 4) {
-    return { ok: false as const, error: 'пароль короче 4 символов' };
+  if (input.new_password && input.new_password.length < min_staff_password_length) {
+    return { ok: false as const, error: 'новый пароль короче 8 символов' };
+  }
+  if (next_password.length < min_staff_password_length) {
+    return { ok: false as const, error: 'текущий пароль короткий — задайте новый, от 8 символов' };
   }
 
   const salt = randomBytes(16).toString('hex');

@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 import { session_cookie } from '@/lib/session';
+import { hash_staff_password, min_staff_password_length } from '@/lib/password-hash';
 import { delete_seller, get_sellers, upsert_seller } from '@/lib/sellers-server';
 import { parse_push_categories } from '@/lib/push-categories';
 import { parse_seller_access } from '@/lib/seller-access';
@@ -15,7 +16,10 @@ export async function GET() {
   if (!(await is_admin())) {
     return NextResponse.json({ error: 'доступ запрещён' }, { status: 403 });
   }
-  return NextResponse.json({ sellers: await get_sellers() });
+  const sellers = await get_sellers();
+  return NextResponse.json({
+    sellers: sellers.map((seller) => ({ ...seller, password: '' })),
+  });
 }
 
 export async function POST(request: Request) {
@@ -24,8 +28,8 @@ export async function POST(request: Request) {
   }
 
   const body = (await request.json()) as seller;
-  if (!body.login?.trim() || !body.password || !body.name?.trim()) {
-    return NextResponse.json({ error: 'заполните все поля' }, { status: 400 });
+  if (!body.login?.trim() || !body.name?.trim()) {
+    return NextResponse.json({ error: 'заполните имя и логин' }, { status: 400 });
   }
 
   const login = body.login.trim().toLowerCase();
@@ -50,6 +54,20 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'такой логин уже у общего входа в кассу' }, { status: 409 });
   }
 
+  const existing = sellers.find((s) => s.id === body.id);
+  const incoming = typeof body.password === 'string' ? body.password : '';
+  let password = '';
+  if (!incoming) {
+    if (!existing?.password) {
+      return NextResponse.json({ error: 'укажите пароль' }, { status: 400 });
+    }
+    password = existing.password;
+  } else if (incoming.length < min_staff_password_length) {
+    return NextResponse.json({ error: 'пароль короче 8 символов' }, { status: 400 });
+  } else {
+    password = hash_staff_password(incoming);
+  }
+
   const salary_net = Math.max(0, Math.round(Number(body.salary_net) || 0));
   const with_ndfl =
     body.with_ndfl != null ? Boolean(body.with_ndfl) : salary_net > 0;
@@ -59,7 +77,7 @@ export async function POST(request: Request) {
   const record = await upsert_seller({
     id: body.id || `seller-${Date.now()}`,
     login: body.login.trim().toLowerCase(),
-    password: body.password,
+    password,
     name: body.name.trim(),
     role_title: (body.role_title || 'бариста').trim().slice(0, 40) || 'бариста',
     access,
@@ -70,7 +88,7 @@ export async function POST(request: Request) {
     with_ndfl,
   });
 
-  return NextResponse.json({ seller: record });
+  return NextResponse.json({ seller: { ...record, password: '' } });
 }
 
 export async function DELETE(request: Request) {

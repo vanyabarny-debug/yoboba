@@ -42,7 +42,6 @@ import closing_task_card from '@/components/seller/closing-task-card';
 import closing_task_guide from '@/components/seller/closing-task-guide';
 import { type opening_task } from '@/lib/opening-checklist';
 import { type closing_task } from '@/lib/closing-checklist';
-import { should_show_checklist_at } from '@/lib/shift-checklist-templates';
 import order_prep_card, {
   type drink_row,
   type prep_state,
@@ -58,6 +57,14 @@ import {
 } from '@/lib/seller-day-tasks';
 import { board_tile_grid } from '@/lib/seller-tile-grid';
 import { default_seller_access, type seller_access, type seller_right } from '@/lib/seller-access';
+import {
+  assigned_day_templates,
+  assigned_widget_refs,
+  card_due,
+  task_placed,
+  type board_card,
+  type placement,
+} from '@/lib/management-board';
 import drink_craft from '@/components/seller/drink-craft';
 import business_pulse from '@/components/seller/business-pulse';
 import push_broadcast from '@/components/push-broadcast';
@@ -353,14 +360,11 @@ export default function seller_board() {
   const [task_guide_id, set_task_guide_id] = useState<string | null>(null);
   const [day_tasks, set_day_tasks] = useState<day_task[]>([]);
   const [task_templates, set_task_templates] = useState<day_task_template[] | null>(null);
+  const [board, set_board] = useState<{ cards: board_card[]; placements: placement[] } | null>(null);
   const [opening_task_state, set_opening_task_state] = useState<opening_task | null>(null);
   const [opening_guide_open, set_opening_guide_open] = useState(false);
   const [closing_task_state, set_closing_task_state] = useState<closing_task | null>(null);
   const [closing_guide_open, set_closing_guide_open] = useState(false);
-  const [checklist_meta, set_checklist_meta] = useState({
-    opening_at: '11:00',
-    closing_at: '20:00',
-  });
   const [fresh_ids, set_fresh_ids] = useState<Set<string>>(new Set());
   const [unread_new, set_unread_new] = useState(0);
   const [pos_depth, set_pos_depth] = useState(false);
@@ -404,18 +408,6 @@ export default function seller_board() {
     return () => {
       stop = true;
     };
-  }, []);
-
-  useEffect(() => {
-    void fetch('/api/seller/shift-checklists/meta', { credentials: 'same-origin' })
-      .then((res) => (res.ok ? res.json() : null))
-      .then((data: { opening_at?: string; closing_at?: string } | null) => {
-        if (!data?.opening_at) return;
-        set_checklist_meta({
-          opening_at: data.opening_at,
-          closing_at: data.closing_at || '20:00',
-        });
-      });
   }, []);
 
   useEffect(() => {
@@ -915,16 +907,49 @@ export default function seller_board() {
   }, []);
 
   useEffect(() => {
+    let stop = false;
+    async function pull_board() {
+      try {
+        const res = await fetch('/api/seller/management-board', { credentials: 'same-origin' });
+        if (!res.ok) return;
+        const body = (await res.json()) as { cards?: board_card[]; store?: { placements?: placement[] } };
+        if (stop || !Array.isArray(body.cards)) return;
+        set_board({ cards: body.cards, placements: body.store?.placements || [] });
+      } catch {
+        /* доска задач подтянется следующим запросом */
+      }
+    }
+    void pull_board();
+    const id = window.setInterval(() => void pull_board(), 60_000);
+    return () => {
+      stop = true;
+      window.clearInterval(id);
+    };
+  }, []);
+
+  useEffect(() => {
     if (!shift?.spot_id) {
       set_day_tasks([]);
       return;
     }
-    if (!task_templates) return;
+    if (!task_templates || !board || !seller_id) return;
     const spot = shift.spot_id;
     const templates = task_templates;
+    const layout = board;
+    const person = seller_id;
+    const person_rights = rights;
     function sync() {
       const today = moscow_today_iso();
-      const loaded = apply_day_templates(spot, templates, today);
+      const active = assigned_day_templates(
+        templates,
+        layout.cards,
+        layout.placements,
+        spot,
+        person,
+        person_rights,
+        today
+      );
+      const loaded = apply_day_templates(spot, active, today);
       set_day_tasks(mark_appeared(spot, loaded, new Date(), today));
       if (handed_day_ref.current !== today) {
         handed_day_ref.current = today;
@@ -937,7 +962,7 @@ export default function seller_board() {
     sync();
     const id = window.setInterval(sync, 30_000);
     return () => window.clearInterval(id);
-  }, [shift?.spot_id, task_templates, load]);
+  }, [shift?.spot_id, task_templates, board, seller_id, rights, load]);
 
   function press_task(task_id: string) {
     if (!shift?.spot_id) return;
@@ -1409,21 +1434,44 @@ export default function seller_board() {
   const tabs = panes;
 
   const { open: open_tasks, done: done_tasks } = get_board_tasks(day_tasks);
-  
-  // Добавить задачу открытия, если время пришло и она не завершена
-  const show_opening =
-    opening_task_state && should_show_checklist_at(checklist_meta.opening_at) && !opening_task_state.completed_at;
-  const opening_is_done = opening_task_state?.completed_at != null;
-  
-  // Добавить задачу закрытия, если время пришло и она не завершена
-  const show_closing =
-    closing_task_state && should_show_checklist_at(checklist_meta.closing_at) && !closing_task_state.completed_at;
-  const closing_is_done = closing_task_state?.completed_at != null;
+
+  const today = moscow_today_iso();
+  const opening_card = board?.cards.find((card) => card.id === 'opening') ?? null;
+  const closing_card = board?.cards.find((card) => card.id === 'closing') ?? null;
+  const opening_placed = Boolean(
+    board &&
+      shift?.spot_id &&
+      seller_id &&
+      opening_card &&
+      task_placed(board.cards, board.placements, 'opening', shift.spot_id, seller_id, rights, today)
+  );
+  const closing_placed = Boolean(
+    board &&
+      shift?.spot_id &&
+      seller_id &&
+      closing_card &&
+      task_placed(board.cards, board.placements, 'closing', shift.spot_id, seller_id, rights, today)
+  );
+  const show_opening = Boolean(
+    opening_placed && opening_card && card_due(opening_card) && opening_task_state && !opening_task_state.completed_at
+  );
+  const opening_is_done = Boolean(opening_placed && opening_task_state?.completed_at);
+  const show_closing = Boolean(
+    closing_placed && closing_card && card_due(closing_card) && closing_task_state && !closing_task_state.completed_at
+  );
+  const closing_is_done = Boolean(closing_placed && closing_task_state?.completed_at);
+  const widget_refs =
+    board && shift?.spot_id && seller_id
+      ? assigned_widget_refs(board.cards, board.placements, shift.spot_id, seller_id, rights)
+      : null;
+  const stations = widget_refs
+    ? prep_stations.filter((station) => widget_refs.includes(station.id))
+    : prep_stations;
 
   const work_board_count =
     in_work.length +
     open_tasks.length +
-    prep_stations.length +
+    stations.length +
     (show_opening ? 1 : 0) +
     (show_closing ? 1 : 0);
   const ready_board_count =
@@ -1464,7 +1512,7 @@ export default function seller_board() {
     return render_fill_grid(
       items,
       <>
-        {prep_stations.map((s) =>
+        {stations.map((s) =>
           createElement(prep_station_card, {
             key: `prep-${s.id}`,
             station: s,
@@ -1760,10 +1808,19 @@ export default function seller_board() {
               save_shift(next);
               set_shift(next);
               set_need_shift(false);
-              if (task_templates) {
-                set_day_tasks(
-                  mark_appeared(next.spot_id, apply_day_templates(next.spot_id, task_templates))
+              if (task_templates && board && seller_id) {
+                const active = assigned_day_templates(
+                  task_templates,
+                  board.cards,
+                  board.placements,
+                  next.spot_id,
+                  seller_id,
+                  rights,
+                  moscow_today_iso()
                 );
+                set_day_tasks(mark_appeared(next.spot_id, apply_day_templates(next.spot_id, active)));
+              } else {
+                set_day_tasks([]);
               }
             } finally {
               set_shift_busy(false);
