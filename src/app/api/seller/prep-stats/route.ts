@@ -4,9 +4,12 @@ import { seller_id_cookie, seller_name_cookie, session_cookie } from '@/lib/sess
 import {
   add_fulfillment_event,
   add_prep_event,
+  claim_prep_activity,
   get_barista_analytics,
 } from '@/lib/prep-stats-server';
-import { record_handed_order } from '@/lib/handed-orders-server';
+import { claim_handed_rows, record_handed_order } from '@/lib/handed-orders-server';
+import { claim_cash_rows } from '@/lib/cash-server';
+import { completed_orders_for_day, remember_cashier_sales } from '@/lib/cashier-sales-server';
 import { moscow_today_iso } from '@/lib/order-number';
 import type { fulfillment_event, order, prep_event } from '@/lib/types';
 
@@ -31,7 +34,23 @@ export async function GET(request: Request) {
 
   const url = new URL(request.url);
   const shift_date = url.searchParams.get('shift_date') || moscow_today_iso();
-  const seller_id = url.searchParams.get('seller_id') || undefined;
+  const cashier = await cashier_from_cookie();
+  const seller_id = url.searchParams.get('seller_id') || cashier.seller_id || undefined;
+  const seller_name = url.searchParams.get('seller_name') || cashier.seller_name || 'касса';
+
+  if (seller_id) {
+    try {
+      await Promise.all([
+        claim_handed_rows({ seller_id, seller_name, shift_date }),
+        claim_cash_rows({ seller_id, seller_name, shift_date }),
+        claim_prep_activity({ seller_id, seller_name, shift_date }),
+      ]);
+      const orders = await completed_orders_for_day(shift_date);
+      await remember_cashier_sales({ seller_id, seller_name, shift_date, orders });
+    } catch (e) {
+      console.error('cashier sales backfill', e instanceof Error ? e.message : e);
+    }
+  }
 
   const analytics = await get_barista_analytics({ shift_date, seller_id });
   return NextResponse.json({ analytics });

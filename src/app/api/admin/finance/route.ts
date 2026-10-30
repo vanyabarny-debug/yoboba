@@ -77,8 +77,14 @@ export async function PUT(request: Request) {
   }
   const incoming = ensure_prep_materials(normalize_finance_state(payload));
   const [cloud, table_audit] = await Promise.all([read_finance_state(), read_stock_audit()]);
+  const removedMaterialIds = [
+    ...new Set([...(cloud.removedMaterialIds ?? []), ...(incoming.removedMaterialIds ?? [])]),
+  ];
+  const removed_mats = new Set(removedMaterialIds);
   const state = {
     ...incoming,
+    removedMaterialIds,
+    materials: incoming.materials.filter((m) => !removed_mats.has(m.id)),
     stockAudit: filter_stock_audit(merge_stock_audit(table_audit, [...(cloud.stockAudit ?? []), ...(incoming.stockAudit ?? [])])),
   };
   try {

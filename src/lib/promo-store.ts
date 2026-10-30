@@ -100,6 +100,25 @@ export const default_promos: promo_banner[] = [
     image_vignette: standard_promo_vignette(),
     is_active: true,
   },
+  {
+    id: 'promo-19',
+    title: 'ищем\nкреатора',
+    subtitle: 'бартер: до 5 напитков в неделю за контент',
+    badge: 'бартер',
+    image_url: '/images/promos/promo-creator.jpg',
+    link_url: '/study/creator',
+    cta_label: 'заполнить анкету',
+    title_in_image: false,
+    title_layout: standard_promo_title_layout({
+      font_size: 18,
+      x_pct: 50,
+      y_pct: 8,
+      anchor: 'top-center',
+      text_align: 'center',
+    }),
+    image_vignette: standard_promo_vignette(),
+    is_active: true,
+  },
 ];
 
 type promo_store = {

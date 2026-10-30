@@ -22,6 +22,7 @@ type props = {
   on_open_change?: (id: string | null) => void;
   on_stations?: (stations: prep_station_view[]) => void;
   cards_external?: boolean;
+  spot_id?: string;
 };
 
 function format_g(n: number) {
@@ -38,6 +39,7 @@ export default function prep_stations_board({
   on_open_change,
   on_stations,
   cards_external = false,
+  spot_id = '',
 }: props) {
   const [stations, set_stations] = useState<prep_station_view[]>([]);
   const [open_local, set_open_local] = useState<string | null>(null);
@@ -46,6 +48,10 @@ export default function prep_stations_board({
   const [notice, set_notice] = useState('');
   const [dry_g, set_dry_g] = useState('');
   const [still_g, set_still_g] = useState('');
+  const [actual_g, set_actual_g] = useState('');
+  const [tapioca, set_tapioca] = useState<{ id: string; name: string; qty: number }[]>([]);
+  const [lines, set_lines] = useState<{ key: string; materialId: string; grams: string }[]>([]);
+  const line_seq = useRef(1);
 
   const open_id = open_id_controlled !== undefined ? open_id_controlled : open_local;
   const on_stations_ref = useRef(on_stations);
@@ -63,16 +69,21 @@ export default function prep_stations_board({
 
   const load = useCallback(async () => {
     try {
-      const res = await fetch('/api/seller/prep', { credentials: 'same-origin' });
+      const q = spot_id ? `?spot_id=${encodeURIComponent(spot_id)}` : '';
+      const res = await fetch(`/api/seller/prep${q}`, { credentials: 'same-origin' });
       if (!res.ok) return;
-      const body = (await res.json()) as { stations?: prep_station_view[] };
+      const body = (await res.json()) as {
+        stations?: prep_station_view[];
+        tapioca?: { id: string; name: string; qty: number }[];
+      };
       const next = body.stations ?? [];
       set_stations(next);
+      set_tapioca(body.tapioca ?? []);
       on_stations_ref.current?.(next);
     } catch {
       /* ignore */
     }
-  }, []);
+  }, [spot_id]);
 
   useEffect(() => {
     void load();
@@ -107,15 +118,35 @@ export default function prep_stations_board({
   useEffect(() => {
     if (!active) return;
     set_dry_g('');
+    set_actual_g('');
     set_still_g(String(Math.max(0, Math.round(active.cookedQty) || 0)));
+    line_seq.current = 1;
+    set_lines([{ key: '1', materialId: active.dryMaterialId, grams: '' }]);
     set_error('');
     set_notice('');
   }, [active?.id]);
 
+  const choices = useMemo(() => {
+    if (!active || active.kind !== 'pot') return [];
+    const map = new Map(tapioca.map((row) => [row.id, row]));
+    if (!map.has(active.dryMaterialId)) {
+      map.set(active.dryMaterialId, {
+        id: active.dryMaterialId,
+        name: active.dryName,
+        qty: active.dryQty,
+      });
+    }
+    return [...map.values()];
+  }, [active, tapioca]);
+
+  const dry_sum = active?.kind === 'pot'
+    ? lines.reduce((sum, line) => sum + (Number(line.grams) || 0), 0)
+    : Number(dry_g);
+
   const preview_cooked = useMemo(() => {
     if (!active) return 0;
-    return cooked_from_dry(active, Number(dry_g));
-  }, [active, dry_g]);
+    return cooked_from_dry(active, dry_sum);
+  }, [active, dry_sum]);
 
   const preview_water = useMemo(() => {
     if (!active || active.kind !== 'teapot' || active.waterMl <= 0 || active.defaultDryG <= 0) {
@@ -136,15 +167,35 @@ export default function prep_stations_board({
     return cups_label(span.cupsMin, span.cupsMax);
   }, [active, preview_cooked]);
 
-  function apply_stations(body: { stations?: prep_station_view[]; message?: string }, close = false) {
+  function apply_stations(
+    body: {
+      stations?: prep_station_view[];
+      tapioca?: { id: string; name: string; qty: number }[];
+      message?: string;
+    },
+    close = false
+  ) {
     const next = body.stations ?? [];
     set_stations(next);
+    if (body.tapioca) set_tapioca(body.tapioca);
     on_stations_ref.current?.(next);
     const fresh = next.find((s) => s.id === active?.id);
     if (fresh) {
       set_still_g(String(Math.max(0, Math.round(fresh.cookedQty) || 0)));
     }
-    if (body.message) set_notice(body.message);
+    if (body.message) {
+      set_notice(body.message);
+      set_actual_g('');
+      set_dry_g('');
+      line_seq.current += 1;
+      set_lines([
+        {
+          key: String(line_seq.current),
+          materialId: fresh?.dryMaterialId || active?.dryMaterialId || '',
+          grams: '',
+        },
+      ]);
+    }
     if (close) set_open_id(null);
   }
 
@@ -158,7 +209,7 @@ export default function prep_stations_board({
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         credentials: 'same-origin',
-        body: JSON.stringify({ ...payload, stationId: active.id }),
+        body: JSON.stringify({ ...payload, stationId: active.id, ...(spot_id ? { spot_id } : {}) }),
       });
       const body = (await res.json()) as {
         error?: string;
@@ -177,9 +228,17 @@ export default function prep_stations_board({
     }
   }
 
+  const minus = !!active && active.cookedQty < -0.5;
   const empty = !active || active.cookedQty <= 0;
   const still_ok = still_g.trim() !== '' && Number.isFinite(Number(still_g)) && Number(still_g) >= 0;
+  const actual_ok = actual_g.trim() !== '' && Number.isFinite(Number(actual_g)) && Number(actual_g) >= 0;
   const cook_label = active?.kind === 'pot' ? 'сварить' : 'заварить';
+  const dry_debts = (active?.kind === 'pot'
+    ? choices
+    : active
+      ? [{ id: active.dryMaterialId, name: active.dryName, qty: active.dryQty }]
+      : []
+  ).filter((row) => row.qty < -0.5);
 
   return (
     <>
@@ -232,13 +291,24 @@ export default function prep_stations_board({
                   <p className="truncate text-lg font-bold tracking-tight text-neutral-900">
                     {active.label}
                   </p>
-                  <p className="mt-0.5 text-base font-semibold tabular-nums text-neutral-800">
-                    {empty ? 'пусто' : format_g(active.cookedQty)}
+                  <p
+                    className={`mt-0.5 text-base font-semibold tabular-nums ${
+                      minus ? 'text-red-600' : 'text-neutral-800'
+                    }`}
+                  >
+                    {minus ? `минус ${format_g(-active.cookedQty)}` : empty ? 'пусто' : format_g(active.cookedQty)}
                   </p>
                 </div>
               </div>
 
-              <div className="space-y-3 px-4 py-4">
+              <div className="max-h-[70vh] space-y-3 overflow-y-auto px-4 py-4">
+                {dry_debts.length ? (
+                  <p className="rounded-xl bg-red-50 px-3 py-2 text-center text-sm font-semibold text-red-700">
+                    сухой минус:{' '}
+                    {dry_debts.map((row) => `${row.name} −${format_g(-row.qty)}`).join(', ')}. админу нужна
+                    поставка
+                  </p>
+                ) : null}
                 {active.marinadePending ? (
                   <button
                     type="button"
@@ -249,6 +319,157 @@ export default function prep_stations_board({
                     {busy ? '…' : 'залил маринад'}
                   </button>
                 ) : null}
+
+                {active.kind === 'pot' ? (
+                  <div className="space-y-2">
+                    {lines.map((line) => (
+                      <div key={line.key} className="flex gap-2">
+                        <select
+                          value={line.materialId}
+                          aria-label="какая тапиока"
+                          onChange={(e) =>
+                            set_lines((prev) =>
+                              prev.map((row) =>
+                                row.key === line.key ? { ...row, materialId: e.target.value } : row
+                              )
+                            )
+                          }
+                          className="min-w-0 flex-1 rounded-2xl border border-neutral-200 bg-neutral-50 px-3 py-3 text-sm font-semibold outline-none focus:border-accent"
+                        >
+                          {choices.map((choice) => (
+                            <option key={choice.id} value={choice.id}>
+                              {choice.name}
+                              {choice.qty < -0.5 ? ` · минус ${Math.round(-choice.qty)} г` : ''}
+                            </option>
+                          ))}
+                        </select>
+                        <input
+                          inputMode="numeric"
+                          value={line.grams}
+                          aria-label="сколько грамм"
+                          placeholder="г"
+                          onChange={(e) =>
+                            set_lines((prev) =>
+                              prev.map((row) =>
+                                row.key === line.key ? { ...row, grams: e.target.value } : row
+                              )
+                            )
+                          }
+                          className="w-20 shrink-0 rounded-2xl border border-neutral-200 bg-neutral-50 px-2 py-3 text-center text-base font-bold tabular-nums outline-none focus:border-accent"
+                        />
+                        {lines.length > 1 ? (
+                          <button
+                            type="button"
+                            aria-label="убрать"
+                            onClick={() => set_lines((prev) => prev.filter((row) => row.key !== line.key))}
+                            className="w-10 shrink-0 rounded-2xl text-lg text-neutral-400"
+                          >
+                            ×
+                          </button>
+                        ) : null}
+                      </div>
+                    ))}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        line_seq.current += 1;
+                        set_lines((prev) => [
+                          ...prev,
+                          {
+                            key: String(line_seq.current),
+                            materialId: choices[0]?.id || active.dryMaterialId,
+                            grams: '',
+                          },
+                        ]);
+                      }}
+                      className="text-sm font-semibold text-accent"
+                    >
+                      + ещё тапиока
+                    </button>
+                    <p className="text-center text-sm tabular-nums text-neutral-700">
+                      выйдет{' '}
+                      <span className="font-semibold text-neutral-900">
+                        {preview_cooked > 0 ? format_g(preview_cooked) : '—'}
+                      </span>
+                      {active.yieldPer100 > 0 ? (
+                        <span className="text-neutral-400">
+                          {' '}
+                          · из 100 г сухого ≈ {active.yieldPer100} г
+                        </span>
+                      ) : null}
+                      {preview_cups ? <span className="text-neutral-400"> · {preview_cups}</span> : null}
+                    </p>
+                    <div className="flex gap-2">
+                      <input
+                        inputMode="numeric"
+                        value={actual_g}
+                        onChange={(e) => set_actual_g(e.target.value)}
+                        placeholder="сейчас, г"
+                        aria-label="сколько сейчас в кастрюле, г"
+                        className="w-28 shrink-0 rounded-2xl border border-neutral-200 bg-neutral-50 px-3 py-3 text-center text-base font-bold tabular-nums outline-none focus:border-accent"
+                      />
+                      <button
+                        type="button"
+                        disabled={busy || preview_cooked <= 0 || !actual_ok}
+                        onClick={() =>
+                          void post(
+                            {
+                              kind: 'cook',
+                              lines: lines
+                                .filter((row) => Number(row.grams) > 0)
+                                .map((row) => ({
+                                  materialId: row.materialId,
+                                  grams: Number(row.grams),
+                                })),
+                              actualG: Number(actual_g),
+                            },
+                            'не удалось сварить'
+                          )
+                        }
+                        className="min-w-0 flex-1 rounded-2xl bg-accent/95 py-3 text-sm font-bold text-white shadow-lg disabled:opacity-50"
+                      >
+                        {busy ? '…' : 'записать'}
+                      </button>
+                    </div>
+                    <p className="text-center text-[11px] text-neutral-400">
+                      вес по навару, потом сколько реально в кастрюле. нехватка — в навар или в потеряно
+                    </p>
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    <div className="flex gap-2">
+                      <input
+                        inputMode="numeric"
+                        value={dry_g}
+                        onChange={(e) => set_dry_g(e.target.value)}
+                        placeholder="сухой г"
+                        aria-label="сухой, г"
+                        className="w-28 shrink-0 rounded-2xl border border-neutral-200 bg-neutral-50 px-3 py-3 text-center text-base font-bold tabular-nums outline-none focus:border-accent"
+                      />
+                      <button
+                        type="button"
+                        disabled={busy || preview_cooked <= 0}
+                        onClick={() =>
+                          void post({ kind: 'cook', dryG: Number(dry_g) }, 'не удалось заварить', true)
+                        }
+                        className="min-w-0 flex-1 rounded-2xl bg-accent/95 py-3 text-sm font-bold text-white shadow-lg disabled:opacity-50"
+                      >
+                        {busy
+                          ? '…'
+                          : preview_cooked > 0
+                            ? `${cook_label} → ${format_g(preview_cooked)}`
+                            : cook_label}
+                      </button>
+                    </div>
+                    <p className="text-center text-sm tabular-nums text-neutral-600">
+                      вода{' '}
+                      <span className="font-semibold text-neutral-900">
+                        {preview_water > 0 ? `${preview_water} мл` : '— мл'}
+                      </span>
+                      {preview_cups ? <span className="text-neutral-400"> · {preview_cups}</span> : null}
+                    </p>
+                  </div>
+                )}
 
                 <div className="flex gap-2">
                   <input
@@ -268,56 +489,16 @@ export default function prep_stations_board({
                         'не удалось записать факт'
                       )
                     }
-                    className="min-w-0 flex-1 rounded-2xl bg-emerald-600 py-3 text-sm font-bold text-white disabled:opacity-50"
+                    className="min-w-0 flex-1 rounded-2xl border border-neutral-200 py-3 text-sm font-semibold text-neutral-700 disabled:opacity-50"
                   >
-                    {busy ? '…' : 'факт'}
+                    {busy ? '…' : active.kind === 'pot' ? 'только факт, без варки' : 'факт'}
                   </button>
                 </div>
                 <p className="text-center text-[11px] text-neutral-400">
-                  сколько реально в кастрюле сейчас — можно 0
+                  {active.kind === 'pot'
+                    ? 'если не варили: нехватка уйдёт в потеряно'
+                    : 'сколько реально в кастрюле сейчас — можно 0'}
                 </p>
-
-                <div className="space-y-2">
-                  <div className="flex gap-2">
-                    <input
-                      inputMode="numeric"
-                      value={dry_g}
-                      onChange={(e) => set_dry_g(e.target.value)}
-                      placeholder="сухой г"
-                      aria-label="сухой, г"
-                      className="w-28 shrink-0 rounded-2xl border border-neutral-200 bg-neutral-50 px-3 py-3 text-center text-base font-bold tabular-nums outline-none focus:border-accent"
-                    />
-                    <button
-                      type="button"
-                      disabled={busy || preview_cooked <= 0}
-                      onClick={() =>
-                        void post({ kind: 'cook', dryG: Number(dry_g) }, 'не удалось сварить', true)
-                      }
-                      className="min-w-0 flex-1 rounded-2xl bg-accent/95 py-3 text-sm font-bold text-white shadow-lg disabled:opacity-50"
-                    >
-                      {busy
-                        ? '…'
-                        : preview_cooked > 0
-                          ? `${cook_label} → ${format_g(preview_cooked)}`
-                          : cook_label}
-                    </button>
-                  </div>
-                  {active.kind === 'teapot' ? (
-                    <p className="text-center text-sm tabular-nums text-neutral-600">
-                      вода{' '}
-                      <span className="font-semibold text-neutral-900">
-                        {preview_water > 0 ? `${preview_water} мл` : '— мл'}
-                      </span>
-                      {preview_cups ? (
-                        <span className="text-neutral-400"> · {preview_cups}</span>
-                      ) : null}
-                    </p>
-                  ) : (
-                    <p className="text-center text-sm tabular-nums text-neutral-500">
-                      {preview_cups || '≈— ст'}
-                    </p>
-                  )}
-                </div>
 
                 {!empty ? (
                   <button

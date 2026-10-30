@@ -1,7 +1,9 @@
 import { read_finance_state, write_finance_state } from '@/lib/finance/finance-server';
 import {
   cost_per_base_unit,
+  material_cost,
   material_excluded_from_warehouse,
+  materials_with_preps,
   merge_stock_categories,
   new_id,
   stock_category_for,
@@ -66,6 +68,20 @@ export async function craft_catalog(): Promise<{ categories: string[]; shelves: 
     });
   }
 
+  const preps = (state.prepRecipes ?? []).filter((p) => p.name.trim());
+  if (preps.length) {
+    shelves.push({
+      id: 'prep',
+      name: 'заготовки',
+      materials: preps.map((p) => ({
+        id: p.id,
+        name: p.name.trim(),
+        unit_label: 'г',
+        cost_per_base: Math.round(material_cost(state, p.id, 1) * 1000) / 1000,
+      })),
+    });
+  }
+
   for (const shelf of shelves) {
     shelf.materials.sort((a, b) => a.name.localeCompare(b.name, 'ru'));
   }
@@ -122,12 +138,11 @@ function scale_steps(steps: prep_step[], materials: Map<string, material>): prep
   });
 }
 
-function recipe_cost(steps: prep_step[], materials: Map<string, material>) {
+function recipe_cost(steps: prep_step[], state: Parameters<typeof material_cost>[0]) {
   let cost = 0;
   for (const step of steps) {
-    const mat = step.materialId ? materials.get(step.materialId) : undefined;
-    if (!mat || !(step.qty > 0)) continue;
-    cost += cost_per_base_unit(mat) * step.qty;
+    if (!step.materialId || !(step.qty > 0)) continue;
+    cost += material_cost(state, step.materialId, step.qty);
   }
   return cost;
 }
@@ -165,7 +180,7 @@ export async function add_craft_material(input: {
   const draft = {
     id: new_id('mat'),
     name,
-    category: measure === 'pcs' ? 'packaging' : measure === 'ml' ? 'liquids' : 'dry',
+    category: measure === 'pcs' ? 'packaging' : measure === 'ml' ? 'liquids' : 'mixes',
     unit,
     costPerUnit: Math.round(cost * 100) / 100,
   } satisfies material;
@@ -213,13 +228,14 @@ export async function create_crafted_drink(input: {
   if (taken) throw new Error('такой напиток уже в меню');
 
   const state = await read_finance_state();
-  const materials = new Map(state.materials.map((mat) => [mat.id, mat]));
+  const card_materials = materials_with_preps(state);
+  const materials = new Map(card_materials.map((mat) => [mat.id, mat]));
   const steps = steps_from_boards(input.boards || [], materials);
   if (!steps.length) throw new Error('добавьте хотя бы один ингредиент');
   const large_steps = scale_steps(steps, materials);
-  const cost = recipe_cost(steps, materials);
+  const cost = recipe_cost(steps, state);
   const price = menu_price_from_cost(cost);
-  const large_price = menu_price_from_cost(recipe_cost(large_steps, materials));
+  const large_price = menu_price_from_cost(recipe_cost(large_steps, state));
   const large_add = Math.max(0, large_price - price);
 
   const item: menu_item = {
@@ -254,8 +270,8 @@ export async function create_crafted_drink(input: {
     hot: item.hot,
     steps,
     sizes: {
-      '500': size_from_steps(steps, state.materials, craft_cup_ml),
-      '650': size_from_steps(large_steps, state.materials, 650),
+      '500': size_from_steps(steps, card_materials, craft_cup_ml),
+      '650': size_from_steps(large_steps, card_materials, 650),
     },
   };
 
@@ -295,7 +311,7 @@ export async function create_crafted_drink(input: {
     cost,
     price,
     card,
-    materials: state.materials.filter((m) => used.has(m.id)),
+    materials: card_materials.filter((m) => used.has(m.id)),
     ttk_number: ttk_card_number(next_cards, card.id),
   };
 }

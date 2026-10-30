@@ -78,8 +78,10 @@ export default function prep_station_card({ station, on_open }: props) {
   const tint = TONE_CARD[tone] ?? color_for_id(station.id);
   const fill = pot_fill_ratio(station, station.cookedQty);
   const alert = prep_station_alert(station);
-  const under =
-    station.cookedQty <= 0
+  const minus = station.cookedQty < -0.5;
+  const under = minus
+    ? `минус ${format_g(-station.cookedQty)}`
+    : station.cookedQty <= 0
       ? 'пусто'
       : alert === 'low'
         ? `мало · ${format_g(station.cookedQty)}`
@@ -111,7 +113,7 @@ export default function prep_station_card({ station, on_open }: props) {
           <span className="prep-card__badge prep-card__badge--low">мало</span>
         ) : null}
         {alert === 'empty' ? (
-          <span className="prep-card__badge prep-card__badge--empty">пусто</span>
+          <span className="prep-card__badge prep-card__badge--empty">{minus ? 'минус' : 'пусто'}</span>
         ) : null}
         <button
           type="button"

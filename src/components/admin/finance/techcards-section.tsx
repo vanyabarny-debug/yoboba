@@ -7,12 +7,15 @@ import {
   base_unit_label,
   format_rub,
   material_cost,
+  material_unpriced,
   material_is_infinite,
+  materials_with_preps,
   derive_size_from_base,
   effective_card_size,
   size_label,
   sync_tech_cards_with_menu,
   tech_card_cost,
+  tech_card_unpriced,
   tech_card_removed_keys,
   type material,
   type tech_card,
@@ -1103,7 +1106,7 @@ export default function TechcardsSection({
         <TtkCopyModal
           open
           card={ttk_card}
-          materials={state.materials}
+          materials={materials_with_preps(state)}
           number={ttk_card_number(state.techCards, ttk_card.id)}
           on_close={() => set_ttk_card(null)}
           on_save_fill={(fill) => {
@@ -1208,7 +1211,13 @@ function RecipeBox({
   on_update_size: (key: string, fn: (s: tech_card_size) => tech_card_size) => void;
   on_add_size: (key: string) => void;
 }) {
-  const materials = state.materials;
+  const materials = materials_with_preps(state);
+  const ingredient_options = [
+    ...raw_materials,
+    ...(state.prepRecipes ?? [])
+      .filter((p) => p.name.trim())
+      .map((p) => ({ id: p.id, name: `заготовка · ${p.name.trim()}`, unit: 'g' as const })),
+  ];
   const size_keys = Object.keys(card.sizes).sort(
     (a, b) => (Number(a) || 0) - (Number(b) || 0) || a.localeCompare(b)
   );
@@ -1308,7 +1317,16 @@ function RecipeBox({
 
       <div className="mb-3 flex flex-wrap items-center gap-2 text-xs text-neutral-500">
         <span>
-          {size_label(active_key)} · {format_rub(tech_card_cost(state, card, active_key), 1)}
+          {size_label(active_key)} ·{' '}
+          {tech_card_unpriced(state, card, active_key) ? (
+            <span className="text-amber-600">
+              {tech_card_cost(state, card, active_key) > 0
+                ? `${format_rub(tech_card_cost(state, card, active_key), 1)} · нет поставки`
+                : 'нет поставки'}
+            </span>
+          ) : (
+            format_rub(tech_card_cost(state, card, active_key), 1)
+          )}
         </span>
         {auto ? <span>· сырьё от 500 мл × 1,3</span> : null}
         <span className="flex-1" />
@@ -1378,9 +1396,10 @@ function RecipeBox({
         <IngredientList
           title="ингредиенты"
           rows={size.ingredients}
-          options={raw_materials}
+          options={ingredient_options}
           state_materials={materials}
           cost_of={(mid, q) => material_cost(state, mid, q)}
+          missing_of={(mid, q) => material_unpriced(state, mid, q)}
           on_change={(rows) => {
             const base_ml = card_steps_base_ml(card);
             on_update_card((c) => {
@@ -1415,6 +1434,7 @@ function RecipeBox({
           options={pack_materials}
           state_materials={materials}
           cost_of={(mid, q) => material_cost(state, mid, q)}
+          missing_of={(mid, q) => material_unpriced(state, mid, q)}
           on_change={(rows) => {
             on_update_card((c) => {
               let next = apply_packaging_to_card(c, rows, materials);
@@ -1493,6 +1513,7 @@ function IngredientList({
   options,
   state_materials,
   cost_of,
+  missing_of,
   on_change,
   quick_pack_ml,
   fill_volume_ml,
@@ -1502,6 +1523,7 @@ function IngredientList({
   options: { id: string; name: string; unit: import('@/lib/finance/model').material_unit }[];
   state_materials: import('@/lib/finance/model').material[];
   cost_of: (material_id: string, qty: number) => number;
+  missing_of?: (material_id: string, qty: number) => boolean;
   on_change: (rows: Record<string, number>) => void;
   /** если задан — кнопка «стакан + плёнка + трубочка» под этот объём */
   quick_pack_ml?: number;
@@ -1540,7 +1562,15 @@ function IngredientList({
                   <NumInput value={q} min={0} on_change={(v) => on_change({ ...rows, [id]: v })} />
                   <span className="w-6 text-xs text-neutral-400">{mat ? base_unit_label(mat.unit) : ''}</span>
                 </div>
-                <span className="w-16 text-right text-xs tabular-nums text-neutral-500">{format_rub(cost_of(id, q), 1)}</span>
+                <span className="w-24 text-right text-xs tabular-nums text-neutral-500">
+                  {missing_of?.(id, q) ? (
+                    <span className="text-amber-600">
+                      {cost_of(id, q) > 0 ? `${format_rub(cost_of(id, q), 1)} · нет` : 'нет поставки'}
+                    </span>
+                  ) : (
+                    format_rub(cost_of(id, q), 1)
+                  )}
+                </span>
                 <button
                   type="button"
                   className={btn_ghost_danger}

@@ -8,7 +8,7 @@ import {
   seller_name_cookie,
   type user_role,
 } from '@/lib/session';
-import { record_admin_login, verify_admin_login } from '@/lib/admin-account-server';
+import { admin_account_actor, record_admin_login, verify_admin_login } from '@/lib/admin-account-server';
 import { verify_pos_login } from '@/lib/pos-account-server';
 import { find_seller_by_credentials } from '@/lib/sellers-server';
 import { client_ip, note_staff_login_failure, staff_login_blocked } from '@/lib/login-rate-limit';
@@ -81,8 +81,9 @@ export async function POST(request: Request) {
       await record_admin_login(request).catch((error) =>
         console.error('admin login history', error instanceof Error ? error.message : error)
       );
-      const res = NextResponse.json({ ok: true, role: 'admin' as user_role, name: 'админ' });
-      if (!(await apply_staff_cookies(res, { role: 'admin', name: 'админ' }))) {
+      const account = await admin_account_actor();
+      const res = NextResponse.json({ ok: true, role: 'admin' as user_role, name: account.name });
+      if (!(await apply_staff_cookies(res, { role: 'admin', name: account.name }))) {
         return NextResponse.json({ error: 'вход временно недоступен' }, { status: 500 });
       }
       return res;

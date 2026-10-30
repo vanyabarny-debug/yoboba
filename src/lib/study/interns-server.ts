@@ -5,7 +5,9 @@ import {
   type intern,
   type intern_quiz_block,
   type intern_quiz_item,
+  type intern_role,
   type intern_status,
+  type intern_work,
 } from '@/lib/study/interns';
 import { is_supabase_configured } from '@/lib/supabase/config';
 import { create_service_client } from '@/lib/supabase/service';
@@ -14,6 +16,7 @@ export type { intern, intern_status };
 export { intern_status_label, intern_statuses } from '@/lib/study/interns';
 
 export type intern_apply_input = {
+  role?: intern_role;
   name: string;
   phone: string;
   city: string;
@@ -21,11 +24,12 @@ export type intern_apply_input = {
   schedule?: string[];
   intern_date: string;
   intern_time: string;
-  urgent: string;
-  medbook: string;
-  guest: string;
+  urgent?: string;
+  medbook?: string;
+  guest?: string;
   shift?: string;
-  cook: string;
+  cook?: string;
+  works?: intern_work[];
 };
 
 const store_key = 'study-interns';
@@ -46,6 +50,37 @@ function as_string(value: unknown) {
 function as_schedule(value: unknown): string[] {
   if (!Array.isArray(value)) return [];
   return value.map((x) => as_string(x)).filter(Boolean);
+}
+
+function parse_works(raw: unknown): intern_work[] {
+  if (!Array.isArray(raw)) return [];
+  const works: intern_work[] = [];
+  for (const item of raw) {
+    if (!item || typeof item !== 'object') continue;
+    const data_url = as_string((item as { data_url?: unknown }).data_url);
+    if (!data_url.startsWith('data:image/')) continue;
+    const name = as_string((item as { name?: unknown }).name).slice(0, 80) || 'работа';
+    works.push({ name, data_url });
+    if (works.length >= 5) break;
+  }
+  return works;
+}
+
+function check_works(raw: unknown): intern_work[] | { error: string } {
+  if (!Array.isArray(raw) || raw.length === 0) return { error: 'прикрепи хотя бы одно фото' };
+  if (raw.length > 5) return { error: 'не больше 5 фото' };
+  const works: intern_work[] = [];
+  for (const item of raw) {
+    if (!item || typeof item !== 'object') return { error: 'фото не прочиталось' };
+    const data_url = as_string((item as { data_url?: unknown }).data_url);
+    if (!/^data:image\/(jpeg|png|webp);base64,/i.test(data_url)) {
+      return { error: 'нужны фото jpg, png или webp' };
+    }
+    if (data_url.length > 1_200_000) return { error: 'фото слишком большое' };
+    const name = as_string((item as { name?: unknown }).name).slice(0, 80) || 'работа';
+    works.push({ name, data_url });
+  }
+  return works;
 }
 
 function last10(phone: string) {
@@ -124,8 +159,10 @@ function parse_intern(raw: Record<string, unknown>): intern {
   const extra = course_blob(raw);
   const mood_raw = raw.feedback_mood ?? extra.feedback_mood;
   const n = Number(mood_raw);
+  const role: intern_role = raw.role === 'creator' || extra.role === 'creator' ? 'creator' : 'barista';
   return {
     id: as_string(raw.id) || crypto.randomUUID(),
+    role,
     name: as_string(raw.name),
     phone: as_string(raw.phone),
     city: as_string(raw.city),
@@ -137,6 +174,7 @@ function parse_intern(raw: Record<string, unknown>): intern {
     guest: as_string(raw.guest),
     shift: as_string(raw.shift),
     cook: as_string(raw.cook),
+    works: parse_works(raw.works ?? extra.works),
     status: is_status(raw.status) ? raw.status : 'new',
     created_at: as_string(raw.created_at) || new Date().toISOString(),
     updated_at: as_string(raw.updated_at) || new Date().toISOString(),
@@ -176,6 +214,8 @@ function to_row(intern: intern) {
       feedback_disliked: intern.feedback_disliked,
       feedback_at: intern.feedback_at,
       quizzes: intern.quiz_results,
+      role: intern.role,
+      works: intern.works,
     },
   };
 }
@@ -193,7 +233,15 @@ async function upsert_local(next: intern) {
   const rows = await load_local();
   const idx = rows.findIndex((row) => row.phone === next.phone || row.id === next.id);
   if (idx >= 0) {
-    const merged = { ...rows[idx], ...next, created_at: rows[idx].created_at };
+    const prev = rows[idx];
+    const keep_creator = prev.role === 'creator' && next.role !== 'creator' && next.works.length === 0 && prev.works.length > 0;
+    const merged = {
+      ...prev,
+      ...next,
+      created_at: prev.created_at,
+      role: keep_creator ? prev.role : next.role,
+      works: next.works.length ? next.works : prev.works,
+    };
     rows[idx] = merged;
     await save_local(rows);
     return merged;
@@ -207,7 +255,7 @@ export function parse_apply_input(body: intern_apply_input): intern | { error: s
   const name = as_string(body.name);
   const phone = normalize_phone(body.phone);
   const city = as_string(body.city);
-  const schedule = as_schedule(body.schedule ?? body.when);
+  const role: intern_role = body.role === 'creator' ? 'creator' : 'barista';
   const intern_date = as_string(body.intern_date);
   const intern_time = as_string(body.intern_time);
   const urgent = as_string(body.urgent);
@@ -218,28 +266,44 @@ export function parse_apply_input(body: intern_apply_input): intern | { error: s
   if (name.length < 2) return { error: 'напиши имя' };
   if (!phone) return { error: 'проверь телефон' };
   if (city.length < 2) return { error: 'укажи город' };
-  if (schedule.length === 0) return { error: 'выбери график' };
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(intern_date)) return { error: 'выбери дату' };
-  if (!/^\d{2}:\d{2}$/.test(intern_time)) return { error: 'выбери время' };
-  if (!urgent) return { error: 'насколько срочно нужна работа?' };
-  if (!medbook) return { error: 'медкнижка: да или нет' };
-  if (!guest) return { error: 'ответь на сцену с гостем' };
-  if (!cook) return { error: 'любишь готовить?' };
+
+  let schedule = as_schedule(body.schedule ?? body.when);
+  let works: intern_work[] = [];
+  let visit_date = '';
+  let visit_time = '';
+  if (role === 'creator') {
+    const checked = check_works(body.works);
+    if (!Array.isArray(checked)) return checked;
+    works = checked;
+    if (schedule.length === 0) schedule = ['контент'];
+  } else {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(intern_date)) return { error: 'выбери дату' };
+    if (!/^\d{2}:\d{2}$/.test(intern_time)) return { error: 'выбери время' };
+    visit_date = intern_date;
+    visit_time = intern_time;
+    if (schedule.length === 0) return { error: 'выбери график' };
+    if (!urgent) return { error: 'насколько срочно нужна работа?' };
+    if (!medbook) return { error: 'медкнижка: да или нет' };
+    if (!guest) return { error: 'ответь на сцену с гостем' };
+    if (!cook) return { error: 'любишь готовить?' };
+  }
 
   const now = new Date().toISOString();
   return {
     id: crypto.randomUUID(),
+    role,
     name,
     phone,
     city,
     schedule,
-    intern_date,
-    intern_time,
+    intern_date: visit_date,
+    intern_time: visit_time,
     urgent,
     medbook,
     guest,
     shift: as_string(body.shift),
     cook,
+    works,
     status: 'new',
     created_at: now,
     updated_at: now,
@@ -309,6 +373,8 @@ export async function list_interns(): Promise<intern[]> {
         if (!extra) return row;
         return {
           ...row,
+          role: row.role === 'creator' || extra.role === 'creator' ? 'creator' : row.role,
+          works: row.works.length ? row.works : extra.works,
           feedback_mood: row.feedback_mood ?? extra.feedback_mood,
           feedback_liked: row.feedback_liked || extra.feedback_liked,
           feedback_disliked: row.feedback_disliked || extra.feedback_disliked,
@@ -414,6 +480,8 @@ export async function save_intern_feedback(input: {
       guest: '',
       shift: '',
       cook: '',
+      works: [],
+      role: 'barista',
       status: 'new',
       created_at: now,
       updated_at: now,

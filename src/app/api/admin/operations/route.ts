@@ -6,6 +6,7 @@ import {
   create_operation,
   list_ledger,
   list_operations,
+  save_ledger_entry,
   type operations_sort,
 } from '@/lib/admin-operations-server';
 import { list_order_audit } from '@/lib/order-audit-server';
@@ -96,7 +97,14 @@ export async function POST(request: Request) {
     is_paid?: boolean;
     spot_id?: string | null;
     user_id?: string | null;
+    ledger?: unknown;
   } | null;
+
+  if (body?.ledger) {
+    const result = await save_ledger_entry(body.ledger, actor);
+    if (!result.ok) return NextResponse.json({ error: result.error }, { status: result.status });
+    return NextResponse.json({ ok: true });
+  }
 
   const payment =
     body?.payment_type && payments.has(body.payment_type as order['payment_type'])
@@ -135,7 +143,14 @@ export async function PATCH(request: Request) {
     status?: string;
     payment_type?: string;
     anchor?: { cash?: number; card?: number };
+    ledger?: unknown;
   } | null;
+
+  if (body?.ledger) {
+    const result = await save_ledger_entry(body.ledger, actor);
+    if (!result.ok) return NextResponse.json({ error: result.error }, { status: result.status });
+    return NextResponse.json({ ok: true });
+  }
 
   if (body?.anchor && typeof body.anchor === 'object') {
     const cash = Number(body.anchor.cash);

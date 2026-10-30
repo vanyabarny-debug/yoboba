@@ -2,12 +2,24 @@ import type { promo_title_layout } from '@/lib/promo-title-layout';
 import type { promo_image_vignette } from '@/lib/promo-image-vignette';
 import type { seller_access } from '@/lib/seller-access';
 
+/** режим работы точки, часы по Москве */
+export type spot_hours = {
+  open: string;
+  close: string;
+};
+
 export type store_spot = {
   id: string;
   city: string;
   address: string;
   label?: string;
   is_active: boolean;
+  /** номер организации в Яндексе — виджет рейтинга */
+  yandex_org_id?: string;
+  /** куда ведёт QR «оставить отзыв»; пусто — отзывы этой организации в Картах */
+  review_url?: string;
+  /** когда точка работает. пусто — касса не напоминает включить музыку */
+  hours?: spot_hours;
 };
 
 export type sidebar_ad_slide = {

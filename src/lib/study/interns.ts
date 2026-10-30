@@ -1,8 +1,16 @@
 export const intern_statuses = ['new', 'called', 'came', 'hired', 'rejected'] as const;
 export type intern_status = (typeof intern_statuses)[number];
 
+export type intern_role = 'barista' | 'creator';
+
+export type intern_work = {
+  name: string;
+  data_url: string;
+};
+
 export type intern = {
   id: string;
+  role: intern_role;
   name: string;
   phone: string;
   city: string;
@@ -14,6 +22,7 @@ export type intern = {
   guest: string;
   shift: string;
   cook: string;
+  works: intern_work[];
   status: intern_status;
   created_at: string;
   updated_at: string;

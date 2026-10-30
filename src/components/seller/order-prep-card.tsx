@@ -2,14 +2,8 @@
 
 import { createElement, useEffect, useRef, useState } from 'react';
 import { format_order_number } from '@/lib/order-number';
-import { format_countdown_ms } from '@/lib/kitchen-queue';
 import { format_phone_display } from '@/lib/phone';
-import {
-  play_drink_ready_chime,
-  play_start_chime,
-  play_timer_alarm,
-  play_timer_tick,
-} from '@/lib/order-chime';
+import { play_drink_ready_chime, play_timer_tick } from '@/lib/order-chime';
 import type { order } from '@/lib/types';
 import { color_for_id } from '@/lib/seller-tile-grid';
 import circular_timer from '@/components/seller/circular-timer';
@@ -20,6 +14,7 @@ export type drink_row = {
   menu_id: string;
   prep_minutes: number;
   volume?: string;
+  temp?: 'cold' | 'hot';
   done?: boolean;
   started?: boolean;
 };
@@ -66,6 +61,17 @@ type props = {
   on_delete?: (order: order) => void;
   guide_open?: boolean;
 };
+
+const NUDGE_MS = 3 * 60_000;
+
+function format_elapsed(ms: number) {
+  const total = Math.max(0, Math.floor(ms / 1000));
+  const h = Math.floor(total / 3600);
+  const m = Math.floor((total % 3600) / 60);
+  const s = total % 60;
+  if (h > 0) return `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+  return `${m}:${String(s).padStart(2, '0')}`;
+}
 
 function pickup_label(pickup_time: string) {
   return new Date(pickup_time).toLocaleTimeString('ru-RU', {
@@ -121,8 +127,9 @@ export default function order_prep_card({
 }: props) {
   const [now, set_now] = useState(Date.now());
   const [show_info, set_show_info] = useState(false);
-  const warned_sec = useRef<number | null>(null);
-  const alarmed_for = useRef<string | null>(null);
+  const nudged_bucket = useRef(0);
+  const nudge_seen = useRef(false);
+  const autostarted = useRef<string | null>(null);
   const paid = order_is_paid(o);
   const phone = (o.customer_phone || '').trim();
   const tint = color_for_id(o.id);
@@ -139,46 +146,45 @@ export default function order_prep_card({
     return () => clearInterval(id);
   }, []);
 
+  const started_marks = drinks
+    .map((drink) => prep[drink.key]?.started_at)
+    .filter((value): value is number => typeof value === 'number' && value > 0);
+  const order_started = started_marks.length ? Math.min(...started_marks) : null;
+  const elapsed = order_started ? Math.max(0, now - order_started) : 0;
+
   useEffect(() => {
-    if (mode !== 'work' || guide_open || !current || !current_st?.started_at || current_st.done) return;
+    autostarted.current = null;
+    nudged_bucket.current = 0;
+    nudge_seen.current = false;
+  }, [o.id]);
 
-    const expected_ms = current.prep_minutes * 60_000;
-    const ends = current_st.started_at + expected_ms;
-    const left = ends - now;
-    const left_sec = Math.ceil(left / 1000);
+  useEffect(() => {
+    if (mode !== 'work' || !current || current_st?.done || current_st?.started_at) return;
+    if (autostarted.current === current.key) return;
+    autostarted.current = current.key;
+    on_start_drink(o.id, current);
+  }, [mode, current, current_st?.done, current_st?.started_at, current?.key, o.id, on_start_drink]);
 
-    if (left > 0 && left_sec <= 5 && left_sec > 0 && warned_sec.current !== left_sec) {
-      warned_sec.current = left_sec;
+  useEffect(() => {
+    if (mode !== 'work' || !order_started) return;
+    const bucket = Math.floor((now - order_started) / NUDGE_MS);
+    if (!nudge_seen.current) {
+      nudge_seen.current = true;
+      nudged_bucket.current = bucket;
+      return;
+    }
+    if (bucket > nudged_bucket.current) {
+      nudged_bucket.current = bucket;
       play_timer_tick();
     }
-
-    if (left <= 0) {
-      if (alarmed_for.current !== current.key) {
-        alarmed_for.current = current.key;
-        play_timer_alarm();
-      }
-      on_mark_drink_done(o.id, current, {
-        actual_ms: expected_ms,
-        expected_ms,
-        started_at: current_st.started_at,
-      });
-    }
-  }, [now, mode, guide_open, current, current_st, o.id, on_mark_drink_done]);
-
-  useEffect(() => {
-    warned_sec.current = null;
-  }, [current?.key]);
+  }, [now, mode, order_started]);
 
   useEffect(() => {
     set_show_info(false);
   }, [o.id, mode, guide_open]);
 
-  const expected_ms = current ? current.prep_minutes * 60_000 : 0;
-  const ends_at =
-    cooking && current_st?.started_at ? current_st.started_at + expected_ms : null;
-  const left = ends_at ? Math.max(0, ends_at - now) : 0;
-  const progress = cooking && expected_ms > 0 ? left / expected_ms : 1;
-  const urgent = cooking && left > 0 && left <= 5000;
+  const expected_total = drinks.reduce((sum, drink) => sum + Math.max(0, drink.prep_minutes) * 60_000, 0);
+  const progress = order_started && expected_total > 0 ? Math.min(1, elapsed / expected_total) : order_started ? 1 : 0;
 
   const can_finalize = all_done || (mode === 'ready' && paid);
 
@@ -210,8 +216,6 @@ export default function order_prep_card({
     }
 
     if (!current) return;
-
-    play_start_chime();
     on_start_drink(o.id, current);
   }
 
@@ -244,9 +248,9 @@ export default function order_prep_card({
     subtitle = `№ ${order_no}`;
     subtitle_style = 'hero';
     title_hero = false;
-  } else if (cooking) {
-    tone = urgent ? 'ready' : 'cooking';
-    title = format_countdown_ms(left);
+  } else if (mode === 'work' && current) {
+    tone = 'cooking';
+    title = format_elapsed(elapsed);
     subtitle = `№ ${order_no}`;
     subtitle_style = 'hero';
     title_hero = true;
@@ -261,7 +265,7 @@ export default function order_prep_card({
       ? done_count / Math.max(drinks.length, 1)
       : mode === 'ready' || all_done || mode === 'done'
         ? 1
-        : cooking
+        : mode === 'work' && order_started
           ? progress
           : 1;
 
@@ -422,8 +426,8 @@ export default function order_prep_card({
             label: title,
             sublabel: subtitle,
             sublabel_style: subtitle_style,
-            urgent,
-            active: cooking,
+            urgent: false,
+            active: mode === 'work' && Boolean(order_started),
             tone,
             colors: timer_colors,
             fill: true,

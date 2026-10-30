@@ -105,6 +105,13 @@ export async function verify_admin_login(login: string, password: string) {
   return password_matches(account, login, password);
 }
 
+/** логин учётки админки — он же имя в истории операций */
+export async function admin_account_actor() {
+  const account = await read_account();
+  const login = (account.login || default_login).slice(0, 40);
+  return { id: `admin:${login}`, name: login };
+}
+
 export async function record_admin_login(request: Request) {
   const account = await read_account();
   const client = describe_admin_client(request);

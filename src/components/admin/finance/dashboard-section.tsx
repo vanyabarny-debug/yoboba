@@ -33,8 +33,8 @@ import {
   set_month_payroll,
   stock_levels,
   warehouse_money,
+  sales_cogs_by_card,
   summarize_period,
-  tech_card_cost,
   custom_payroll_rate,
   custom_taxes_of,
   tax_label,
@@ -819,16 +819,16 @@ export default function DashboardSection({
     const rows: { name: string; qty: number; cost: number }[] = [];
     const source = fact?.sales;
     if (!source) return rows;
+    const by_card = sales_cogs_by_card(state, source);
     for (const card of state.techCards) {
       const by_size = source[card.id];
       if (!by_size) continue;
       let qty = 0;
-      let cost = 0;
-      for (const [size, cell] of Object.entries(by_size)) {
+      for (const cell of Object.values(by_size)) {
         if (!cell?.qty) continue;
         qty += cell.qty;
-        cost += tech_card_cost(state, card, size) * cell.qty;
       }
+      const cost = by_card.get(card.id) ?? 0;
       if (qty > 0) rows.push({ name: card.name, qty, cost: Math.round(cost) });
     }
     rows.sort((a, b) => b.cost - a.cost || a.name.localeCompare(b.name, 'ru'));
@@ -840,16 +840,16 @@ export default function DashboardSection({
     const rows: { name: string; value: number; revenue: number; cost: number }[] = [];
     const source = fact?.sales;
     if (!source) return rows;
+    const by_card = sales_cogs_by_card(state, source);
     for (const card of state.techCards) {
       const by_size = source[card.id];
       if (!by_size) continue;
       let revenue = 0;
-      let cost = 0;
-      for (const [size, cell] of Object.entries(by_size)) {
+      for (const cell of Object.values(by_size)) {
         if (!cell?.qty) continue;
         revenue += (cell.price || 0) * cell.qty;
-        cost += tech_card_cost(state, card, size) * cell.qty;
       }
+      const cost = by_card.get(card.id) ?? 0;
       if (revenue <= 0 && cost <= 0) continue;
       const value = mix_with_cogs ? Math.round(revenue - cost) : Math.round(revenue);
       rows.push({
@@ -867,19 +867,19 @@ export default function DashboardSection({
     const source = fact?.sales;
     const empty = { fixed: 0, rows: [] as { name: string; qty: number; ingredient: number; net: number }[] };
     if (!source) return empty;
+    const by_card = sales_cogs_by_card(state, source);
     const raw: { name: string; qty: number; revenue: number; cost: number }[] = [];
     for (const card of state.techCards) {
       const by_size = source[card.id];
       if (!by_size) continue;
       let qty = 0;
       let revenue = 0;
-      let cost = 0;
-      for (const [size, cell] of Object.entries(by_size)) {
+      for (const cell of Object.values(by_size)) {
         if (!cell?.qty) continue;
         qty += cell.qty;
         revenue += (cell.price || 0) * cell.qty;
-        cost += tech_card_cost(state, card, size) * cell.qty;
       }
+      const cost = by_card.get(card.id) ?? 0;
       if (qty <= 0) continue;
       raw.push({ name: card.name, qty, revenue, cost });
     }

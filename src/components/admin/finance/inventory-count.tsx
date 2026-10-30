@@ -8,6 +8,7 @@ import {
 } from '@/lib/finance/model';
 import {
   parse_qty,
+  stored_tare,
   to_base_qty,
   weigh_hint,
   weigh_kind_of,
@@ -15,7 +16,7 @@ import {
   weigh_unit,
 } from '@/lib/finance/weigh';
 
-type answer = { entered: number } | 'skip';
+type answer = { gross: number; tare: number; save_tare?: number } | 'skip';
 
 export default function InventoryCount({
   rows,
@@ -27,7 +28,11 @@ export default function InventoryCount({
   rows: stock_row[];
   cats: stock_category[];
   required?: boolean;
-  on_commit: (facts: { materialId: string; qty: number }[], date: string) => void | Promise<void>;
+  on_commit: (
+    facts: { materialId: string; qty: number }[],
+    date: string,
+    tares?: { materialId: string; tare: number }[]
+  ) => void | Promise<void>;
   on_close: () => void;
 }) {
   const items = useMemo(() => {
@@ -47,6 +52,7 @@ export default function InventoryCount({
   const [phase, set_phase] = useState<'intro' | 'step' | 'review'>('intro');
   const [index, set_index] = useState(0);
   const [draft, set_draft] = useState('');
+  const [tare_draft, set_tare_draft] = useState('');
   const [answers, set_answers] = useState<Record<string, answer>>({});
   const [busy, set_busy] = useState(false);
   const [error, set_error] = useState('');
@@ -55,6 +61,10 @@ export default function InventoryCount({
   const current = items[index];
   const kind = current ? weigh_kind_of(current.material) : 'g';
   const cat_name = current ? cats.find((c) => c.id === current.material.category)?.name : '';
+  const known_tare = current && kind !== 'pcs' ? stored_tare(current.material) : 0;
+  const typed_tare = known_tare > 0 ? known_tare : parse_qty(tare_draft) ?? 0;
+  const gross_now = parse_qty(draft);
+  const net_now = gross_now == null ? null : Math.max(0, Math.round((gross_now - typed_tare) * 1000) / 1000);
 
   useEffect(() => {
     if (phase !== 'step') return;
@@ -75,18 +85,28 @@ export default function InventoryCount({
     }
     set_index(index + 1);
     set_draft('');
+    set_tare_draft('');
   }
 
   function go_next() {
-    const n = parse_qty(draft);
-    if (n == null) return;
-    remember({ entered: n });
+    const gross = parse_qty(draft);
+    if (gross == null || !current) return;
+    const tare = kind === 'pcs' ? 0 : known_tare > 0 ? known_tare : parse_qty(tare_draft) ?? 0;
+    remember({
+      gross,
+      tare,
+      ...(known_tare <= 0 && tare > 0 ? { save_tare: tare } : {}),
+    });
   }
 
   function go_back() {
     if (phase === 'review') {
       set_phase('step');
       set_index(Math.max(0, items.length - 1));
+      const last = items[items.length - 1];
+      const last_ans = last ? answers[last.material.id] : undefined;
+      set_draft(last_ans && last_ans !== 'skip' ? String(last_ans.gross) : '');
+      set_tare_draft(last_ans && last_ans !== 'skip' && !stored_tare(last.material) ? String(last_ans.tare || '') : '');
       return;
     }
     if (index === 0) {
@@ -96,7 +116,10 @@ export default function InventoryCount({
     const prev = items[index - 1];
     const prev_ans = answers[prev.material.id];
     set_index(index - 1);
-    set_draft(prev_ans && prev_ans !== 'skip' ? String(prev_ans.entered) : '');
+    set_draft(prev_ans && prev_ans !== 'skip' ? String(prev_ans.gross) : '');
+    set_tare_draft(
+      prev_ans && prev_ans !== 'skip' && !stored_tare(prev.material) ? String(prev_ans.tare || '') : ''
+    );
   }
 
   const review = useMemo(() => {
@@ -104,10 +127,11 @@ export default function InventoryCount({
       .map((row) => {
         const ans = answers[row.material.id];
         if (!ans || ans === 'skip') return null;
-        const fact = to_base_qty(row.material, ans.entered);
-        return { row, fact, book: row.qty, delta: fact - row.qty };
+        const net = Math.max(0, ans.gross - ans.tare);
+        const fact = to_base_qty(row.material, net);
+        return { row, fact, book: row.qty, delta: fact - row.qty, tare: ans.tare };
       })
-      .filter((x): x is { row: stock_row; fact: number; book: number; delta: number } => x != null);
+      .filter((x): x is { row: stock_row; fact: number; book: number; delta: number; tare: number } => x != null);
   }, [items, answers]);
 
   async function commit() {
@@ -115,9 +139,15 @@ export default function InventoryCount({
     set_busy(true);
     set_error('');
     try {
+      const tares = items.flatMap((row) => {
+        const ans = answers[row.material.id];
+        if (!ans || ans === 'skip' || !ans.save_tare) return [];
+        return [{ materialId: row.material.id, tare: ans.save_tare }];
+      });
       await on_commit(
         review.map((r) => ({ materialId: r.row.material.id, qty: r.fact })),
-        new Date().toISOString()
+        new Date().toISOString(),
+        tares
       );
     } catch (e) {
       set_error(e instanceof Error ? e.message : 'не удалось записать');
@@ -187,7 +217,7 @@ export default function InventoryCount({
               <br />
               молоко и сиропы — в литрах.
               <br />
-              стаканы и моти — в штуках.
+              если взвешиваете в таре, укажите вес упаковки — в склад пойдёт продукт без неё.
             </p>
             <p className="mt-3 text-sm text-neutral-400">
               {required
@@ -205,6 +235,7 @@ export default function InventoryCount({
                 set_phase('step');
                 set_index(0);
                 set_draft('');
+                set_tare_draft('');
               }}
             >
               начать
@@ -225,20 +256,54 @@ export default function InventoryCount({
               {weigh_prompt(current.material.name, kind)}
             </h1>
             <p className="mt-3 text-sm text-neutral-400">{weigh_hint(kind)}</p>
-            <label className="relative mt-10 block">
-              <input
-                ref={input_ref}
-                inputMode="decimal"
-                value={draft}
-                onChange={(e) => set_draft(e.target.value)}
-                placeholder="0"
-                className="w-full border-0 border-b border-neutral-200 bg-transparent py-3 pr-12 text-center text-4xl tabular-nums text-neutral-900 outline-none placeholder:text-neutral-300 focus:border-neutral-900"
-                aria-label={weigh_unit(kind)}
-              />
-              <span className="pointer-events-none absolute right-0 top-1/2 -translate-y-1/2 text-lg text-neutral-400">
-                {weigh_unit(kind)}
-              </span>
-            </label>
+            <div className={`mt-10 grid gap-6 ${kind !== 'pcs' && known_tare <= 0 ? 'grid-cols-2' : ''}`}>
+              <label className="relative block text-left">
+                <span className="mb-1 block text-center text-[11px] uppercase tracking-wide text-neutral-400">
+                  {kind === 'pcs' ? 'сколько штук' : 'на весах'}
+                </span>
+                <input
+                  ref={input_ref}
+                  inputMode="decimal"
+                  value={draft}
+                  onChange={(e) => set_draft(e.target.value)}
+                  placeholder="0"
+                  className="w-full border-0 border-b border-neutral-200 bg-transparent py-3 pr-12 text-center text-4xl tabular-nums text-neutral-900 outline-none placeholder:text-neutral-300 focus:border-neutral-900"
+                  aria-label={weigh_unit(kind)}
+                />
+                <span className="pointer-events-none absolute bottom-3 right-0 text-lg text-neutral-400">
+                  {weigh_unit(kind)}
+                </span>
+              </label>
+              {kind !== 'pcs' && known_tare <= 0 ? (
+                <label className="relative block text-left">
+                  <span className="mb-1 block text-center text-[11px] uppercase tracking-wide text-neutral-400">
+                    вес упаковки
+                  </span>
+                  <input
+                    inputMode="decimal"
+                    value={tare_draft}
+                    onChange={(e) => set_tare_draft(e.target.value)}
+                    placeholder="0"
+                    className="w-full border-0 border-b border-neutral-200 bg-transparent py-3 pr-12 text-center text-4xl tabular-nums text-neutral-900 outline-none placeholder:text-neutral-300 focus:border-neutral-900"
+                    aria-label={`вес упаковки, ${weigh_unit(kind)}`}
+                  />
+                  <span className="pointer-events-none absolute bottom-3 right-0 text-lg text-neutral-400">
+                    {weigh_unit(kind)}
+                  </span>
+                </label>
+              ) : null}
+            </div>
+            {kind !== 'pcs' && known_tare > 0 ? (
+              <p className="mt-4 text-sm text-neutral-500">
+                тара {known_tare} {weigh_unit(kind)} задана на складе
+                {net_now != null ? ` · в остаток ${net_now} ${weigh_unit(kind)}` : ''}
+              </p>
+            ) : null}
+            {kind !== 'pcs' && known_tare <= 0 && net_now != null && typed_tare > 0 ? (
+              <p className="mt-4 text-sm text-neutral-500">
+                в остаток {net_now} {weigh_unit(kind)}
+              </p>
+            ) : null}
             <button
               type="submit"
               disabled={parse_qty(draft) == null}

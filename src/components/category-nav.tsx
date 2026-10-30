@@ -9,6 +9,7 @@ import {
 } from '@/components/menu-search';
 import cart_mark from '@/components/cart-mark';
 import type { menu_item } from '@/lib/types';
+import { item_in_category } from '@/lib/menu-item-categories';
 
 type props = {
   categories: string[];
@@ -39,6 +40,10 @@ export default function category_nav({
   on_edit_category,
   on_add_category,
 }: props) {
+  const shown_categories =
+    edit_mode || items.length === 0
+      ? categories
+      : categories.filter((cat) => items.some((item) => item_in_category(item, cat)));
   const scroll_ref = useRef<HTMLDivElement>(null);
   const track_ref = useRef<HTMLDivElement>(null);
   const wrap_ref = useRef<HTMLDivElement>(null);
@@ -261,7 +266,7 @@ export default function category_nav({
             >
               все
             </button>
-            {categories.map((cat) => (
+            {shown_categories.map((cat) => (
               <span key={cat} className="relative flex-shrink-0 flex items-center gap-0.5">
                 <button
                   type="button"

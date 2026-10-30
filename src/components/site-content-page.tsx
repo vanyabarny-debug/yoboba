@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { createElement, Suspense, useEffect, useState, type ReactNode } from 'react';
 import site_chrome from '@/components/site-chrome';
 import {
@@ -486,6 +487,23 @@ export default function site_content_page({ slug, children }: props) {
           ))}
         </div>
       )}
+
+      {slug === 'rabota' ? (
+        <div className="mt-8 flex flex-wrap gap-3">
+          <a
+            href="tel:+79962709600"
+            className="rounded-pill bg-accent px-5 py-3 text-sm font-medium text-accent-foreground"
+          >
+            позвонить
+          </a>
+          <Link
+            href="/study/creator"
+            className="rounded-pill border border-surface bg-white px-5 py-3 text-sm font-medium text-neutral-900"
+          >
+            анкета контент-креатора
+          </Link>
+        </div>
+      ) : null}
 
       {children}
     </div>

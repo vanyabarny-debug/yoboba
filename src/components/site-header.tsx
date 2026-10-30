@@ -3,16 +3,20 @@
 import { createElement, useEffect, useState } from 'react';
 import BrandWordmark from '@/components/brand-wordmark';
 import profile_chip from '@/components/profile-chip';
+import spot_rating from '@/components/spot-rating';
 import edit_pencil from '@/components/admin/edit-pencil';
+import type { store_spot } from '@/lib/types';
 import {
   get_brand_name,
   get_brand_settings,
   get_default_brand_settings,
   subscribe_brand_settings,
 } from '@/lib/brand-store';
+import { spot_has_yandex } from '@/lib/yandex-spot';
 
 type props = {
   city: string;
+  spot?: store_spot | null;
   spot_address?: string;
   user_name?: string | null;
   avatar_emoji?: string | null;
@@ -34,6 +38,7 @@ type props = {
 
 export default function site_header({
   city,
+  spot,
   spot_address,
   user_name,
   avatar_emoji,
@@ -68,34 +73,41 @@ export default function site_header({
   return (
     <div className="bg-page">
       {/* Mobile header — без логотипа: адрес + профиль */}
-      <div className="page-shell py-3 flex items-center justify-between gap-2.5 min-[1024px]:hidden">
-        <button
-          type="button"
-          onClick={on_city_click}
-          className="group min-w-0 flex-1 text-left rounded-pill bg-neutral-300 px-4 py-2.5 hover:bg-neutral-400/90 transition-colors"
-        >
-          <p className="text-[15px] leading-snug font-semibold text-neutral-900 line-clamp-2">
-            {address_label}
-          </p>
-        </button>
+      <div className="page-shell py-3 min-[1024px]:hidden">
+        <div className="flex items-center justify-between gap-2.5">
+          <button
+            type="button"
+            onClick={on_city_click}
+            className="group min-w-0 flex-1 text-left rounded-pill bg-neutral-300 px-4 py-2.5 hover:bg-neutral-400/90 transition-colors"
+          >
+            <p className="text-[15px] leading-snug font-semibold text-neutral-900 line-clamp-2">
+              {address_label}
+            </p>
+          </button>
 
-        <div className="flex items-center gap-1.5 flex-shrink-0">
-          {edit_mode ? (
-            <span className="text-[10px] text-neutral-400">режим правки</span>
-          ) : (
-            createElement(profile_chip, {
-              is_logged_in,
-              bonus,
-              user_name,
-              avatar_emoji,
-              avatar_bg,
-              avatar_url,
-              user_id,
-              on_login,
-              on_logout,
-            })
-          )}
+          <div className="flex items-center gap-1.5 flex-shrink-0">
+            {edit_mode ? (
+              <span className="text-[10px] text-neutral-400">режим правки</span>
+            ) : (
+              createElement(profile_chip, {
+                is_logged_in,
+                bonus,
+                user_name,
+                avatar_emoji,
+                avatar_bg,
+                avatar_url,
+                user_id,
+                on_login,
+                on_logout,
+              })
+            )}
+          </div>
         </div>
+        {spot_has_yandex(spot) ? (
+          <div className="mt-2">
+            {createElement(spot_rating, { spot })}
+          </div>
+        ) : null}
       </div>
 
       {/* Desktop header */}
@@ -131,21 +143,24 @@ export default function site_header({
               })}
           </div>
 
-          <button
-            type="button"
-            onClick={on_city_click}
-            className="group min-w-0 text-left pl-4 sm:pl-5 rounded-xl -my-1 py-1 pr-3 hover:bg-surface/60 transition-colors"
-          >
-            <p className="text-[16px] sm:text-[17px] leading-snug">
-              заберу заказ в городе{' '}
-              <span className="font-bold text-accent capitalize group-hover:underline decoration-2 underline-offset-2">
-                {city}
-              </span>
-            </p>
-            <p className="text-[12px] sm:text-[13px] text-neutral-500 mt-1 leading-relaxed group-hover:text-neutral-700 transition-colors">
-              нажмите, если город не ваш
-            </p>
-          </button>
+          <div className="flex min-w-0 items-center gap-3 pl-4 sm:pl-5">
+            <button
+              type="button"
+              onClick={on_city_click}
+              className="group min-w-0 text-left rounded-xl -my-1 py-1 pr-3 hover:bg-surface/60 transition-colors"
+            >
+              <p className="text-[16px] sm:text-[17px] leading-snug">
+                заберу заказ в городе{' '}
+                <span className="font-bold text-accent capitalize group-hover:underline decoration-2 underline-offset-2">
+                  {city}
+                </span>
+              </p>
+              <p className="text-[12px] sm:text-[13px] text-neutral-500 mt-1 leading-relaxed group-hover:text-neutral-700 transition-colors">
+                нажмите, если город не ваш
+              </p>
+            </button>
+            {createElement(spot_rating, { spot })}
+          </div>
         </div>
 
         <div className="flex items-center gap-2 flex-shrink-0">

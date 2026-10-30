@@ -18,6 +18,7 @@ import {
   resolve_month_payroll,
   salary_opex_id,
   tax_regime_of,
+  sales_fifo_cogs,
   tech_card_cost,
   custom_business_tax,
   custom_taxes_of,
@@ -380,7 +381,6 @@ export function build_baseline(input: {
       if (fact_qty <= 0 && price <= 0) continue;
       fact_drinks += fact_qty;
       fact_rev_from_mix += cell_rev;
-      recipe_cogs_on_fact += fact_qty * unit_cost;
       rows.push({
         tech_card_id: card.id,
         size_key,
@@ -397,6 +397,8 @@ export function build_baseline(input: {
 
   // веса только по тому, что реально продавалось; иначе — по ценам
   const sold = rows.filter((r) => r.fact_qty > 0);
+  recipe_cogs_on_fact = sales_fifo_cogs(state, fact_sales);
+
   const weight_rows = sold.length ? sold : rows;
   const weight_base = sold.length
     ? sold.reduce((s, r) => s + r.fact_revenue, 0)

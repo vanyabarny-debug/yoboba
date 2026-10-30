@@ -5,6 +5,8 @@ import Link from 'next/link';
 import AdminShell from '@/components/admin/admin-shell';
 import { use_admin_spot } from '@/components/admin/admin-spot-context';
 import type { ledger_entry, ledger_kind } from '@/lib/admin-operations-server';
+import { normalize_order_item_fields } from '@/lib/order-item-name';
+import type { order_item } from '@/lib/types';
 
 type feed = {
   entries?: ledger_entry[];
@@ -12,7 +14,39 @@ type feed = {
   card?: number;
   balance?: number;
   anchor?: { at: string; cash: number; card: number } | null;
+  opex?: { id: string; name: string }[];
   error?: string;
+};
+
+type manual_kind = Exclude<ledger_kind, 'sale'>;
+
+type draft = {
+  id: string | null;
+  kind: manual_kind;
+  amount: string;
+  title: string;
+  day: string;
+  time: string;
+  channel: 'cash' | 'card';
+  category_id: string;
+  stock_linked: boolean;
+};
+
+type sale_line = {
+  menu_id: string;
+  name: string;
+  quantity: string;
+  price: string;
+  volume?: string;
+  temp?: order_item['temp'];
+  kind?: order_item['kind'];
+  combo_picks?: string[];
+  combo_components?: order_item['combo_components'];
+};
+
+type sale_draft = {
+  order_id: string;
+  lines: sale_line[];
 };
 
 type sort_id = 'new' | 'old' | 'sum_desc' | 'sum_asc';
@@ -35,6 +69,8 @@ const kind_order: ledger_kind[] = [
   'financing',
   'fixed',
 ];
+
+const manual_order: manual_kind[] = ['expense', 'purchase', 'collection', 'financing', 'fixed'];
 
 const month_gen = [
   'января',
@@ -90,10 +126,41 @@ function clock(iso: string) {
   }).format(d);
 }
 
+function moscow_parts(iso?: string) {
+  const d = iso ? new Date(iso) : new Date();
+  const when = Number.isFinite(d.getTime()) ? d : new Date();
+  const parts = new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'Europe/Moscow',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hourCycle: 'h23',
+  }).formatToParts(when);
+  const get = (type: string) => parts.find((part) => part.type === type)?.value || '';
+  const hour = get('hour') === '24' ? '00' : get('hour');
+  return { day: `${get('year')}-${get('month')}-${get('day')}`, time: `${hour}:${get('minute')}` };
+}
+
+function when_label(iso: string, today: string) {
+  const parts = moscow_parts(iso);
+  return `${day_heading(parts.day, today)} ${parts.time}`.trim();
+}
+
 function amount_text(entry: ledger_entry) {
   const n = rub(entry.amount);
   if (entry.direction === 'move' || entry.amount === 0) return n;
   return entry.direction === 'in' ? `+${n}` : `−${n}`;
+}
+
+function signed_amount(entry: ledger_entry) {
+  if (entry.direction === 'move' || entry.kind === 'collection' || entry.amount === 0) return 0;
+  return entry.direction === 'out' ? -entry.amount : entry.amount;
+}
+
+function day_sum(items: ledger_entry[]) {
+  return items.reduce((sum, entry) => sum + signed_amount(entry), 0);
 }
 
 function amount_class(entry: ledger_entry) {
@@ -170,6 +237,29 @@ function KindIcon({ kind }: { kind: ledger_kind }) {
   );
 }
 
+function DayTotal({
+  day,
+  today,
+  items,
+}: {
+  day: string;
+  today: string;
+  items: ledger_entry[];
+}) {
+  const sum = day_sum(items);
+  const tone = sum > 0 ? 'text-emerald-600' : sum < 0 ? 'text-red-500' : 'text-neutral-400';
+  const sign = sum > 0 ? '+' : sum < 0 ? '−' : '';
+  return (
+    <h2 className="flex min-w-0 items-baseline gap-2 text-xs font-medium">
+      <span className="text-neutral-400">{day_heading(day, today)}</span>
+      <span className={`tabular-nums ${tone}`}>
+        {sign}
+        {rub(Math.abs(sum))}
+      </span>
+    </h2>
+  );
+}
+
 export default function operations_page() {
   return (
     <AdminShell>
@@ -198,6 +288,12 @@ function OperationsBody() {
   const [fact_cash, set_fact_cash] = useState('');
   const [fact_card, set_fact_card] = useState('');
   const [fact_busy, set_fact_busy] = useState(false);
+  const [opex, set_opex] = useState<{ id: string; name: string }[]>([]);
+  const [draft, set_draft] = useState<draft | null>(null);
+  const [sale, set_sale] = useState<sale_draft | null>(null);
+  const [form_error, set_form_error] = useState('');
+  const [form_busy, set_form_busy] = useState(false);
+  const [pay_busy, set_pay_busy] = useState<string | null>(null);
   const today = ymd_moscow(new Date().toISOString());
   const spot_label = useMemo(() => {
     const map = new Map(spot_options.map((s) => [s.id, s.label]));
@@ -224,6 +320,7 @@ function OperationsBody() {
       set_anchor_at(body.anchor?.at || null);
       set_fact_cash(String(Math.round(body.cash || 0)));
       set_fact_card(String(Math.round(body.card || 0)));
+      set_opex(body.opex || []);
     } catch {
       set_error('не удалось загрузить операции');
     } finally {
@@ -305,6 +402,225 @@ function OperationsBody() {
     }
   }
 
+  function open_add(day?: string) {
+    const now = moscow_parts();
+    set_sale(null);
+    set_form_error('');
+    set_panel(null);
+    set_draft({
+      id: null,
+      kind: 'expense',
+      amount: '',
+      title: '',
+      day: day && /^\d{4}-\d{2}-\d{2}$/.test(day) ? day : now.day,
+      time: now.time,
+      channel: 'cash',
+      category_id: opex[0]?.id || '',
+      stock_linked: false,
+    });
+  }
+
+  function open_sale(entry: ledger_entry) {
+    if (!entry.order_id) return;
+    set_draft(null);
+    set_form_error('');
+    set_panel(null);
+    set_open_id(entry.id);
+    set_sale({
+      order_id: entry.order_id,
+      lines: (entry.items || []).map((item) => {
+        const normalized = normalize_order_item_fields({ name: item.name, volume: item.volume });
+        return {
+          menu_id: item.menu_id || '',
+          name: normalized.name,
+          quantity: String(item.quantity),
+          price: String(item.price),
+          ...(normalized.volume ? { volume: normalized.volume } : {}),
+          ...(item.temp ? { temp: item.temp } : {}),
+          ...(item.kind ? { kind: item.kind } : {}),
+          ...(item.combo_picks?.length ? { combo_picks: item.combo_picks } : {}),
+          ...(item.combo_components?.length ? { combo_components: item.combo_components } : {}),
+        };
+      }),
+    });
+  }
+
+  function open_edit(entry: ledger_entry) {
+    if (!entry.id.startsWith('tx:') || entry.kind === 'sale') return;
+    set_sale(null);
+    const parts = moscow_parts(entry.at);
+    set_form_error('');
+    set_panel(null);
+    set_draft({
+      id: entry.id.slice(3),
+      kind: entry.kind,
+      amount: String(entry.amount),
+      title: entry.title,
+      day: parts.day,
+      time: parts.time,
+      channel: entry.kind === 'collection' ? 'cash' : entry.channel === 'card' ? 'card' : 'cash',
+      category_id: entry.category_id || opex[0]?.id || '',
+      stock_linked: entry.stock_linked,
+    });
+  }
+
+  async function save_draft() {
+    if (!draft || form_busy) return;
+    set_form_busy(true);
+    set_form_error('');
+    try {
+      const res = await fetch('/api/admin/operations', {
+        method: draft.id ? 'PATCH' : 'POST',
+        credentials: 'same-origin',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          ledger: {
+            ...(draft.id ? { id: draft.id } : { spot_id: spot_id || '' }),
+            kind: draft.kind,
+            amount: Number(draft.amount.replace(/\s/g, '')),
+            title: draft.title.trim(),
+            at: `${draft.day}T${(draft.time || '12:00').slice(0, 5)}:00+03:00`,
+            channel: draft.channel,
+            category_id: draft.category_id,
+          },
+        }),
+      });
+      const body = (await res.json().catch(() => ({}))) as { error?: string };
+      if (!res.ok) {
+        set_form_error(body.error || 'не удалось записать');
+        return;
+      }
+      set_draft(null);
+      await reload();
+    } catch {
+      set_form_error('не удалось записать');
+    } finally {
+      set_form_busy(false);
+    }
+  }
+
+  async function remove_draft() {
+    if (!draft?.id || draft.stock_linked || form_busy) return;
+    if (!window.confirm('удалить операцию?')) return;
+    set_form_busy(true);
+    set_form_error('');
+    try {
+      const res = await fetch('/api/admin/operations', {
+        method: 'PATCH',
+        credentials: 'same-origin',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ ledger: { id: draft.id, remove: true } }),
+      });
+      const body = (await res.json().catch(() => ({}))) as { error?: string };
+      if (!res.ok) {
+        set_form_error(body.error || 'не удалось удалить');
+        return;
+      }
+      set_draft(null);
+      await reload();
+    } catch {
+      set_form_error('не удалось удалить');
+    } finally {
+      set_form_busy(false);
+    }
+  }
+
+  async function save_sale() {
+    if (!sale || form_busy) return;
+    const items = sale.lines
+      .map((line) => {
+        const normalized = normalize_order_item_fields({ name: line.name.trim(), volume: line.volume });
+        return {
+          menu_id: line.menu_id,
+          name: normalized.name,
+          quantity: Math.round(Number(line.quantity)),
+          price: Math.round(Number(String(line.price).replace(/\s/g, ''))),
+          ...(normalized.volume ? { volume: normalized.volume } : {}),
+          ...(line.temp ? { temp: line.temp } : {}),
+          ...(line.kind ? { kind: line.kind } : {}),
+          ...(line.combo_picks?.length ? { combo_picks: line.combo_picks } : {}),
+          ...(line.combo_components?.length ? { combo_components: line.combo_components } : {}),
+        };
+      })
+      .filter((line) => line.name);
+    if (!items.length) {
+      set_form_error('оставьте хотя бы одну позицию или удалите продажу');
+      return;
+    }
+    set_form_busy(true);
+    set_form_error('');
+    try {
+      const res = await fetch('/api/admin/operations', {
+        method: 'PATCH',
+        credentials: 'same-origin',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ id: sale.order_id, items }),
+      });
+      const body = (await res.json().catch(() => ({}))) as { error?: string };
+      if (!res.ok) {
+        set_form_error(body.error || 'не удалось записать');
+        return;
+      }
+      set_sale(null);
+      await reload();
+    } catch {
+      set_form_error('не удалось записать');
+    } finally {
+      set_form_busy(false);
+    }
+  }
+
+  async function remove_sale() {
+    if (!sale || form_busy) return;
+    if (!window.confirm('удалить эту продажу?')) return;
+    set_form_busy(true);
+    set_form_error('');
+    try {
+      const res = await fetch('/api/admin/operations', {
+        method: 'DELETE',
+        credentials: 'same-origin',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ id: sale.order_id }),
+      });
+      const body = (await res.json().catch(() => ({}))) as { error?: string };
+      if (!res.ok) {
+        set_form_error(body.error || 'не удалось удалить');
+        return;
+      }
+      set_sale(null);
+      set_open_id(null);
+      await reload();
+    } catch {
+      set_form_error('не удалось удалить');
+    } finally {
+      set_form_busy(false);
+    }
+  }
+
+  async function save_payment(order_id: string, payment: 'cash' | 'card') {
+    if (pay_busy) return;
+    set_pay_busy(order_id);
+    set_error('');
+    try {
+      const res = await fetch('/api/admin/operations', {
+        method: 'PATCH',
+        credentials: 'same-origin',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ id: order_id, payment_type: payment }),
+      });
+      const body = (await res.json().catch(() => ({}))) as { error?: string };
+      if (!res.ok) {
+        set_error(body.error || 'не удалось сменить оплату');
+        return;
+      }
+      await reload();
+    } catch {
+      set_error('не удалось сменить оплату');
+    } finally {
+      set_pay_busy(null);
+    }
+  }
+
   function customer_href(entry: ledger_entry) {
     if (entry.user_id) return `/admin/customers?customer=${encodeURIComponent(entry.user_id)}`;
     if (entry.customer_phone) return `/admin/customers?phone=${encodeURIComponent(entry.customer_phone)}`;
@@ -360,7 +676,23 @@ function OperationsBody() {
         <Chip active={panel === 'sort'} onClick={() => set_panel((p) => (p === 'sort' ? null : 'sort'))}>
           сортировка
         </Chip>
+        <Chip active={Boolean(draft)} onClick={() => (draft ? set_draft(null) : open_add())}>
+          {draft?.id ? 'правка' : 'добавить'}
+        </Chip>
       </div>
+
+      {draft ? (
+        <OperationForm
+          draft={draft}
+          opex={opex}
+          busy={form_busy}
+          error={form_error}
+          on_change={set_draft}
+          on_save={() => void save_draft()}
+          on_remove={draft.id && !draft.stock_linked ? () => void remove_draft() : null}
+          on_close={() => set_draft(null)}
+        />
+      ) : null}
 
       {panel === 'filter' ? (
         <section className="space-y-3 rounded-2xl border border-neutral-200/80 bg-white p-3">
@@ -511,7 +843,17 @@ function OperationsBody() {
         {grouped.map((group) => (
           <section key={group.day || 'flat'} className="space-y-2">
             {group.day ? (
-              <h2 className="px-1 text-xs font-medium text-neutral-400">{day_heading(group.day, today)}</h2>
+              <div className="flex items-center justify-between gap-3 px-1">
+                <DayTotal day={group.day} today={today} items={group.items} />
+                <button
+                  type="button"
+                  aria-label="добавить"
+                  onClick={() => open_add(group.day)}
+                  className="grid h-7 w-7 shrink-0 place-items-center text-lg font-semibold leading-none text-neutral-500"
+                >
+                  +
+                </button>
+              </div>
             ) : null}
             <ul className="space-y-2">
               {group.items.map((entry) => {
@@ -529,7 +871,14 @@ function OperationsBody() {
                     >
                       <button
                         type="button"
-                        onClick={() => set_open_id(open ? null : entry.id)}
+                        onClick={() => {
+                          if (open) {
+                            set_open_id(null);
+                            if (sale?.order_id === entry.order_id) set_sale(null);
+                          } else {
+                            set_open_id(entry.id);
+                          }
+                        }}
                         className="flex w-full items-center gap-3 text-left"
                       >
                         <span
@@ -545,6 +894,18 @@ function OperationsBody() {
                             {entry.title}
                             <span className="text-neutral-300"> · </span>
                             {clock(entry.at)}
+                            {entry.actor_name ? (
+                              <>
+                                <span className="text-neutral-300"> · </span>
+                                {entry.actor_name}
+                              </>
+                            ) : null}
+                            {entry.changes.length ? (
+                              <>
+                                <span className="text-neutral-300"> · </span>
+                                правки
+                              </>
+                            ) : null}
                           </span>
                         </span>
                         <span className={`shrink-0 text-sm font-semibold tabular-nums ${amount_class(entry)}`}>
@@ -553,22 +914,107 @@ function OperationsBody() {
                       </button>
                       {open ? (
                         <div className="mt-3 space-y-1.5 border-t border-neutral-100 pt-3">
-                          {entry.lines.map((line) =>
-                            line.k === 'клиент' && href ? (
-                              <div
-                                key={`${entry.id}-customer`}
-                                className="flex items-baseline justify-between gap-3 text-sm"
-                              >
-                                <span className="text-neutral-500">клиент</span>
-                                <Link href={href} className="font-medium text-accent">
-                                  {line.v}
-                                </Link>
-                              </div>
-                            ) : (
-                              <Detail key={`${entry.id}-${line.k}-${line.v}`} k={line.k} v={line.v} />
+                          {sale?.order_id === entry.order_id ? (
+                            <SaleForm
+                              sale={sale}
+                              busy={form_busy}
+                              error={form_error}
+                              on_change={set_sale}
+                              on_save={() => void save_sale()}
+                              on_remove={() => void remove_sale()}
+                              on_close={() => {
+                                set_sale(null);
+                                set_form_error('');
+                              }}
+                            />
+                          ) : (
+                            entry.lines.map((line) =>
+                              line.k === 'клиент' && href ? (
+                                <div
+                                  key={`${entry.id}-customer`}
+                                  className="flex items-baseline justify-between gap-3 text-sm"
+                                >
+                                  <span className="text-neutral-500">клиент</span>
+                                  <Link href={href} className="font-medium text-accent">
+                                    {line.v}
+                                  </Link>
+                                </div>
+                              ) : (
+                                <Detail key={`${entry.id}-${line.k}-${line.v}`} k={line.k} v={line.v} />
+                              )
                             )
                           )}
                           {spot ? <Detail k="точка" v={spot} /> : null}
+                          {entry.actor_name ? (
+                            <Detail
+                              k="записал"
+                              v={
+                                entry.recorded_at
+                                  ? `${entry.actor_name} · ${when_label(entry.recorded_at, today)}`
+                                  : entry.actor_name
+                              }
+                            />
+                          ) : null}
+                          {entry.changes.length ? (
+                            <div className="space-y-1 pt-1">
+                              <p className="text-xs text-neutral-400">правки</p>
+                              {entry.changes.map((change) => (
+                                <p
+                                  key={`${entry.id}-${change.at}-${change.text}`}
+                                  className="text-xs leading-snug text-neutral-600"
+                                >
+                                  <span className="text-neutral-400">{when_label(change.at, today)}</span>{' '}
+                                  <span className="font-medium text-neutral-800">{change.actor_name}</span>
+                                  {' — '}
+                                  {change.text}
+                                </p>
+                              ))}
+                            </div>
+                          ) : null}
+                          {entry.id.startsWith('tx:') ? (
+                            <button
+                              type="button"
+                              onClick={() => open_edit(entry)}
+                              className="pt-1 text-xs font-semibold text-neutral-700"
+                            >
+                              изменить
+                            </button>
+                          ) : null}
+                          {entry.order_id && sale?.order_id !== entry.order_id ? (
+                            <button
+                              type="button"
+                              onClick={() => open_sale(entry)}
+                              className="pt-1 text-xs font-semibold text-neutral-700"
+                            >
+                              изменить
+                            </button>
+                          ) : null}
+                          {entry.order_id && (entry.payment === 'cash' || entry.payment === 'card') ? (
+                            <div className="flex gap-1.5 pt-1">
+                              {(
+                                [
+                                  ['cash', 'нал'],
+                                  ['card', 'безнал'],
+                                ] as const
+                              ).map(([id, label]) => (
+                                <button
+                                  key={id}
+                                  type="button"
+                                  disabled={pay_busy === entry.order_id}
+                                  onClick={() => {
+                                    if (entry.payment !== id && entry.order_id) void save_payment(entry.order_id, id);
+                                  }}
+                                  className={`rounded-full px-2.5 py-1 text-xs font-medium ${
+                                    entry.payment === id
+                                      ? 'bg-neutral-900 text-white'
+                                      : 'bg-neutral-100 text-neutral-600'
+                                  }`}
+                                >
+                                  {label}
+                                </button>
+                              ))}
+                            </div>
+                          ) : null}
                         </div>
                       ) : null}
                     </article>
@@ -602,6 +1048,265 @@ function Chip({
     >
       {children}
     </button>
+  );
+}
+
+function OperationForm({
+  draft,
+  opex,
+  busy,
+  error,
+  on_change,
+  on_save,
+  on_remove,
+  on_close,
+}: {
+  draft: draft;
+  opex: { id: string; name: string }[];
+  busy: boolean;
+  error: string;
+  on_change: (next: draft) => void;
+  on_save: () => void;
+  on_remove: (() => void) | null;
+  on_close: () => void;
+}) {
+  const kinds = opex.length ? manual_order : manual_order.filter((kind) => kind !== 'fixed');
+  return (
+    <section className="space-y-3 rounded-2xl border border-neutral-200/80 bg-white p-3">
+      <div className="flex items-center justify-between">
+        <p className="text-sm font-semibold text-neutral-900">{draft.id ? 'изменить операцию' : 'новая операция'}</p>
+        <button type="button" onClick={on_close} className="text-xs font-medium text-neutral-500">
+          закрыть
+        </button>
+      </div>
+      <div className="flex flex-wrap gap-1.5">
+        {kinds.map((kind) => {
+          const locked = draft.stock_linked && kind !== 'purchase';
+          return (
+            <button
+              key={kind}
+              type="button"
+              disabled={locked}
+              onClick={() => on_change({ ...draft, kind })}
+              className={`rounded-full px-2.5 py-1 text-xs font-medium disabled:opacity-30 ${
+                draft.kind === kind ? 'bg-neutral-900 text-white' : 'bg-neutral-100 text-neutral-600'
+              }`}
+            >
+              {kind_label[kind]}
+            </button>
+          );
+        })}
+      </div>
+      {draft.kind === 'fixed' ? (
+        <label className="block text-[11px] text-neutral-500">
+          статья
+          <select
+            value={draft.category_id}
+            onChange={(e) => on_change({ ...draft, category_id: e.target.value })}
+            className="mt-1 w-full rounded-xl border border-neutral-200 px-2 py-2 text-sm text-neutral-900"
+          >
+            {opex.map((row) => (
+              <option key={row.id} value={row.id}>
+                {row.name}
+              </option>
+            ))}
+          </select>
+        </label>
+      ) : null}
+      <label className="block text-[11px] text-neutral-500">
+        что это
+        <input
+          value={draft.title}
+          onChange={(e) => on_change({ ...draft, title: e.target.value })}
+          placeholder="чай, аренда, инкассация"
+          className="mt-1 w-full rounded-xl border border-neutral-200 px-3 py-2 text-sm text-neutral-900 outline-none focus:ring-2 focus:ring-highlight"
+        />
+      </label>
+      <label className="block text-[11px] text-neutral-500">
+        сумма, ₽
+        <input
+          inputMode="numeric"
+          value={draft.amount}
+          onChange={(e) => on_change({ ...draft, amount: e.target.value.replace(/[^\d]/g, '') })}
+          className="mt-1 w-full rounded-xl border border-neutral-200 px-3 py-2 text-sm tabular-nums text-neutral-900 outline-none focus:ring-2 focus:ring-highlight"
+        />
+      </label>
+      <div className="grid grid-cols-2 gap-2">
+        <label className="text-[11px] text-neutral-500">
+          день
+          <input
+            type="date"
+            value={draft.day}
+            onChange={(e) => on_change({ ...draft, day: e.target.value })}
+            className="mt-1 w-full rounded-xl border border-neutral-200 px-2 py-2 text-sm"
+          />
+        </label>
+        <label className="text-[11px] text-neutral-500">
+          время
+          <input
+            type="time"
+            value={draft.time}
+            onChange={(e) => on_change({ ...draft, time: e.target.value })}
+            className="mt-1 w-full rounded-xl border border-neutral-200 px-2 py-2 text-sm"
+          />
+        </label>
+      </div>
+      {draft.kind !== 'collection' ? (
+        <div className="flex gap-1.5">
+          {(
+            [
+              ['cash', 'нал'],
+              ['card', 'безнал'],
+            ] as const
+          ).map(([id, label]) => (
+            <button
+              key={id}
+              type="button"
+              onClick={() => on_change({ ...draft, channel: id })}
+              className={`rounded-full px-2.5 py-1 text-xs font-medium ${
+                draft.channel === id ? 'bg-neutral-900 text-white' : 'bg-neutral-100 text-neutral-600'
+              }`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+      ) : null}
+      {draft.stock_linked ? (
+        <p className="text-[11px] leading-snug text-neutral-400">
+          закупка уже на складе: тип не меняется, сумма обновит накладную
+        </p>
+      ) : null}
+      {error ? <p className="text-sm text-red-500">{error}</p> : null}
+      <div className="flex items-center gap-3">
+        <button
+          type="button"
+          disabled={busy}
+          onClick={on_save}
+          className="rounded-xl bg-neutral-900 px-3 py-2 text-xs font-semibold text-white disabled:opacity-40"
+        >
+          {busy ? 'пишу…' : 'сохранить'}
+        </button>
+        {on_remove ? (
+          <button type="button" disabled={busy} onClick={on_remove} className="text-xs font-medium text-red-500">
+            удалить
+          </button>
+        ) : null}
+      </div>
+    </section>
+  );
+}
+
+function SaleForm({
+  sale,
+  busy,
+  error,
+  on_change,
+  on_save,
+  on_remove,
+  on_close,
+}: {
+  sale: sale_draft;
+  busy: boolean;
+  error: string;
+  on_change: (next: sale_draft) => void;
+  on_save: () => void;
+  on_remove: () => void;
+  on_close: () => void;
+}) {
+  const total = sale.lines.reduce(
+    (sum, line) => sum + (Number(line.price) || 0) * (Number(line.quantity) || 0),
+    0
+  );
+  function patch(i: number, next: Partial<sale_line>) {
+    on_change({
+      ...sale,
+      lines: sale.lines.map((line, idx) => (idx === i ? { ...line, ...next } : line)),
+    });
+  }
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center justify-between">
+        <p className="text-sm font-semibold text-neutral-900">изменить продажу</p>
+        <button type="button" onClick={on_close} className="text-xs font-medium text-neutral-500">
+          закрыть
+        </button>
+      </div>
+      {sale.lines.map((line, i) => (
+        <div key={`${sale.order_id}-${i}`} className="grid grid-cols-[1fr_3.2rem_4.5rem_auto] items-center gap-1.5">
+          <label className="min-w-0">
+            <span className="sr-only">позиция</span>
+            <input
+              value={line.name}
+              onChange={(e) => patch(i, { name: e.target.value })}
+              className="w-full rounded-xl border border-neutral-200 px-2 py-1.5 text-sm"
+            />
+            {line.volume || line.temp ? (
+              <span className="mt-0.5 block text-[10px] text-neutral-400">
+                {[line.volume ? `${line.volume} мл` : '', line.temp === 'hot' ? 'горячий' : line.temp === 'cold' ? 'холодный' : '']
+                  .filter(Boolean)
+                  .join(' · ')}
+              </span>
+            ) : null}
+          </label>
+          <label>
+            <span className="sr-only">количество</span>
+            <input
+              inputMode="numeric"
+              value={line.quantity}
+              onChange={(e) => patch(i, { quantity: e.target.value.replace(/[^\d]/g, '') })}
+              className="w-full rounded-xl border border-neutral-200 px-2 py-1.5 text-center text-sm tabular-nums"
+            />
+          </label>
+          <label>
+            <span className="sr-only">цена</span>
+            <input
+              inputMode="numeric"
+              value={line.price}
+              onChange={(e) => patch(i, { price: e.target.value.replace(/[^\d]/g, '') })}
+              className="w-full rounded-xl border border-neutral-200 px-2 py-1.5 text-right text-sm tabular-nums"
+            />
+          </label>
+          <button
+            type="button"
+            onClick={() => on_change({ ...sale, lines: sale.lines.filter((_, idx) => idx !== i) })}
+            className="px-1 text-sm text-neutral-400"
+            aria-label="убрать позицию"
+          >
+            ×
+          </button>
+        </div>
+      ))}
+      <button
+        type="button"
+        onClick={() =>
+          on_change({
+            ...sale,
+            lines: [...sale.lines, { menu_id: '', name: '', quantity: '1', price: '' }],
+          })
+        }
+        className="text-xs font-semibold text-neutral-500"
+      >
+        + позиция
+      </button>
+      <p className="text-sm font-semibold tabular-nums text-neutral-900">
+        {Math.round(total).toLocaleString('ru-RU')} ₽
+      </p>
+      {error ? <p className="text-sm text-red-500">{error}</p> : null}
+      <div className="flex items-center gap-3">
+        <button
+          type="button"
+          disabled={busy}
+          onClick={on_save}
+          className="rounded-xl bg-neutral-900 px-3 py-2 text-xs font-semibold text-white disabled:opacity-40"
+        >
+          {busy ? 'пишу…' : 'сохранить'}
+        </button>
+        <button type="button" disabled={busy} onClick={on_remove} className="text-xs font-medium text-red-500">
+          удалить
+        </button>
+      </div>
+    </div>
   );
 }
 

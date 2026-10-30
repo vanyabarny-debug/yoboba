@@ -31,18 +31,43 @@ export default function barista_analytics_panel({
 }: props) {
   const [shift_date, set_shift_date] = useState(shift_date_prop || moscow_today_iso());
   const [data, set_data] = useState<barista_analytics | null>(null);
+  const [error, set_error] = useState('');
+  const [reload_key, set_reload_key] = useState(0);
 
   useEffect(() => {
     if (shift_date_prop) set_shift_date(shift_date_prop);
   }, [shift_date_prop]);
 
   useEffect(() => {
-    const qs = new URLSearchParams({ shift_date, seller_id });
-    fetch(`/api/seller/prep-stats?${qs}`, { credentials: 'same-origin' })
-      .then((r) => r.json())
-      .then((body: { analytics?: barista_analytics }) => set_data(body.analytics || null))
-      .catch(() => set_data(null));
-  }, [shift_date, seller_id]);
+    let stop = false;
+    async function load() {
+      const qs = new URLSearchParams({ shift_date, seller_id });
+      if (seller_name) qs.set('seller_name', seller_name);
+      try {
+        const res = await fetch(`/api/seller/prep-stats?${qs}`, { credentials: 'same-origin' });
+        const body = (await res.json().catch(() => null)) as {
+          analytics?: barista_analytics;
+          error?: string;
+        } | null;
+        if (stop) return;
+        if (!res.ok || !body?.analytics) {
+          set_error(body?.error || 'не удалось открыть аналитику');
+          return;
+        }
+        set_error('');
+        set_data(body.analytics);
+        set_reload_key((n) => n + 1);
+      } catch {
+        if (!stop) set_error('не удалось открыть аналитику');
+      }
+    }
+    void load();
+    const timer = window.setInterval(() => void load(), 20_000);
+    return () => {
+      stop = true;
+      window.clearInterval(timer);
+    };
+  }, [shift_date, seller_id, seller_name]);
 
   return (
     <div className="space-y-6">
@@ -59,6 +84,8 @@ export default function barista_analytics_panel({
           />
         </label>
       </div>
+
+      {error ? <p className="text-sm text-red-500">{error}</p> : null}
 
       <div className="grid grid-cols-2 gap-3">
         <div className="col-span-2 rounded-2xl bg-neutral-900 text-white p-4">
@@ -203,6 +230,7 @@ export default function barista_analytics_panel({
           spot_id,
           seller_id,
           default_date: shift_date,
+          reload_key,
         })}
       </div>
     </div>

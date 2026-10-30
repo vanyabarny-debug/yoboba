@@ -27,6 +27,7 @@ export type section_props = {
   set_menu?: (fn: (prev: menu_item[]) => menu_item[]) => void;
   flush?: () => Promise<void>;
   reload?: () => Promise<void>;
+  save_status?: 'idle' | 'dirty' | 'saving' | 'saved' | 'error';
   compact?: boolean;
   /** '' = все точки; иначе id точки */
   spot_id?: string;
@@ -49,6 +50,36 @@ export type finance_bundle = {
   months: string[];
   loading: boolean;
 };
+
+const pending_key = 'yoboba-finance-pending';
+
+function stash_pending(state: finance_state) {
+  try {
+    sessionStorage.setItem(pending_key, JSON.stringify({ at: Date.now(), state }));
+  } catch {
+    /* квота браузера — тогда остаётся обычное сохранение */
+  }
+}
+
+function read_pending(): finance_state | null {
+  try {
+    const raw = sessionStorage.getItem(pending_key);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as { state?: finance_state };
+    if (!parsed?.state || typeof parsed.state !== 'object') return null;
+    return parsed.state;
+  } catch {
+    return null;
+  }
+}
+
+function clear_pending() {
+  try {
+    sessionStorage.removeItem(pending_key);
+  } catch {
+    /* уже чисто */
+  }
+}
 
 export function use_finance(): finance_bundle {
   const [state, set_state_raw] = useState<finance_state | null>(null);
@@ -76,6 +107,7 @@ export function use_finance(): finance_bundle {
         body: JSON.stringify({ state: s }),
       });
       if (!res.ok) throw new Error('save failed');
+      if (!dirty_ref.current) clear_pending();
       set_save_status(dirty_ref.current ? 'dirty' : 'saved');
     } catch {
       dirty_ref.current = true;
@@ -135,6 +167,26 @@ export function use_finance(): finance_bundle {
       .then((r) => r.json())
       .then((body: { state?: unknown; menu?: menu_item[]; error?: string }) => {
         if (cancelled) return;
+        const pending = read_pending();
+        if (pending) {
+          const cloud_removed = new Set(
+            body.state && typeof body.state === 'object' && Array.isArray((body.state as finance_state).removedMaterialIds)
+              ? ((body.state as finance_state).removedMaterialIds ?? [])
+              : []
+          );
+          const kept = cloud_removed.size
+            ? {
+                ...pending,
+                removedMaterialIds: [...new Set([...(pending.removedMaterialIds ?? []), ...cloud_removed])],
+                materials: (pending.materials ?? []).filter((m) => !cloud_removed.has(m.id)),
+              }
+            : pending;
+          adopt({ ...body, state: kept }, false);
+          dirty_ref.current = true;
+          set_save_status('dirty');
+          void persist_ref.current();
+          return;
+        }
         adopt(body, true);
       })
       .catch(() => set_error('не удалось загрузить финансы'));
@@ -145,12 +197,16 @@ export function use_finance(): finance_bundle {
 
   const set_state = useCallback(
     (fn: (prev: finance_state) => finance_state) => {
+      let changed = false;
       set_state_raw((prev) => {
         if (!prev) return prev;
         const next = fn(prev);
+        if (next === prev) return prev;
         latest_ref.current = next;
+        changed = true;
         return next;
       });
+      if (!changed) return;
       dirty_ref.current = true;
       set_save_status('dirty');
       if (timer_ref.current) clearTimeout(timer_ref.current);
@@ -161,7 +217,10 @@ export function use_finance(): finance_bundle {
 
   useEffect(() => {
     const on_hide = () => {
-      if (dirty_ref.current) void persist();
+      const current = latest_ref.current;
+      if (!current || !dirty_ref.current) return;
+      stash_pending(current);
+      void persist();
     };
     window.addEventListener('pagehide', on_hide);
     document.addEventListener('visibilitychange', on_hide);

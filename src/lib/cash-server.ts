@@ -83,6 +83,31 @@ export async function record_cash_for_order(
   return record;
 }
 
+function unclaimed_cashier(seller_id: string, seller_name: string) {
+  const id = (seller_id || '').trim();
+  if (id && id !== 'seller') return false;
+  const name = (seller_name || '').trim().toLowerCase();
+  return !name || name === 'бариста' || name === 'касса' || name === 'seller';
+}
+
+export async function claim_cash_rows(input: {
+  seller_id: string;
+  seller_name: string;
+  shift_date: string;
+}) {
+  if (!input.seller_id || input.seller_id === 'seller') return;
+  const all = await load_transactions();
+  let changed = false;
+  for (const row of all) {
+    if (row.shift_date !== input.shift_date) continue;
+    if (!unclaimed_cashier(row.seller_id, row.seller_name)) continue;
+    row.seller_id = input.seller_id;
+    row.seller_name = input.seller_name;
+    changed = true;
+  }
+  if (changed) await save_transactions(all);
+}
+
 export async function forget_cash_for_order(order_id: string) {
   const all = await load_transactions();
   const next = all.filter((row) => row.order_id !== order_id);

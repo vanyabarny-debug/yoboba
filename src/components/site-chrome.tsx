@@ -10,8 +10,11 @@ import cart_mark from '@/components/cart-mark';
 import { get_auth_state, sign_out } from '@/lib/auth';
 import { clear_session, get_demo_user, type demo_user } from '@/lib/demo-auth';
 import { peek_header_user, remember_header_user } from '@/lib/header-user';
-import { get_location, set_location, type user_location } from '@/lib/location';
-import { default_categories } from '@/lib/menu-store';
+import { get_location, get_selected_spot, set_location, type user_location } from '@/lib/location';
+import { subscribe_spot_store } from '@/lib/spot-store';
+import type { store_spot } from '@/lib/types';
+import { default_categories, get_menu_store, subscribe_menu_store } from '@/lib/menu-store';
+import { item_in_category } from '@/lib/menu-item-categories';
 import { is_supabase_configured } from '@/lib/supabase/config';
 
 type props = {
@@ -31,8 +34,10 @@ export default function site_chrome({ children }: props) {
   const [user, set_user] = useState<demo_user | null>(null);
   const [bonus, set_bonus] = useState(0);
   const [city, set_city] = useState('москва');
+  const [selected_spot, set_selected_spot] = useState<store_spot | null>(null);
   const [location_open, set_location_open] = useState(false);
   const [header_h, set_header_h] = useState(72);
+  const [categories, set_categories] = useState(default_categories);
   const header_ref = useRef<HTMLDivElement>(null);
 
   const is_logged_in = Boolean(user && user.role === 'user' && !user.is_guest);
@@ -45,10 +50,25 @@ export default function site_chrome({ children }: props) {
   }, []);
 
   useEffect(() => {
-    const loc = get_location();
-    if (loc) {
-      set_city(loc.city);
+    function reload_spot() {
+      const loc = get_location();
+      const spot = get_selected_spot();
+      if (loc) set_city(loc.city);
+      else if (spot) set_city(spot.city);
+      set_selected_spot(spot);
     }
+    reload_spot();
+    return subscribe_spot_store(reload_spot);
+  }, []);
+
+  useEffect(() => {
+    function reload_menu() {
+      const store = get_menu_store();
+      const live = store.items.filter((item) => item.is_available !== false && item.archived !== true);
+      set_categories(store.categories.filter((cat) => live.some((item) => item_in_category(item, cat))));
+    }
+    reload_menu();
+    return subscribe_menu_store(reload_menu);
   }, []);
 
   useEffect(() => {
@@ -129,6 +149,7 @@ export default function site_chrome({ children }: props) {
   function handle_location_confirm(loc: user_location) {
     set_location(loc);
     set_city(loc.city);
+    set_selected_spot(get_selected_spot());
   }
 
   function handle_login() {
@@ -173,6 +194,7 @@ export default function site_chrome({ children }: props) {
       >
         {createElement(site_header, {
           city,
+          spot_address: selected_spot?.address,
           user_name: user?.name,
           avatar_emoji: user?.avatar_emoji,
           avatar_bg: user?.avatar_bg,
@@ -182,6 +204,7 @@ export default function site_chrome({ children }: props) {
           is_logged_in,
           show_admin: user?.role === 'admin',
           on_home: () => router.push('/'),
+          spot: selected_spot,
           on_city_click: () => set_location_open(true),
           on_login: handle_login,
           on_logout: handle_logout,
@@ -206,7 +229,7 @@ export default function site_chrome({ children }: props) {
               >
                 все
               </button>
-              {default_categories.map((category) => (
+              {categories.map((category) => (
                 <button
                   key={category}
                   type="button"

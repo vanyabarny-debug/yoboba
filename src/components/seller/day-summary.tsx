@@ -51,6 +51,7 @@ type props = {
   shift_id?: string;
   seller_id?: string;
   default_date?: string;
+  reload_key?: number;
 };
 
 export default function day_summary_panel({
@@ -58,6 +59,7 @@ export default function day_summary_panel({
   shift_id,
   seller_id,
   default_date,
+  reload_key = 0,
 }: props) {
   const [shift_date, set_shift_date] = useState(default_date || moscow_today_iso());
   const [transactions, set_transactions] = useState<cash_transaction[]>([]);
@@ -85,7 +87,7 @@ export default function day_summary_panel({
         set_transactions([]);
         set_summary(calc_summary([], shift_date));
       });
-  }, [shift_date, shift_id, spot_id, seller_id]);
+  }, [shift_date, shift_id, spot_id, seller_id, reload_key]);
 
   function export_csv() {
     const rows = transactions.map((t) => ({

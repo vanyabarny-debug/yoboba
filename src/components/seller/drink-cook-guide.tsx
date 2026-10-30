@@ -26,7 +26,7 @@ function RecipePane({
 }) {
   const recipe = recipes?.find((r) => r.menu_id === drink.menu_id);
   const size = pick_recipe_size(recipe, drink.volume);
-  const steps = size?.steps ?? [];
+  const steps = (size?.steps ?? []).filter((s) => !drink.temp || !s.when || s.when === drink.temp);
   const [phase, set_phase] = useState<phase>('intro');
   const [step_i, set_step_i] = useState(0);
 
@@ -125,7 +125,13 @@ function RecipePane({
             <div className="min-h-0 flex-1 overflow-y-auto pt-2">
               <p className="text-center text-sm uppercase tracking-[0.16em] text-accent">раскладка</p>
               <h1 className={`mt-3 text-center ${title_cls}`}>{drink.name}</h1>
-              {size?.label ? <p className="mt-2 text-center text-base text-neutral-500">{size.label}</p> : null}
+              {size?.label || drink.temp ? (
+                <p className="mt-2 text-center text-base text-neutral-500">
+                  {[size?.label, drink.temp === 'hot' ? 'горячий' : drink.temp === 'cold' ? 'холодный' : '']
+                    .filter(Boolean)
+                    .join(' · ')}
+                </p>
+              ) : null}
               <ul className={`divide-y divide-neutral-100 ${compact ? 'mt-4' : 'mt-8'}`}>
                 {steps.map((s) => (
                   <li

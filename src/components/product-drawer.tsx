@@ -377,11 +377,11 @@ export default function product_drawer({
           <div className="relative z-20 w-full shrink-0 overflow-visible pt-3 pl-3 sm:w-[43%] sm:pt-4 sm:pl-4">
             <div
               ref={image_ref}
-              className="relative aspect-square w-full overflow-hidden rounded-[20px] bg-white sm:aspect-auto sm:h-full sm:min-h-[280px] sm:rounded-[24px]"
+              className="relative aspect-square w-full overflow-hidden rounded-[20px] bg-white sm:rounded-[24px]"
             >
               {createElement(menu_image, {
                 item: active_item,
-                className: 'h-full w-full sm:!aspect-auto',
+                className: 'h-full w-full',
                 variant: 'card',
                 fit: 'contain',
               })}

@@ -3,7 +3,10 @@
 import { createElement, useEffect, useState } from 'react';
 import type { store_spot } from '@/lib/types';
 import { admin_sheet } from '@/components/admin/admin-sheet';
+import spot_rating from '@/components/spot-rating';
 import { demo_cities } from '@/lib/location';
+import { clean_spot_hours } from '@/lib/spot-store';
+import { parse_yandex_org_id, yandex_review_url } from '@/lib/yandex-spot';
 
 type props = {
   spot: store_spot | null;
@@ -35,6 +38,9 @@ export default function spot_edit_sheet({ spot, on_close, on_save, on_delete }: 
             city: draft.city.trim().toLowerCase(),
             address: draft.address.trim(),
             label: draft.label?.trim() || undefined,
+            yandex_org_id: parse_yandex_org_id(draft.yandex_org_id || ''),
+            review_url: (draft.review_url || '').trim(),
+            hours: clean_spot_hours(draft.hours) || undefined,
           });
           on_close();
         }}
@@ -72,6 +78,66 @@ export default function spot_edit_sheet({ spot, on_close, on_save, on_delete }: 
             className="mt-1 w-full rounded-xl border border-neutral-200 px-4 py-3 bg-cream/50"
           />
         </label>
+        <label className="block">
+          <span className="text-sm text-neutral-600">виджет рейтинга Яндекса</span>
+          <input
+            value={draft.yandex_org_id ?? ''}
+            onChange={(e) => {
+              const raw = e.target.value;
+              const pasted = /<|>|yandex|http/i.test(raw);
+              const id = parse_yandex_org_id(raw);
+              set_draft({
+                ...draft,
+                yandex_org_id: pasted ? id || raw : raw,
+              });
+            }}
+            placeholder="номер организации или код виджета"
+            className="mt-1 w-full rounded-xl border border-neutral-200 px-4 py-3 bg-cream/50"
+          />
+          <span className="mt-1 block text-xs text-neutral-400">
+            вставьте код виджета, ссылку на карточку или номер. на сайте появятся рейтинг и QR на отзыв.
+          </span>
+        </label>
+        <label className="block">
+          <span className="text-sm text-neutral-600">ссылка на отзыв</span>
+          <input
+            value={draft.review_url ?? ''}
+            onChange={(e) => set_draft({ ...draft, review_url: e.target.value })}
+            placeholder="если пусто — отзывы этой организации в Яндекс Картах"
+            className="mt-1 w-full rounded-xl border border-neutral-200 px-4 py-3 bg-cream/50"
+          />
+          {!draft.review_url?.trim() && yandex_review_url(draft) ? (
+            <span className="mt-1 block text-xs text-neutral-400 break-all">
+              QR откроет {yandex_review_url(draft)}
+            </span>
+          ) : null}
+        </label>
+        {createElement(spot_rating, { spot: draft })}
+        <div className="block">
+          <span className="text-sm text-neutral-600">режим работы</span>
+          <div className="mt-1 flex items-center gap-2">
+            <input
+              type="time"
+              value={draft.hours?.open ?? ''}
+              onChange={(e) =>
+                set_draft({ ...draft, hours: { open: e.target.value, close: draft.hours?.close || '' } })
+              }
+              className="w-full rounded-xl border border-neutral-200 px-4 py-3 bg-cream/50"
+            />
+            <span className="text-neutral-400">—</span>
+            <input
+              type="time"
+              value={draft.hours?.close ?? ''}
+              onChange={(e) =>
+                set_draft({ ...draft, hours: { open: draft.hours?.open || '', close: e.target.value } })
+              }
+              className="w-full rounded-xl border border-neutral-200 px-4 py-3 bg-cream/50"
+            />
+          </div>
+          <span className="mt-1 block text-xs text-neutral-400">
+            по москве. в эти часы пауза на кассе время от времени пищит, чтобы музыку включили.
+          </span>
+        </div>
         <label className="flex items-center gap-2 text-sm">
           <input
             type="checkbox"

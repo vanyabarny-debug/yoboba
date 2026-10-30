@@ -115,31 +115,33 @@ function dish_name(card: tech_card, vols: string[], mode: ttk_temp_mode) {
   return `Напиток безалкогольный «${card.name}» (${temp_word(mode)}), ${vol_text}`;
 }
 
-function size_mass_g(size: { ingredients: Record<string, number> } | undefined) {
-  if (!size) return 0;
-  let sum = 0;
-  for (const q of Object.values(size.ingredients)) {
-    const n = Number(q);
-    if (Number.isFinite(n) && n > 0) sum += n;
-  }
-  return Math.round(sum * 10) / 10;
-}
-
 function grams_label(qty: number) {
   const n = Math.round(qty * 10) / 10;
   const s = Number.isInteger(n) ? String(n) : String(n).replace('.', ',');
   return `${s} г`;
 }
 
-function recipe_rows(card: tech_card, materials: material[], vols: string[]) {
+function ids_hidden_for_temp(card: tech_card, mode: ttk_temp_mode) {
+  const hidden = new Set<string>();
+  for (const s of card.steps ?? []) {
+    if (s.materialId && s.when && s.when !== mode) hidden.add(s.materialId);
+  }
+  for (const s of card.steps ?? []) {
+    if (s.materialId && (!s.when || s.when === mode)) hidden.delete(s.materialId);
+  }
+  return hidden;
+}
+
+function recipe_rows(card: tech_card, materials: material[], vols: string[], mode: ttk_temp_mode) {
   const by_id = new Map(materials.map((m) => [m.id, m]));
   const sizes = vols.map((k) => ({ key: k, size: effective_card_size(card, k, materials) }));
+  const hidden = ids_hidden_for_temp(card, mode);
   const ids: string[] = [];
   const seen = new Set<string>();
   for (const { size } of sizes) {
     if (!size) continue;
     for (const id of Object.keys(size.ingredients)) {
-      if (seen.has(id)) continue;
+      if (seen.has(id) || hidden.has(id)) continue;
       seen.add(id);
       ids.push(id);
     }
@@ -156,11 +158,31 @@ function recipe_rows(card: tech_card, materials: material[], vols: string[]) {
     const cells = sizes.map(({ size }) => qty_cell(size?.ingredients[id]));
     lines.push([material_name(mat, id), ...cells].join('\t'));
   }
+  const base_ml = card_steps_base_ml(card);
+  for (const s of card.steps ?? []) {
+    if (s.materialId || (s.when && s.when !== mode) || !(s.qty > 0 || s.qty_label)) continue;
+    const cells = vols.map((v) => {
+      const ml = Number(v) || base_ml;
+      if (s.qty_label && !(s.qty > 0)) return s.qty_label;
+      const q = Math.abs(ml - base_ml) < 0.001 ? s.qty : Math.round(((s.qty * ml) / base_ml) * 10) / 10;
+      return qty_cell(q);
+    });
+    lines.push([s.title.trim() || 'шаг', ...cells].join('\t'));
+  }
   lines.push(
     [
       'Масса готового продукта (выход):',
       ...sizes.map(({ size, key }) => {
-        const sum = size_mass_g(size);
+        const sum = (() => {
+          if (!size) return 0;
+          let total = 0;
+          for (const [id, q] of Object.entries(size.ingredients)) {
+            if (hidden.has(id)) continue;
+            const n = Number(q);
+            if (Number.isFinite(n) && n > 0) total += n;
+          }
+          return Math.round(total * 10) / 10;
+        })();
         if (sum > 0) return `${qty_cell(sum)} г`;
         const n = Number(key);
         return Number.isFinite(n) && n > 0 ? `${n} г` : '—';
@@ -170,8 +192,8 @@ function recipe_rows(card: tech_card, materials: material[], vols: string[]) {
   return lines.join('\n');
 }
 
-function process_section(card: tech_card, materials: material[]) {
-  const steps = resolved_card_prep_steps(card, materials);
+function process_section(card: tech_card, materials: material[], mode: ttk_temp_mode) {
+  const steps = resolved_card_prep_steps(card, materials).filter((s) => !s.when || s.when === mode);
   if (!steps.length) {
     return [
       'Подготовка: [заполнить: подготовка посуды и полуфабрикатов].',
@@ -189,7 +211,8 @@ function process_section(card: tech_card, materials: material[]) {
       const title = (s.title.trim() || 'шаг').replace(/^./, (c) => c.toUpperCase());
       const hint = (s.hint || '').trim();
       if (!(s.qty > 0)) {
-        return hint ? `${title}: ${hint}.` : `${title}.`;
+        const mark = s.qty_label ? ` — ${s.qty_label}` : '';
+        return hint ? `${title}: ${hint}${mark}.` : `${title}${mark}.`;
       }
       const qty_part = (() => {
         if (!dual) return grams_label(s.qty);
@@ -219,6 +242,14 @@ function cell_or_stub(v: string | undefined) {
 function resolve_serve_temp(mode: ttk_temp_mode, raw?: string) {
   const s = (raw || '').trim();
   if (mode === 'hot') {
+    const clause = s
+      .split(';')
+      .map((p) => p.trim())
+      .find((p) => /горяч/i.test(p));
+    if (clause) {
+      const cleaned = clause.replace(/^горяч\w*\s*[—–-]?\s*/i, '').trim();
+      if (cleaned) return cleaned;
+    }
     const from_dual = s.match(/горяч[^0-9]*(\d+\s*[–\-]\s*\d+\s*°\s*C)/i);
     if (from_dual) return from_dual[1].replace(/\s*°\s*C/i, ' °C');
     if (s && !/холодн|льдом/i.test(s)) return s;
@@ -312,11 +343,11 @@ export function build_ttk_text(opts: build_ttk_opts): string {
     '',
     '2. РЕЦЕПТУРА',
     '',
-    recipe_rows(card, materials, vols),
+    recipe_rows(card, materials, vols, mode),
     '',
     '3. ТЕХНОЛОГИЧЕСКИЙ ПРОЦЕСС (СП 2.3.6.3668-20, СанПиН 2.3/2.4.3590-20)',
     '',
-    process_section(card, materials),
+    process_section(card, materials, mode),
     '',
     '4. ПОКАЗАТЕЛИ КАЧЕСТВА И БЕЗОПАСНОСТИ',
     '',

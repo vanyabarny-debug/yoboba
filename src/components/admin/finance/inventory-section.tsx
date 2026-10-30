@@ -1,37 +1,58 @@
 'use client';
 
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import {
   apply_adjust,
   apply_inventory_count,
   apply_receipt,
+  apply_remainder_invoice,
   apply_writeoff,
   base_per_unit,
+  base_unit,
   base_unit_label,
   day_key,
+  default_stock_categories,
+  fifo_batches_map,
   format_base_qty,
   format_rub,
+  is_remainder_invoice,
+  legacy_unit_cost,
   movement_money,
   movements_in_range,
   new_id,
+  material_is_free,
   merge_stock_categories,
   needs_stock_count,
   next_finder_color,
+  receipt_purchase_qty,
   remove_stock_movement,
   stock_category_for,
   stock_guard_of,
+  stock_books_day,
   stock_levels,
+  to_grams,
   warehouse_money,
   unit_labels,
+  unpriced_batch_qty,
+  material_cost,
+  bind_spot,
+  commit_spot,
+  LEGACY_SPOT_ID,
+  type finance_state,
   type material,
+  type material_unit,
   type stock_actor,
   type stock_audit_action,
   type stock_audit_entry,
   type stock_category,
+  type stock_batch,
   type stock_movement,
 } from '@/lib/finance/model';
 import InventoryCount from '@/components/admin/finance/inventory-count';
+import PrepRecipesSection from '@/components/admin/finance/prep-recipes-section';
+import { weigh_kind_of, weigh_unit } from '@/lib/finance/weigh';
+import { material_is_prep_dry, normalize_prep_stations } from '@/lib/finance/prep-stations';
 import {
   Card,
   EmptyState,
@@ -49,10 +70,11 @@ import {
   th_class,
   th_num_class,
 } from '@/components/admin/finance/ui';
-import type { section_props } from '@/components/admin/finance/use-finance';
+import { save_label, type section_props } from '@/components/admin/finance/use-finance';
+import { use_admin_spot } from '@/components/admin/admin-spot-context';
 
 const movement_labels: Record<stock_movement['type'], string> = {
-  in: 'поступление',
+  in: 'поставка',
   out: 'расход',
   writeoff: 'списание',
   adjust: 'инвентаризация',
@@ -75,7 +97,7 @@ const audit_labels: Record<stock_audit_action, string> = {
   adjust: 'правка остатка',
   inventory: 'инвентаризация',
   writeoff: 'списание',
-  receipt: 'поступление',
+  receipt: 'поставка',
   delete_movement: 'удаление движения',
   prep: 'варка / заваривание',
 };
@@ -189,8 +211,24 @@ function to_iso(date_str: string) {
   return Number.isNaN(d.getTime()) ? new Date().toISOString() : d.toISOString();
 }
 
+/** поставка должна лечь после сегодняшней инвентаризации и варки, а не в полдень задним числом */
+function receipt_stamp(date_str: string) {
+  const today = today_iso();
+  if (!date_str || date_str === today) return new Date().toISOString();
+  const end = new Date(`${date_str}T23:59:59`);
+  return Number.isNaN(end.getTime()) ? new Date().toISOString() : end.toISOString();
+}
+
 function cat_of(cats: stock_category[], id: string) {
   return cats.find((c) => c.id === id) ?? cats[0];
+}
+
+/** пустое имя и служебный id в названии — это ещё не названная позиция */
+function material_label(m: { id: string; name?: string } | undefined | null) {
+  if (!m) return '';
+  const n = (m.name || '').trim();
+  if (!n || n === m.id) return '';
+  return n;
 }
 
 function cat_index(cats: stock_category[], id?: string) {
@@ -218,6 +256,156 @@ function Kpi({
         <p className="mt-1 font-heading-soft text-xl tabular-nums text-neutral-900 sm:text-2xl">{value}</p>
         {sub ? <p className="mt-1 text-[11px] font-medium tabular-nums text-neutral-500">{sub}</p> : null}
       </div>
+    </div>
+  );
+}
+
+function CategoryFlyout({
+  cats,
+  value,
+  on_change,
+  adding,
+  new_name,
+  on_adding,
+  on_new_name,
+  on_commit_add,
+  on_edit,
+}: {
+  cats: stock_category[];
+  value: string;
+  on_change: (id: string) => void;
+  adding: boolean;
+  new_name: string;
+  on_adding: (v: boolean) => void;
+  on_new_name: (v: string) => void;
+  on_commit_add: () => void;
+  on_edit: (id: string, x: number, y: number) => void;
+}) {
+  const [open, set_open] = useState(false);
+  const root = useRef<HTMLDivElement>(null);
+  const current = value === 'все' ? null : (cats.find((c) => c.id === value) ?? null);
+
+  useEffect(() => {
+    if (!open) return;
+    function on_down(e: MouseEvent) {
+      const el = e.target as HTMLElement | null;
+      if (root.current?.contains(el)) return;
+      if (el?.closest('[data-cat-menu]')) return;
+      set_open(false);
+    }
+    function on_key(e: KeyboardEvent) {
+      if (e.key === 'Escape') set_open(false);
+    }
+    document.addEventListener('mousedown', on_down);
+    document.addEventListener('keydown', on_key);
+    return () => {
+      document.removeEventListener('mousedown', on_down);
+      document.removeEventListener('keydown', on_key);
+    };
+  }, [open]);
+
+  return (
+    <div className="relative shrink-0" ref={root} data-cat-fly>
+      <button
+        type="button"
+        aria-expanded={open}
+        onClick={() => set_open((v) => !v)}
+        className="inline-flex h-9 items-center gap-2 rounded-full border border-neutral-200 bg-white px-3 text-sm text-neutral-800 hover:border-neutral-300"
+      >
+        <span className="h-2 w-2 shrink-0 rounded-full" style={{ background: current?.color ?? '#8E8E93' }} />
+        <span className="max-w-[9rem] truncate">{current?.name ?? 'все категории'}</span>
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" aria-hidden className={`text-neutral-400 ${open ? 'rotate-180' : ''}`}>
+          <path d="M6 9l6 6 6-6" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      </button>
+      {open ? (
+        <div className="absolute left-0 top-full z-40 mt-1 w-64 rounded-2xl border border-neutral-200/80 bg-white p-1 shadow-soft">
+          <button
+            type="button"
+            onClick={() => {
+              on_change('все');
+              set_open(false);
+            }}
+            className={`flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-sm ${
+              value === 'все' ? 'bg-neutral-900 text-white' : 'text-neutral-800 hover:bg-neutral-50'
+            }`}
+          >
+            <span className="h-2 w-2 rounded-full bg-neutral-300" />
+            все
+          </button>
+          {cats.map((c) => {
+            const active = value === c.id;
+            return (
+              <div key={c.id} className="flex items-center gap-1">
+                <button
+                  type="button"
+                  onClick={() => {
+                    on_change(c.id);
+                    set_open(false);
+                  }}
+                  className={`flex min-w-0 flex-1 items-center gap-2 rounded-xl px-3 py-2 text-left text-sm ${
+                    active ? 'bg-neutral-900 text-white' : 'text-neutral-800 hover:bg-neutral-50'
+                  }`}
+                >
+                  <span className="h-2 w-2 shrink-0 rounded-full" style={{ background: c.color }} />
+                  <span className="truncate">{c.name}</span>
+                </button>
+                <button
+                  type="button"
+                  data-cat-menu
+                  aria-label={`править «${c.name}»`}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    on_edit(c.id, e.clientX, e.clientY);
+                  }}
+                  className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-neutral-400 hover:bg-neutral-100 hover:text-neutral-700"
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                    <path
+                      d="M12 20h9M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4L16.5 3.5z"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    />
+                  </svg>
+                </button>
+              </div>
+            );
+          })}
+          {adding ? (
+            <input
+              autoFocus
+              value={new_name}
+              onChange={(e) => on_new_name(e.target.value)}
+              onBlur={on_commit_add}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                  on_commit_add();
+                }
+                if (e.key === 'Escape') {
+                  on_adding(false);
+                  on_new_name('');
+                }
+              }}
+              placeholder="название"
+              className="mt-1 h-9 w-full rounded-xl border border-neutral-300 bg-white px-3 text-sm outline-none focus:border-accent/50"
+            />
+          ) : (
+            <button
+              type="button"
+              onClick={() => {
+                on_adding(true);
+                on_new_name('');
+              }}
+              className="mt-1 w-full rounded-xl px-3 py-2 text-left text-sm text-neutral-400 hover:bg-neutral-50"
+            >
+              + категория
+            </button>
+          )}
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -372,7 +560,306 @@ function CursorMenu({
   );
 }
 
-export default function InventorySection({ state, set_state }: section_props) {
+function lot_caption(note?: string) {
+  if (!note) return '';
+  const n = note.trim();
+  if (/^(миграция|служебный|сверка|факт|срез|старт)/i.test(n)) return '';
+  return n.length > 42 ? `${n.slice(0, 42)}…` : n;
+}
+
+/** оставшиеся поставки одного ингредиента: количество общее, рубли у каждой свои */
+function LotLines({ material, lots }: { material: material; lots: stock_batch[] }) {
+  return (
+    <ul className="mt-1.5 space-y-0.5 pl-1">
+      {lots.map((b, i) => {
+        const when = b.date
+          ? new Date(b.date).toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit' })
+          : '';
+        const caption = lot_caption(b.note);
+        return (
+          <li key={b.movementId || `${b.date}-${i}`} className="flex items-baseline justify-between gap-3 text-[11px] text-neutral-400">
+            <span className="min-w-0 truncate">
+              {i === 0 ? 'сначала спишется' : 'потом'}
+              {when ? ` · ${when}` : ''}
+              {caption ? ` · ${caption}` : ''}
+            </span>
+            <span className="shrink-0 tabular-nums">
+              {format_base_qty(material, b.qty)} ·{' '}
+              {b.unpriced || b.unit_cost <= 1e-9 ? (
+                <span className="text-amber-600">нет суммы</span>
+              ) : (
+                format_rub(b.qty * b.unit_cost)
+              )}
+            </span>
+          </li>
+        );
+      })}
+    </ul>
+  );
+}
+
+function price_per_pack(unit_cost: number, unit: material_unit) {
+  const per = unit_cost * base_per_unit(unit);
+  if (!(per > 0)) return '';
+  return `${format_rub(per, per < 10 ? 2 : 0)}/${unit_labels[unit]}`;
+}
+
+type remainder_draft = {
+  packs: number | null;
+  packSize: number | null;
+  packUnit: material_unit;
+  packPrice: number | null;
+  packs_edited: boolean;
+  price_edited: boolean;
+};
+
+function pack_base_qty(packSize: number, packUnit: material_unit, stored: material_unit) {
+  const purchase = receipt_purchase_qty(1, packSize, packUnit, stored);
+  if (!(purchase > 0)) return 0;
+  return purchase * base_per_unit(stored);
+}
+
+function round3(n: number) {
+  return Math.round(n * 1000) / 1000;
+}
+
+function RemainderInvoiceModal({
+  rows,
+  on_close,
+  on_submit,
+}: {
+  rows: {
+    material: material;
+    unpriced: number;
+    priced: number;
+    hint: string;
+    old_unit: number;
+    color: string;
+  }[];
+  on_close: () => void;
+  on_submit: (lines: { materialId: string; total: number; cover: number; pack: string }[]) => void;
+}) {
+  const [drafts, set_drafts] = useState<Record<string, remainder_draft>>(() => {
+    const next: Record<string, remainder_draft> = {};
+    for (const row of rows) {
+      const one = pack_base_qty(1, row.material.unit, row.material.unit);
+      next[row.material.id] = {
+        packs: one > 0 ? round3(row.unpriced / one) : null,
+        packSize: 1,
+        packUnit: row.material.unit,
+        packPrice: row.old_unit > 0 && one > 0 ? rub2(row.old_unit * one) : null,
+        packs_edited: false,
+        price_edited: false,
+      };
+    }
+    return next;
+  });
+  useEffect(() => {
+    const on_key = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') on_close();
+    };
+    window.addEventListener('keydown', on_key);
+    return () => window.removeEventListener('keydown', on_key);
+  }, [on_close]);
+  function patch(id: string, next: (row: remainder_draft) => remainder_draft) {
+    set_drafts((prev) => ({ ...prev, [id]: next(prev[id]) }));
+  }
+  const ready_lines = rows.flatMap((row) => {
+    const d = drafts[row.material.id];
+    if (!d || !(d.packs > 0) || !(d.packSize > 0) || !(d.packPrice > 0)) return [];
+    const purchase = receipt_purchase_qty(d.packs, d.packSize, d.packUnit, row.material.unit);
+    if (!(purchase > 0)) return [];
+    return [
+      {
+        materialId: row.material.id,
+        total: rub2(d.packs * d.packPrice),
+        cover: purchase * base_per_unit(row.material.unit),
+        pack: `${format_qty_short(d.packs)} уп. × ${format_qty_short(d.packSize)} ${unit_labels[d.packUnit]}`,
+      },
+    ];
+  });
+  return createPortal(
+    <div
+      className="fixed inset-0 z-[86] flex items-start justify-center overflow-y-auto bg-black/40 px-4 py-8"
+      onMouseDown={on_close}
+    >
+      <div
+        className="w-full max-w-3xl rounded-3xl bg-white p-5 shadow-soft"
+        onMouseDown={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <h2 className="font-heading-soft text-lg text-neutral-900">поставки на остаток</h2>
+            <p className="mt-1 text-xs text-neutral-500">
+              как в поставке: сколько упаковок и почём одна. сумма посчитается сама, граммы на складе не прибавятся.
+            </p>
+          </div>
+          <button type="button" className="rounded-lg px-2 py-1 text-sm text-neutral-400 hover:bg-neutral-100" onClick={on_close}>
+            закрыть
+          </button>
+        </div>
+        <ul className="mt-4 max-h-[min(70vh,36rem)] space-y-3 overflow-y-auto pr-1">
+          {rows.map((row) => {
+            const d = drafts[row.material.id];
+            const purchase =
+              d && d.packs && d.packSize
+                ? receipt_purchase_qty(d.packs, d.packSize, d.packUnit, row.material.unit)
+                : 0;
+            const mismatch = Boolean(d && d.packs && d.packSize && purchase <= 0);
+            const entered = purchase > 0 ? purchase * base_per_unit(row.material.unit) : 0;
+            const sum = d && d.packs && d.packPrice ? rub2(d.packs * d.packPrice) : 0;
+            return (
+              <li key={row.material.id} className="rounded-2xl border border-neutral-200 px-3 py-2.5">
+                <div className="flex items-baseline justify-between gap-3">
+                  <span className="inline-flex min-w-0 items-center gap-1.5">
+                    <span className="h-2 w-2 shrink-0 rounded-full" style={{ background: row.color }} />
+                    <span className="truncate text-sm text-neutral-900">
+                      {material_label(row.material) || 'без названия'}
+                    </span>
+                  </span>
+                  <span className="shrink-0 text-sm font-semibold tabular-nums text-neutral-800">
+                    {format_base_qty(row.material, row.unpriced)}
+                  </span>
+                </div>
+                <p className="mt-1 text-[11px] text-neutral-500">{row.hint}</p>
+                {row.priced > 0.5 ? (
+                  <p className="mt-0.5 text-[11px] text-neutral-400">
+                    уже лежит поставка на {format_base_qty(row.material, row.priced)}
+                  </p>
+                ) : null}
+                <div className="mt-2 grid gap-2 sm:grid-cols-3">
+                  <label className="text-xs text-neutral-500">
+                    упаковок
+                    <NumInput
+                      value={d?.packs}
+                      min={0}
+                      className={`${field_class} mt-1 text-right`}
+                      on_change={(packs) =>
+                        patch(row.material.id, (prev) => ({ ...prev, packs: packs > 0 ? packs : null, packs_edited: true }))
+                      }
+                    />
+                  </label>
+                  <label className="text-xs text-neutral-500">
+                    {d?.packUnit === 'pcs' ? 'в упаковке' : 'вес 1 упаковки'}
+                    <span className="mt-1 flex min-w-0 flex-wrap gap-1">
+                      <NumInput
+                        value={d?.packSize}
+                        min={0}
+                        className={`${field_class} min-w-0 flex-1 text-right`}
+                        on_change={(packSize) =>
+                          patch(row.material.id, (prev) => {
+                            const size = packSize > 0 ? packSize : null;
+                            const one =
+                              size != null ? pack_base_qty(size, prev.packUnit, row.material.unit) : 0;
+                            return {
+                              ...prev,
+                              packSize: size,
+                              packs:
+                                !prev.packs_edited && one > 0 ? round3(row.unpriced / one) : prev.packs,
+                              packPrice:
+                                !prev.price_edited && row.old_unit > 0 && one > 0
+                                  ? rub2(row.old_unit * one)
+                                  : prev.packPrice,
+                            };
+                          })
+                        }
+                      />
+                      <span className="flex shrink-0 rounded-2xl border border-neutral-200 bg-white p-0.5">
+                        {PACK_UNITS.map((u) => (
+                          <button
+                            key={u}
+                            type="button"
+                            onClick={() =>
+                              patch(row.material.id, (prev) => {
+                                const size = prev.packSize ?? 1;
+                                const one = pack_base_qty(size, u, row.material.unit);
+                                return {
+                                  ...prev,
+                                  packUnit: u,
+                                  packs:
+                                    !prev.packs_edited && one > 0 ? round3(row.unpriced / one) : prev.packs,
+                                  packPrice:
+                                    !prev.price_edited && row.old_unit > 0 && one > 0
+                                      ? rub2(row.old_unit * one)
+                                      : prev.packPrice,
+                                };
+                              })
+                            }
+                            className={`rounded-xl px-2 py-1.5 text-xs ${
+                              d?.packUnit === u ? 'bg-neutral-900 text-white' : 'text-neutral-500 hover:bg-neutral-50'
+                            }`}
+                          >
+                            {unit_labels[u]}
+                          </button>
+                        ))}
+                      </span>
+                    </span>
+                  </label>
+                  <label className="text-xs text-neutral-500">
+                    цена упаковки, ₽
+                    <NumInput
+                      value={d?.packPrice}
+                      min={0}
+                      className={`${field_class} mt-1 text-right`}
+                      on_change={(packPrice) =>
+                        patch(row.material.id, (prev) => ({
+                          ...prev,
+                          packPrice: packPrice > 0 ? packPrice : null,
+                          price_edited: true,
+                        }))
+                      }
+                    />
+                  </label>
+                </div>
+                {mismatch ? (
+                  <p className="mt-2 text-[11px] text-red-500">
+                    {base_unit(row.material.unit) === 'pcs'
+                      ? 'этот продукт считается штуками'
+                      : 'для веса укажите г, кг, мл или л — не штуки'}
+                  </p>
+                ) : sum > 0 && entered > 0 ? (
+                  <p className="mt-2 text-[11px] text-neutral-500">
+                    сумма <span className="font-medium text-neutral-900">{format_rub(sum)}</span>
+                    {' · '}
+                    {entered + 0.5 < row.unpriced
+                      ? `закроет ${format_base_qty(row.material, entered)} из ${format_base_qty(row.material, row.unpriced)}`
+                      : `это ${format_base_qty(row.material, Math.min(entered, row.unpriced))}`}
+                  </p>
+                ) : null}
+              </li>
+            );
+          })}
+        </ul>
+        <div className="mt-4 flex justify-end">
+          <button
+            type="button"
+            className={btn_accent}
+            disabled={ready_lines.length === 0}
+            onClick={() => {
+              if (!ready_lines.length) return;
+              on_submit(ready_lines);
+            }}
+          >
+            оприходовать
+          </button>
+        </div>
+      </div>
+    </div>,
+    document.body
+  );
+}
+
+export default function InventorySection({ state: full, set_state: set_full, save_status = 'idle' }: section_props) {
+  const admin = use_admin_spot();
+  const spot_id = admin.spot_id || admin.spot_options[0]?.id || LEGACY_SPOT_ID;
+  const spot_label = admin.spot_options.find((s) => s.id === spot_id)?.label || 'эта точка';
+  const state = useMemo(() => bind_spot(full, spot_id), [full, spot_id]);
+  const set_state = useCallback(
+    (fn: (prev: finance_state) => finance_state) => {
+      set_full((prev) => commit_spot(prev, spot_id, fn(bind_spot(prev, spot_id))));
+    },
+    [set_full, spot_id]
+  );
   const today = today_iso();
   const [from, set_from] = useState(month_start_iso());
   const [to, set_to] = useState(today);
@@ -381,8 +868,12 @@ export default function InventorySection({ state, set_state }: section_props) {
   const [mv_query, set_mv_query] = useState('');
   const [stock_query, set_stock_query] = useState('');
   const [receipt_open, set_receipt_open] = useState(false);
+  const [invoice_open, set_invoice_open] = useState(false);
+  const [receipt_for, set_receipt_for] = useState<string | null>(null);
+  const [writeoff_open, set_writeoff_open] = useState(false);
   const [count_open, set_count_open] = useState(false);
   const [history_open, set_history_open] = useState(false);
+  const [journal_more, set_journal_more] = useState(false);
   const [expanded_orders, set_expanded_orders] = useState<Set<string>>(() => new Set());
   const [writeoff_for, set_writeoff_for] = useState<string | null>(null);
   const [adjust_for, set_adjust_for] = useState<string | null>(null);
@@ -444,15 +935,75 @@ export default function InventorySection({ state, set_state }: section_props) {
 
   const cats = state.stockCategories?.length ? state.stockCategories : [];
   const stock = useMemo(() => stock_levels(state, range_to), [state, range_to]);
+  const lots_by_id = useMemo(() => fifo_batches_map(state, range_to), [state, range_to]);
+  const prep_stations = useMemo(() => normalize_prep_stations(state.prepStations), [state.prepStations]);
+  const dry_debts = useMemo(
+    () => stock.filter((s) => s.qty < -0.5 && material_is_prep_dry(s.material, prep_stations)),
+    [stock, prep_stations]
+  );
+  const cooked_debts = useMemo(
+    () =>
+      stock.filter(
+        (s) => s.qty < -0.5 && prep_stations.some((station) => station.cookedMaterialId === s.material.id)
+      ),
+    [stock, prep_stations]
+  );
+  const need_invoice = useMemo(() => {
+    return stock
+      .filter((s) => !material_is_free(s.material) && s.qty > 0.5)
+      .map((s) => {
+        const lots = lots_by_id.get(s.material.id) ?? [];
+        const unpriced = unpriced_batch_qty(lots);
+        if (!(unpriced > 0.5)) return null;
+        const priced = lots.reduce(
+          (sum, b) => sum + (b.qty > 0.5 && !b.unpriced && b.unit_cost > 1e-9 ? b.qty : 0),
+          0
+        );
+        const old = legacy_unit_cost(state, s.material.id, range_to);
+        const per = price_per_pack(old.unit, s.material.unit);
+        const hint =
+          old.source === 'receipt'
+            ? `остаток инвентаризации · прошлая поставка ${per}`
+            : old.source === 'used'
+              ? `остаток инвентаризации · уже списывали по ${per}`
+              : old.source === 'card'
+                ? `остаток инвентаризации · цена в карточке ${per}`
+                : 'остаток инвентаризации · цены ещё не было';
+        const tag = cat_of(cats, s.material.category);
+        return {
+          material: s.material,
+          unpriced,
+          priced,
+          hint,
+          old_unit: old.unit,
+          color: tag?.color ?? '#8E8E93',
+        };
+      })
+      .filter((row): row is NonNullable<typeof row> => row != null)
+      .sort((a, b) => b.unpriced - a.unpriced);
+  }, [stock, lots_by_id, state, range_to, cats]);
+  function open_receipt(materialId?: string) {
+    if (must_count) return;
+    set_writeoff_open(false);
+    set_receipt_for(materialId || null);
+    set_receipt_open(true);
+  }
+  function open_writeoff() {
+    if (must_count) return;
+    set_receipt_open(false);
+    set_receipt_for(null);
+    set_writeoff_open(true);
+  }
   const period_mv = useMemo(() => movements_in_range(state, range_from, range_to), [state, range_from, range_to]);
   const stock_value = stock.reduce((s, r) => s + r.value, 0);
   const money = useMemo(() => warehouse_money(state, range_to), [state, range_to]);
+  const books_day = stock_books_day(state) || '2024-01-01';
   const [earned_revenue, set_earned_revenue] = useState<number | null>(null);
 
   useEffect(() => {
     let cancelled = false;
     set_earned_revenue(null);
-    fetch(`/api/admin/finance/sales?from=2024-01-01&to=${range_to}`, { credentials: 'same-origin' })
+    fetch(`/api/admin/finance/sales?from=${books_day}&to=${range_to}`, { credentials: 'same-origin' })
       .then((r) => r.json())
       .then((body: { revenue?: number; error?: string }) => {
         if (cancelled || body.error) return;
@@ -462,10 +1013,17 @@ export default function InventorySection({ state, set_state }: section_props) {
     return () => {
       cancelled = true;
     };
-  }, [range_to]);
+  }, [range_to, books_day]);
+
+  useEffect(() => {
+    if (!writeoff_open) return;
+    document.getElementById('writeoff-form')?.scrollIntoView({ block: 'start', behavior: 'smooth' });
+  }, [writeoff_open]);
 
   const earned = earned_revenue == null ? null : earned_revenue - money.realized;
-  const writeoff_mvs = period_mv.filter((m) => m.type === 'writeoff');
+  const writeoff_mvs = period_mv.filter(
+    (m) => m.type === 'writeoff' && (!state.stockBooksFrom || m.date > state.stockBooksFrom)
+  );
   const writeoffs_count = writeoff_mvs.length;
   const writeoffs_sum = writeoff_mvs.reduce((s, m) => {
     const mat = state.materials.find((x) => x.id === m.materialId);
@@ -498,10 +1056,21 @@ export default function InventorySection({ state, set_state }: section_props) {
           : range_from === last_month.from && range_to === last_month.to
             ? 'last_month'
             : 'custom';
+  const period_options = [
+    { id: 'today', label: 'сегодня', apply: () => { set_from(today); set_to(today); } },
+    { id: 'week', label: '7 дней', apply: () => { set_from(days_ago_iso(6)); set_to(today); } },
+    { id: 'this_month', label: 'этот месяц', apply: () => { set_from(this_month.from); set_to(this_month.to); } },
+    { id: 'last_month', label: 'прошлый месяц', apply: () => { set_from(last_month.from); set_to(last_month.to); } },
+  ] as const;
+  const period_label =
+    period_options.find((p) => p.id === period_preset)?.label ??
+    (range_from === range_to
+      ? range_from
+      : `${range_from.slice(8)}.${range_from.slice(5, 7)} — ${range_to.slice(8)}.${range_to.slice(5, 7)}`);
 
   const analytics = useMemo(() => {
       const low = stock
-        .filter((s) => s.low || s.qty < 0)
+        .filter((s) => !material_is_free(s.material) && (s.low || s.qty < 0))
         .sort((a, b) => a.qty - b.qty)
         .slice(0, 8);
     const spent_by = new Map<string, number>();
@@ -509,7 +1078,7 @@ export default function InventorySection({ state, set_state }: section_props) {
     const cat_spent = new Map<string, number>();
     for (const mv of period_mv) {
       const mat = mat_by_id.get(mv.materialId);
-      if (!mat) continue;
+      if (!mat || material_is_free(mat)) continue;
       const rub = movement_money(mat, mv);
       const note = (mv.note || '').trim();
       const is_prep = /^(варка|заваривание)\b/i.test(note);
@@ -520,7 +1089,7 @@ export default function InventorySection({ state, set_state }: section_props) {
         bought_by.set(mv.materialId, (bought_by.get(mv.materialId) ?? 0) + rub);
       } else if (mv.type === 'sale' || mv.type === 'staff' || mv.type === 'writeoff') {
         spent_by.set(mv.materialId, (spent_by.get(mv.materialId) ?? 0) + rub);
-        const cat = mat.category || 'raw';
+        const cat = mat.category || 'mixes';
         cat_spent.set(cat, (cat_spent.get(cat) ?? 0) + rub);
       }
     }
@@ -688,6 +1257,7 @@ export default function InventorySection({ state, set_state }: section_props) {
     if (!used && !window.confirm('удалить позицию и её историю?')) return;
     set_state((prev) => ({
       ...prev,
+      removedMaterialIds: [...new Set([...(prev.removedMaterialIds ?? []), id])],
       materials: prev.materials.filter((m) => m.id !== id),
       stockMovements: prev.stockMovements.filter((m) => m.materialId !== id),
       techCards: prev.techCards.map((c) => ({
@@ -738,7 +1308,7 @@ export default function InventorySection({ state, set_state }: section_props) {
   function delete_category(id: string) {
     const cur = cats.find((c) => c.id === id);
     if (!cur) return;
-    const fallback = cats.find((c) => c.id !== id)?.id ?? 'raw';
+    const fallback = cats.find((c) => c.id !== id)?.id ?? 'mixes';
     set_state((prev) => ({
       ...prev,
       stockCategories: prev.stockCategories.filter((c) => c.id !== id),
@@ -758,11 +1328,22 @@ export default function InventorySection({ state, set_state }: section_props) {
     <div className="space-y-8">
       {(count_open || must_count) && (
         <InventoryCount
-          rows={stock_levels(state)}
+          rows={stock_levels(state).filter((r) => !material_is_free(r.material))}
           cats={cats}
           required={must_count}
-          on_commit={(facts, date) => {
-            set_state((prev) => apply_inventory_count(prev, facts, date, ADMIN_ACTOR));
+          on_commit={(facts, date, tares) => {
+            set_state((prev) => {
+              const with_tare = tares?.length
+                ? {
+                    ...prev,
+                    materials: prev.materials.map((m) => {
+                      const row = tares.find((t) => t.materialId === m.id);
+                      return row && row.tare > 0 ? { ...m, tareWeight: row.tare } : m;
+                    }),
+                  }
+                : prev;
+              return apply_inventory_count(with_tare, facts, date, ADMIN_ACTOR);
+            });
             set_count_open(false);
           }}
           on_close={() => {
@@ -771,16 +1352,80 @@ export default function InventorySection({ state, set_state }: section_props) {
           }}
         />
       )}
-      {receipt_open && (
+      {writeoff_open && (
+        <div id="writeoff-form">
+          <WriteoffForm
+            materials={state.materials.filter((m) => !material_is_free(m) && m.name.trim())}
+            qty_of={(id) => stock.find((s) => s.material.id === id)?.qty ?? 0}
+            on_close={() => set_writeoff_open(false)}
+            on_submit={(materialId, qty, note, date) => {
+              set_state((prev) => apply_writeoff(prev, materialId, qty, note, to_iso(date), ADMIN_ACTOR));
+              set_writeoff_open(false);
+            }}
+          />
+        </div>
+      )}
+      {receipt_open &&
+        createPortal(
+        <div
+          className="fixed inset-0 z-[85] flex items-end justify-center bg-black/30 p-3 sm:items-center sm:p-6"
+          onMouseDown={() => {
+            set_receipt_open(false);
+            set_receipt_for(null);
+          }}
+        >
+        <div
+          className="max-h-[min(92vh,44rem)] w-full max-w-3xl overflow-y-auto overscroll-contain"
+          onMouseDown={(e) => e.stopPropagation()}
+        >
         <ReceiptForm
-          materials={state.materials}
-          on_close={() => set_receipt_open(false)}
+          key={receipt_for || 'new'}
+          initial_material_id={receipt_for}
+          materials={state.materials.filter((m) => !material_is_free(m))}
+          categories={cats.length ? cats : default_stock_categories}
+          on_close={() => {
+            set_receipt_open(false);
+            set_receipt_for(null);
+          }}
           on_submit={(rows) => {
-            set_state((prev) => rows.reduce((s, r) => apply_receipt(s, { ...r, actor: ADMIN_ACTOR }), prev));
+            set_state((prev) =>
+              rows.reduce((s, r) => {
+                let materialId = r.materialId;
+                if (r.create) {
+                  materialId = new_id('mat');
+                  s = {
+                    ...s,
+                    materials: [
+                      ...s.materials,
+                      {
+                        id: materialId,
+                        name: r.create.name,
+                        category: r.create.category,
+                        unit: r.create.unit,
+                        costPerUnit: 0,
+                      },
+                    ],
+                  };
+                }
+                if (!materialId) return s;
+                return apply_receipt(s, {
+                  materialId,
+                  quantity: r.quantity,
+                  total: r.total,
+                  date: r.date,
+                  note: r.note,
+                  update_price: true,
+                  actor: ADMIN_ACTOR,
+                });
+              }, prev),
+            );
             set_receipt_open(false);
           }}
         />
-      )}
+        </div>
+        </div>,
+        document.body,
+        )}
 
       <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
         <Kpi label="на складе" value={format_rub(stock_value)} bar="#8B9DC3" />
@@ -795,23 +1440,101 @@ export default function InventorySection({ state, set_state }: section_props) {
         />
         <Kpi label="потеряно" value={format_rub(money.lost)} bar="#D97706" />
       </div>
+      {state.stockBooksFrom ? (
+        <p className="text-xs text-neutral-500">
+          учёт с{' '}
+          {new Date(state.stockBooksFrom).toLocaleDateString('ru-RU', {
+            day: 'numeric',
+            month: 'long',
+            timeZone: 'Europe/Moscow',
+          })}
+          . остаток задала инвентаризация. напитки до неё в склад не входят, расход ведётся с этого момента.
+        </p>
+      ) : null}
 
-      <div className="flex flex-wrap items-center gap-2">
-        <button type="button" className={btn_secondary} onClick={() => set_count_open(true)}>
-          инвентаризация
-        </button>
-        <button
-          type="button"
-          className={btn_accent}
-          disabled={must_count}
-          onClick={() => {
-            if (must_count) return;
-            set_receipt_open(true);
+      {dry_debts.length || cooked_debts.length ? (
+        <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3">
+          <p className="text-sm font-semibold text-red-700">
+            {dry_debts.length ? 'минус по сухому — перекройте поставкой' : 'минус по готовому — его закрывает варка'}
+          </p>
+          {cooked_debts.length ? (
+            <ul className="mt-2 space-y-1">
+              {cooked_debts.map((s) => (
+                <li key={s.material.id} className="text-sm text-red-800">
+                  {s.material.name}{' '}
+                  <span className="font-semibold tabular-nums">{format_base_qty(s.material, s.qty)}</span>
+                  <span className="text-red-600"> — продали больше, чем сварили</span>
+                </li>
+              ))}
+            </ul>
+          ) : null}
+          <ul className="mt-2 space-y-2">
+            {dry_debts.map((s) => (
+              <li key={s.material.id} className="flex items-center justify-between gap-3 text-sm">
+                <span className="min-w-0 truncate text-red-800">
+                  {s.material.name}{' '}
+                  <span className="font-semibold tabular-nums">{format_base_qty(s.material, s.qty)}</span>
+                </span>
+                <button
+                  type="button"
+                  className={btn_accent}
+                  disabled={must_count}
+                  onClick={() => open_receipt(s.material.id)}
+                >
+                  поставка
+                </button>
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
+
+      {need_invoice.length ? (
+        <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3">
+          <div className="flex items-center justify-between gap-3">
+            <p className="text-sm font-semibold text-amber-800">
+              остаток без рублей — внесите поставку
+              <span className="ml-2 font-normal text-amber-700">{need_invoice.length}</span>
+            </p>
+            <button
+              type="button"
+              className={btn_accent}
+              disabled={must_count}
+              onClick={() => set_invoice_open(true)}
+            >
+              внести поставки
+            </button>
+          </div>
+          <ul className="mt-2 max-h-52 space-y-1 overflow-y-auto">
+            {need_invoice.map((row) => (
+              <li key={row.material.id} className="flex items-baseline justify-between gap-3 text-sm text-amber-900">
+                <span className="min-w-0 truncate">{material_label(row.material) || 'без названия'}</span>
+                <span className="shrink-0 font-semibold tabular-nums">
+                  {format_base_qty(row.material, row.unpriced)}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
+
+      {invoice_open && need_invoice.length ? (
+        <RemainderInvoiceModal
+          rows={need_invoice}
+          on_close={() => set_invoice_open(false)}
+          on_submit={(lines) => {
+            const date = new Date().toISOString();
+            set_state((prev) =>
+              lines.reduce(
+                (s, line) =>
+                  apply_remainder_invoice(s, line.materialId, line.total, date, ADMIN_ACTOR, line.cover, line.pack),
+                prev
+              )
+            );
+            set_invoice_open(false);
           }}
-        >
-          + поступление
-        </button>
-      </div>
+        />
+      ) : null}
 
       <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
         <Card title="заканчивается" hint="минус и ниже минимума">
@@ -862,7 +1585,7 @@ export default function InventorySection({ state, set_state }: section_props) {
           )}
         </Card>
 
-        <Card title="топ закупок" hint="поступления на склад">
+        <Card title="топ закупок" hint="поставки на склад">
           {analytics.top_bought.length ? (
             <ul className="space-y-2">
               {analytics.top_bought.map((r) => (
@@ -920,68 +1643,62 @@ export default function InventorySection({ state, set_state }: section_props) {
       <section className="space-y-3">
         <h2 className="font-heading-soft text-lg text-neutral-900">движения</h2>
 
-        <CategoryChips
-          cats={cats}
-          value={mv_category}
-          on_change={set_mv_category}
-          adding={adding_cat_for === 'mv'}
-          new_name={new_cat_name}
-          on_adding={(v) => set_adding_cat_for(v ? 'mv' : null)}
-          on_new_name={set_new_cat_name}
-          on_commit_add={commit_add_category}
-          on_edit={(id, x, y) => {
-            set_renaming(false);
-            set_cat_menu({ id, x, y });
-          }}
-        />
-
         <div className="flex flex-wrap items-center gap-2">
-          <div className="flex flex-wrap items-center gap-1">
-            {(
-              [
-                { id: 'today', label: 'сегодня', apply: () => { set_from(today); set_to(today); } },
-                { id: 'week', label: '7 дней', apply: () => { set_from(days_ago_iso(6)); set_to(today); } },
-                { id: 'this_month', label: 'этот месяц', apply: () => { set_from(this_month.from); set_to(this_month.to); } },
-                { id: 'last_month', label: 'прошлый месяц', apply: () => { set_from(last_month.from); set_to(last_month.to); } },
-              ] as const
-            ).map((p) => (
-              <button
-                key={p.id}
-                type="button"
-                onClick={p.apply}
-                className={`rounded-full px-3 py-1.5 text-xs ${
-                  period_preset === p.id
-                    ? 'bg-neutral-900 text-white'
-                    : 'border border-neutral-200 bg-white text-neutral-600'
-                }`}
-              >
-                {p.label}
-              </button>
-            ))}
-          </div>
+          <CategoryFlyout
+            cats={cats}
+            value={mv_category}
+            on_change={set_mv_category}
+            adding={adding_cat_for === 'mv'}
+            new_name={new_cat_name}
+            on_adding={(v) => set_adding_cat_for(v ? 'mv' : null)}
+            on_new_name={set_new_cat_name}
+            on_commit_add={commit_add_category}
+            on_edit={(id, x, y) => {
+              set_renaming(false);
+              set_cat_menu({ id, x, y });
+            }}
+          />
+          <MenuSelect
+            value={mv_sort}
+            options={MV_SORT_OPTIONS}
+            on_change={(id) => set_mv_sort(id as mv_sort_id)}
+            className="w-[10.5rem] shrink-0"
+            menu_className="w-[10.5rem]"
+          />
           <div className="relative shrink-0" data-dates-pop>
             <button
               type="button"
-              aria-label="период"
               aria-expanded={dates_open}
               onClick={() => set_dates_open((v) => !v)}
-              className={`inline-flex h-9 items-center gap-2 rounded-full px-3 text-sm transition-colors ${
-                dates_open || period_preset === 'custom'
-                  ? 'bg-accent/10 text-accent'
-                  : 'border border-neutral-200 bg-white text-neutral-600 hover:border-neutral-300'
-              }`}
+              className="inline-flex h-9 items-center gap-2 rounded-full border border-neutral-200 bg-white px-3 text-sm text-neutral-800 hover:border-neutral-300"
             >
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true">
                 <rect x="3" y="5" width="18" height="16" rx="3" stroke="currentColor" strokeWidth="2" />
                 <path d="M3 10h18M8 3v4M16 3v4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
               </svg>
-              {range_from === range_to
-                ? range_from
-                : `${range_from.slice(8)}.${range_from.slice(5, 7)} — ${range_to.slice(8)}.${range_to.slice(5, 7)}`}
+              <span className="max-w-[9rem] truncate">{period_label}</span>
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" aria-hidden className={`text-neutral-400 ${dates_open ? 'rotate-180' : ''}`}>
+                <path d="M6 9l6 6 6-6" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
             </button>
             {dates_open && (
-              <div className="absolute left-0 top-full z-40 mt-1 w-[16.5rem] rounded-2xl border border-neutral-200/80 bg-white p-3 shadow-soft sm:left-auto sm:right-0">
-                <div className="grid grid-cols-2 gap-2">
+              <div className="absolute left-0 top-full z-40 mt-1 w-[16.5rem] rounded-2xl border border-neutral-200/80 bg-white p-1 shadow-soft">
+                {period_options.map((p) => (
+                  <button
+                    key={p.id}
+                    type="button"
+                    onClick={() => {
+                      p.apply();
+                      set_dates_open(false);
+                    }}
+                    className={`flex w-full rounded-xl px-3 py-2 text-left text-sm ${
+                      period_preset === p.id ? 'bg-neutral-900 text-white' : 'text-neutral-800 hover:bg-neutral-50'
+                    }`}
+                  >
+                    {p.label}
+                  </button>
+                ))}
+                <div className="mt-1 grid grid-cols-2 gap-2 border-t border-neutral-100 px-2 py-2">
                   <label className="text-[11px] text-neutral-400">
                     с
                     <input
@@ -1006,13 +1723,6 @@ export default function InventorySection({ state, set_state }: section_props) {
               </div>
             )}
           </div>
-          <MenuSelect
-            value={mv_sort}
-            options={MV_SORT_OPTIONS}
-            on_change={(id) => set_mv_sort(id as mv_sort_id)}
-            className="w-[10.5rem] shrink-0"
-            menu_className="w-[10.5rem]"
-          />
           <input
             type="search"
             className="h-9 w-[11.5rem] shrink-0 rounded-pill border border-neutral-200 bg-white px-3 text-sm text-neutral-900 outline-none placeholder:text-neutral-400 focus:border-accent/40"
@@ -1020,12 +1730,24 @@ export default function InventorySection({ state, set_state }: section_props) {
             value={mv_query}
             onChange={(e) => set_mv_query(e.target.value)}
           />
+          <div className="ml-auto flex flex-wrap items-center gap-2">
+            <button type="button" className={btn_secondary} onClick={() => set_count_open(true)}>
+              инвентаризация
+            </button>
+            <button type="button" className={btn_accent} disabled={must_count} onClick={() => open_receipt()}>
+              + поставка
+            </button>
+            <button type="button" className={btn_writeoff} disabled={must_count} onClick={open_writeoff}>
+              + списание
+            </button>
+          </div>
         </div>
 
         <Card>
           {filtered_journal.length ? (
+            <>
             <ul className="divide-y divide-neutral-100">
-              {filtered_journal.slice(0, 120).map((row) => {
+              {(journal_more ? filtered_journal : filtered_journal.slice(0, 10)).map((row, row_i) => {
                 if (row.kind === 'order') {
                   const open = expanded_orders.has(row.orderId);
                   const short = row.orderId.slice(0, 8);
@@ -1033,7 +1755,7 @@ export default function InventorySection({ state, set_state }: section_props) {
                     const mat = mat_by_id.get(l.materialId);
                     return {
                       id: l.materialId,
-                      name: mat?.name || l.materialId,
+                      name: material_label(mat) || 'без названия',
                       cat: mat?.category || '',
                       qty: l.qty,
                       mat,
@@ -1100,18 +1822,18 @@ export default function InventorySection({ state, set_state }: section_props) {
                               </tr>
                             </thead>
                             <tbody>
-                              {row.lines.map((mv) => {
+                              {row.lines.map((mv, line_i) => {
                                 const mat = mat_by_id.get(mv.materialId);
                                 const tag = cat_of(cats, mat?.category || '');
                                 return (
-                                  <tr key={mv.id} className="border-t border-neutral-100/80">
+                                  <tr key={`${mv.id}-${line_i}`} className="border-t border-neutral-100/80">
                                     <td className="px-3 py-1.5 text-neutral-800">
                                       <span className="inline-flex items-center gap-1.5">
                                         <span
                                           className="h-1.5 w-1.5 shrink-0 rounded-full"
                                           style={{ background: tag?.color ?? '#8E8E93' }}
                                         />
-                                        {mat?.name || mv.materialId}
+                                        {material_label(mat) || 'без названия'}
                                       </span>
                                     </td>
                                     <td className="px-3 py-1.5 text-right tabular-nums text-neutral-600">
@@ -1163,7 +1885,7 @@ export default function InventorySection({ state, set_state }: section_props) {
                 const mat = mat_by_id.get(mv.materialId);
                 const tag = cat_of(cats, mat?.category || '');
                 return (
-                  <li key={mv.id} className="flex items-center gap-3 px-1 py-2.5">
+                  <li key={`${mv.id}-${row_i}`} className="flex items-center gap-3 px-1 py-2.5">
                     <span className="w-6 shrink-0" />
                     <span className={`rounded-md px-2 py-0.5 text-[11px] font-medium ${movement_tone[mv.type]}`}>
                       {movement_labels[mv.type]}
@@ -1174,7 +1896,7 @@ export default function InventorySection({ state, set_state }: section_props) {
                           className="h-1.5 w-1.5 shrink-0 rounded-full"
                           style={{ background: tag?.color ?? '#8E8E93' }}
                         />
-                        <span className="text-sm text-neutral-900">{mat?.name || '—'}</span>
+                        <span className="text-sm text-neutral-900">{material_label(mat) || 'без названия'}</span>
                       </span>
                       <span className="ml-2 text-xs text-neutral-400">
                         {new Date(mv.date).toLocaleString('ru-RU', {
@@ -1188,7 +1910,13 @@ export default function InventorySection({ state, set_state }: section_props) {
                       </span>
                     </span>
                     <span className="shrink-0 text-sm tabular-nums text-neutral-700">
-                      {mv.type === 'adjust' ? '= ' : mv.type === 'in' ? '+ ' : '− '}
+                      {mv.type === 'adjust'
+                        ? '= '
+                        : is_remainder_invoice(mv.note)
+                          ? 'на '
+                          : mv.type === 'in'
+                            ? '+ '
+                            : '− '}
                       {mat ? format_base_qty(mat, mv.qty) : mv.qty}
                     </span>
                     <span className="w-20 shrink-0 text-right text-sm tabular-nums text-neutral-900">
@@ -1208,6 +1936,16 @@ export default function InventorySection({ state, set_state }: section_props) {
                 );
               })}
             </ul>
+            {filtered_journal.length > 10 ? (
+              <button
+                type="button"
+                className="mt-2 w-full rounded-xl py-2 text-sm text-neutral-500 hover:bg-neutral-50"
+                onClick={() => set_journal_more((v) => !v)}
+              >
+                {journal_more ? 'свернуть' : `ещё ${filtered_journal.length - 10}`}
+              </button>
+            ) : null}
+            </>
           ) : (
             <EmptyState>за эти даты движений нет</EmptyState>
           )}
@@ -1216,10 +1954,45 @@ export default function InventorySection({ state, set_state }: section_props) {
 
       {/* ——— ингредиенты ——— */}
       <section className="space-y-3">
-        <div>
-          <h2 className="font-heading-soft text-lg text-neutral-900">ингредиенты</h2>
-          <p className="mt-0.5 text-xs text-neutral-500">остатки, цена закупки за единицу и сумма на полке</p>
+        <div className="flex items-end justify-between gap-3">
+          <div>
+            <h2 className="font-heading-soft text-lg text-neutral-900">ингредиенты</h2>
+            <p className="mt-0.5 text-xs text-neutral-500">
+              склад точки «{spot_label}». название и тара общие, остаток и рубли поставок — только здесь
+            </p>
+          </div>
+          {save_label(save_status) ? (
+            <p className={`shrink-0 text-xs ${save_status === 'error' ? 'text-red-600' : 'text-neutral-400'}`}>
+              {save_label(save_status)}
+            </p>
+          ) : null}
         </div>
+
+        <PrepRecipesSection
+          materials={state.materials}
+          recipes={state.prepRecipes ?? []}
+          cost_of={(id, qty) => material_cost(state, id, qty)}
+          on_change={(prepRecipes, removed_id) =>
+            set_state((prev) => ({
+              ...prev,
+              prepRecipes,
+              techCards: removed_id
+                ? prev.techCards.map((c) => ({
+                    ...c,
+                    steps: c.steps?.filter((s) => s.materialId !== removed_id),
+                    sizes: Object.fromEntries(
+                      Object.entries(c.sizes).map(([k, s]) => {
+                        if (s.ingredients[removed_id] == null) return [k, s];
+                        const ingredients = { ...s.ingredients };
+                        delete ingredients[removed_id];
+                        return [k, { ...s, ingredients }];
+                      })
+                    ),
+                  }))
+                : prev.techCards,
+            }))
+          }
+        />
 
         <CategoryChips
           cats={cats}
@@ -1251,31 +2024,20 @@ export default function InventorySection({ state, set_state }: section_props) {
             value={stock_query}
             onChange={(e) => set_stock_query(e.target.value)}
           />
-          <button type="button" className={btn_secondary} onClick={() => set_count_open(true)}>
-            инвентаризация
-          </button>
-          <button
-            type="button"
-            className={btn_accent}
-            disabled={must_count}
-            onClick={() => {
-              if (must_count) return;
-              set_receipt_open(true);
-            }}
-          >
-            + поступление
-          </button>
         </div>
 
         <ul className="overflow-hidden rounded-2xl border border-neutral-200 bg-white">
           {visible.length === 0 && <li className="px-4 py-10 text-center text-sm text-neutral-400">пусто</li>}
           {visible.map((s) => {
             const tag = cat_of(cats, s.material.category);
+            const free = material_is_free(s.material);
+            const lots = (lots_by_id.get(s.material.id) ?? []).filter((b) => b.qty > 0.5);
             return (
               <li
                 key={s.material.id}
-                className="flex flex-wrap items-center gap-x-3 gap-y-2 border-t border-neutral-100 px-4 py-2.5 first:border-t-0 sm:flex-nowrap"
+                className="border-t border-neutral-100 px-4 py-2.5 first:border-t-0"
               >
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-2 sm:flex-nowrap">
                 <button
                   type="button"
                   data-cat-pick
@@ -1292,24 +2054,54 @@ export default function InventorySection({ state, set_state }: section_props) {
                 <input
                   data-mat-name={s.material.id}
                   className="min-w-0 flex-1 bg-transparent text-sm text-neutral-900 outline-none"
-                  value={s.material.name}
+                  value={material_label(s.material)}
                   placeholder="название"
                   onChange={(e) => update_material(s.material.id, { name: e.target.value })}
                 />
-                <span className={`w-24 shrink-0 text-right text-sm tabular-nums ${s.qty < 0 ? 'text-amber-600' : 'text-neutral-800'}`}>
+                <span className={`w-24 shrink-0 text-right text-sm tabular-nums ${!free && s.qty < 0 ? 'text-amber-600' : 'text-neutral-800'}`}>
                   {format_base_qty(s.material, s.qty)}
                 </span>
-                <label className="flex w-[7.5rem] shrink-0 items-center gap-1" title="цена закупки за единицу">
-                  <NumInput
-                    value={s.material.costPerUnit}
-                    min={0}
-                    className={`${cell_input_class} w-[4.75rem]`}
-                    on_change={(v) => update_material(s.material.id, { costPerUnit: v })}
-                  />
-                  <span className="text-[10px] text-neutral-400">₽/{unit_labels[s.material.unit]}</span>
-                </label>
-                <span className="hidden w-24 shrink-0 text-right text-sm tabular-nums text-neutral-500 md:block">
-                  {format_rub(s.value)}
+                {!free && s.qty < -0.5 && material_is_prep_dry(s.material, prep_stations) ? (
+                  <button
+                    type="button"
+                    disabled={must_count}
+                    onClick={() => open_receipt(s.material.id)}
+                    className="rounded-lg bg-red-50 px-2 py-1 text-xs font-semibold text-red-700 disabled:opacity-40"
+                  >
+                    поставка
+                  </button>
+                ) : null}
+                {free ? (
+                  <span className="w-[7.5rem] shrink-0 text-right text-[11px] text-neutral-400">бесплатно</span>
+                ) : null}
+                {free || weigh_kind_of(s.material) === 'pcs' ? null : (
+                  <label className="flex w-[6.75rem] shrink-0 items-center gap-1" title="вес тары, в которой взвешиваете">
+                    <NumInput
+                      value={s.material.tareWeight ?? 0}
+                      min={0}
+                      className={`${cell_input_class} w-[3.75rem]`}
+                      on_change={(v) => {
+                        const id = s.material.id;
+                        set_state((prev) => ({
+                          ...prev,
+                          materials: prev.materials.map((m) => {
+                            if (m.id !== id) return m;
+                            const next = { ...m };
+                            if (v > 0) next.tareWeight = v;
+                            else delete next.tareWeight;
+                            return next;
+                          }),
+                        }));
+                      }}
+                    />
+                    <span className="text-[10px] text-neutral-400">тара {weigh_unit(weigh_kind_of(s.material))}</span>
+                  </label>
+                )}
+                <span
+                  className="w-20 shrink-0 text-right text-sm tabular-nums text-neutral-500"
+                  title={free ? undefined : 'сумма рублей по поставкам, которые ещё лежат'}
+                >
+                  {free ? '—' : format_rub(s.value)}
                 </span>
                 <button
                   type="button"
@@ -1328,6 +2120,8 @@ export default function InventorySection({ state, set_state }: section_props) {
                 <button type="button" className={btn_ghost_danger} onClick={() => remove_material(s.material.id)}>
                   ×
                 </button>
+              </div>
+                {!free && lots.length > 1 ? <LotLines material={s.material} lots={lots} /> : null}
               </li>
             );
           })}
@@ -1584,79 +2378,247 @@ function AuditHistory({
   );
 }
 
+const btn_writeoff =
+  'inline-flex items-center justify-center rounded-pill border border-red-200 bg-white px-4 py-2 text-sm font-medium text-red-700 transition-colors hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50';
+
+const PACK_UNITS: material_unit[] = ['g', 'kg', 'ml', 'L', 'pcs'];
+
 type receipt_row = {
   key: string;
   materialId: string;
-  quantity: number;
-  unitPrice: number;
+  creating: boolean;
+  newName: string;
+  newCategory: string;
+  packs: number;
+  packSize: number;
+  packUnit: material_unit;
+  packPrice: number;
   total: number;
 };
 
+type receipt_submit = {
+  materialId?: string;
+  create?: { name: string; category: string; unit: material_unit };
+  quantity: number;
+  total: number;
+  date: string;
+  note?: string;
+};
+
+function rub2(n: number) {
+  return Math.round((Number(n) || 0) * 100) / 100;
+}
+
+function blank_receipt_row(
+  materials: material[],
+  categories: stock_category[],
+  prefer?: string | null
+): receipt_row {
+  const m = materials.find((item) => item.id === prefer) || materials[0];
+  return {
+    key: new_id('r'),
+    materialId: m?.id ?? '',
+    creating: !m,
+    newName: '',
+    newCategory: categories[0]?.id ?? 'mixes',
+    packs: 0,
+    packSize: 1,
+    packUnit: m?.unit ?? 'g',
+    packPrice: 0,
+    total: 0,
+  };
+}
+
+function ProductField({
+  materials,
+  categories,
+  creating,
+  materialId,
+  newName,
+  on_pick,
+  on_create,
+}: {
+  materials: material[];
+  categories: stock_category[];
+  creating: boolean;
+  materialId: string;
+  newName: string;
+  on_pick: (id: string) => void;
+  on_create: () => void;
+}) {
+  const [open, set_open] = useState(false);
+  const [query, set_query] = useState('');
+  useEffect(() => {
+    if (!open) return;
+    function on_key(e: KeyboardEvent) {
+      if (e.key !== 'Escape') return;
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      set_open(false);
+    }
+    document.addEventListener('keydown', on_key, true);
+    return () => document.removeEventListener('keydown', on_key, true);
+  }, [open]);
+  const picked = materials.find((m) => m.id === materialId);
+  const picked_cat = picked ? cat_of(categories, picked.category) : undefined;
+  const q = query.trim().toLowerCase();
+  const list = materials
+    .filter((m) => {
+      const label = (material_label(m) || 'без названия').toLowerCase();
+      const cat = (cat_of(categories, m.category)?.name || '').toLowerCase();
+      if (!q) return true;
+      return label.includes(q) || cat.includes(q);
+    })
+    .sort((a, b) => {
+      const by_cat = cat_index(categories, a.category) - cat_index(categories, b.category);
+      if (by_cat) return by_cat;
+      return (material_label(a) || 'без названия').localeCompare(material_label(b) || 'без названия', 'ru');
+    });
+  const title = creating ? newName.trim() || 'новый продукт' : material_label(picked) || 'выберите продукт';
+  const dot = creating ? '#8E8E93' : (picked_cat?.color ?? '#8E8E93');
+
+  return (
+    <div>
+      <button
+        type="button"
+        aria-expanded={open}
+        onClick={() => set_open((v) => !v)}
+        className={`${field_class} mt-1 flex items-center gap-2 text-left`}
+      >
+        <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ background: dot }} />
+        <span className={`min-w-0 flex-1 truncate ${!creating && !picked ? 'text-neutral-400' : ''}`}>{title}</span>
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" aria-hidden className={`shrink-0 text-neutral-400 ${open ? 'rotate-180' : ''}`}>
+          <path d="M6 9l6 6 6-6" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      </button>
+      {open ? (
+        <div className="mt-1 rounded-2xl border border-neutral-200/80 bg-white p-1.5 shadow-soft">
+          <input
+            autoFocus
+            value={query}
+            onChange={(e) => set_query(e.target.value)}
+            placeholder="найти"
+            className="mb-1 h-9 w-full rounded-xl border border-neutral-200 px-3 text-sm outline-none focus:border-accent/40"
+          />
+          <div className="max-h-56 overflow-y-auto">
+            {list.map((m) => {
+              const cat = cat_of(categories, m.category);
+              const active = !creating && m.id === materialId;
+              return (
+                <button
+                  key={m.id}
+                  type="button"
+                  onClick={() => {
+                    on_pick(m.id);
+                    set_open(false);
+                    set_query('');
+                  }}
+                  className={`flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-sm ${
+                    active ? 'bg-neutral-900 text-white' : 'text-neutral-800 hover:bg-neutral-50'
+                  }`}
+                >
+                  <span className="h-2 w-2 shrink-0 rounded-full" style={{ background: cat?.color ?? '#8E8E93' }} />
+                  <span className="min-w-0 flex-1 truncate">{material_label(m) || 'без названия'}</span>
+                  <span className={`shrink-0 text-[11px] ${active ? 'text-white/70' : 'text-neutral-400'}`}>{cat?.name}</span>
+                </button>
+              );
+            })}
+            {list.length === 0 ? <p className="px-3 py-2 text-sm text-neutral-400">ничего не нашлось</p> : null}
+          </div>
+          <button
+            type="button"
+            onClick={() => {
+              on_create();
+              set_open(false);
+              set_query('');
+            }}
+            className="mt-1 w-full rounded-xl px-3 py-2 text-left text-sm text-neutral-400 hover:bg-neutral-50"
+          >
+            + новый продукт
+          </button>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+/** единица, в которой продукт лежит на складе: новый весовой — всегда граммы */
+function stored_unit_of(row: receipt_row, mat: material | undefined): material_unit {
+  if (row.creating) return row.packUnit === 'pcs' ? 'pcs' : 'g';
+  return mat?.unit ?? 'g';
+}
+
 function ReceiptForm({
   materials,
+  categories,
+  initial_material_id,
   on_close,
   on_submit,
 }: {
   materials: material[];
+  categories: stock_category[];
+  initial_material_id?: string | null;
   on_close: () => void;
-  on_submit: (rows: { materialId: string; quantity: number; total: number; date: string; note?: string; update_price: boolean }[]) => void;
+  on_submit: (rows: receipt_submit[]) => void;
 }) {
   const [date, set_date] = useState(today_iso());
   const [note, set_note] = useState('');
-  const [rows, set_rows] = useState<receipt_row[]>(() => {
-    const m = materials[0];
-    return [{ key: new_id('r'), materialId: m?.id ?? '', quantity: 0, unitPrice: m?.costPerUnit ?? 0, total: 0 }];
+  const [rows, set_rows] = useState<receipt_row[]>(() => [
+    blank_receipt_row(materials, categories, initial_material_id),
+  ]);
+
+  useEffect(() => {
+    function on_key(e: KeyboardEvent) {
+      if (e.key === 'Escape') on_close();
+    }
+    document.addEventListener('keydown', on_key);
+    return () => document.removeEventListener('keydown', on_key);
+  }, [on_close]);
+
+  function patch(key: string, next: (row: receipt_row) => receipt_row) {
+    set_rows((prev) => prev.map((r) => (r.key === key ? next(r) : r)));
+  }
+
+  function line_of(row: receipt_row) {
+    const mat = materials.find((m) => m.id === row.materialId);
+    const stored = stored_unit_of(row, mat);
+    const grams_each = to_grams(row.packSize, row.packUnit);
+    const grams = grams_each == null ? 0 : grams_each * row.packs;
+    const pieces = row.packUnit === 'pcs' ? row.packs * row.packSize : 0;
+    const purchase = receipt_purchase_qty(row.packs, row.packSize, row.packUnit, stored);
+    const mismatch = row.packs > 0 && row.packSize > 0 && purchase <= 0;
+    const per_gram = grams > 0 && row.total > 0 ? row.total / grams : 0;
+    const per_piece = pieces > 0 && row.total > 0 ? row.total / pieces : 0;
+    const per_stored = purchase > 0 && row.total > 0 ? row.total / purchase : 0;
+    const named = row.creating ? row.newName.trim() : Boolean(row.materialId);
+    const ready = Boolean(named) && row.packs > 0 && row.packSize > 0 && row.total > 0 && purchase > 0;
+    return { mat, stored, grams, pieces, purchase, mismatch, per_gram, per_piece, per_stored, ready };
+  }
+
+  const ready_rows = rows.filter((r) => line_of(r).ready);
+  const blocked = rows.some((r) => {
+    const line = line_of(r);
+    const touched = r.creating ? Boolean(r.newName.trim()) || r.packs > 0 || r.total > 0 : r.packs > 0 || r.total > 0;
+    return touched && !line.ready;
   });
-
-  const total_sum = rows.reduce((s, r) => s + (r.total || 0), 0);
-  const valid = rows.some((r) => r.materialId && r.quantity > 0 && r.total >= 0);
-
-  function patch_qty(key: string, quantity: number) {
-    set_rows((prev) =>
-      prev.map((r) => {
-        if (r.key !== key) return r;
-        const total = Math.round(quantity * r.unitPrice * 100) / 100;
-        return { ...r, quantity, total };
-      })
-    );
-  }
-
-  function patch_price(key: string, unitPrice: number) {
-    set_rows((prev) =>
-      prev.map((r) => {
-        if (r.key !== key) return r;
-        const total = Math.round(r.quantity * unitPrice * 100) / 100;
-        return { ...r, unitPrice, total };
-      })
-    );
-  }
-
-  function patch_total(key: string, total: number) {
-    set_rows((prev) =>
-      prev.map((r) => {
-        if (r.key !== key) return r;
-        const unitPrice = r.quantity > 0 ? Math.round((total / r.quantity) * 100) / 100 : r.unitPrice;
-        return { ...r, total, unitPrice };
-      })
-    );
-  }
-
-  function patch_material(key: string, materialId: string) {
-    const mat = materials.find((m) => m.id === materialId);
-    set_rows((prev) =>
-      prev.map((r) => {
-        if (r.key !== key) return r;
-        const unitPrice = mat?.costPerUnit ?? 0;
-        const total = Math.round(r.quantity * unitPrice * 100) / 100;
-        return { ...r, materialId, unitPrice, total };
-      })
-    );
-  }
+  const hold_reason = (() => {
+    if (ready_rows.length > 0 && !blocked) return '';
+    const row = rows.find((r) => !line_of(r).ready) ?? rows[0];
+    if (!row) return '';
+    const line = line_of(row);
+    if (line.mismatch) return '';
+    if (row.creating && !row.newName.trim()) return 'напишите название';
+    if (!(row.packs > 0)) return 'укажите число упаковок';
+    if (!(row.packSize > 0)) return 'укажите вес одной упаковки';
+    if (!(row.total > 0)) return 'укажите сумму накладной';
+    return '';
+  })();
+  const total_sum = ready_rows.reduce((s, r) => s + (r.total || 0), 0);
 
   return (
     <Card
-      title="новое поступление"
-      hint="каждая строка — отдельная партия со своей ценой"
+      title="поставка"
+      hint="выберите ингредиент и сумму этой накладной. тот же продукт не дублируется: граммы сложатся, эти рубли останутся у партии"
       className="border-accent/30 ring-1 ring-accent/20"
     >
       <div className="mb-3 grid gap-3 sm:grid-cols-3">
@@ -1669,87 +2631,203 @@ function ReceiptForm({
           <input className={`${field_class} mt-1`} value={note} placeholder="например, метро, накладная №12" onChange={(e) => set_note(e.target.value)} />
         </label>
       </div>
-      <TableWrap>
-        <thead>
-          <tr>
-            <th className={th_class}>материал</th>
-            <th className={th_num_class}>кол-во</th>
-            <th className={th_num_class}>цена за ед.</th>
-            <th className={th_num_class}>сумма, ₽</th>
-            <th className={th_class}></th>
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((r) => {
-            const mat = materials.find((m) => m.id === r.materialId);
-            const per = mat ? base_per_unit(mat.unit) : 1;
-            const base_qty = r.quantity * per;
-            const base_unit_cost = base_qty > 0 ? r.total / base_qty : 0;
-            return (
-              <tr key={r.key} className="border-t border-neutral-100">
-                <td className={`${td_class} min-w-[220px]`}>
-                  <select
-                    className={`${cell_input_class} text-left`}
-                    value={r.materialId}
-                    onChange={(e) => patch_material(r.key, e.target.value)}
-                  >
-                    {materials.map((m) => (
-                      <option key={m.id} value={m.id}>
-                        {m.name || 'без названия'}
-                      </option>
-                    ))}
-                  </select>
-                  {mat && r.quantity > 0 ? (
-                    <p className="mt-1 text-[11px] text-neutral-400">
-                      на склад: {format_base_qty(mat, base_qty)}
-                      {r.total > 0 ? ` · ${format_rub(base_unit_cost, 2)}/${base_unit_label(mat.unit)}` : ''}
-                    </p>
-                  ) : null}
-                </td>
-                <td className={`${td_num_class} w-36`}>
-                  <div className="flex items-center gap-1">
-                    <NumInput value={r.quantity} min={0} on_change={(v) => patch_qty(r.key, v)} />
-                    <span className="w-8 text-left text-xs text-neutral-400">{mat ? unit_labels[mat.unit] : ''}</span>
+      <div className="space-y-3">
+        {rows.map((r) => {
+          const line = line_of(r);
+          const dup =
+            r.creating &&
+            r.newName.trim() &&
+            materials.some((m) => m.name.trim().toLowerCase() === r.newName.trim().toLowerCase());
+          return (
+            <div key={r.key} className="rounded-2xl border border-neutral-200 bg-neutral-50/70 p-3">
+              <div className="flex items-start gap-2">
+                <div className="min-w-0 flex-1 text-xs text-neutral-500">
+                  продукт
+                  <ProductField
+                    materials={materials}
+                    categories={categories}
+                    creating={r.creating}
+                    materialId={r.materialId}
+                    newName={r.newName}
+                    on_create={() => {
+                      patch(r.key, (row) => ({ ...row, creating: true, materialId: '' }));
+                      requestAnimationFrame(() => {
+                        document.querySelector<HTMLInputElement>(`[data-new-name="${r.key}"]`)?.focus();
+                      });
+                    }}
+                    on_pick={(id) => {
+                      const mat = materials.find((m) => m.id === id);
+                      patch(r.key, (row) => ({
+                        ...row,
+                        creating: false,
+                        materialId: id,
+                        packUnit: mat?.unit ?? row.packUnit,
+                        packPrice: 0,
+                        total: 0,
+                      }));
+                    }}
+                  />
+                </div>
+                <button
+                  type="button"
+                  className={`${btn_ghost_danger} mt-5`}
+                  onClick={() => set_rows((prev) => prev.filter((x) => x.key !== r.key))}
+                  disabled={rows.length === 1}
+                >
+                  ×
+                </button>
+              </div>
+              {r.creating ? (
+                <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                  <label className="text-xs text-neutral-500">
+                    название
+                    <input
+                      data-new-name={r.key}
+                      className={`${field_class} mt-1`}
+                      value={r.newName}
+                      placeholder="например, сироп манго"
+                      onChange={(e) => patch(r.key, (row) => ({ ...row, newName: e.target.value }))}
+                    />
+                  </label>
+                  <div className="text-xs text-neutral-500 sm:col-span-2">
+                    категория
+                    <div className="mt-1 flex flex-wrap gap-1.5">
+                      {categories.map((c) => {
+                        const active = r.newCategory === c.id;
+                        return (
+                          <button
+                            key={c.id}
+                            type="button"
+                            onClick={() => patch(r.key, (row) => ({ ...row, newCategory: c.id }))}
+                            className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs ${
+                              active ? 'bg-neutral-900 text-white' : 'border border-neutral-200 bg-white text-neutral-600'
+                            }`}
+                          >
+                            <span className="h-2 w-2 rounded-full" style={{ background: c.color }} />
+                            {c.name}
+                          </button>
+                        );
+                      })}
+                    </div>
                   </div>
-                </td>
-                <td className={`${td_num_class} w-32`}>
-                  <NumInput value={r.unitPrice} min={0} on_change={(v) => patch_price(r.key, v)} />
-                </td>
-                <td className={`${td_num_class} w-32`}>
-                  <NumInput value={r.total} min={0} on_change={(v) => patch_total(r.key, v)} />
-                </td>
-                <td className={`${td_class} text-right`}>
-                  <button
-                    type="button"
-                    className={btn_ghost_danger}
-                    onClick={() => set_rows((prev) => prev.filter((x) => x.key !== r.key))}
-                    disabled={rows.length === 1}
-                  >
-                    ×
-                  </button>
-                </td>
-              </tr>
-            );
-          })}
-        </tbody>
-      </TableWrap>
+                  {dup ? (
+                    <p className="text-[11px] text-amber-600 sm:col-span-2">такое название уже есть — можно выбрать его сверху</p>
+                  ) : (
+                    <p className="text-[11px] text-neutral-400 sm:col-span-2">
+                      {r.packUnit === 'pcs' ? 'новый продукт считается штуками' : 'новый продукт считается в граммах'}
+                    </p>
+                  )}
+                </div>
+              ) : null}
+              <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+                <label className="text-xs text-neutral-500">
+                  упаковок
+                  <NumInput value={r.packs} min={0} className={`${field_class} mt-1 text-right`} on_change={(packs) => patch(r.key, (row) => {
+                    if (row.packPrice > 0) return { ...row, packs, total: rub2(packs * row.packPrice) };
+                    const packPrice = packs > 0 ? rub2(row.total / packs) : row.packPrice;
+                    return { ...row, packs, packPrice };
+                  })} />
+                </label>
+                <label className="text-xs text-neutral-500">
+                  {r.packUnit === 'pcs' ? 'в упаковке' : 'вес 1 упаковки'}
+                  <span className="mt-1 flex min-w-0 flex-wrap gap-1">
+                    <NumInput
+                      value={r.packSize}
+                      min={0}
+                      className={`${field_class} min-w-0 flex-1 text-right`}
+                      on_change={(packSize) => patch(r.key, (row) => ({ ...row, packSize }))}
+                    />
+                    <span className="flex shrink-0 rounded-2xl border border-neutral-200 bg-white p-0.5">
+                      {PACK_UNITS.map((u) => (
+                        <button
+                          key={u}
+                          type="button"
+                          onClick={() => patch(r.key, (row) => ({ ...row, packUnit: u }))}
+                          className={`rounded-xl px-2 py-1.5 text-xs ${
+                            r.packUnit === u ? 'bg-neutral-900 text-white' : 'text-neutral-500 hover:bg-neutral-50'
+                          }`}
+                        >
+                          {unit_labels[u]}
+                        </button>
+                      ))}
+                    </span>
+                  </span>
+                </label>
+                <label className="text-xs text-neutral-500">
+                  цена упаковки, ₽
+                  <NumInput
+                    value={r.packPrice}
+                    min={0}
+                    className={`${field_class} mt-1 text-right`}
+                    on_change={(packPrice) => patch(r.key, (row) => ({ ...row, packPrice, total: rub2(row.packs * packPrice) }))}
+                  />
+                </label>
+                <label className="text-xs text-neutral-500">
+                  сумма, ₽
+                  <NumInput
+                    value={r.total}
+                    min={0}
+                    className={`${field_class} mt-1 text-right`}
+                    on_change={(total) =>
+                      patch(r.key, (row) => ({
+                        ...row,
+                        total,
+                        packPrice: row.packs > 0 ? rub2(total / row.packs) : row.packPrice,
+                      }))
+                    }
+                  />
+                </label>
+              </div>
+              {line.mismatch ? (
+                <p className="mt-2 text-[11px] text-red-500">
+                  {base_unit(line.stored) === 'pcs' ? 'этот продукт считается штуками' : 'для веса укажите г, кг, мл или л — не штуки'}
+                </p>
+              ) : line.grams > 0 ? (
+                <p className="mt-2 text-[11px] text-neutral-500">
+                  на склад <span className="font-medium text-neutral-900">{format_grams(line.grams)}</span>
+                  {line.per_gram > 0 ? (
+                    <>
+                      {' · '}
+                      <span className="font-medium text-neutral-900">{format_rub(line.per_gram, 4)}/г</span>
+                    </>
+                  ) : null}
+                  {line.stored !== 'g' && line.per_stored > 0 ? (
+                    <span className="text-neutral-400">
+                      {' '}
+                      · партия {format_rub(line.per_stored, 2)}/{unit_labels[line.stored]}
+                    </span>
+                  ) : null}
+                </p>
+              ) : line.pieces > 0 ? (
+                <p className="mt-2 text-[11px] text-neutral-500">
+                  на склад{' '}
+                  <span className="font-medium text-neutral-900">
+                    {line.pieces.toLocaleString('ru-RU', { maximumFractionDigits: 2 })} шт
+                  </span>
+                  {line.per_piece > 0 ? (
+                    <>
+                      {' · '}
+                      <span className="font-medium text-neutral-900">{format_rub(line.per_piece, 2)}/шт</span>
+                    </>
+                  ) : null}
+                </p>
+              ) : null}
+            </div>
+          );
+        })}
+      </div>
       <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
         <button
           type="button"
           className={btn_secondary}
-          onClick={() => {
-            const m = materials[0];
-            set_rows((prev) => [
-              ...prev,
-              { key: new_id('r'), materialId: m?.id ?? '', quantity: 0, unitPrice: m?.costPerUnit ?? 0, total: 0 },
-            ]);
-          }}
+          onClick={() => set_rows((prev) => [...prev, blank_receipt_row(materials, categories)])}
         >
           + строка
         </button>
         <div className="flex items-center gap-3">
           <span className="text-sm text-neutral-500">
             итого <span className="font-semibold text-neutral-900">{format_rub(total_sum)}</span>
+            {hold_reason ? <span className="mt-0.5 block text-right text-[11px] text-amber-700">{hold_reason}</span> : null}
           </span>
           <button type="button" className={btn_secondary} onClick={on_close}>
             отмена
@@ -1757,25 +2835,140 @@ function ReceiptForm({
           <button
             type="button"
             className={btn_accent}
-            disabled={!valid}
+            disabled={ready_rows.length === 0 || blocked}
             onClick={() =>
               on_submit(
-                rows
-                  .filter((r) => r.materialId && r.quantity > 0)
-                  .map((r) => ({
-                    materialId: r.materialId,
-                    quantity: r.quantity,
+                ready_rows.map((r) => {
+                  const line = line_of(r);
+                  const pack = `${format_qty_short(r.packs)} уп. × ${format_qty_short(r.packSize)} ${unit_labels[r.packUnit]}`;
+                  return {
+                    materialId: r.creating ? undefined : r.materialId,
+                    create: r.creating
+                      ? { name: r.newName.trim(), category: r.newCategory, unit: line.stored }
+                      : undefined,
+                    quantity: line.purchase,
                     total: r.total,
-                    date: to_iso(date),
-                    note: note || undefined,
-                    update_price: true,
-                  }))
+                    date: receipt_stamp(date),
+                    note: [note.trim(), pack].filter(Boolean).join(' · ') || undefined,
+                  };
+                }),
               )
             }
           >
             оприходовать
           </button>
         </div>
+      </div>
+    </Card>
+  );
+}
+
+function format_grams(n: number) {
+  return `${n.toLocaleString('ru-RU', { maximumFractionDigits: 1 })} г`;
+}
+
+function format_qty_short(n: number) {
+  return n.toLocaleString('ru-RU', { maximumFractionDigits: 3 });
+}
+
+function WriteoffForm({
+  materials,
+  qty_of,
+  on_close,
+  on_submit,
+}: {
+  materials: material[];
+  qty_of: (id: string) => number;
+  on_close: () => void;
+  on_submit: (materialId: string, qty: number, note: string, date: string) => void;
+}) {
+  const list = useMemo(
+    () => [...materials].sort((a, b) => a.name.localeCompare(b.name, 'ru')),
+    [materials]
+  );
+  const [material_id, set_material_id] = useState(list[0]?.id ?? '');
+  const [qty, set_qty] = useState(0);
+  const [note, set_note] = useState('');
+  const [date, set_date] = useState(today_iso());
+  const mat = list.find((m) => m.id === material_id) ?? null;
+  const on_hand = mat ? qty_of(mat.id) : 0;
+  const too_much = mat != null && qty > on_hand + 0.001;
+  const ready = Boolean(mat) && qty > 0 && on_hand > 0 && !too_much;
+
+  return (
+    <Card
+      title="списание"
+      hint="пыль, порча, брак. количество уйдёт со склада и попадёт в списано"
+      className="border-red-200 ring-1 ring-red-100"
+    >
+      <div className="grid gap-3 sm:grid-cols-2">
+        <label className="text-xs text-neutral-500 sm:col-span-2">
+          продукт
+          <select
+            className={`${field_class} mt-1`}
+            value={material_id}
+            onChange={(e) => {
+              set_material_id(e.target.value);
+              set_qty(0);
+            }}
+          >
+            {list.map((m) => (
+              <option key={m.id} value={m.id}>
+                {m.name} · {format_base_qty(m, qty_of(m.id))}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="text-xs text-neutral-500">
+          сколько списать{mat ? `, ${base_unit_label(mat.unit)}` : ''}
+          <NumInput value={qty} min={0} className={`${field_class} mt-1 text-right`} on_change={set_qty} />
+        </label>
+        <label className="text-xs text-neutral-500">
+          дата
+          <input
+            type="date"
+            max={today_iso()}
+            className={`${field_class} mt-1`}
+            value={date}
+            onChange={(e) => set_date(e.target.value)}
+          />
+        </label>
+        <label className="text-xs text-neutral-500 sm:col-span-2">
+          комментарий
+          <input
+            className={`${field_class} mt-1`}
+            value={note}
+            placeholder="крахмальная пыль, порча, брак"
+            onChange={(e) => set_note(e.target.value)}
+          />
+        </label>
+      </div>
+      {mat ? (
+        <p className={`mt-3 text-xs ${too_much ? 'text-red-600' : 'text-neutral-500'}`}>
+          {too_much
+            ? `на складе ${format_base_qty(mat, on_hand)}, больше списать нельзя`
+            : qty > 0
+              ? `спишется ${format_base_qty(mat, qty)} · останется ${format_base_qty(mat, Math.max(0, on_hand - qty))}`
+              : `сейчас на складе ${format_base_qty(mat, on_hand)}`}
+        </p>
+      ) : null}
+      <div className="mt-3 flex flex-wrap items-center justify-end gap-2">
+        {mat && on_hand > 0 ? (
+          <button type="button" className={btn_secondary} onClick={() => set_qty(on_hand)}>
+            весь остаток
+          </button>
+        ) : null}
+        <button type="button" className={btn_secondary} onClick={on_close}>
+          отмена
+        </button>
+        <button
+          type="button"
+          className={btn_writeoff}
+          disabled={!ready}
+          onClick={() => mat && on_submit(mat.id, qty, note.trim(), date)}
+        >
+          списать
+        </button>
       </div>
     </Card>
   );

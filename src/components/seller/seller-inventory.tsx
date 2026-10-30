@@ -38,6 +38,8 @@ type public_row = {
   low: boolean;
   value?: number;
   costPerBase?: number;
+  needsPrice?: boolean;
+  tareWeight?: number;
 };
 
 type public_cat = { id: string; name: string; color: string };
@@ -46,7 +48,6 @@ type prep_draft = {
   defaultDryG: string;
   defaultCookedG: string;
   portionG: string;
-  dryCostPerKg: string;
 };
 
 function as_material(row: public_row): material {
@@ -56,6 +57,7 @@ function as_material(row: public_row): material {
     category: row.category,
     unit: row.unit,
     costPerUnit: 0,
+    ...(row.tareWeight && row.tareWeight > 0 ? { tareWeight: row.tareWeight } : {}),
   };
 }
 
@@ -99,9 +101,13 @@ function apply_payload(
 export default function SellerInventory({
   on_nav_depth,
   active = true,
+  spot_id = '',
+  spot_label = '',
 }: {
   on_nav_depth?: (open: boolean) => void;
   active?: boolean;
+  spot_id?: string;
+  spot_label?: string;
 }) {
   const [rows, set_rows] = useState<public_row[]>([]);
   const [money, set_money] = useState<stock_money | null>(null);
@@ -129,7 +135,6 @@ export default function SellerInventory({
     defaultDryG: '',
     defaultCookedG: '',
     portionG: '',
-    dryCostPerKg: '',
   });
   const [prep_busy, set_prep_busy] = useState(false);
 
@@ -145,8 +150,14 @@ export default function SellerInventory({
     []
   );
 
+  const stock_path = spot_id ? `/api/seller/stock?spot_id=${encodeURIComponent(spot_id)}` : '/api/seller/stock';
+  const stock_payload = useCallback(
+    (extra: Record<string, unknown>) => JSON.stringify(spot_id ? { ...extra, spot_id } : extra),
+    [spot_id]
+  );
+
   const load = useCallback(async () => {
-    const res = await fetch('/api/seller/stock', { credentials: 'same-origin' });
+    const res = await fetch(stock_path, { credentials: 'same-origin' });
     const body = (await res.json().catch(() => null)) as {
       error?: string;
       must_count?: boolean;
@@ -163,7 +174,7 @@ export default function SellerInventory({
     }
     apply_payload(body ?? {}, setters);
     set_error('');
-  }, [setters]);
+  }, [setters, stock_path]);
 
   useEffect(() => {
     let cancelled = false;
@@ -222,7 +233,7 @@ export default function SellerInventory({
       method: 'POST',
       credentials: 'same-origin',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ kind: 'adjust', materialId: row.id, qty, note: 'правка кассы' }),
+      body: stock_payload({ kind: 'adjust', materialId: row.id, qty, note: 'правка кассы' }),
     });
     const body = (await res.json().catch(() => null)) as {
       error?: string;
@@ -244,7 +255,7 @@ export default function SellerInventory({
       method: 'POST',
       credentials: 'same-origin',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ kind: 'writeoff', materialId: row.id, qty, note: 'списание кассы' }),
+      body: stock_payload({ kind: 'writeoff', materialId: row.id, qty, note: 'списание кассы' }),
     });
     const body = (await res.json().catch(() => null)) as {
       error?: string;
@@ -260,12 +271,15 @@ export default function SellerInventory({
     apply_payload(body ?? {}, setters);
   }
 
-  async function save_inventory(facts: { materialId: string; qty: number }[]) {
+  async function save_inventory(
+    facts: { materialId: string; qty: number }[],
+    tares?: { materialId: string; tare: number }[]
+  ) {
     const res = await fetch('/api/seller/stock', {
       method: 'POST',
       credentials: 'same-origin',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ kind: 'inventory', facts }),
+      body: stock_payload({ kind: 'inventory', facts, tares }),
     });
     const body = (await res.json().catch(() => null)) as {
       error?: string;
@@ -283,6 +297,7 @@ export default function SellerInventory({
 
   return (
     <div className="flex h-full min-h-0 flex-col gap-2">
+      {spot_label ? <p className="shrink-0 text-xs text-neutral-500">склад · {spot_label}</p> : null}
       <div className="flex shrink-0 items-center gap-2">
         <input
           type="search"
@@ -366,7 +381,7 @@ export default function SellerInventory({
             варка и заваривание
           </p>
           <p className="mt-1 text-xs text-neutral-500">
-            норма выхода и цена сухого — отсюда. сколько стаканов на доске считается по рецептам, а сверка кастрюли уточняет выход.
+            норма выхода — отсюда. цена сухого берётся из поставок склада. сколько стаканов на доске считается по рецептам, а сверка кастрюли уточняет выход.
           </p>
           <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-3">
             {prep_stations.map((s) => (
@@ -379,7 +394,6 @@ export default function SellerInventory({
                     defaultDryG: String(s.defaultDryG || ''),
                     defaultCookedG: String(s.defaultCookedG || ''),
                     portionG: String(s.portionG || ''),
-                    dryCostPerKg: String(s.dryCostPerKg || ''),
                   });
                   set_error('');
                 }}
@@ -388,7 +402,7 @@ export default function SellerInventory({
                 <span className="block text-sm font-semibold text-neutral-900">{s.label}</span>
                 <span className="mt-0.5 block text-[11px] tabular-nums text-neutral-500">
                   {s.defaultDryG}→{s.defaultCookedG} г · {s.portionG} г/ст
-                  {s.dryCostPerKg ? ` · ${s.dryCostPerKg} ₽/кг` : ''}
+                  {s.dryCostPerKg ? ` · ${s.dryCostPerKg} ₽/кг из поставок` : ''}
                 </span>
                 <span className="mt-1 block text-xs text-accent">норма</span>
               </button>
@@ -416,7 +430,10 @@ export default function SellerInventory({
                   className="h-2 w-2 shrink-0 rounded-full"
                   style={{ background: tag?.color ?? '#8E8E93' }}
                 />
-                <span className="min-w-0 flex-1 truncate text-sm text-neutral-900">{row.name}</span>
+                <span className="min-w-0 flex-1 truncate text-sm text-neutral-900">
+                  {row.name}
+                  {row.needsPrice ? <span className="ml-1 text-[11px] text-amber-700">нет поставки</span> : null}
+                </span>
                 <button
                   type="button"
                   onClick={() => {
@@ -456,8 +473,8 @@ export default function SellerInventory({
           rows={count_rows}
           cats={count_cats}
           required={must_count}
-          on_commit={async (facts) => {
-            await save_inventory(facts);
+          on_commit={async (facts, _date, tares) => {
+            await save_inventory(facts, tares);
             set_count_open(false);
           }}
           on_close={() => {
@@ -492,10 +509,7 @@ export default function SellerInventory({
                   defaultDryG: Number(prep_draft.defaultDryG),
                   defaultCookedG: Number(prep_draft.defaultCookedG),
                   portionG: Number(prep_draft.portionG),
-                  dryCostPerKg:
-                    prep_draft.dryCostPerKg === ''
-                      ? undefined
-                      : Number(prep_draft.dryCostPerKg),
+                  ...(spot_id ? { spot_id } : {}),
                 }),
               })
                 .then(async (res) => {
@@ -514,7 +528,7 @@ export default function SellerInventory({
             <p className="text-xs uppercase tracking-[0.14em] text-accent">норма варки</p>
             <h3 className="mt-1 text-lg font-semibold text-neutral-900">{prep_edit.label}</h3>
             <p className="mt-1 text-sm text-neutral-400">
-              от этих цифр касса сама считает выход и себестоимость готового
+              от этих цифр касса считает выход. себестоимость готового берётся из поставок сухого
             </p>
             <div className="mt-4 grid grid-cols-2 gap-3">
               <label className="block">
@@ -537,21 +551,12 @@ export default function SellerInventory({
                   className="w-full rounded-xl border border-neutral-200 px-3 py-2 text-base tabular-nums outline-none focus:border-neutral-900"
                 />
               </label>
-              <label className="block">
+              <label className="col-span-2 block">
                 <span className="mb-1 block text-xs text-neutral-500">г на стакан</span>
                 <input
                   inputMode="numeric"
                   value={prep_draft.portionG}
                   onChange={(e) => set_prep_draft((d) => ({ ...d, portionG: e.target.value }))}
-                  className="w-full rounded-xl border border-neutral-200 px-3 py-2 text-base tabular-nums outline-none focus:border-neutral-900"
-                />
-              </label>
-              <label className="block">
-                <span className="mb-1 block text-xs text-neutral-500">сухой ₽/кг</span>
-                <input
-                  inputMode="decimal"
-                  value={prep_draft.dryCostPerKg}
-                  onChange={(e) => set_prep_draft((d) => ({ ...d, dryCostPerKg: e.target.value }))}
                   className="w-full rounded-xl border border-neutral-200 px-3 py-2 text-base tabular-nums outline-none focus:border-neutral-900"
                 />
               </label>
@@ -603,7 +608,9 @@ export default function SellerInventory({
             <h3 className="mt-1 text-lg font-semibold text-neutral-900">{writeoff.name}</h3>
             <p className="mt-1 text-sm text-neutral-400">
               на складе {format_base_qty(as_material(writeoff), writeoff.qty)}
-              {writeoff.costPerBase
+              {writeoff.needsPrice
+                ? ' · нет поставки, рубли не посчитаны'
+                : writeoff.costPerBase
                 ? ` · ${format_rub(writeoff.costPerBase * (writeoff.unit === 'kg' ? 1000 : 1))}${
                     writeoff.unit === 'kg' || writeoff.unit === 'g' ? '/кг' : ''
                   }`

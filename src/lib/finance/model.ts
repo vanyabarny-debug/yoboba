@@ -7,7 +7,7 @@ import type { menu_item } from '@/lib/types';
 import { expand_items_for_stock } from '@/lib/combo';
 import { get_item_volumes } from '@/lib/product-details';
 
-export const FINANCE_STATE_VERSION = 7;
+export const FINANCE_STATE_VERSION = 9;
 
 export type plan_horizon = 3 | 6 | 12;
 export type plan_strategy_id = 'launch' | 'conservative' | 'balanced' | 'growth' | 'custom';
@@ -81,42 +81,72 @@ export const FINDER_LABEL_COLORS = [
 ] as const;
 
 export const default_stock_categories: stock_category[] = [
-  { id: 'dry', name: 'чаи и смеси', color: '#FF9500' },
-  { id: 'liquids', name: 'молоко и жидкости', color: '#5AC8FA' },
-  { id: 'toppings', name: 'сиропы и топпинги', color: '#AF52DE' },
+  { id: 'conc', name: 'концентраты', color: '#FF2D55' },
+  { id: 'syrups', name: 'сиропы', color: '#AF52DE' },
+  { id: 'toppings', name: 'топинги', color: '#FF9500' },
+  { id: 'liquids', name: 'жидкости', color: '#5AC8FA' },
+  { id: 'mixes', name: 'смеси', color: '#FFCC00' },
+  { id: 'prep', name: 'заготовки', color: '#34C759' },
   { id: 'packaging', name: 'упаковка', color: '#007AFF' },
-  { id: 'retail', name: 'готовая продукция', color: '#34C759' },
-  { id: 'raw', name: 'сырьё', color: '#FF3B30' },
+  { id: 'retail', name: 'готовая продукция', color: '#8E8E93' },
 ];
+
+const STOCK_SHELF_IDS = new Set(default_stock_categories.map((c) => c.id));
 
 export function merge_stock_categories(existing: stock_category[]): stock_category[] {
   const by_id = new Map(existing.map((c) => [c.id, c]));
-  const out: stock_category[] = [];
-  for (const d of default_stock_categories) {
-    out.push(by_id.get(d.id) ?? { ...d });
-    by_id.delete(d.id);
+  const out: stock_category[] = default_stock_categories.map((d) => ({ ...d }));
+  for (const [id, row] of by_id) {
+    if (STOCK_SHELF_IDS.has(id) || id === 'dry' || id === 'raw') continue;
+    out.push(row);
   }
-  for (const rest of by_id.values()) out.push(rest);
   return out;
 }
 
-/** раскладывает известные позиции склада по полкам */
-export function stock_category_for(m: { id: string; name: string; category?: string }): string {
-  const def = default_materials.find((d) => d.id === m.id);
-  if (def) return def.category;
-  const n = m.name.toLowerCase().replace(/ё/g, 'е');
+/** полка по названию. упаковка и готовая еда остаются отдельными: это не ингредиент напитка. */
+export function classify_material(m: { id: string; name?: string }): string {
   const id = m.id.toLowerCase();
-  if (/стакан|крышк|пленк|трубоч|упаков/.test(n) || /cup_|lid|film|straw/.test(id)) return 'packaging';
+  const n = (m.name || '').toLowerCase().replace(/ё/g, 'е');
+  const pack_id = id === 'lid' || id === 'film' || id === 'straw' || id.startsWith('cup_');
+  if (/стакан|крышк|пленк|трубоч|упаков/.test(n) || pack_id) return 'packaging';
   if (/моти|макарун/.test(n) || id === 'mochi' || id === 'macaroon') return 'retail';
+  if (id.startsWith('batch_') || /сварен/.test(n) || id === 'tapioca') return 'prep';
+  if (/сироп/.test(n) || id.startsWith('syrup_') || id === 'honey') return 'syrups';
   if (
-    /сироп|концентр|топпинг|джус|желе|пюре|тапиок|экстракт|розов/.test(n) ||
-    /jb_|jelly|syrup|conc_|puree|tapioca|juiceballs|toppings|fruits|menthol|rose_water/.test(id)
+    /концентрат|пюре|экстракт|сок/.test(n) ||
+    id.startsWith('conc_') ||
+    id.startsWith('puree_') ||
+    id.startsWith('juice_') ||
+    id === 'menthol'
+  ) {
+    return 'conc';
+  }
+  if (
+    /джус|желе|болл|топинг|топпинг|тапиок|заморож|ната де/.test(n) ||
+    id.startsWith('jb_') ||
+    id.startsWith('jelly_') ||
+    id.startsWith('topping_') ||
+    id === 'tapioca_dry'
   ) {
     return 'toppings';
   }
-  if (/молоко|сливк|газир|^вода\b|сырная/.test(n) || /milk|cream|soda|condensed|cheese_foam/.test(id)) return 'liquids';
-  if (/чай|матча|таро|какао|сахар|специ|смес/.test(n) || /tea|matcha|taro|cocoa|cane_sugar|spices/.test(id)) return 'dry';
-  return m.category || 'raw';
+  const liquid_id =
+    id === 'milk' ||
+    id === 'cream' ||
+    id === 'soda' ||
+    id === 'condensed' ||
+    id === 'water' ||
+    id === 'ice' ||
+    id === 'rose_water';
+  if (/молоко|сливк|вода|лед|газир|моцарел|творож/.test(n) || liquid_id) return 'liquids';
+  return 'mixes';
+}
+
+/** уже выбранную полку не трогаем. пустую и старые id раскладываем по названию. */
+export function stock_category_for(m: { id: string; name: string; category?: string }): string {
+  const chosen = m.category?.trim() || '';
+  if (chosen && STOCK_SHELF_IDS.has(chosen)) return chosen;
+  return classify_material(m);
 }
 export type material_unit = 'g' | 'kg' | 'ml' | 'L' | 'pcs';
 
@@ -125,10 +155,18 @@ export type material = {
   name: string;
   category: material_category;
   unit: material_unit;
-  /** цена закупки за единицу (`unit`) */
+  /**
+   * фолбэк за единицу (`unit`), если у остатка нет поставки с суммой
+   * (старт учёта, пустой склад). живые рубли лежат на партиях поставок.
+   */
   costPerUnit: number;
   /** минимальный остаток в базовых единицах (г / мл / шт) — ниже него подсвечиваем */
   minStock?: number;
+  /**
+   * вес тары в единицах взвешивания инвентаризации:
+   * граммы для сыпучего, литры для жидкостей. штуки без тары.
+   */
+  tareWeight?: number;
 };
 
 /** шаг готовки для кассира: понятное имя, сколько класть, короткая подсказка */
@@ -139,6 +177,10 @@ export type prep_step = {
   materialId?: string;
   /** в базовых единицах материала (г / мл / шт); 0 — действие без граммовки */
   qty: number;
+  /** как показать количество, если это не граммы склада: «9 капель» */
+  qty_label?: string;
+  /** шаг только для холодной или только для горячей подачи */
+  when?: 'cold' | 'hot';
 };
 
 export type tech_card_size = {
@@ -186,17 +228,32 @@ export type equipment = { id: string; name: string; price: number; months: numbe
 
 export type sales_cell = { price: number; qty: number };
 
+export type transaction_edit = {
+  at: string;
+  actorId: string;
+  actorName: string;
+  text: string;
+};
+
 export type transaction = {
   id: string;
   day: number;
   type: 'expense' | 'income';
-  /** material | capex | investment | other_income | other_expense | <opex category id> */
+  /** material | capex | investment | other_income | other_expense | collection | <opex category id> */
   category: string;
   amount: number;
   description: string;
   materialId?: string;
   /** количество в единицах закупки материала (`material.unit`) */
   quantity?: number;
+  /** когда операция была по времени, ISO; без поля — полдень этого дня */
+  at?: string;
+  channel?: 'cash' | 'card';
+  actorId?: string;
+  actorName?: string;
+  createdAt?: string;
+  spotId?: string;
+  edits?: transaction_edit[];
 };
 
 /** тип выплаты персоналу */
@@ -278,6 +335,8 @@ export type stock_audit_entry = {
   qtyAfter?: number;
   note?: string;
   movementId?: string;
+  /** точка. пусто — только Кимры, старые записи до разделения складов */
+  spotId?: string;
 };
 
 export type stock_movement = {
@@ -302,6 +361,8 @@ export type stock_movement = {
   actorId?: string;
   actorName?: string;
   actorRole?: stock_actor_role;
+  /** точка. пусто — только Кимры, старые записи до разделения складов */
+  spotId?: string;
 };
 
 export type order_stock_item = {
@@ -351,21 +412,63 @@ export function stock_guard_of(state: Pick<finance_state, 'stockGuard'>): stock_
   return normalize_stock_guard(state.stockGuard);
 }
 
+/** рецепт заготовки. ингредиенты — только складские позиции, в базовых единицах, на весь выход */
+export type prep_recipe = {
+  id: string;
+  name: string;
+  /** грамм готовой заготовки, которые даёт этот рецепт */
+  yieldG: number;
+  ingredients: Record<string, number>;
+};
+
+export function is_prep_recipe_id(id: string) {
+  return id.startsWith('batch_');
+}
+
+export function prep_as_material(p: prep_recipe): material {
+  return {
+    id: p.id,
+    name: p.name.trim() || 'заготовка',
+    category: 'prep',
+    unit: 'g',
+    costPerUnit: 0,
+  };
+}
+
+/** складские позиции плюс заготовки — для рецепта, этапов и названия в техкарте */
+export function materials_with_preps(state: Pick<finance_state, 'materials' | 'prepRecipes'>): material[] {
+  const extra = (state.prepRecipes ?? [])
+    .filter((p) => p.id && !state.materials.some((m) => m.id === p.id))
+    .map(prep_as_material);
+  return extra.length ? [...state.materials, ...extra] : state.materials;
+}
+
 export type finance_state = {
   version: number;
   materials: material[];
   techCards: tech_card[];
   opexCategories: opex_category[];
   stockCategories: stock_category[];
+  /** один раз разложили старые полки на концентраты / сиропы / топинги / жидкости / смеси / заготовки */
+  stockShelvesMigrated?: boolean;
   equipments: equipment[];
   monthsData: month_data[];
   stockMovements: stock_movement[];
   /** id техкарт и позиций меню, которые удалили — дефолты из кода их не возвращают */
   removedTechCardIds?: string[];
+  /** id ингредиентов, которые удалили — дефолты из кода их не возвращают */
+  removedMaterialIds?: string[];
   /** журнал «кто / что / когда» — дублируется в supabase.stock_audit */
   stockAudit?: stock_audit_entry[];
   /** станции варки тапиоки / заваривания чая — расход и выход правит кассир */
   prepStations?: import('@/lib/finance/prep-stations').prep_station[];
+  /** кастрюли по точкам. у Кимр живая кастрюля по-прежнему в prepStations */
+  prepBySpot?: Record<string, import('@/lib/finance/prep-stations').prep_station[]>;
+  /**
+   * заготовка: рецепт из нескольких ингредиентов на `yieldG` грамм готового.
+   * в напитке указывается, сколько грамм заготовки кладут — сырьё списывается само.
+   */
+  prepRecipes: prep_recipe[];
   /** один раз перенесли старый остаток на сухие SKU */
   prepStockMigrated?: boolean;
   /**
@@ -375,6 +478,16 @@ export type finance_state = {
   stockGuard?: stock_guard_settings;
   /** ISO время последней полной инвентаризации; нет — склад считается неподтверждённым */
   stockCountedAt?: string | null;
+  /** инвентаризация по точкам. Кимры ещё читают stockCountedAt */
+  stockCountedAtBySpot?: Record<string, string>;
+  /**
+   * с этого момента считаются потрачено / реализовано / потеряно.
+   * инвентаризация на этой отметке — стартовый остаток, не закупка и не потеря.
+   * ставится один раз и не сдвигается следующими инвентаризациями.
+   */
+  stockBooksFrom?: string | null;
+  /** старые минусы до старта учёта сняты один раз и больше не возвращаются сами */
+  stockDebtCleared?: boolean;
   /** ставка налога, % — смысл зависит от taxRegime */
   taxRate: number;
   /** НДФЛ с ФОТ «на руки», % */
@@ -926,8 +1039,44 @@ export function base_per_unit(unit: material_unit) {
   return unit === 'kg' || unit === 'L' ? 1000 : 1;
 }
 
-/** цена одной базовой единицы (за 1 г / 1 мл / 1 шт) */
+/** вес в граммах. мл и л считаем как воду: 1 мл = 1 г. штуки не переводятся. */
+export function to_grams(amount: number, unit: material_unit): number | null {
+  if (!(amount > 0) || !Number.isFinite(amount) || unit === 'pcs') return null;
+  return amount * base_per_unit(unit);
+}
+
+/** цена закупки: для граммов (доли рубля) оставляем 4 знака, иначе 2 */
+export function round_cost(price: number) {
+  if (!Number.isFinite(price) || price <= 0) return 0;
+  const digits = price < 1 ? 4 : 2;
+  const factor = 10 ** digits;
+  return Math.round(price * factor) / factor;
+}
+
+/**
+ * партия в единицах закупки материала.
+ * вес упаковки в г / кг / мл / л сходится в граммы, затем в единицу карточки (1 мл = 1 г).
+ * штуки с весом не смешиваются.
+ */
+export function receipt_purchase_qty(
+  packs: number,
+  pack_size: number,
+  pack_unit: material_unit,
+  material_unit: material_unit,
+) {
+  if (!(packs > 0) || !(pack_size > 0) || !Number.isFinite(packs) || !Number.isFinite(pack_size)) return 0;
+  const pack_pcs = pack_unit === 'pcs';
+  const mat_pcs = base_unit(material_unit) === 'pcs';
+  if (pack_pcs !== mat_pcs) return 0;
+  if (pack_pcs) return packs * pack_size;
+  const grams = to_grams(pack_size, pack_unit);
+  if (grams == null) return 0;
+  return (grams * packs) / base_per_unit(material_unit);
+}
+
+/** цена одной базовой единицы (за 1 г / 1 мл / 1 шт). вода и лёд — 0 */
 export function cost_per_base_unit(m: material) {
+  if (material_is_free(m)) return 0;
   return m.costPerUnit / base_per_unit(m.unit);
 }
 
@@ -972,13 +1121,26 @@ export function new_id(prefix = 'id') {
 /* ------------------------------------------------------------------ */
 
 /**
- * «бесплатные» позиции без учёта на складе.
- * лёд / вода / розовая вода — обычный склад (для ТТК и списания), не сюда.
+ * позиции, которых нет в карточках склада.
+ * вода и лёд сюда не входят: они остаются ингредиентами, но бесплатные и без лимита.
  */
 export function is_infinite_stock(id_or_name: string) {
   const s = id_or_name.trim().toLowerCase().replace(/ё/g, 'е');
   // наследие: только явный id снега (если был)
   return s === 'snow';
+}
+
+const FREE_STOCK_IDS = new Set(['water', 'ice']);
+
+/** фильтрованная вода и пищевой лёд: в рецепте есть, со склада не списываются и стоят 0 */
+export function material_is_free(m: { id: string; name?: string }) {
+  if (FREE_STOCK_IDS.has(m.id)) return true;
+  const n = (m.name || '').trim().toLowerCase().replace(/ё/g, 'е');
+  return n === 'вода (фильтрованная)' || n === 'лед пищевой';
+}
+
+export function is_free_stock_id(id: string) {
+  return FREE_STOCK_IDS.has(id);
 }
 
 export function material_is_infinite(m: { id: string; name: string }) {
@@ -989,38 +1151,42 @@ export function material_is_infinite(m: { id: string; name: string }) {
 export const material_excluded_from_warehouse = material_is_infinite;
 
 export const default_materials: material[] = [
-  { id: 'tea_black', name: 'чай чёрный (заваренный)', category: 'dry', unit: 'kg', costPerUnit: 1500, minStock: 400 },
-  { id: 'tea_jasmine', name: 'чай зелёный жасмин (заваренный)', category: 'dry', unit: 'kg', costPerUnit: 1600, minStock: 400 },
-  { id: 'tea_black_dry', name: 'чай чёрный (сухой лист)', category: 'dry', unit: 'kg', costPerUnit: 1500, minStock: 400 },
-  { id: 'tea_jasmine_dry', name: 'чай жасмин (сухой лист)', category: 'dry', unit: 'kg', costPerUnit: 1600, minStock: 400 },
-  { id: 'matcha', name: 'матча (порошок)', category: 'dry', unit: 'kg', costPerUnit: 3500, minStock: 200 },
-  { id: 'taro_mix', name: 'смесь «таро»', category: 'dry', unit: 'kg', costPerUnit: 900, minStock: 1000 },
-  { id: 'cocoa', name: 'какао-порошок', category: 'dry', unit: 'kg', costPerUnit: 700, minStock: 500 },
-  { id: 'cane_sugar', name: 'сахар тростниковый', category: 'dry', unit: 'kg', costPerUnit: 120, minStock: 1000 },
-  { id: 'spices', name: 'специи (масала)', category: 'dry', unit: 'kg', costPerUnit: 1800 },
+  { id: 'tea_black', name: 'чай чёрный (заваренный)', category: 'prep', unit: 'kg', costPerUnit: 1500, minStock: 400 },
+  { id: 'tea_jasmine', name: 'чай зелёный жасмин (заваренный)', category: 'prep', unit: 'kg', costPerUnit: 1600, minStock: 400 },
+  { id: 'tea_black_dry', name: 'чай чёрный (сухой лист)', category: 'mixes', unit: 'kg', costPerUnit: 1500, minStock: 400 },
+  { id: 'tea_jasmine_dry', name: 'чай жасмин (сухой лист)', category: 'mixes', unit: 'kg', costPerUnit: 1600, minStock: 400 },
+  { id: 'matcha', name: 'матча (порошок)', category: 'mixes', unit: 'kg', costPerUnit: 3500, minStock: 200 },
+  { id: 'taro_mix', name: 'смесь «таро»', category: 'mixes', unit: 'kg', costPerUnit: 900, minStock: 1000 },
+  { id: 'cocoa', name: 'какао-порошок', category: 'mixes', unit: 'kg', costPerUnit: 700, minStock: 500 },
+  { id: 'cane_sugar', name: 'сахар тростниковый', category: 'mixes', unit: 'kg', costPerUnit: 120, minStock: 1000 },
+  { id: 'spices', name: 'специи (масала)', category: 'mixes', unit: 'kg', costPerUnit: 1800 },
   { id: 'milk', name: 'молоко', category: 'liquids', unit: 'L', costPerUnit: 80, minStock: 5000 },
   { id: 'cream', name: 'сливки', category: 'liquids', unit: 'L', costPerUnit: 220 },
   { id: 'condensed', name: 'сгущённое молоко', category: 'liquids', unit: 'kg', costPerUnit: 280 },
   { id: 'soda', name: 'газированная вода', category: 'liquids', unit: 'L', costPerUnit: 25, minStock: 5000 },
-  { id: 'ice', name: 'лёд пищевой', category: 'liquids', unit: 'kg', costPerUnit: 15, minStock: 5000 },
-  { id: 'water', name: 'вода (фильтрованная)', category: 'liquids', unit: 'L', costPerUnit: 10, minStock: 10000 },
-  { id: 'cheese_foam', name: 'сырная шапка', category: 'liquids', unit: 'kg', costPerUnit: 650, minStock: 1000 },
-  { id: 'tapioca', name: 'тапиока сваренная', category: 'toppings', unit: 'kg', costPerUnit: 400, minStock: 2000 },
+  { id: 'ice', name: 'лёд пищевой', category: 'liquids', unit: 'kg', costPerUnit: 0 },
+  { id: 'water', name: 'вода (фильтрованная)', category: 'liquids', unit: 'L', costPerUnit: 0 },
+  { id: 'cheese_foam', name: 'сырная шапка', category: 'mixes', unit: 'kg', costPerUnit: 650, minStock: 1000 },
+  { id: 'tapioca', name: 'тапиока сваренная', category: 'prep', unit: 'kg', costPerUnit: 400, minStock: 2000 },
   { id: 'tapioca_dry', name: 'тапиока сухая', category: 'toppings', unit: 'kg', costPerUnit: 400, minStock: 2000 },
-  { id: 'syrup_brown_sugar', name: 'сироп «чёрный сахар»', category: 'toppings', unit: 'L', costPerUnit: 420, minStock: 2000 },
-  { id: 'syrup_chocolate', name: 'сироп «шоколадный»', category: 'toppings', unit: 'L', costPerUnit: 400, minStock: 1000 },
-  { id: 'syrup_curacao', name: 'сироп «блю кюрасао»', category: 'toppings', unit: 'L', costPerUnit: 450, minStock: 1000 },
-  { id: 'syrup_raspberry', name: 'сироп «малина»', category: 'toppings', unit: 'L', costPerUnit: 400, minStock: 1000 },
-  { id: 'syrup_strawberry', name: 'сироп «клубника»', category: 'toppings', unit: 'L', costPerUnit: 400, minStock: 1000 },
-  { id: 'syrup_vanilla', name: 'сироп «ванильный»', category: 'toppings', unit: 'L', costPerUnit: 400, minStock: 1000 },
-  { id: 'syrup_caramel', name: 'сироп «карамельный»', category: 'toppings', unit: 'L', costPerUnit: 420, minStock: 1000 },
+  { id: 'syrup_brown_sugar', name: 'сироп «чёрный сахар»', category: 'syrups', unit: 'L', costPerUnit: 420, minStock: 2000 },
+  { id: 'syrup_chocolate', name: 'сироп «шоколадный»', category: 'syrups', unit: 'L', costPerUnit: 400, minStock: 1000 },
+  { id: 'syrup_curacao', name: 'сироп «блю кюрасао»', category: 'syrups', unit: 'L', costPerUnit: 450, minStock: 1000 },
+  { id: 'syrup_raspberry', name: 'сироп «малина»', category: 'syrups', unit: 'L', costPerUnit: 400, minStock: 1000 },
+  { id: 'syrup_strawberry', name: 'сироп «клубника»', category: 'syrups', unit: 'L', costPerUnit: 400, minStock: 1000 },
+  { id: 'syrup_vanilla', name: 'сироп «ванильный»', category: 'syrups', unit: 'L', costPerUnit: 400, minStock: 1000 },
+  { id: 'syrup_caramel', name: 'сироп «карамельный»', category: 'syrups', unit: 'L', costPerUnit: 420, minStock: 1000 },
   { id: 'topping_caramel', name: 'топинг «карамель»', category: 'toppings', unit: 'kg', costPerUnit: 480, minStock: 1000 },
-  { id: 'juice_lemon', name: 'сок лимона', category: 'toppings', unit: 'L', costPerUnit: 350, minStock: 500 },
-  { id: 'syrup_coconut_caramel', name: 'сироп «кокос карамельный»', category: 'toppings', unit: 'L', costPerUnit: 450, minStock: 1000 },
-  { id: 'conc_strawberry', name: 'концентрат клубники', category: 'toppings', unit: 'L', costPerUnit: 480, minStock: 1000 },
-  { id: 'puree_strawberry', name: 'пюре клубника', category: 'toppings', unit: 'kg', costPerUnit: 550, minStock: 1000 },
-  { id: 'rose_water', name: 'розовая вода', category: 'toppings', unit: 'L', costPerUnit: 900, minStock: 200 },
-  { id: 'menthol', name: 'экстракт ментола', category: 'toppings', unit: 'ml', costPerUnit: 8 },
+  { id: 'juice_lemon', name: 'сок лимона', category: 'conc', unit: 'L', costPerUnit: 350, minStock: 500 },
+  { id: 'syrup_coconut_caramel', name: 'сироп «кокос карамельный»', category: 'syrups', unit: 'L', costPerUnit: 450, minStock: 1000 },
+  { id: 'conc_strawberry', name: 'концентрат клубники', category: 'conc', unit: 'L', costPerUnit: 480, minStock: 1000 },
+  { id: 'conc_pineapple', name: 'концентрат ананаса', category: 'conc', unit: 'L', costPerUnit: 480, minStock: 1000 },
+  { id: 'puree_strawberry', name: 'пюре клубника', category: 'conc', unit: 'kg', costPerUnit: 550, minStock: 1000 },
+  { id: 'puree_mango', name: 'пюре манго', category: 'conc', unit: 'kg', costPerUnit: 550, minStock: 1000 },
+  { id: 'pumpkin_puree', name: 'пюре тыквы', category: 'conc', unit: 'kg', costPerUnit: 420, minStock: 1000 },
+  { id: 'honey', name: 'мёд', category: 'syrups', unit: 'kg', costPerUnit: 500, minStock: 500 },
+  { id: 'rose_water', name: 'розовая вода', category: 'liquids', unit: 'L', costPerUnit: 900, minStock: 200 },
+  { id: 'menthol', name: 'экстракт ментола', category: 'conc', unit: 'ml', costPerUnit: 8 },
   { id: 'jb_strawberry', name: 'джус-боллы клубника', category: 'toppings', unit: 'kg', costPerUnit: 620, minStock: 1500 },
   { id: 'jb_passion', name: 'джус-боллы маракуйя', category: 'toppings', unit: 'kg', costPerUnit: 620, minStock: 1500 },
   { id: 'jb_mango', name: 'джус-боллы манго', category: 'toppings', unit: 'kg', costPerUnit: 620, minStock: 1500 },
@@ -1088,6 +1254,17 @@ export const default_tech_cards: tech_card[] = [
     menu_item_id: 'klubnika-mango',
     sizes: sizes_500_650(
       { puree_strawberry: 40, cane_sugar: 15, milk: 120, jb_mango: 50 },
+      'lidded'
+    ),
+  },
+  {
+    id: 'tc_mango_marakuya',
+    name: 'манго маракуйя',
+    menu_item_id: 'mango-marakuya',
+    cold: true,
+    hot: false,
+    sizes: sizes_500_650(
+      { puree_mango: 40, cane_sugar: 15, milk: 120, jb_passion: 50 },
       'lidded'
     ),
   },
@@ -1164,7 +1341,7 @@ export const default_tech_cards: tech_card[] = [
     menu_item_id: 'taro',
     cold: true,
     hot: true,
-    sizes: sizes_500_650({ taro_mix: 40, tapioca: 50, cheese_foam: 35 }),
+    sizes: sizes_500_650({ taro_mix: 50, milk: 310, tapioca: 50, cheese_foam: 50, ice: 100 }),
   },
   {
     id: 'tc_cocoa',
@@ -1186,10 +1363,29 @@ export const default_tech_cards: tech_card[] = [
     }),
   },
   {
+    id: 'tc_pumpkin_honey_latte',
+    name: 'медовый тыквенный латте',
+    menu_item_id: 'medovy-tykvenny-latte',
+    cold: false,
+    hot: true,
+    sizes: sizes_500_650({
+      pumpkin_puree: 50,
+      milk: 310,
+      tapioca: 50,
+      cheese_foam: 50,
+    }),
+  },
+  {
     id: 'tc_strawberry_lemonade',
     name: 'клубничный лимонад',
     menu_item_id: 'klubnichny-limonad',
     sizes: sizes_500_650({ soda: 250, conc_strawberry: 40, jb_strawberry: 50 }, 'lidded'),
+  },
+  {
+    id: 'tc_pineapple_passion_lemonade',
+    name: 'ананас маракуйя',
+    menu_item_id: 'ananas-marakuya',
+    sizes: sizes_500_650({ soda: 250, conc_pineapple: 40, jb_passion: 50 }, 'lidded'),
   },
   {
     id: 'tc_tropic_fusion',
@@ -1243,7 +1439,7 @@ const lumped_material_ids = new Set(['juiceballs', 'syrup', 'tea', 'fruits', 'to
 
 /** снятые эксперименты меню — вычищаем техкарты при нормализации */
 const dropped_menu_item_ids = new Set(['malinovy-fuz']);
-const dropped_tech_card_ids = new Set(['tc_malinovy_fuz']);
+const dropped_tech_card_ids = new Set(['tc_malinovy_fuz', 'tc_thai_tea']);
 
 function recipe_hint(card: { id: string; name: string; menu_item_id?: string | null }) {
   return `${card.id} ${card.menu_item_id || ''} ${card.name}`.toLowerCase();
@@ -1391,7 +1587,10 @@ export function default_finance_state(): finance_state {
     stockMovements: [],
     stockAudit: [],
     stockCountedAt: null,
+    stockBooksFrom: null,
+    stockDebtCleared: false,
     stockGuard: { ...DEFAULT_STOCK_GUARD },
+    prepRecipes: [],
     taxRate: 8,
     ndflRate: 13,
     taxRegime: 'ausn_income',
@@ -1406,6 +1605,85 @@ export function needs_stock_count(state: finance_state) {
   return !state.stockCountedAt;
 }
 
+/** текущая точка. старые движения без метки живут только здесь */
+export const LEGACY_SPOT_ID = 'spot-kimry-1';
+
+export function resolve_stock_spot(spotId?: string | null) {
+  const id = (spotId || '').trim();
+  return id || LEGACY_SPOT_ID;
+}
+
+export function movement_on_spot(row: { spotId?: string }, spotId: string) {
+  const id = resolve_stock_spot(spotId);
+  const row_id = (row.spotId || '').trim();
+  if (row_id) return row_id === id;
+  return id === LEGACY_SPOT_ID;
+}
+
+function fresh_prep_stations(stations: finance_state['prepStations']): finance_state['prepStations'] {
+  if (!stations) return undefined;
+  return stations.map((s) => ({
+    ...s,
+    batchFullG: 0,
+    openBatch: null,
+    marinadePending: false,
+    yieldSamples: [],
+  }));
+}
+
+function prep_for_spot(state: finance_state, spotId: string): finance_state['prepStations'] {
+  if (spotId === LEGACY_SPOT_ID) return state.prepStations;
+  const saved = state.prepBySpot?.[spotId];
+  if (saved) return saved;
+  return fresh_prep_stations(state.prepStations);
+}
+
+/** склад, кастрюли и отметка инвентаризации одной точки */
+export function bind_spot(state: finance_state, spotId?: string | null): finance_state {
+  const id = resolve_stock_spot(spotId);
+  const counted =
+    state.stockCountedAtBySpot?.[id] ||
+    (id === LEGACY_SPOT_ID ? state.stockCountedAt ?? null : null);
+  return {
+    ...state,
+    stockMovements: state.stockMovements.filter((mv) => movement_on_spot(mv, id)),
+    stockAudit: (state.stockAudit ?? []).filter((e) => movement_on_spot(e, id)),
+    prepStations: prep_for_spot(state, id),
+    stockCountedAt: counted,
+  };
+}
+
+/**
+ * записать правку склада одной точки обратно в общий документ.
+ * каталог и месяцы берутся из next, движения других точек остаются.
+ */
+export function commit_spot(
+  full: finance_state,
+  spotId: string | null | undefined,
+  next: finance_state
+): finance_state {
+  const id = resolve_stock_spot(spotId);
+  const before = bind_spot(full, id);
+  const stamp_mv = next.stockMovements.map((mv) => ({ ...mv, spotId: mv.spotId || id }));
+  const stamp_aud = (next.stockAudit ?? []).map((e) => ({ ...e, spotId: e.spotId || id }));
+  const counted_changed = (next.stockCountedAt || null) !== (before.stockCountedAt || null);
+  const stockCountedAtBySpot =
+    counted_changed && next.stockCountedAt
+      ? { ...(full.stockCountedAtBySpot ?? {}), [id]: next.stockCountedAt }
+      : full.stockCountedAtBySpot;
+  return {
+    ...next,
+    stockMovements: [...full.stockMovements.filter((mv) => !movement_on_spot(mv, id)), ...stamp_mv],
+    stockAudit: [...(full.stockAudit ?? []).filter((e) => !movement_on_spot(e, id)), ...stamp_aud],
+    prepBySpot:
+      id === LEGACY_SPOT_ID ? full.prepBySpot : { ...(full.prepBySpot ?? {}), [id]: next.prepStations ?? [] },
+    prepStations: id === LEGACY_SPOT_ID ? next.prepStations : full.prepStations,
+    stockCountedAt:
+      id === LEGACY_SPOT_ID ? (next.stockCountedAt ?? full.stockCountedAt ?? null) : (full.stockCountedAt ?? null),
+    stockCountedAtBySpot,
+  };
+}
+
 /* ------------------------------------------------------------------ */
 /* нормализация / импорт бэкапа Bubble Manager                          */
 /* ------------------------------------------------------------------ */
@@ -1413,6 +1691,81 @@ export function needs_stock_count(state: finance_state) {
 function num(v: unknown, fallback = 0) {
   const n = Number(v);
   return Number.isFinite(n) ? n : fallback;
+}
+
+function read_string_map(raw: unknown): Record<string, string> | undefined {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return undefined;
+  const out: Record<string, string> = {};
+  for (const [key, value] of Object.entries(raw as Record<string, unknown>)) {
+    const id = key.trim().slice(0, 80);
+    if (!id || typeof value !== 'string' || !value.trim()) continue;
+    out[id] = value.trim();
+  }
+  return Object.keys(out).length ? out : undefined;
+}
+
+function read_prep_by_spot(raw: unknown): finance_state['prepBySpot'] {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return undefined;
+  const out: NonNullable<finance_state['prepBySpot']> = {};
+  for (const [key, value] of Object.entries(raw as Record<string, unknown>)) {
+    const id = key.trim().slice(0, 80);
+    if (!id || id === LEGACY_SPOT_ID || !Array.isArray(value)) continue;
+    out[id] = value as NonNullable<finance_state['prepStations']>;
+  }
+  return Object.keys(out).length ? out : undefined;
+}
+
+function clean_iso(value: unknown) {
+  if (typeof value !== 'string' || value.length < 10 || value.length > 40) return '';
+  return Number.isFinite(new Date(value).getTime()) ? value : '';
+}
+
+function read_transaction_edits(raw: unknown): transaction_edit[] | undefined {
+  if (!Array.isArray(raw)) return undefined;
+  const edits: transaction_edit[] = [];
+  for (const row of raw) {
+    if (!row || typeof row !== 'object') continue;
+    const e = row as Partial<transaction_edit>;
+    const at = clean_iso(e.at);
+    const actorName = typeof e.actorName === 'string' ? e.actorName.trim().slice(0, 80) : '';
+    const text = typeof e.text === 'string' ? e.text.trim().slice(0, 400) : '';
+    if (!at || !actorName || !text) continue;
+    edits.push({
+      at,
+      actorId: typeof e.actorId === 'string' ? e.actorId.trim().slice(0, 80) : '',
+      actorName,
+      text,
+    });
+  }
+  return edits.length ? edits.slice(-30) : undefined;
+}
+
+function read_transaction(raw: unknown): transaction {
+  const t = raw && typeof raw === 'object' ? (raw as Record<string, unknown>) : {};
+  const at = clean_iso(t.at);
+  const createdAt = clean_iso(t.createdAt);
+  const channel = t.channel === 'card' || t.channel === 'cash' ? t.channel : undefined;
+  const actorName = typeof t.actorName === 'string' ? t.actorName.trim().slice(0, 80) : '';
+  const actorId = typeof t.actorId === 'string' ? t.actorId.trim().slice(0, 80) : '';
+  const spotId = typeof t.spotId === 'string' ? t.spotId.trim().slice(0, 80) : '';
+  const edits = read_transaction_edits(t.edits);
+  return {
+    id: String(t.id || new_id('tx')),
+    day: Math.min(31, Math.max(1, Math.round(num(t.day, 1)))),
+    type: t.type === 'income' ? 'income' : 'expense',
+    category: String(t.category || 'other_expense'),
+    amount: num(t.amount),
+    description: String(t.description || ''),
+    ...(t.materialId ? { materialId: String(t.materialId) } : {}),
+    ...(t.quantity != null ? { quantity: num(t.quantity) } : {}),
+    ...(at ? { at } : {}),
+    ...(channel ? { channel } : {}),
+    ...(actorId ? { actorId } : {}),
+    ...(actorName ? { actorName } : {}),
+    ...(createdAt ? { createdAt } : {}),
+    ...(spotId ? { spotId } : {}),
+    ...(edits ? { edits } : {}),
+  };
 }
 
 export function is_bubble_manager_backup(value: unknown): value is Partial<finance_state> {
@@ -1432,12 +1785,16 @@ function read_prep_steps(raw: unknown): prep_step[] | undefined {
     const materialId = p.materialId ? String(p.materialId) : '';
     if (!title && !materialId) continue;
     const qty = Number(p.qty);
+    const when = p.when === 'cold' || p.when === 'hot' ? p.when : undefined;
+    const qty_label = String(p.qty_label || '').trim();
     steps.push({
       id: String(p.id || new_id('step')),
       title,
       ...(p.hint ? { hint: String(p.hint).trim() } : {}),
       ...(materialId ? { materialId } : {}),
       qty: Number.isFinite(qty) && qty > 0 ? qty : 0,
+      ...(qty_label ? { qty_label } : {}),
+      ...(when ? { when } : {}),
     });
   }
   return steps.length ? steps : undefined;
@@ -1476,6 +1833,35 @@ function read_tech_card_ttk(raw: unknown): tech_card_ttk | undefined {
   };
 }
 
+function normalize_prep_recipes(raw: unknown, material_ids: Set<string>): prep_recipe[] {
+  if (!Array.isArray(raw)) return [];
+  const out: prep_recipe[] = [];
+  const seen = new Set<string>();
+  for (const row of raw) {
+    if (!row || typeof row !== 'object') continue;
+    const o = row as Record<string, unknown>;
+    const id = String(o.id || '').trim();
+    if (!id || seen.has(id) || material_ids.has(id)) continue;
+    seen.add(id);
+    const ingredients: Record<string, number> = {};
+    const src = o.ingredients;
+    if (src && typeof src === 'object') {
+      for (const [k, v] of Object.entries(src as Record<string, unknown>)) {
+        if (!material_ids.has(k)) continue;
+        const n = num(v);
+        if (n >= 0) ingredients[k] = n;
+      }
+    }
+    out.push({
+      id,
+      name: String(o.name || '').trim(),
+      yieldG: Math.max(0, num(o.yieldG)),
+      ingredients,
+    });
+  }
+  return out;
+}
+
 export function normalize_finance_state(raw: unknown): finance_state {
   const def = default_finance_state();
   if (!raw || typeof raw !== 'object') return def;
@@ -1492,24 +1878,35 @@ export function normalize_finance_state(raw: unknown): finance_state {
         )
         .map((m) => ({
           id: String(m.id),
-          name: String(m.name || m.id).trim(),
+          name: (() => {
+            const raw = String(m.name || '').trim();
+            return raw && raw !== String(m.id) ? raw : '';
+          })(),
           category: String(m.category || 'raw').trim() || 'raw',
           unit: (['g', 'kg', 'ml', 'L', 'pcs'] as const).includes(m.unit) ? m.unit : 'pcs',
           costPerUnit: num(m.costPerUnit),
           ...(m.minStock != null ? { minStock: num(m.minStock) } : {}),
+          ...(num((m as { tareWeight?: unknown }).tareWeight) > 0
+            ? { tareWeight: num((m as { tareWeight?: unknown }).tareWeight) }
+            : {}),
         }))
         .filter((m) => !material_excluded_from_warehouse(m))
     : def.materials;
-  {
-    const have = new Set(materials.map((m) => m.id));
-    for (const extra of default_materials) {
-      if (!have.has(extra.id) && !material_excluded_from_warehouse(extra)) materials.push({ ...extra });
-    }
-    materials = materials.map((m) => {
-      const cat = stock_category_for(m);
-      return cat === m.category ? m : { ...m, category: cat };
-    });
-  }
+  const removedMaterialIds = Array.isArray(v.removedMaterialIds)
+    ? [...new Set(v.removedMaterialIds.map((id) => String(id)).filter(Boolean))]
+    : [];
+  const removed_mats = new Set(removedMaterialIds);
+  materials = materials.filter((m) => !removed_mats.has(m.id));
+  const shelves_ready = Boolean((v as { stockShelvesMigrated?: unknown }).stockShelvesMigrated);
+  // сохранённый каталог не добираем из кода: удалённые какао и заваренные чаи иначе возвращаются
+  materials = materials.map((m) => {
+    const cat = shelves_ready && STOCK_SHELF_IDS.has(m.category) ? m.category : classify_material(m);
+    const next = cat === m.category ? m : { ...m, category: cat };
+    if (!material_is_free(next)) return next;
+    const free = { ...next, costPerUnit: 0 };
+    delete free.minStock;
+    return free;
+  });
 
   const techCards: tech_card[] = Array.isArray(v.techCards)
     ? v.techCards
@@ -1675,18 +2072,7 @@ export function normalize_finance_state(raw: unknown): finance_state {
               inflowInvestments: num(m.cashFlow?.inflowInvestments),
               outflowCapex: num(m.cashFlow?.outflowCapex),
             },
-            transactions: Array.isArray(m.transactions)
-              ? m.transactions.map((t): transaction => ({
-                  id: String(t.id || new_id('tx')),
-                  day: Math.min(31, Math.max(1, Math.round(num(t.day, 1)))),
-                  type: t.type === 'income' ? 'income' : 'expense',
-                  category: String(t.category || 'other_expense'),
-                  amount: num(t.amount),
-                  description: String(t.description || ''),
-                  ...(t.materialId ? { materialId: String(t.materialId) } : {}),
-                  ...(t.quantity != null ? { quantity: num(t.quantity) } : {}),
-                }))
-              : [],
+            transactions: Array.isArray(m.transactions) ? m.transactions.map((t) => read_transaction(t)) : [],
           };
         })
         .sort((a, b) => a.month.localeCompare(b.month))
@@ -1728,6 +2114,9 @@ export function normalize_finance_state(raw: unknown): finance_state {
             ...(s.actorId ? { actorId: String(s.actorId) } : {}),
             ...(s.actorName ? { actorName: String(s.actorName) } : {}),
             ...(s.actorRole === 'admin' || s.actorRole === 'seller' ? { actorRole: s.actorRole } : {}),
+            ...(typeof s.spotId === 'string' && s.spotId.trim()
+              ? { spotId: s.spotId.trim().slice(0, 80) }
+              : {}),
           }))
       : [];
 
@@ -1770,11 +2159,73 @@ export function normalize_finance_state(raw: unknown): finance_state {
             ...(s.qtyAfter != null ? { qtyAfter: num(s.qtyAfter) } : {}),
             ...(s.note ? { note: String(s.note) } : {}),
             ...(s.movementId ? { movementId: String(s.movementId) } : {}),
+            ...(typeof s.spotId === 'string' && s.spotId.trim()
+              ? { spotId: s.spotId.trim().slice(0, 80) }
+              : {}),
           };
         })
     : [];
 
   const stockCountedAt = wipe_warehouse ? null : v.stockCountedAt ? String(v.stockCountedAt) : null;
+  const stockBooksRaw = (v as { stockBooksFrom?: unknown }).stockBooksFrom;
+  let stockBooksFrom = wipe_warehouse
+    ? null
+    : typeof stockBooksRaw === 'string' && stockBooksRaw
+      ? stockBooksRaw
+      : stockCountedAt;
+  // v8: последняя инвентаризация — старт учёта. v9: её граммы с ценой в карточке идут в потрачено.
+  if (stockBooksFrom) {
+    stockMovements = stockMovements.map((mv) => {
+      if (mv.type !== 'adjust' || mv.date !== stockBooksFrom) return mv;
+      if ((mv.note || '').trim() !== 'инвентаризация') return mv;
+      return { ...mv, note: 'служебный: старт учёта' };
+    });
+  }
+
+  const stockDebtCleared = Boolean((v as { stockDebtCleared?: unknown }).stockDebtCleared);
+  // v9: минусы, накопленные до нормального учёта, обнуляем один раз. плюс на полке не трогаем.
+  if (stockBooksFrom && !stockDebtCleared) {
+    const qty = new Map<string, number>();
+    const sorted = [...stockMovements].sort(
+      (a, b) => a.date.localeCompare(b.date) || a.id.localeCompare(b.id)
+    );
+    for (const mv of sorted) {
+      const cur = qty.get(mv.materialId) ?? 0;
+      if (mv.type === 'in') {
+        if (!is_remainder_invoice(mv.note)) qty.set(mv.materialId, cur + mv.qty);
+      } else if (mv.type === 'adjust') qty.set(mv.materialId, mv.qty);
+      else qty.set(mv.materialId, cur - mv.qty);
+    }
+    const last = stockMovements.reduce((max, mv) => (mv.date > max ? mv.date : max), stockBooksFrom);
+    const clear_at = new Date(Date.parse(last) + 1000).toISOString();
+    const mats = new Map(materials.map((m) => [m.id, m]));
+    const clears: stock_movement[] = [];
+    for (const [materialId, q] of qty) {
+      if (!(q < -0.5)) continue;
+      const mat = mats.get(materialId);
+      if (!mat || material_is_free(mat) || material_is_infinite(mat)) continue;
+      clears.push({
+        id: `mv_clear_${materialId}`,
+        date: clear_at,
+        type: 'adjust',
+        materialId,
+        qty: 0,
+        note: 'служебный: обнуление минуса',
+      });
+    }
+    clears.sort((a, b) => a.id.localeCompare(b.id));
+    const have = new Set(stockMovements.map((mv) => mv.id));
+    const fresh = clears.filter((mv) => !have.has(mv.id));
+    if (fresh.length) stockMovements = [...stockMovements, ...fresh];
+  }
+  {
+    const seen = new Set<string>();
+    stockMovements = stockMovements.filter((mv) => {
+      if (seen.has(mv.id)) return false;
+      seen.add(mv.id);
+      return true;
+    });
+  }
 
   {
     const moved = new Set(stockMovements.map((m) => m.materialId));
@@ -1790,13 +2241,18 @@ export function normalize_finance_state(raw: unknown): finance_state {
     materials,
     techCards,
     removedTechCardIds,
+    removedMaterialIds,
     opexCategories,
     stockCategories,
+    stockShelvesMigrated: true,
     equipments,
     monthsData,
     stockMovements,
     stockAudit,
     stockCountedAt,
+    stockCountedAtBySpot: read_string_map((v as { stockCountedAtBySpot?: unknown }).stockCountedAtBySpot),
+    stockBooksFrom,
+    stockDebtCleared: stockBooksFrom ? true : stockDebtCleared,
     taxRate: num(v.taxRate, 8),
     ndflRate: num(v.ndflRate, 13),
     taxRegime: TAX_REGIMES.some((r) => r.id === v.taxRegime) ? (v.taxRegime as tax_regime) : 'ausn_income',
@@ -1841,6 +2297,8 @@ export function normalize_finance_state(raw: unknown): finance_state {
     prepStations: Array.isArray((v as { prepStations?: unknown }).prepStations)
       ? ((v as { prepStations?: unknown }).prepStations as finance_state['prepStations'])
       : undefined,
+    prepBySpot: read_prep_by_spot((v as { prepBySpot?: unknown }).prepBySpot),
+    prepRecipes: normalize_prep_recipes((v as { prepRecipes?: unknown }).prepRecipes, new Set(materials.map((m) => m.id))),
     prepStockMigrated: Boolean((v as { prepStockMigrated?: unknown }).prepStockMigrated),
     stockGuard: normalize_stock_guard((v as { stockGuard?: unknown }).stockGuard),
   };
@@ -2233,11 +2691,42 @@ export function material_by_id(state: finance_state) {
   return new Map(state.materials.map((m) => [m.id, m]));
 }
 
-/** стоимость `qty` базовых единиц материала */
+/**
+ * стоимость `qty` базовых единиц — как при реальном списании.
+ * заготовка раскладывается на сырьё. вода и лёд — 0.
+ * берётся более ранняя партия. граммы без накладной стоят 0, это не цена карточки.
+ */
 export function material_cost(state: finance_state, material_id: string, qty: number) {
+  if (!(qty > 0)) return 0;
+  const prep = (state.prepRecipes ?? []).find((p) => p.id === material_id);
+  if (prep) {
+    if (!(prep.yieldG > 0)) return 0;
+    const k = qty / prep.yieldG;
+    let sum = 0;
+    for (const [id, q] of Object.entries(prep.ingredients)) {
+      if (!(q > 0)) continue;
+      sum += material_cost(state, id, q * k);
+    }
+    return sum;
+  }
+  return fifo_portion(state, material_id, qty).cost;
+}
+
+/** true, если в этих граммах есть кусок без поставки */
+export function material_unpriced(state: finance_state, material_id: string, qty: number): boolean {
+  if (!(qty > 0)) return false;
+  const prep = (state.prepRecipes ?? []).find((p) => p.id === material_id);
+  if (prep) {
+    if (!(prep.yieldG > 0)) return false;
+    const k = qty / prep.yieldG;
+    for (const [id, q] of Object.entries(prep.ingredients)) {
+      if (q > 0 && material_unpriced(state, id, q * k)) return true;
+    }
+    return false;
+  }
   const m = state.materials.find((x) => x.id === material_id);
-  if (!m) return 0;
-  return cost_per_base_unit(m) * qty;
+  if (!m || material_is_free(m) || material_is_infinite(m)) return false;
+  return fifo_portion(state, material_id, qty).unpriced > 0.5;
 }
 
 const auto_large_ml = '650';
@@ -2255,7 +2744,8 @@ const LOCKED_PORTION_MATERIAL_IDS = new Set([
   'juice_lemon',
 ]);
 
-function qty_stays(mat: material | undefined) {
+function qty_stays(id: string, mat: material | undefined) {
+  if (is_prep_recipe_id(id)) return false;
   if (!mat) return true;
   if (base_unit(mat.unit) === 'pcs' || mat.category === 'packaging') return true;
   if (LOCKED_PORTION_MATERIAL_IDS.has(mat.id)) return true;
@@ -2268,12 +2758,12 @@ export function derive_size_from_base(base: tech_card_size, to_ml: number, mater
   const k = from_ml > 0 ? to_ml / from_ml : 1;
   const by_id = new Map(materials.map((m) => [m.id, m]));
   const scale_qty = (id: string, q: number) =>
-    qty_stays(by_id.get(id)) ? q : Math.round(q * k * 10) / 10;
+    qty_stays(id, by_id.get(id)) ? q : Math.round(q * k * 10) / 10;
   const steps = base.steps?.map((step) => ({
     ...step,
     id: `${step.id}@${to_ml}`,
     qty:
-      step.qty > 0 && !(step.materialId && qty_stays(by_id.get(step.materialId)))
+      step.qty > 0 && !(step.materialId && qty_stays(step.materialId, by_id.get(step.materialId)))
         ? Math.round(step.qty * k * 10) / 10
         : step.qty,
   }));
@@ -2301,6 +2791,19 @@ export function tech_card_cost(state: finance_state, card: tech_card, size_key: 
   for (const [id, q] of Object.entries(s.ingredients)) total += material_cost(state, id, q);
   for (const [id, q] of Object.entries(s.packaging)) total += material_cost(state, id, q);
   return total;
+}
+
+/** в порции есть ингредиент, у которого не хватает поставки с рублями */
+export function tech_card_unpriced(state: finance_state, card: tech_card, size_key: string) {
+  const s = effective_card_size(card, size_key, state.materials);
+  if (!s) return false;
+  for (const [id, q] of Object.entries(s.ingredients)) {
+    if (material_unpriced(state, id, q)) return true;
+  }
+  for (const [id, q] of Object.entries(s.packaging)) {
+    if (material_unpriced(state, id, q)) return true;
+  }
+  return false;
 }
 
 export function amortization_per_month(state: finance_state) {
@@ -2342,15 +2845,13 @@ export type month_summary = {
 
 export function summarize_month(state: finance_state, m: month_data): month_summary {
   let revenue = 0;
-  let cogs_calc = 0;
   let drinks_sold = 0;
   for (const card of state.techCards) {
     const sales = m.sales[card.id];
     if (!sales) continue;
-    for (const [key, cell] of Object.entries(sales)) {
+    for (const [, cell] of Object.entries(sales)) {
       if (!cell) continue;
       revenue += cell.price * cell.qty;
-      cogs_calc += tech_card_cost(state, card, key) * cell.qty;
       drinks_sold += cell.qty;
     }
   }
@@ -2358,8 +2859,8 @@ export function summarize_month(state: finance_state, m: month_data): month_summ
     const mat = state.materials.find((x) => x.id === mid);
     if (!mat || !cell || cell.qty <= 0) continue;
     revenue += cell.price * cell.qty;
-    cogs_calc += mat.costPerUnit * cell.qty;
   }
+  const recipe_cogs = sales_fifo_cogs(state, m.sales, m.retailSales);
 
   const resolved_opex = resolve_month_opex(state, m.month);
   let opex = 0;
@@ -2396,7 +2897,7 @@ export function summarize_month(state: finance_state, m: month_data): month_summ
   const cogs_writeoff = from_stock.writeoff;
   // себестоимость напитков — по техкартам (рецепт × цена сырья);
   // складские sale-движения — сверка; персонал/списания — отдельно из склада
-  const cogs = cogs_calc > 0 ? cogs_calc : cogs_sold;
+  const cogs = recipe_cogs > 0 ? recipe_cogs : cogs_sold;
 
   const amortization = amortization_per_month(state);
   const ndfl = pay.ndfl;
@@ -2405,7 +2906,7 @@ export function summarize_month(state: finance_state, m: month_data): month_summ
   return close_month_summary(state, {
     month: m.month,
     revenue,
-    cogs_calc,
+    cogs_calc: recipe_cogs,
     cogs_sold,
     cogs_staff,
     cogs_writeoff,
@@ -2606,6 +3107,21 @@ export function day_key(iso: string) {
   return iso.slice(0, 10);
 }
 
+/** отметка старта складских денег. нет — считаем весь журнал */
+export function stock_books_from(state: Pick<finance_state, 'stockBooksFrom'>): string | null {
+  const v = state.stockBooksFrom;
+  return typeof v === 'string' && v ? v : null;
+}
+
+/** календарный день старта в Москве */
+export function stock_books_day(state: Pick<finance_state, 'stockBooksFrom'>): string | null {
+  const from = stock_books_from(state);
+  if (!from) return null;
+  const t = new Date(from);
+  if (!Number.isFinite(t.getTime())) return null;
+  return moscow_today(t);
+}
+
 export function moscow_today(d = new Date()) {
   const parts = new Intl.DateTimeFormat('en-CA', {
     timeZone: 'Europe/Moscow',
@@ -2703,20 +3219,19 @@ export function summarize_period(
   const fixed = prorate_fixed(state, from, to);
   const from_stock = movement_cogs_range(state, from, to);
   let revenue = opts?.revenue ?? 0;
-  let cogs_calc = 0;
   let drinks_sold = 0;
   if (opts?.sales) {
     for (const card of state.techCards) {
       const sales = opts.sales[card.id];
       if (!sales) continue;
-      for (const [key, cell] of Object.entries(sales)) {
+      for (const [, cell] of Object.entries(sales)) {
         if (!cell) continue;
         if (!(opts.revenue && opts.revenue > 0)) revenue += cell.price * cell.qty;
-        cogs_calc += tech_card_cost(state, card, key) * cell.qty;
         drinks_sold += cell.qty;
       }
     }
   }
+  const cogs_calc = opts?.sales ? sales_fifo_cogs(state, opts.sales) : 0;
   // чистая: себес каждого проданного напитка по техкарте; склад — персонал и списания
   const cogs = cogs_calc > 0 ? cogs_calc : from_stock.sold;
   let patent = 0;
@@ -2886,7 +3401,7 @@ export function movement_cogs_range(state: finance_state, from: string, to: stri
     const d = day_key(mv.date);
     if (d < a || d > b) continue;
     const mat = state.materials.find((x) => x.id === mv.materialId);
-    if (!mat) continue;
+    if (!mat || material_is_free(mat)) continue;
     const cost = movement_money(mat, mv);
     if (mv.type === 'sale') sold += cost;
     else if (mv.type === 'staff') staff += cost;
@@ -2907,7 +3422,7 @@ export function warehouse_purchases_range(state: finance_state, from: string, to
     if (mv.type !== 'in') continue;
     if (is_prep_convert_note(mv.note) || is_stock_bookkeeping_note(mv.note)) continue;
     const mat = mats.get(mv.materialId);
-    if (!mat || material_is_infinite(mat)) continue;
+    if (!mat || material_is_infinite(mat) || material_is_free(mat)) continue;
     spent += Number(mv.total) > 0 ? Number(mv.total) : mv.qty * cost_per_base_unit(mat);
   }
   return spent;
@@ -2922,10 +3437,15 @@ export function in_day_range(iso: string, from: string, to: string) {
 export function stock_qty_map(state: finance_state, as_of?: string): Map<string, number> {
   const cutoff = as_of ? day_key(as_of) : null;
   const qty = new Map<string, number>();
+  const free = new Set<string>(FREE_STOCK_IDS);
+  for (const m of state.materials) if (material_is_free(m)) free.add(m.id);
   const sorted = [...state.stockMovements].sort((a, b) => a.date.localeCompare(b.date) || a.id.localeCompare(b.id));
   for (const mv of sorted) {
     if (cutoff && day_key(mv.date) > cutoff) continue;
+    if ((mv.type === 'sale' || mv.type === 'staff') && free.has(mv.materialId)) continue;
     const cur = qty.get(mv.materialId) ?? 0;
+    // поставка на остаток только ставит рубли на уже посчитанные граммы
+    if (mv.type === 'in' && is_remainder_invoice(mv.note)) continue;
     if (mv.type === 'in') qty.set(mv.materialId, cur + mv.qty);
     else if (mv.type === 'adjust') qty.set(mv.materialId, mv.qty);
     else qty.set(mv.materialId, cur - mv.qty);
@@ -2933,8 +3453,16 @@ export function stock_qty_map(state: finance_state, as_of?: string): Map<string,
   return qty;
 }
 
-/** партия на складе: остаток в базовых ед. и цена за 1 базу */
-export type stock_batch = { qty: number; unit_cost: number };
+/** партия на складе: остаток в базовых ед. и цена за 1 базу. одна позиция — несколько партий */
+export type stock_batch = {
+  qty: number;
+  /** 0 — граммы есть, накладной нет */
+  unit_cost: number;
+  unpriced?: boolean;
+  movementId?: string;
+  date?: string;
+  note?: string;
+};
 
 function batch_qty_sum(batches: stock_batch[]) {
   return batches.reduce((s, b) => s + b.qty, 0);
@@ -2960,36 +3488,137 @@ function fifo_take(batches: stock_batch[], qty: number, fallback_unit: number): 
   return cost;
 }
 
-function fifo_push(batches: stock_batch[], qty: number, total: number, fallback_unit: number) {
+function fifo_push(
+  batches: stock_batch[],
+  qty: number,
+  total: number,
+  fallback_unit: number,
+  meta?: Pick<stock_batch, 'movementId' | 'date' | 'note'>
+) {
   if (qty <= 1e-9) return;
-  const unit = total > 0 && Number.isFinite(total) ? total / qty : fallback_unit;
-  batches.push({ qty, unit_cost: unit });
+  const priced = total > 0 && Number.isFinite(total);
+  const unit = priced ? total / qty : fallback_unit;
+  const unpriced = !priced && unit <= 1e-9;
+  batches.push({ qty, unit_cost: unit, ...meta, ...(unpriced ? { unpriced: true } : {}) });
+}
+
+function is_opening_stock_note(note?: string) {
+  return !!note && note.includes('старт учёта');
+}
+
+/** накладная на уже лежащий остаток инвентаризации: граммы не прибавляет, только ставит рубли */
+export function is_remainder_invoice(note?: string) {
+  return !!note && note.startsWith('поставка на остаток');
+}
+
+export function unpriced_batch_qty(batches: stock_batch[]) {
+  return batches.reduce(
+    (s, b) => s + (b.qty > 0.5 && (b.unpriced || b.unit_cost <= 1e-9) ? b.qty : 0),
+    0
+  );
+}
+
+export type legacy_price_source = 'receipt' | 'used' | 'card' | 'none';
+
+/** цена 1 базовой единицы, если она уже была: прошлая накладная, иначе списание, иначе карточка */
+export function legacy_unit_cost(
+  state: finance_state,
+  materialId: string,
+  as_of?: string
+): { unit: number; source: legacy_price_source } {
+  const cutoff = as_of ? day_key(as_of) : null;
+  const mat = state.materials.find((m) => m.id === materialId);
+  let from_in = 0;
+  let from_use = 0;
+  const moves = state.stockMovements
+    .filter((mv) => mv.materialId === materialId && (!cutoff || day_key(mv.date) <= cutoff))
+    .sort((a, b) => a.date.localeCompare(b.date) || a.id.localeCompare(b.id));
+  for (const mv of moves) {
+    if (is_remainder_invoice(mv.note)) continue;
+    const total = mv.total != null && Number.isFinite(Number(mv.total)) ? Number(mv.total) : 0;
+    if (!(total > 0) || !(mv.qty > 0)) continue;
+    if (mv.type === 'in') from_in = total / mv.qty;
+    else if ((mv.type === 'sale' || mv.type === 'staff' || mv.type === 'writeoff') && !(from_use > 0)) {
+      from_use = total / mv.qty;
+    }
+  }
+  if (from_in > 1e-9) return { unit: from_in, source: 'receipt' };
+  if (from_use > 1e-9) return { unit: from_use, source: 'used' };
+  const card = mat ? cost_per_base_unit(mat) : 0;
+  if (card > 1e-9) return { unit: card, source: 'card' };
+  return { unit: 0, source: 'none' };
+}
+
+/** цена 1 базы: средняя по партиям, которые ещё лежат, иначе карточка */
+function lot_fallback_unit(mat: material | undefined, batches: stock_batch[]) {
+  const qty = batch_qty_sum(batches);
+  const value = batch_value_sum(batches);
+  if (qty > 1e-9 && value > 0) return value / qty;
+  return mat ? cost_per_base_unit(mat) : 0;
 }
 
 /**
  * очереди партий по материалам (FIFO).
  * in — новая партия; sale/staff/writeoff/out — съедают с головы;
- * adjust — выравнивает остаток (минус с головы / плюс партия по текущей цене).
+ * adjust — выравнивает остаток. лишние граммы без накладной остаются без рублей,
+ * кроме старта учёта и кроме случая, когда раньше уже была поставка с рублями:
+ * тогда остаток инвентаризации стоит по той старой цене.
+ * «поставка на остаток» не добавляет граммы, а ставит сумму на хвост без рублей.
  */
 export function fifo_batches_map(state: finance_state, as_of?: string): Map<string, stock_batch[]> {
   const cutoff = as_of ? day_key(as_of) : null;
   const mats = new Map(state.materials.map((m) => [m.id, m]));
   const queues = new Map<string, stock_batch[]>();
+  const last_in_unit = new Map<string, number>();
   const sorted = [...state.stockMovements].sort((a, b) => a.date.localeCompare(b.date) || a.id.localeCompare(b.id));
   for (const mv of sorted) {
     if (cutoff && day_key(mv.date) > cutoff) continue;
     const mat = mats.get(mv.materialId);
-    const fallback = mat ? cost_per_base_unit(mat) : 0;
     const q = queues.get(mv.materialId) ?? [];
-    if (mv.type === 'in') {
-      const total =
-        mv.total != null && Number.isFinite(Number(mv.total)) ? Number(mv.total) : mv.qty * fallback;
-      fifo_push(q, mv.qty, total, fallback);
+    const fallback = lot_fallback_unit(mat, q);
+    const meta = { movementId: mv.id, date: mv.date, ...(mv.note ? { note: mv.note } : {}) };
+    if (mv.type === 'in' && is_remainder_invoice(mv.note)) {
+      const total = mv.total != null && Number.isFinite(Number(mv.total)) ? Number(mv.total) : 0;
+      let left = mv.qty;
+      if (left > 1e-9 && total > 0) {
+        const unit = total / left;
+        for (let i = 0; i < q.length && left > 1e-9; i++) {
+          const b = q[i];
+          if (!(b.qty > 1e-9) || !(b.unpriced || b.unit_cost <= 1e-9)) continue;
+          const take = Math.min(b.qty, left);
+          if (take < b.qty - 1e-9) {
+            q.splice(i, 0, { ...b, qty: take, unit_cost: unit, unpriced: false });
+            b.qty -= take;
+            left = 0;
+            break;
+          }
+          b.unit_cost = unit;
+          b.unpriced = false;
+          left -= take;
+        }
+        last_in_unit.set(mv.materialId, unit);
+      }
+    } else if (mv.type === 'in') {
+      const stated = mv.total != null && Number.isFinite(Number(mv.total)) ? Number(mv.total) : null;
+      const total = stated != null ? stated : mv.qty * fallback;
+      fifo_push(q, mv.qty, total, fallback, meta);
+      if (stated != null && stated > 0 && mv.qty > 0) last_in_unit.set(mv.materialId, stated / mv.qty);
     } else if (mv.type === 'adjust') {
       const cur = batch_qty_sum(q);
       const target = Math.max(0, mv.qty);
       if (target < cur - 1e-9) fifo_take(q, cur - target, fallback);
-      else if (target > cur + 1e-9) fifo_push(q, target - cur, (target - cur) * fallback, fallback);
+      else if (target > cur + 1e-9) {
+        const extra = target - cur;
+        if (is_opening_stock_note(mv.note)) {
+          const unit = mat ? cost_per_base_unit(mat) : 0;
+          fifo_push(q, extra, extra * unit, unit, meta);
+          if (unit > 1e-9) last_in_unit.set(mv.materialId, unit);
+        } else {
+          const known = last_in_unit.get(mv.materialId) || 0;
+          if (known > 1e-9) fifo_push(q, extra, extra * known, known, meta);
+          else fifo_push(q, extra, 0, 0, meta);
+        }
+      }
     } else {
       fifo_take(q, mv.qty, fallback);
     }
@@ -3001,19 +3630,70 @@ export function fifo_batches_map(state: finance_state, as_of?: string): Map<stri
 /** стоимость остатка по FIFO, ₽ */
 export function fifo_values_map(state: finance_state, as_of?: string): Map<string, number> {
   const out = new Map<string, number>();
+  const mats = new Map(state.materials.map((m) => [m.id, m]));
   for (const [id, batches] of fifo_batches_map(state, as_of)) {
+    const mat = mats.get(id);
+    if (mat && (material_is_infinite(mat) || material_is_free(mat))) continue;
     out.set(id, batch_value_sum(batches));
   }
   return out;
 }
 
-/** себестоимость списания qty базовых ед. по FIFO на текущем состоянии журнала */
-export function fifo_consume_cost(state: finance_state, materialId: string, qty: number): number {
-  if (qty <= 0) return 0;
-  const mat = state.materials.find((m) => m.id === materialId);
-  const fallback = mat ? cost_per_base_unit(mat) : 0;
+/** сколько стоят эти граммы, если забрать их с головы очереди, и сколько из них без накладной */
+export function fifo_portion(
+  state: finance_state,
+  materialId: string,
+  qty: number
+): { cost: number; unpriced: number } {
+  if (!(qty > 0)) return { cost: 0, unpriced: 0 };
   const batches = (fifo_batches_map(state).get(materialId) ?? []).map((b) => ({ ...b }));
-  return Math.round(fifo_take(batches, qty, fallback) * 100) / 100;
+  let left = qty;
+  let cost = 0;
+  let unpriced = 0;
+  for (const b of batches) {
+    if (left <= 1e-9) break;
+    const take = Math.min(b.qty, left);
+    if (b.unpriced || b.unit_cost <= 1e-9) unpriced += take;
+    else cost += take * b.unit_cost;
+    left -= take;
+  }
+  if (left > 1e-9) unpriced += left;
+  return { cost: Math.round(cost * 100) / 100, unpriced };
+}
+
+/** себестоимость списания qty базовых ед. по FIFO: сначала более ранняя поставка. дырка без рублей — 0 */
+export function fifo_consume_cost(state: finance_state, materialId: string, qty: number): number {
+  return fifo_portion(state, materialId, qty).cost;
+}
+
+/** ₽ за 1 г / мл / шт следующей партии, которая спишется. нет поставки — 0 */
+export function next_lot_cost_per_base(state: finance_state, material_id: string, as_of?: string) {
+  const batches = fifo_batches_map(state, as_of).get(material_id) ?? [];
+  const head = batches.find((b) => b.qty > 1e-6 && b.unit_cost > 1e-9 && !b.unpriced);
+  return head ? head.unit_cost : 0;
+}
+
+/** ₽ за единицу закупки следующей партии */
+export function next_lot_cost_per_unit(state: finance_state, m: material, as_of?: string) {
+  if (material_is_free(m)) return 0;
+  return next_lot_cost_per_base(state, m.id, as_of) * base_per_unit(m.unit);
+}
+
+/** ₽ за 1 г / мл / шт по партиям, которые ещё лежат. нет партий — цена карточки */
+export function lot_cost_per_base(state: finance_state, material_id: string, as_of?: string) {
+  const m = state.materials.find((x) => x.id === material_id);
+  if (!m || material_is_free(m)) return 0;
+  const batches = fifo_batches_map(state, as_of).get(material_id) ?? [];
+  const qty = batch_qty_sum(batches);
+  const value = batch_value_sum(batches);
+  if (qty > 1e-9 && value > 0) return value / qty;
+  return cost_per_base_unit(m);
+}
+
+/** ₽ за единицу закупки материала (кг / л / шт) по оставшимся партиям */
+export function lot_cost_per_unit(state: finance_state, m: material, as_of?: string) {
+  if (material_is_free(m)) return 0;
+  return lot_cost_per_base(state, m.id, as_of) * base_per_unit(m.unit);
 }
 
 export type warehouse_money = {
@@ -3052,6 +3732,7 @@ function is_stock_bookkeeping_note(note?: string) {
  */
 export function warehouse_money(state: finance_state, as_of?: string): warehouse_money {
   const cutoff = as_of ? day_key(as_of) : null;
+  const books = stock_books_from(state);
   const mats = new Map(state.materials.map((m) => [m.id, m]));
   const qty = new Map<string, number>();
   let spent = 0;
@@ -3062,12 +3743,16 @@ export function warehouse_money(state: finance_state, as_of?: string): warehouse
   for (const mv of sorted) {
     if (cutoff && day_key(mv.date) > cutoff) continue;
     const mat = mats.get(mv.materialId);
-    if (!mat || material_is_infinite(mat)) continue;
+    if (!mat || material_is_infinite(mat) || material_is_free(mat)) continue;
     const unit = cost_per_base_unit(mat);
     const prev = qty.get(mv.materialId) ?? 0;
+    // остаток ведём с начала журнала, деньги — только после старта учёта
+    const pay = !books || mv.date > books;
+    const opening_receipt =
+      !!books && mv.date === books && (mv.note || '').includes('старт учёта');
     if (mv.type === 'in') {
-      qty.set(mv.materialId, prev + mv.qty);
-      if (!is_prep_convert_note(mv.note) && !is_stock_bookkeeping_note(mv.note)) {
+      if (!is_remainder_invoice(mv.note)) qty.set(mv.materialId, prev + mv.qty);
+      if (pay && !is_prep_convert_note(mv.note) && !is_stock_bookkeeping_note(mv.note)) {
         spent += movement_money(mat, mv);
       }
     } else if (mv.type === 'out') {
@@ -3076,19 +3761,23 @@ export function warehouse_money(state: finance_state, as_of?: string): warehouse
     } else if (mv.type === 'adjust') {
       const delta = mv.qty - prev;
       qty.set(mv.materialId, mv.qty);
-      if (is_stock_bookkeeping_note(mv.note)) {
-        /* только двигаем остаток */
-      } else if (delta > 0) spent += delta * unit;
-      else lost += -delta * unit;
+      if (opening_receipt && delta > 0) {
+        // старт учёта: граммы × цена, которая была на карточке в тот день
+        spent += delta * unit;
+      } else if (!pay || is_stock_bookkeeping_note(mv.note)) {
+        /* служебные правки только двигают остаток */
+      } else if (delta > 0) {
+        /* лишние граммы без накладной — это не трата, пока нет поставки */
+      } else lost += -delta * unit;
     } else if (mv.type === 'sale' || mv.type === 'staff') {
       qty.set(mv.materialId, prev - mv.qty);
-      realized += movement_money(mat, mv);
+      if (pay) realized += movement_money(mat, mv);
     } else if (mv.type === 'writeoff') {
       qty.set(mv.materialId, prev - mv.qty);
-      lost += movement_money(mat, mv);
+      if (pay) lost += movement_money(mat, mv);
     } else {
       qty.set(mv.materialId, prev - mv.qty);
-      lost += movement_money(mat, mv);
+      if (pay) lost += movement_money(mat, mv);
     }
   }
 
@@ -3112,7 +3801,7 @@ export function writeoffs_money(
     if (mv.type !== 'writeoff') continue;
     if (cutoff && day_key(mv.date) > cutoff) continue;
     const mat = mats.get(mv.materialId);
-    if (!mat || material_is_infinite(mat)) continue;
+    if (!mat || material_is_infinite(mat) || material_is_free(mat)) continue;
     sum += movement_money(mat, mv);
     count += 1;
   }
@@ -3132,12 +3821,13 @@ export function stock_levels(state: finance_state, as_of?: string): stock_row[] 
   return state.materials
     .filter((m) => !material_excluded_from_warehouse(m))
     .map((m) => {
+      const free = material_is_free(m);
       const q = qty.get(m.id) ?? 0;
       return {
         material: m,
         qty: q,
-        value: Math.max(0, values.get(m.id) ?? 0),
-        low: q < 0 || (m.minStock != null && q <= m.minStock),
+        value: free ? 0 : Math.max(0, values.get(m.id) ?? 0),
+        low: free ? false : q < 0 || (m.minStock != null && q <= m.minStock),
         last_in: last_in.get(m.id),
       };
     });
@@ -3151,7 +3841,7 @@ export function movement_cogs(state: finance_state, month: string) {
   for (const mv of state.stockMovements) {
     if (!mv.date.startsWith(month)) continue;
     const mat = state.materials.find((x) => x.id === mv.materialId);
-    if (!mat) continue;
+    if (!mat || material_is_free(mat)) continue;
     const cost = movement_money(mat, mv);
     if (mv.type === 'sale') sold += cost;
     else if (mv.type === 'staff') staff += cost;
@@ -3235,8 +3925,9 @@ function prev_day_key(day: string): string {
   return `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`;
 }
 
-function snap_id(day: string, materialId: string) {
-  return `mv_snap_${day}_${materialId}`;
+function snap_id(day: string, materialId: string, spotId?: string) {
+  if (!spotId || spotId === LEGACY_SPOT_ID) return `mv_snap_${day}_${materialId}`;
+  return `mv_snap_${day}_${spotId}_${materialId}`;
 }
 
 export function filter_stock_audit(entries: stock_audit_entry[] | undefined, now = new Date()): stock_audit_entry[] {
@@ -3257,19 +3948,26 @@ export function prune_stock_retention(state: finance_state, now = new Date()): f
   if (!has_old && audit_same) return state;
 
   const as_of = prev_day_key(since_day);
-  const opening = has_old ? stock_qty_map(state, as_of) : new Map<string, number>();
   const snaps: stock_movement[] = [];
   if (has_old) {
-    for (const [materialId, qty] of opening) {
-      if (!Number.isFinite(qty) || qty === 0) continue;
-      snaps.push({
-        id: snap_id(as_of, materialId),
-        date: `${as_of}T12:00:00.000Z`,
-        type: 'adjust',
-        materialId,
-        qty,
-        note: 'срез — старше 12 месяцев',
-      });
+    const spots = new Set<string>();
+    for (const mv of state.stockMovements) {
+      if (day_key(mv.date) < since_day) spots.add(mv.spotId || LEGACY_SPOT_ID);
+    }
+    for (const spot of spots) {
+      const opening = stock_qty_map(bind_spot(state, spot), as_of);
+      for (const [materialId, qty] of opening) {
+        if (!Number.isFinite(qty) || qty === 0) continue;
+        snaps.push({
+          id: snap_id(as_of, materialId, spot),
+          date: `${as_of}T12:00:00.000Z`,
+          type: 'adjust',
+          materialId,
+          qty,
+          spotId: spot,
+          note: 'срез — старше 12 месяцев',
+        });
+      }
     }
     snaps.sort((a, b) => a.id.localeCompare(b.id));
   }
@@ -3323,6 +4021,8 @@ export type receipt_input = {
   /** обновить цену закупки материала по этой партии */
   update_price?: boolean;
   actor?: stock_actor | null;
+  /** на какую точку легла накладная */
+  spotId?: string;
 };
 
 /** поступление на склад: движение + операция закупки (попадает в ДДС и P&L) */
@@ -3333,6 +4033,7 @@ export function apply_receipt(state: finance_state, input: receipt_input): finan
   const month = date.slice(0, 7);
   const day = Math.max(1, Math.min(31, Number(date.slice(8, 10)) || 1));
   const tx_id = new_id('tx');
+  const spotId = input.spotId ? resolve_stock_spot(input.spotId) : '';
   const movement: stock_movement = {
     id: new_id('mv'),
     date,
@@ -3342,6 +4043,7 @@ export function apply_receipt(state: finance_state, input: receipt_input): finan
     total: input.total,
     transactionId: tx_id,
     ...(input.note ? { note: input.note } : {}),
+    ...(spotId ? { spotId } : {}),
     ...actor_on_movement(input.actor),
   };
   let next = update_month(state, month, (m) => ({
@@ -3357,6 +4059,13 @@ export function apply_receipt(state: finance_state, input: receipt_input): finan
         quantity: input.quantity,
         amount: input.total,
         description: input.note || `поступление: ${mat.name}`,
+        ...(input.actor
+          ? {
+              actorId: input.actor.role === 'admin' ? `admin:${input.actor.name}` : input.actor.id,
+              actorName: input.actor.name,
+              createdAt: new Date().toISOString(),
+            }
+          : {}),
       },
     ],
   }));
@@ -3372,16 +4081,105 @@ export function apply_receipt(state: finance_state, input: receipt_input): finan
       qtyAfter: movement.qty,
       note: input.note,
       movementId: movement.id,
+      ...(spotId ? { spotId } : {}),
     },
   ]);
   // цена последней партии — только для отображения/фолбэка; остаток в ₽ считает FIFO
   if (input.total > 0 && input.quantity > 0 && input.update_price !== false) {
-    const batch_price = input.total / input.quantity;
+    const batch_price = round_cost(input.total / input.quantity);
     next = {
       ...next,
-      materials: next.materials.map((m) =>
-        m.id === mat.id ? { ...m, costPerUnit: Math.round(batch_price * 100) / 100 } : m
-      ),
+      materials: next.materials.map((m) => (m.id === mat.id ? { ...m, costPerUnit: batch_price } : m)),
+    };
+  }
+  return next;
+}
+
+/**
+ * рубли на остаток, который уже лежит после инвентаризации.
+ * количество не растёт: накладная только закрывает граммы без цены.
+ */
+export function apply_remainder_invoice(
+  state: finance_state,
+  materialId: string,
+  total: number,
+  date = new Date().toISOString(),
+  actor?: stock_actor | null,
+  /** сколько базовых единиц закрывает эта накладная. пусто — весь остаток без рублей */
+  cover_base?: number,
+  pack_note?: string
+): finance_state {
+  if (!(total > 0)) return state;
+  const mat = state.materials.find((m) => m.id === materialId);
+  if (!mat || material_is_free(mat)) return state;
+  const uncovered = unpriced_batch_qty(fifo_batches_map(state).get(materialId) ?? []);
+  if (!(uncovered > 0.5)) return state;
+  const asked = cover_base != null && cover_base > 0 ? cover_base : uncovered;
+  const unit = total / asked;
+  let cover = Math.min(uncovered, asked);
+  if (uncovered - cover <= Math.max(1, uncovered * 0.005)) cover = uncovered;
+  const money = Math.round(unit * cover * 100) / 100;
+  if (!(money > 0) || !(cover > 0.5)) return state;
+  const purchase_qty = cover / base_per_unit(mat.unit);
+  if (!(purchase_qty > 0)) return state;
+  const note = `поставка на остаток · ${pack_note || format_base_qty(mat, cover)}`;
+  const tx_id = new_id('tx');
+  const month = date.slice(0, 7);
+  const day = Math.max(1, Math.min(31, Number(date.slice(8, 10)) || 1));
+  const movement: stock_movement = {
+    id: new_id('mv'),
+    date,
+    type: 'in',
+    materialId: mat.id,
+    qty: cover,
+    total: money,
+    transactionId: tx_id,
+    note,
+    ...actor_on_movement(actor),
+  };
+  let next = update_month(state, month, (m) => ({
+    ...m,
+    transactions: [
+      ...(m.transactions ?? []),
+      {
+        id: tx_id,
+        day,
+        type: 'expense' as const,
+        category: 'material',
+        materialId: mat.id,
+        quantity: purchase_qty,
+        amount: money,
+        description: note,
+        ...(actor
+          ? {
+              actorId: actor.role === 'admin' ? `admin:${actor.name}` : actor.id,
+              actorName: actor.name,
+              createdAt: new Date().toISOString(),
+            }
+          : {}),
+      },
+    ],
+  }));
+  next = { ...next, stockMovements: [...next.stockMovements, movement] };
+  next = push_stock_audit(next, [
+    {
+      id: new_id('aud'),
+      at: date,
+      ...audit_actor(actor),
+      action: 'receipt',
+      materialId: mat.id,
+      materialName: mat.name,
+      qtyBefore: uncovered,
+      qtyAfter: uncovered,
+      note,
+      movementId: movement.id,
+    },
+  ]);
+  const batch_price = round_cost(money / purchase_qty);
+  if (batch_price > 0) {
+    next = {
+      ...next,
+      materials: next.materials.map((m) => (m.id === mat.id ? { ...m, costPerUnit: batch_price } : m)),
     };
   }
   return next;
@@ -3548,10 +4346,25 @@ export function remove_stock_movement(
 
 export const sales_consumption_note = (month: string) => `расход по продажам ${month}`;
 
-function add_recipe(out: Map<string, number>, size: tech_card_size | undefined, qty: number) {
+function add_recipe(
+  out: Map<string, number>,
+  size: tech_card_size | undefined,
+  qty: number,
+  preps: prep_recipe[]
+) {
   if (!size || qty <= 0) return;
   for (const [id, q] of Object.entries(size.ingredients)) {
-    if (is_infinite_stock(id)) continue;
+    if (!(q > 0) || is_infinite_stock(id) || is_free_stock_id(id)) continue;
+    const prep = preps.find((p) => p.id === id);
+    if (prep) {
+      if (!(prep.yieldG > 0)) continue;
+      const k = (q * qty) / prep.yieldG;
+      for (const [cid, cq] of Object.entries(prep.ingredients)) {
+        if (!(cq > 0) || is_infinite_stock(cid) || is_free_stock_id(cid)) continue;
+        out.set(cid, (out.get(cid) ?? 0) + cq * k);
+      }
+      continue;
+    }
     out.set(id, (out.get(id) ?? 0) + q * qty);
   }
   for (const [id, q] of Object.entries(size.packaging)) out.set(id, (out.get(id) ?? 0) + q * qty);
@@ -3567,13 +4380,74 @@ export function consumption_from_sales_map(
     const by_size = sales[card.id];
     if (!by_size) continue;
     for (const [key, cell] of Object.entries(by_size)) {
-      add_recipe(out, effective_card_size(card, key, state.materials), cell?.qty ?? 0);
+      add_recipe(out, effective_card_size(card, key, state.materials), cell?.qty ?? 0, state.prepRecipes ?? []);
     }
   }
   for (const [mid, cell] of Object.entries(retail ?? {})) {
     if (cell?.qty) out.set(mid, (out.get(mid) ?? 0) + cell.qty);
   }
   return out;
+}
+
+/** очереди партий и списание порциями: каждая следующая чашка берёт следующую поставку */
+function walk_sales_lots(state: finance_state, sales: Record<string, Record<string, sales_cell>>) {
+  const queues = new Map<string, stock_batch[]>();
+  for (const [id, batches] of fifo_batches_map(state)) {
+    queues.set(id, batches.map((b) => ({ ...b })));
+  }
+  const take = (materialId: string, qty: number) => {
+    if (!(qty > 0)) return 0;
+    let q = queues.get(materialId);
+    if (!q) {
+      q = [];
+      queues.set(materialId, q);
+    }
+    return fifo_take(q, qty, 0);
+  };
+  const by_card = new Map<string, number>();
+  const preps = state.prepRecipes ?? [];
+  for (const card of state.techCards) {
+    const by = sales[card.id];
+    if (!by) continue;
+    let sum = 0;
+    for (const [key, cell] of Object.entries(by)) {
+      if (!cell?.qty) continue;
+      const need = new Map<string, number>();
+      add_recipe(need, effective_card_size(card, key, state.materials), cell.qty, preps);
+      for (const [id, qty] of need) sum += take(id, qty);
+    }
+    if (sum > 0) by_card.set(card.id, Math.round(sum * 100) / 100);
+  }
+  return { by_card, take };
+}
+
+/** себестоимость продаж по напиткам: чашки идут по очереди партий */
+export function sales_cogs_by_card(
+  state: finance_state,
+  sales: Record<string, Record<string, sales_cell>>
+): Map<string, number> {
+  return walk_sales_lots(state, sales).by_card;
+}
+
+/** все проданные чашки и розница, рубли партий по очереди */
+export function sales_fifo_cogs(
+  state: finance_state,
+  sales: Record<string, Record<string, sales_cell>>,
+  retail?: Record<string, sales_cell>
+): number {
+  const { by_card, take } = walk_sales_lots(state, sales);
+  let sum = 0;
+  for (const v of by_card.values()) sum += v;
+  if (retail) {
+    const mats = new Map(state.materials.map((m) => [m.id, m]));
+    for (const [id, cell] of Object.entries(retail)) {
+      if (!cell?.qty) continue;
+      const mat = mats.get(id);
+      if (!mat || material_is_free(mat)) continue;
+      sum += take(id, cell.qty * base_per_unit(mat.unit));
+    }
+  }
+  return Math.round(sum * 100) / 100;
 }
 
 export function consumption_for_items(
@@ -3595,7 +4469,7 @@ export function consumption_for_items(
       price: item.price,
       menu_item: menu_by_id.get(item.menu_id),
     });
-    add_recipe(out, effective_card_size(card, key, state.materials), item.quantity);
+    add_recipe(out, effective_card_size(card, key, state.materials), item.quantity, state.prepRecipes ?? []);
   }
   return out;
 }
@@ -3639,7 +4513,7 @@ export function order_stock_shortages(
   for (const [materialId, qty] of need) {
     if (qty <= 0) continue;
     const mat = mats.get(materialId);
-    if (mat ? material_is_infinite(mat) : is_infinite_stock(materialId)) continue;
+    if (mat ? material_is_infinite(mat) || material_is_free(mat) : is_infinite_stock(materialId) || is_free_stock_id(materialId)) continue;
     if (!guard.all && prep_ids && !prep_ids.has(materialId)) continue;
     const on_hand = have.get(materialId) ?? 0;
     if (on_hand + 0.5 < qty) {
@@ -3692,6 +4566,8 @@ export function apply_order_consumption(
   let cursor: finance_state = next;
   for (const [materialId, qty] of cons) {
     if (qty <= 0) continue;
+    const mat = next.materials.find((m) => m.id === materialId);
+    if (mat ? material_is_free(mat) : is_free_stock_id(materialId)) continue;
     const total = fifo_consume_cost(cursor, materialId, qty);
     const mv: stock_movement = {
       id: new_id('mv'),
@@ -3731,21 +4607,22 @@ export function apply_fact_consumption(
   const [y, mo] = month.split('-').map(Number);
   const last_day = new Date(y, mo, 0).getDate();
   const date = `${month}-${String(last_day).padStart(2, '0')}T21:00:00.000Z`;
-  const mats = new Map(state.materials.map((m) => [m.id, m]));
   const added: stock_movement[] = [];
+  let cursor: finance_state = { ...state, stockMovements: kept };
   for (const [materialId, qty] of needed) {
     const rest = Math.max(0, qty - (already.get(materialId) ?? 0));
     if (rest <= 0) continue;
-    const mat = mats.get(materialId);
-    added.push({
+    const mv: stock_movement = {
       id: new_id('mv'),
       date,
       type: 'sale',
       materialId,
       qty: rest,
-      ...(mat ? { total: Math.round(rest * cost_per_base_unit(mat) * 100) / 100 } : {}),
+      total: fifo_consume_cost(cursor, materialId, rest),
       note,
-    });
+    };
+    added.push(mv);
+    cursor = { ...cursor, stockMovements: [...cursor.stockMovements, mv] };
   }
   return { ...state, stockMovements: [...kept, ...added] };
 }

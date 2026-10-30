@@ -1,6 +1,7 @@
 import {
   base_unit,
   format_base_qty,
+  is_prep_recipe_id,
   new_id,
   stock_category_for,
   type material,
@@ -9,15 +10,17 @@ import {
   type tech_card_size,
 } from '@/lib/finance/model';
 
-const COOK_ORDER = ['dry', 'toppings', 'liquids', 'raw', 'retail', 'packaging'] as const;
+const COOK_ORDER = ['mixes', 'conc', 'syrups', 'toppings', 'liquids', 'prep', 'retail', 'packaging'] as const;
 
 const HINT_BY_CAT: Record<string, string> = {
-  dry: 'насыпать',
+  mixes: 'насыпать',
+  conc: 'добавить',
+  syrups: 'добавить',
   toppings: 'выложить',
   liquids: 'налить',
   packaging: 'взять',
   retail: 'положить',
-  raw: 'добавить',
+  prep: 'заготовка',
 };
 
 export type cook_step_view = {
@@ -25,6 +28,7 @@ export type cook_step_view = {
   title: string;
   hint: string;
   qty_label: string;
+  when?: 'cold' | 'hot';
 };
 
 function barista_title(name: string) {
@@ -43,18 +47,23 @@ export function parse_prep_steps(raw: unknown): prep_step[] | undefined {
     const title = String(s.title || '').trim();
     if (!title && !s.materialId) continue;
     const qty = Number(s.qty);
+    const when = s.when === 'cold' || s.when === 'hot' ? s.when : undefined;
+    const qty_label = String(s.qty_label || '').trim();
     steps.push({
       id: String(s.id || new_id('step')),
       title,
       ...(s.hint ? { hint: String(s.hint).trim() } : {}),
       ...(s.materialId ? { materialId: String(s.materialId) } : {}),
       qty: Number.isFinite(qty) && qty > 0 ? qty : 0,
+      ...(qty_label ? { qty_label } : {}),
+      ...(when ? { when } : {}),
     });
   }
   return steps.length ? steps : undefined;
 }
 
 function hint_for(mat: material) {
+  if (is_prep_recipe_id(mat.id) || mat.category === 'prep') return 'заготовка';
   const cat = stock_category_for(mat);
   const n = mat.name.toLowerCase();
   if (/сироп|концентр/.test(n)) return 'добавить';
@@ -86,6 +95,7 @@ const LOCKED_COOK_PORTION_IDS = new Set([
 ]);
 
 function qty_stays(mat: material | undefined) {
+  if (mat && is_prep_recipe_id(mat.id)) return false;
   if (!mat) return true;
   if (base_unit(mat.unit) === 'pcs' || mat.category === 'packaging') return true;
   if (LOCKED_COOK_PORTION_IDS.has(mat.id)) return true;
@@ -227,11 +237,16 @@ export function cook_steps_view(steps: prep_step[], materials: material[]): cook
   const by_id = new Map(materials.map((m) => [m.id, m]));
   return steps.map((s) => {
     const mat = s.materialId ? by_id.get(s.materialId) : undefined;
+    const plain =
+      s.qty > 0
+        ? `${new Intl.NumberFormat('ru-RU', { maximumFractionDigits: 1 }).format(Math.round(s.qty * 10) / 10)} г`
+        : '';
     return {
       id: s.id,
       title: s.title,
       hint: s.hint || 'добавить',
-      qty_label: mat && s.qty > 0 ? format_base_qty(mat, s.qty) : s.qty > 0 ? `${Math.round(s.qty)}` : '',
+      qty_label: s.qty_label || (mat && s.qty > 0 ? format_base_qty(mat, s.qty) : plain),
+      ...(s.when ? { when: s.when } : {}),
     };
   });
 }

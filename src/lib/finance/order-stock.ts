@@ -2,8 +2,11 @@ import { read_published_menu } from '@/lib/menu-catalog-server';
 import { upgrade_menu_store } from '@/lib/menu-store';
 import {
   apply_order_consumption,
+  bind_spot,
+  commit_spot,
   format_stock_shortages,
   order_stock_shortages,
+  resolve_stock_spot,
   reverse_order_consumption,
   type order_stock_item,
   type stock_shortage,
@@ -33,10 +36,12 @@ export async function assert_order_stock(opts: {
   items: order_stock_item[];
   /** при правке заказа: сначала «вернуть» его прошлый расход */
   releaseOrderId?: string;
+  spotId?: string | null;
 }): Promise<{ ok: true } | { ok: false; error: string; shortages: stock_shortage_row[] }> {
   if (!opts.items.length) return { ok: true };
   try {
-    const [state, menu] = await Promise.all([read_finance_state(), load_menu()]);
+    const [full, menu] = await Promise.all([read_finance_state(), load_menu()]);
+    const state = bind_spot(full, opts.spotId);
     const shortages = enrich_shortages(
       state,
       order_stock_shortages(state, opts.items, menu, {
@@ -56,11 +61,14 @@ export async function record_order_stock(opts: {
   items: order_stock_item[];
   kind?: 'sale' | 'staff';
   date?: string;
+  spotId?: string | null;
 }): Promise<{ ok: true } | { ok: false; error: string }> {
   if (!opts.orderId || !opts.items.length) return { ok: true };
   try {
     const menu = await load_menu();
-    return await mutate_finance_state<{ ok: true } | { ok: false; error: string }>((state) => {
+    const spot = resolve_stock_spot(opts.spotId);
+    return await mutate_finance_state<{ ok: true } | { ok: false; error: string }>((full) => {
+      const state = bind_spot(full, spot);
       const shortages = order_stock_shortages(state, opts.items, menu, {
         releaseOrderId: opts.orderId,
       });
@@ -70,13 +78,17 @@ export async function record_order_stock(opts: {
         return { state: null, value: { ok: false as const, error } };
       }
       return {
-        state: apply_order_consumption(state, {
-          orderId: opts.orderId,
-          items: opts.items,
-          kind: opts.kind,
-          date: opts.date,
-          menu,
-        }),
+        state: commit_spot(
+          full,
+          spot,
+          apply_order_consumption(state, {
+            orderId: opts.orderId,
+            items: opts.items,
+            kind: opts.kind,
+            date: opts.date,
+            menu,
+          })
+        ),
         value: { ok: true as const },
       };
     });
@@ -108,31 +120,38 @@ export async function replace_order_stock(opts: {
   keep: boolean;
   kind?: 'sale' | 'staff';
   date?: string;
+  spotId?: string | null;
 }): Promise<{ ok: true } | { ok: false; error: string }> {
   if (!opts.orderId) return { ok: true };
   try {
     const menu = opts.keep ? await load_menu() : [];
+    const spot = resolve_stock_spot(opts.spotId);
     return await mutate_finance_state<{ ok: true } | { ok: false; error: string }>((state) => {
       const released = reverse_order_consumption(state, opts.orderId);
       if (!opts.keep || !opts.items.length) {
         const changed = released.stockMovements.length !== state.stockMovements.length;
         return { state: changed ? released : null, value: { ok: true as const } };
       }
-      const shortages = order_stock_shortages(released, opts.items, menu);
+      const view = bind_spot(released, spot);
+      const shortages = order_stock_shortages(view, opts.items, menu);
       if (shortages.length) {
         return {
           state: null,
-          value: { ok: false as const, error: format_stock_shortages(released, shortages) },
+          value: { ok: false as const, error: format_stock_shortages(view, shortages) },
         };
       }
       return {
-        state: apply_order_consumption(released, {
-          orderId: opts.orderId,
-          items: opts.items,
-          kind: opts.kind,
-          date: opts.date,
-          menu,
-        }),
+        state: commit_spot(
+          released,
+          spot,
+          apply_order_consumption(view, {
+            orderId: opts.orderId,
+            items: opts.items,
+            kind: opts.kind,
+            date: opts.date,
+            menu,
+          })
+        ),
         value: { ok: true as const },
       };
     });

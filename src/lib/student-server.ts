@@ -1,7 +1,6 @@
-import { cookies } from 'next/headers';
 import { read_json_store, write_json_store } from '@/lib/data-store';
 import { normalize_phone } from '@/lib/phone';
-import { session_cookie, seller_name_cookie } from '@/lib/session';
+import { staff_actor } from '@/lib/staff-actor';
 import {
   default_student_expiry_iso,
   empty_student_status,
@@ -209,11 +208,6 @@ export async function set_student_verified(input: {
 }
 
 export async function staff_actor_name() {
-  const store = await cookies();
-  const role = store.get(session_cookie)?.value;
-  if (role === 'seller') {
-    return store.get(seller_name_cookie)?.value?.trim() || 'касса';
-  }
-  if (role === 'admin') return 'админ';
-  return 'персонал';
+  const actor = await staff_actor();
+  return actor?.name || 'персонал';
 }

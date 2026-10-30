@@ -182,6 +182,14 @@ export default function PrepStepsEditor({
                         </button>
                       </div>
                     </div>
+                    {s.when ? (
+                      <p className="text-[10px] uppercase tracking-[0.12em] text-accent">
+                        {s.when === 'cold' ? 'только холодный' : 'только горячий'}
+                      </p>
+                    ) : null}
+                    {s.qty_label && !(s.qty > 0) ? (
+                      <p className="text-[10px] text-neutral-400">{s.qty_label}</p>
+                    ) : null}
                     {mat ? <p className="text-[10px] text-neutral-400">склад: {mat.name}</p> : null}
                   </div>
                 </div>

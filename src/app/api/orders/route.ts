@@ -65,6 +65,8 @@ export async function POST(request: Request) {
   }
 
   const body = await request.json();
+  const spot_id_raw = typeof body.spot_id === 'string' ? body.spot_id.trim() : '';
+  const spot_id = spot_id_raw || null;
   const items = body.items as order_item[] | undefined;
   const total_price = Number(body.total_price);
   const payment_type = (body.payment_type as string) || 'cash';
@@ -157,7 +159,7 @@ export async function POST(request: Request) {
   let final_payment = payment_type;
   let is_paid = false;
 
-  const stock_ok = await assert_order_stock({ items: priced_items });
+  const stock_ok = await assert_order_stock({ items: priced_items, spotId: spot_id });
   if (!stock_ok.ok) {
     return NextResponse.json(
       { error: stock_ok.error, shortages: stock_ok.shortages },
@@ -210,8 +212,6 @@ export async function POST(request: Request) {
     );
   }
 
-  const spot_id_raw = typeof body.spot_id === 'string' ? body.spot_id.trim() : '';
-  const spot_id = spot_id_raw || null;
   const order_payload = {
     user_id: user.id,
     items: priced_items,
@@ -290,6 +290,7 @@ export async function POST(request: Request) {
     orderId: String((data as { id?: string }).id || ''),
     items: priced_items,
     kind: 'sale',
+    spotId: spot_id,
   });
 
   await supabase.from('cart_items').delete().eq('user_id', user.id);

@@ -51,6 +51,32 @@ export async function record_handed_order(input: {
   return row;
 }
 
+function unclaimed_cashier(seller_id: string, seller_name: string) {
+  const id = (seller_id || '').trim();
+  if (id && id !== 'seller') return false;
+  const name = (seller_name || '').trim().toLowerCase();
+  return !name || name === 'бариста' || name === 'касса' || name === 'seller';
+}
+
+/** продажи общего входа без бариста — привязать к тому, кто открыл свою аналитику */
+export async function claim_handed_rows(input: {
+  seller_id: string;
+  seller_name: string;
+  shift_date: string;
+}) {
+  if (!input.seller_id || input.seller_id === 'seller') return;
+  const all = await load_all();
+  let changed = false;
+  for (const row of all) {
+    if (row.shift_date !== input.shift_date) continue;
+    if (!unclaimed_cashier(row.seller_id, row.seller_name)) continue;
+    row.seller_id = input.seller_id;
+    row.seller_name = input.seller_name;
+    changed = true;
+  }
+  if (changed) await save_all(all);
+}
+
 export async function list_handed_rows(seller_id?: string): Promise<handed_order_row[]> {
   const all = await load_all();
   if (!seller_id) return all;

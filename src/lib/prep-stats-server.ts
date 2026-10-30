@@ -12,6 +12,42 @@ import type {
 const prep_key = 'prep-events';
 const fulfill_key = 'fulfillment-events';
 
+function unclaimed_cashier(seller_id: string, seller_name: string) {
+  const id = (seller_id || '').trim();
+  if (id && id !== 'seller') return false;
+  const name = (seller_name || '').trim().toLowerCase();
+  return !name || name === 'бариста' || name === 'касса' || name === 'seller';
+}
+
+/** приготовления и выдачи общего входа — на кассира, который смотрит аналитику */
+export async function claim_prep_activity(input: {
+  seller_id: string;
+  seller_name: string;
+  shift_date: string;
+}) {
+  if (!input.seller_id || input.seller_id === 'seller') return;
+  const prep = await load_prep();
+  const fulfill = await load_fulfill();
+  let prep_changed = false;
+  let fulfill_changed = false;
+  for (const row of prep) {
+    if (row.shift_date !== input.shift_date) continue;
+    if (!unclaimed_cashier(row.seller_id, row.seller_name)) continue;
+    row.seller_id = input.seller_id;
+    row.seller_name = input.seller_name;
+    prep_changed = true;
+  }
+  for (const row of fulfill) {
+    if (row.shift_date !== input.shift_date) continue;
+    if (!unclaimed_cashier(row.seller_id, row.seller_name)) continue;
+    row.seller_id = input.seller_id;
+    row.seller_name = input.seller_name;
+    fulfill_changed = true;
+  }
+  if (prep_changed) await save_prep(prep);
+  if (fulfill_changed) await save_fulfill(fulfill);
+}
+
 export async function forget_order_activity(order_id: string) {
   const prep = await load_prep();
   const fulfill = await load_fulfill();

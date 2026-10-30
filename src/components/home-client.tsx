@@ -743,11 +743,14 @@ export default function home_client({
 
   useEffect(() => {
     const loc = get_location();
+    const spot = get_selected_spot();
     if (loc) {
       set_city(loc.city);
       set_saved_location(loc);
+    } else if (spot) {
+      set_city(spot.city);
     }
-    set_selected_spot(get_selected_spot());
+    set_selected_spot(spot);
 
     function refresh_user() {
       if (!demo_mode) return;
@@ -775,7 +778,9 @@ export default function home_client({
 
   useEffect(() => {
     function reload_spot() {
-      set_selected_spot(get_selected_spot());
+      const spot = get_selected_spot();
+      set_selected_spot(spot);
+      if (!get_location() && spot) set_city(spot.city);
     }
     reload_spot();
     return subscribe_spot_store(reload_spot);
@@ -1588,6 +1593,7 @@ export default function home_client({
           on_edit_logo: is_admin_edit ? () => set_editing_brand('logo') : undefined,
           on_edit_tagline: is_admin_edit ? () => set_editing_brand('tagline') : undefined,
           on_home: handle_go_home,
+          spot: selected_spot,
           on_city_click: () => set_location_open(true),
           on_login: handle_login,
           on_logout: handle_logout,

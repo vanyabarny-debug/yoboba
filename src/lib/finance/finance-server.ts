@@ -16,8 +16,17 @@ import {
 import { ensure_prep_materials } from '@/lib/finance/prep-stations';
 import { hydrate_ttk_finance } from '@/lib/finance/ttk-presets';
 
+function prepare_finance(raw: unknown): { state: finance_state; recipes_changed: boolean } {
+  const base = ensure_prep_materials(normalize_finance_state(raw));
+  const state = hydrate_ttk_finance(base, false);
+  return {
+    state,
+    recipes_changed: JSON.stringify(base.techCards) !== JSON.stringify(state.techCards),
+  };
+}
+
 function finalize_finance(raw: unknown): finance_state {
-  return hydrate_ttk_finance(ensure_prep_materials(normalize_finance_state(raw)), false);
+  return prepare_finance(raw).state;
 }
 
 const table = 'finance_state';
@@ -37,11 +46,13 @@ function raw_version(raw: unknown) {
 async function read_fallback(): Promise<finance_state> {
   const raw = await read_json_store<unknown>(store_key, null);
   if (!raw) return ensure_prep_materials(default_finance_state());
-  const normalized = finalize_finance(raw);
+  const prepared = prepare_finance(raw);
+  const normalized = prepared.state;
   const durable = prune_stock_retention(normalized);
   if (
     raw_version(raw) < FINANCE_STATE_VERSION ||
     stock_retention_changed(normalized, durable) ||
+    prepared.recipes_changed ||
     !Boolean((raw as { prepStockMigrated?: unknown })?.prepStockMigrated)
   ) {
     await write_json_store(store_key, durable).catch(() => {});
@@ -64,11 +75,13 @@ async function read_row(
   }
   if (!data?.store) return null;
   const raw = (data as store_row).store;
-  const normalized = finalize_finance(raw);
+  const prepared = prepare_finance(raw);
+  const normalized = prepared.state;
   const durable = prune_stock_retention(normalized);
   if (
     raw_version(raw) < FINANCE_STATE_VERSION ||
     stock_retention_changed(normalized, durable) ||
+    prepared.recipes_changed ||
     !Boolean((raw as { prepStockMigrated?: unknown })?.prepStockMigrated)
   ) {
     await write_row(admin, from, id, durable);
@@ -169,12 +182,32 @@ async function read_cloud_pair(): Promise<{ state: finance_state; updatedAt: str
   };
 }
 
+/** удалённый ингредиент не возвращается, даже если вкладка сохраняет старый список */
+function seal_deletions(prev: finance_state | null, next: finance_state): finance_state {
+  if (!prev) return next;
+  const removedMaterialIds = [
+    ...new Set([...(prev.removedMaterialIds ?? []), ...(next.removedMaterialIds ?? [])]),
+  ];
+  const removedTechCardIds = [
+    ...new Set([...(prev.removedTechCardIds ?? []), ...(next.removedTechCardIds ?? [])]),
+  ];
+  const mats = new Set(removedMaterialIds);
+  const cards = new Set(removedTechCardIds);
+  return {
+    ...next,
+    removedMaterialIds,
+    removedTechCardIds,
+    materials: next.materials.filter((m) => !mats.has(m.id)),
+    techCards: next.techCards.filter((c) => !cards.has(c.id)),
+  };
+}
+
 async function write_finance_cas(
   state: finance_state,
   expected_updated_at: string | null,
   previous?: finance_state | null
 ): Promise<'ok' | 'conflict' | 'fail'> {
-  const durable = prune_stock_retention(finalize_finance(state));
+  const durable = seal_deletions(previous ?? null, prune_stock_retention(finalize_finance(state)));
   await sync_tech_card_temps(durable);
   if (!is_supabase_configured()) {
     await write_json_store(store_key, durable);
@@ -228,17 +261,18 @@ export async function write_finance_state(state: finance_state): Promise<void> {
 }
 
 async function write_finance_state_unlocked(state: finance_state): Promise<void> {
-  const durable = prune_stock_retention(finalize_finance(state));
-  await sync_tech_card_temps(durable);
-  const local = write_json_store(store_key, durable).catch(() => {});
+  const prepared = prune_stock_retention(finalize_finance(state));
+  await sync_tech_card_temps(prepared);
   if (!is_supabase_configured()) {
-    await local;
+    await write_json_store(store_key, prepared);
     return;
   }
   const admin = create_service_client();
   const prev =
     (await read_row(admin, table, row_id)) ||
     (await read_row(admin, 'menu_catalog', catalog_row_id));
+  const durable = seal_deletions(prev, prepared);
+  const local = write_json_store(store_key, durable).catch(() => {});
   const prev_ids = new Set((prev?.stockAudit ?? []).map((e) => e.id));
   const writes: Promise<boolean>[] = [write_row(admin, 'menu_catalog', catalog_row_id, durable)];
   if (!table_is_missing(table)) writes.unshift(write_row(admin, table, row_id, durable));

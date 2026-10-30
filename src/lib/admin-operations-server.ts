@@ -1,18 +1,17 @@
 import { find_profile_by_phone } from '@/lib/bonus-server';
-import { read_finance_state } from '@/lib/finance/finance-server';
+import { mutate_finance_state, read_finance_state } from '@/lib/finance/finance-server';
 import { read_money_anchor } from '@/lib/money-anchor';
-import { days_in_month, type transaction } from '@/lib/finance/model';
+import { days_in_month, new_id, update_month, type finance_state, type stock_actor, type transaction } from '@/lib/finance/model';
 import { normalize_order_item_fields } from '@/lib/order-item-name';
 import { get_demo_orders, add_demo_order } from '@/lib/demo-orders-server';
 import {
   assert_order_stock,
   record_order_stock,
 } from '@/lib/finance/order-stock';
-import type { stock_actor } from '@/lib/finance/model';
 import { normalize_phone } from '@/lib/phone';
 import { allocate_daily_order_number, format_order_number } from '@/lib/order-number';
 import { parse_order_items } from '@/lib/order-revise-server';
-import { record_order_audit } from '@/lib/order-audit-server';
+import { list_order_audit, record_order_audit, type order_audit_event } from '@/lib/order-audit-server';
 import { is_supabase_configured } from '@/lib/supabase/config';
 import { create_service_client } from '@/lib/supabase/service';
 import type { order, order_item } from '@/lib/types';
@@ -323,7 +322,10 @@ export async function create_operation(input: {
   const pickup_time = new Date().toISOString();
 
   if (status !== 'cancelled') {
-    const stock_ok = await assert_order_stock({ items: items.filter((i) => i.menu_id) });
+    const stock_ok = await assert_order_stock({
+      items: items.filter((i) => i.menu_id),
+      spotId: spot_id,
+    });
     if (!stock_ok.ok) return { ok: false, error: stock_ok.error, status: 409 };
   }
 
@@ -414,6 +416,7 @@ export async function create_operation(input: {
       orderId: created.id,
       items: items.filter((i) => i.menu_id),
       kind: items.every((i) => i.kind === 'staff') ? 'staff' : 'sale',
+      spotId: spot_id,
     });
   }
 
@@ -443,6 +446,12 @@ export type ledger_kind =
   | 'financing'
   | 'fixed';
 
+export type ledger_change = {
+  at: string;
+  actor_name: string;
+  text: string;
+};
+
 export type ledger_entry = {
   id: string;
   at: string;
@@ -461,6 +470,28 @@ export type ledger_entry = {
   user_id: string | null;
   customer_phone: string | null;
   spot_id: string | null;
+  /** кто записал операцию; у старых записей пусто */
+  actor_name: string | null;
+  /** когда запись появилась, не время самой операции */
+  recorded_at: string | null;
+  /** правки: кто и что поменял */
+  changes: ledger_change[];
+  /** статья постоянного расхода, если kind = fixed */
+  category_id: string | null;
+  /** закупка проведена на склад — тип не меняется */
+  stock_linked: boolean;
+  payment: order['payment_type'] | null;
+  /** позиции продажи — чтобы править заказ из ленты */
+  items: order_item[];
+};
+
+const kind_label: Record<ledger_kind, string> = {
+  sale: 'продажа',
+  purchase: 'закупка',
+  expense: 'расход',
+  collection: 'инкассация',
+  financing: 'финансирование',
+  fixed: 'постоянный расход',
 };
 
 const payment_label: Record<order['payment_type'], string> = {
@@ -494,8 +525,9 @@ function money_of(entry: Pick<ledger_entry, 'kind' | 'direction' | 'channel' | '
     if (entry.channel === 'card') return { cash: 0, card: entry.amount };
     return { cash: 0, card: 0 };
   }
-  if (entry.direction === 'in') return { cash: entry.amount, card: 0 };
-  if (entry.direction === 'out') return { cash: -entry.amount, card: 0 };
+  const card = entry.channel === 'card';
+  if (entry.direction === 'in') return card ? { cash: 0, card: entry.amount } : { cash: entry.amount, card: 0 };
+  if (entry.direction === 'out') return card ? { cash: 0, card: -entry.amount } : { cash: -entry.amount, card: 0 };
   return { cash: 0, card: 0 };
 }
 
@@ -511,7 +543,28 @@ function sale_title(row: operation_row) {
   return names.join(', ') || row.label;
 }
 
-function sale_entry(row: operation_row): ledger_entry | null {
+function sale_changes(audit: order_audit_event[]): {
+  actor_name: string | null;
+  recorded_at: string | null;
+  changes: ledger_change[];
+} {
+  const created = audit.find((event) => event.action === 'create');
+  const changes = audit
+    .filter((event) => event.action !== 'create')
+    .map((event) => ({
+      at: event.at,
+      actor_name: event.actor_name,
+      text:
+        event.action === 'delete'
+          ? 'удалена'
+          : [event.before, event.after].filter((part) => part && part.trim()).join(' → '),
+    }))
+    .filter((change) => change.text)
+    .sort((a, b) => new Date(a.at).getTime() - new Date(b.at).getTime());
+  return { actor_name: created?.actor_name || null, recorded_at: created?.at || null, changes };
+}
+
+function sale_entry(row: operation_row, audit: order_audit_event[] = []): ledger_entry | null {
   if (row.status === 'cancelled') return null;
   const channel =
     row.payment_type === 'cash' ? 'cash' : row.payment_type === 'bonus' ? 'bonus' : 'card';
@@ -527,6 +580,7 @@ function sale_entry(row: operation_row): ledger_entry | null {
   lines.push({ k: 'оплата', v: payment_label[row.payment_type] || row.payment_type });
   if (row.customer_name) lines.push({ k: 'клиент', v: row.customer_name });
   if (row.is_paid === false) lines.push({ k: 'статус', v: 'не оплачен' });
+  const history = sale_changes(audit);
   return {
     id: `sale:${row.id}`,
     at: row.created_at,
@@ -541,6 +595,13 @@ function sale_entry(row: operation_row): ledger_entry | null {
     user_id: row.user_id,
     customer_phone: row.customer_phone,
     spot_id: row.spot_id,
+    actor_name: history.actor_name,
+    recorded_at: history.recorded_at,
+    changes: history.changes,
+    category_id: null,
+    stock_linked: false,
+    payment: row.payment_type,
+    items: row.items.map((item) => ({ ...item })),
   };
 }
 
@@ -550,6 +611,9 @@ function finance_entries(
   const opex_ids = new Set(state.opexCategories.map((c) => c.id));
   const opex_name = new Map(state.opexCategories.map((c) => [c.id, c.name]));
   const mat_name = new Map(state.materials.map((m) => [m.id, m.name]));
+  const stock_txs = new Set(
+    state.stockMovements.map((mv) => mv.transactionId).filter((id): id is string => Boolean(id))
+  );
   const out: ledger_entry[] = [];
   for (const month of state.monthsData) {
     for (const t of month.transactions ?? []) {
@@ -560,27 +624,41 @@ function finance_entries(
         kind === 'collection' ? 'move' : kind === 'financing' ? 'in' : 'out';
       const mat = t.materialId ? mat_name.get(t.materialId) : undefined;
       const cat_name = opex_name.get(t.category);
-      const title = (t.description || '').trim() || mat || cat_name || kind;
+      const title = (t.description || '').trim() || mat || cat_name || kind_label[kind];
+      const channel: ledger_entry['channel'] =
+        kind === 'collection' ? 'card' : t.channel === 'card' ? 'card' : 'cash';
       const lines: { k: string; v: string }[] = [];
       if (mat && mat !== title) lines.push({ k: 'материал', v: mat });
       if (cat_name) lines.push({ k: 'статья', v: cat_name });
       if (t.quantity && t.quantity > 0) {
         lines.push({ k: 'количество', v: String(t.quantity) });
       }
+      if (kind !== 'collection') lines.push({ k: 'касса', v: channel === 'card' ? 'безнал' : 'нал' });
       out.push({
         id: `tx:${t.id}`,
-        at: tx_iso(month.month, t.day),
+        at: t.at && Number.isFinite(new Date(t.at).getTime()) ? t.at : tx_iso(month.month, t.day),
         kind,
         title,
         amount,
         direction,
-        channel: kind === 'collection' ? 'card' : direction === 'in' ? 'cash' : 'cash',
+        channel,
         counts: true,
         lines,
         order_id: null,
         user_id: null,
         customer_phone: null,
-        spot_id: null,
+        spot_id: t.spotId || null,
+        actor_name: t.actorName || null,
+        recorded_at: t.createdAt || null,
+        changes: (t.edits ?? []).map((edit) => ({
+          at: edit.at,
+          actor_name: edit.actorName,
+          text: edit.text,
+        })),
+        category_id: kind === 'fixed' ? t.category : null,
+        stock_linked: stock_txs.has(t.id),
+        payment: null,
+        items: [],
       });
     }
   }
@@ -590,12 +668,21 @@ function finance_entries(
 /** продажи + закупки, расходы, инкассация, финансирование, постоянные расходы */
 export async function list_ledger(input: { spot_id?: string } = {}) {
   const spot_id = input.spot_id?.trim() || undefined;
-  const [packed, state, anchor] = await Promise.all([
+  const [packed, state, anchor, audit] = await Promise.all([
     list_operations({ spot_id, unpaged: true, status: 'all' }),
     read_finance_state(),
     read_money_anchor(),
+    list_order_audit(),
   ]);
-  const sales = packed.operations.map(sale_entry).filter((row): row is ledger_entry => Boolean(row));
+  const audit_by_order = new Map<string, order_audit_event[]>();
+  for (const event of audit) {
+    const rows = audit_by_order.get(event.order_id) || [];
+    rows.push(event);
+    audit_by_order.set(event.order_id, rows);
+  }
+  const sales = packed.operations
+    .map((row) => sale_entry(row, audit_by_order.get(row.id) || []))
+    .filter((row): row is ledger_entry => Boolean(row));
   const entries = [...sales, ...finance_entries(state)].sort(
     (a, b) => new Date(b.at).getTime() - new Date(a.at).getTime()
   );
@@ -610,5 +697,285 @@ export async function list_ledger(input: { spot_id?: string } = {}) {
   }
   cash = Math.round(cash);
   card = Math.round(card);
-  return { entries, cash, card, balance: cash + card, anchor };
+  return {
+    entries,
+    cash,
+    card,
+    balance: cash + card,
+    anchor,
+    opex: state.opexCategories.map((row) => ({ id: row.id, name: row.name })),
+  };
+}
+
+const manual_kinds = new Set<ledger_kind>(['purchase', 'expense', 'collection', 'financing', 'fixed']);
+
+type ledger_body = {
+  id: string;
+  remove: boolean;
+  kind: Exclude<ledger_kind, 'sale'>;
+  amount: number;
+  title: string;
+  at: string;
+  channel: 'cash' | 'card';
+  category_id: string;
+  spot_id: string;
+};
+
+function fail(error: string, status: number) {
+  return { ok: false as const, error, status };
+}
+
+function moscow_minute(iso: string) {
+  const d = new Date(iso);
+  if (!Number.isFinite(d.getTime())) return '';
+  return new Intl.DateTimeFormat('sv-SE', {
+    timeZone: 'Europe/Moscow',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hourCycle: 'h23',
+  }).format(d);
+}
+
+function moscow_stamp(iso: string) {
+  const d = new Date(iso);
+  if (!Number.isFinite(d.getTime())) return '';
+  return new Intl.DateTimeFormat('ru-RU', {
+    timeZone: 'Europe/Moscow',
+    day: 'numeric',
+    month: 'short',
+    hour: '2-digit',
+    minute: '2-digit',
+  }).format(d);
+}
+
+function parse_ledger_body(raw: unknown): { ok: true; value: ledger_body } | { ok: false; error: string; status: number } {
+  if (!raw || typeof raw !== 'object') return fail('нет данных', 400);
+  const body = raw as Record<string, unknown>;
+  const id = typeof body.id === 'string' ? body.id.trim() : '';
+  if (body.remove === true) {
+    if (!id || id.length > 80) return fail('операция не найдена', 400);
+    return {
+      ok: true,
+      value: {
+        id,
+        remove: true,
+        kind: 'expense',
+        amount: 0,
+        title: '',
+        at: '',
+        channel: 'cash',
+        category_id: '',
+        spot_id: '',
+      },
+    };
+  }
+  const kind = typeof body.kind === 'string' ? body.kind : '';
+  if (!manual_kinds.has(kind as ledger_kind)) return fail('выберите тип операции', 400);
+  const amount = Math.round(Number(body.amount));
+  if (!Number.isFinite(amount) || amount <= 0 || amount > 50_000_000) {
+    return fail('сумма — от 1 до 50 000 000 ₽', 400);
+  }
+  const title = typeof body.title === 'string' ? body.title.trim().slice(0, 160) : '';
+  if (!title) return fail('напишите, что это за операция', 400);
+  const at = typeof body.at === 'string' ? body.at : '';
+  const match = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):00\+03:00$/.exec(at);
+  if (!match) return fail('укажите дату и время', 400);
+  const year = Number(match[1]);
+  if (year < 2020 || year > 2035) return fail('дата вне диапазона', 400);
+  if (moscow_minute(at).slice(0, 10) !== `${match[1]}-${match[2]}-${match[3]}`) {
+    return fail('такой даты нет', 400);
+  }
+  const channel = body.channel === 'card' ? 'card' : 'cash';
+  const category_id = typeof body.category_id === 'string' ? body.category_id.trim().slice(0, 80) : '';
+  const spot_id = typeof body.spot_id === 'string' ? body.spot_id.trim().slice(0, 80) : '';
+  return {
+    ok: true,
+    value: {
+      id,
+      remove: false,
+      kind: kind as ledger_body['kind'],
+      amount,
+      title,
+      at,
+      channel,
+      category_id,
+      spot_id,
+    },
+  };
+}
+
+function locate_tx(state: finance_state, id: string) {
+  for (const month of state.monthsData) {
+    const tx = (month.transactions ?? []).find((row) => row.id === id);
+    if (tx) return { month: month.month, tx };
+  }
+  return null;
+}
+
+function tx_moment(month: string, tx: transaction) {
+  if (tx.at && Number.isFinite(new Date(tx.at).getTime())) return tx.at;
+  return tx_iso(month, tx.day);
+}
+
+function tx_title(state: finance_state, tx: transaction, kind: ledger_kind) {
+  const mat = tx.materialId ? state.materials.find((row) => row.id === tx.materialId)?.name : '';
+  const cat = state.opexCategories.find((row) => row.id === tx.category)?.name;
+  return (tx.description || '').trim() || mat || cat || kind_label[kind];
+}
+
+function account_id(actor: stock_actor) {
+  return actor.role === 'admin' ? `admin:${actor.name}` : actor.id;
+}
+
+function strip_tx(state: finance_state, id: string): finance_state {
+  return {
+    ...state,
+    monthsData: state.monthsData.map((month) => ({
+      ...month,
+      transactions: (month.transactions ?? []).filter((row) => row.id !== id),
+    })),
+  };
+}
+
+function ledger_diff(
+  state: finance_state,
+  before: { month: string; tx: transaction },
+  after: { kind: ledger_kind; amount: number; title: string; at: string; channel: 'cash' | 'card'; category: string }
+) {
+  const opex_ids = new Set(state.opexCategories.map((row) => row.id));
+  const before_kind = tx_kind(before.tx, opex_ids);
+  const bits: string[] = [];
+  if (before_kind !== after.kind) bits.push(`${kind_label[before_kind]} → ${kind_label[after.kind]}`);
+  if (before_kind === 'fixed' && after.kind === 'fixed' && before.tx.category !== after.category) {
+    const name = (id: string) => state.opexCategories.find((row) => row.id === id)?.name || id;
+    bits.push(`статья ${name(before.tx.category)} → ${name(after.category)}`);
+  }
+  const before_amount = Math.round(before.tx.amount);
+  if (before_amount !== after.amount) {
+    bits.push(`сумма ${before_amount.toLocaleString('ru-RU')} ₽ → ${after.amount.toLocaleString('ru-RU')} ₽`);
+  }
+  const before_title = tx_title(state, before.tx, before_kind);
+  if (before_title !== after.title) bits.push(`«${before_title}» → «${after.title}»`);
+  if (before_kind !== 'collection' && after.kind !== 'collection') {
+    const before_channel = before.tx.channel === 'card' ? 'card' : 'cash';
+    if (before_channel !== after.channel) {
+      const label = (ch: 'cash' | 'card') => (ch === 'card' ? 'безнал' : 'нал');
+      bits.push(`${label(before_channel)} → ${label(after.channel)}`);
+    }
+  }
+  const before_at = tx_moment(before.month, before.tx);
+  if (moscow_minute(before_at) !== moscow_minute(after.at)) {
+    bits.push(`время ${moscow_stamp(before_at)} → ${moscow_stamp(after.at)}`);
+  }
+  return bits.join(', ');
+}
+
+function category_of(
+  state: finance_state,
+  kind: ledger_body['kind'],
+  category_id: string,
+  previous: transaction | null
+): { type: transaction['type']; category: string } | { error: string } {
+  if (kind === 'purchase') return { type: 'expense', category: 'material' };
+  if (kind === 'collection') return { type: 'expense', category: 'collection' };
+  if (kind === 'financing') {
+    const keep = previous?.category === 'other_income' ? 'other_income' : 'investment';
+    return { type: 'income', category: previous && tx_kind(previous, new Set(state.opexCategories.map((row) => row.id))) === 'financing' ? keep : 'investment' };
+  }
+  if (kind === 'fixed') {
+    if (!state.opexCategories.some((row) => row.id === category_id)) return { error: 'выберите статью' };
+    return { type: 'expense', category: category_id };
+  }
+  const opex_ids = new Set(state.opexCategories.map((row) => row.id));
+  if (previous && tx_kind(previous, opex_ids) === 'expense') {
+    return { type: 'expense', category: previous.category };
+  }
+  return { type: 'expense', category: 'other_expense' };
+}
+
+type ledger_save = { ok: true } | { ok: false; error: string; status: number };
+
+/** ручная операция дня: закупка, расход, инкассация, финансирование, постоянный расход */
+export async function save_ledger_entry(raw: unknown, actor: stock_actor): Promise<ledger_save> {
+  const parsed = parse_ledger_body(raw);
+  if (!parsed.ok) return parsed;
+  const body = parsed.value;
+  try {
+    return await mutate_finance_state((state): { state: finance_state | null; value: ledger_save } => {
+      if (body.remove) {
+        const found = locate_tx(state, body.id);
+        if (!found) return { state: null, value: fail('операция не найдена', 404) };
+        if (state.stockMovements.some((mv) => mv.transactionId === body.id)) {
+          return { state: null, value: fail('закупка на складе удаляется вместе со складским приходом', 400) };
+        }
+        return { state: strip_tx(state, body.id), value: { ok: true as const } };
+      }
+
+      const found = body.id ? locate_tx(state, body.id) : null;
+      if (body.id && !found) return { state: null, value: fail('операция не найдена', 404) };
+      const stock_linked = found ? state.stockMovements.some((mv) => mv.transactionId === found.tx.id) : false;
+      if (stock_linked && body.kind !== 'purchase') {
+        return { state: null, value: fail('эта закупка на складе — тип менять нельзя', 400) };
+      }
+      const category = category_of(state, body.kind, body.category_id, found?.tx ?? null);
+      if ('error' in category) return { state: null, value: fail(category.error, 400) };
+
+      const next_view = {
+        kind: body.kind,
+        amount: body.amount,
+        title: body.title,
+        at: body.at,
+        channel: body.kind === 'collection' ? ('cash' as const) : body.channel,
+        category: category.category,
+      };
+      const text = found ? ledger_diff(state, found, next_view) : '';
+      if (found && !text) return { state: null, value: { ok: true as const } };
+
+      const now = new Date().toISOString();
+      const day = Number(body.at.slice(8, 10));
+      const month = body.at.slice(0, 7);
+      const id = found?.tx.id || new_id('tx');
+      const edits = found?.tx.edits ? [...found.tx.edits] : [];
+      if (text) {
+        edits.push({ at: now, actorId: account_id(actor), actorName: actor.name, text });
+      }
+      const tx: transaction = {
+        id,
+        day,
+        type: category.type,
+        category: category.category,
+        amount: body.amount,
+        description: body.title,
+        at: body.at,
+        ...(body.kind === 'collection' ? {} : { channel: body.channel }),
+        ...(found?.tx.materialId && body.kind === 'purchase' ? { materialId: found.tx.materialId } : {}),
+        ...(found?.tx.quantity != null && body.kind === 'purchase' ? { quantity: found.tx.quantity } : {}),
+        ...(found?.tx.actorId ? { actorId: found.tx.actorId } : { actorId: account_id(actor) }),
+        ...(found?.tx.actorName ? { actorName: found.tx.actorName } : { actorName: actor.name }),
+        ...(found?.tx.createdAt ? { createdAt: found.tx.createdAt } : { createdAt: now }),
+        ...(found?.tx.spotId ? { spotId: found.tx.spotId } : body.spot_id ? { spotId: body.spot_id } : {}),
+        ...(edits.length ? { edits: edits.slice(-30) } : {}),
+      };
+
+      let next = found ? strip_tx(state, id) : state;
+      next = update_month(next, month, (row) => ({
+        ...row,
+        transactions: [...(row.transactions ?? []), tx],
+      }));
+      if (stock_linked && tx.at) {
+        next = {
+          ...next,
+          stockMovements: next.stockMovements.map((mv) =>
+            mv.transactionId === id ? { ...mv, total: tx.amount, date: tx.at || mv.date } : mv
+          ),
+        };
+      }
+      return { state: next, value: { ok: true as const } };
+    });
+  } catch (e) {
+    return fail(e instanceof Error ? e.message : 'не удалось записать операцию', 500);
+  }
 }

@@ -41,7 +41,7 @@ export default function spots_manage() {
       <div className="space-y-4">
         <div>
           <h2 className="text-lg font-semibold text-neutral-900">точки выдачи</h2>
-          <p className="text-sm text-neutral-500">адреса магазинов для выбора в приложении</p>
+          <p className="text-sm text-neutral-500">адреса и рейтинг Яндекса для каждой точки</p>
         </div>
 
         <button
@@ -65,6 +65,8 @@ export default function spots_manage() {
                 <p className="text-sm text-neutral-500 mt-1 capitalize">
                   {spot.city}
                   {spot.label ? ` · ${spot.label}` : ''}
+                  {spot.yandex_org_id ? ' · рейтинг яндекса' : ''}
+                  {spot.hours ? ` · ${spot.hours.open}–${spot.hours.close}` : ''}
                   {!spot.is_active ? ' · неактивна' : ''}
                 </p>
               </div>

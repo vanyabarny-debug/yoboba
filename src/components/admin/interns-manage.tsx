@@ -9,6 +9,7 @@ import {
   type intern,
   type intern_quiz_block,
   type intern_status,
+  type intern_work,
 } from '@/lib/study/interns';
 
 const months_of = [
@@ -102,6 +103,7 @@ export default function InternsManage() {
   const [open, set_open] = useState<string | null>(null);
   const [error, set_error] = useState('');
   const [loading, set_loading] = useState(true);
+  const [preview, set_preview] = useState<intern_work | null>(null);
 
   async function reload() {
     set_loading(true);
@@ -158,7 +160,7 @@ export default function InternsManage() {
       <div>
         <h2 className="text-lg font-semibold text-neutral-900">стажёры</h2>
         <p className="text-sm text-neutral-500">
-          заявки с yoStudy{fresh ? ` · новых: ${fresh}` : ''}
+          заявки с yoStudy: бариста и контент-креаторы{fresh ? ` · новых: ${fresh}` : ''}
         </p>
       </div>
 
@@ -177,19 +179,45 @@ export default function InternsManage() {
             return (
               <li key={row.id} className="bg-white rounded-xl border border-surface p-4">
                 <div className="flex items-start justify-between gap-3">
-                  <button
-                    type="button"
-                    className="min-w-0 text-left"
+                  <div
+                    className="min-w-0 flex-1 cursor-pointer text-left"
                     onClick={() => set_open(opened ? null : row.id)}
                   >
                     <p className="font-medium">
                       {row.name}
+                      {row.role === 'creator' ? ' · контент' : ''}
                       {row.feedback_mood ? ` ${mood_faces[row.feedback_mood - 1]}` : ''}
                     </p>
-                    <p className="text-sm text-neutral-700 mt-0.5">{visit_label(row.intern_date, row.intern_time)}</p>
+                    {row.role === 'creator' ? (
+                      <p className="text-sm text-neutral-700 mt-0.5">бартер · до 5 напитков в неделю</p>
+                    ) : (
+                      <p className="text-sm text-neutral-700 mt-0.5">{visit_label(row.intern_date, row.intern_time)}</p>
+                    )}
                     <p className="text-xs text-neutral-500 mt-1">
                       {format_phone_display(row.phone)} · {row.city}
+                      {row.role === 'creator' && (row.works?.length ?? 0) ? ` · фото: ${row.works.length}` : ''}
                     </p>
+                    {row.role === 'creator' && (row.works?.length ?? 0) > 0 ? (
+                      <div className="mt-3 flex gap-2 overflow-x-auto">
+                        {row.works.map((work, index) => (
+                          <button
+                            key={`${row.id}-${index}`}
+                            type="button"
+                            className="shrink-0"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              set_preview(work);
+                            }}
+                          >
+                            <img
+                              src={work.data_url}
+                              alt={work.name}
+                              className="h-16 w-16 rounded-lg object-cover"
+                            />
+                          </button>
+                        ))}
+                      </div>
+                    ) : null}
                     {row.quiz_results.length > 0 ? (
                       <div className="mt-3 space-y-3 text-sm">
                         {row.quiz_results.map((block) => (
@@ -206,7 +234,7 @@ export default function InternsManage() {
                     <p className="text-xs text-neutral-400 mt-1">
                       {intern_status_label[row.status]} · анкета {submitted_label(row.created_at)}
                     </p>
-                  </button>
+                  </div>
                   <a
                     href={`tel:${row.phone}`}
                     className="shrink-0 text-sm text-highlight px-3 py-1.5 rounded-lg border border-surface"
@@ -217,6 +245,33 @@ export default function InternsManage() {
 
                 {opened ? (
                   <div className="mt-4 space-y-3 border-t border-neutral-100 pt-3 text-sm">
+                    {row.role === 'creator' ? (
+                      <div>
+                        <p className="text-neutral-400">работы</p>
+                        {row.works?.length ? (
+                          <div className="mt-2 grid grid-cols-3 gap-2">
+                            {row.works.map((work, index) => (
+                              <button
+                                key={`${work.name}-${index}`}
+                                type="button"
+                                className="text-left"
+                                onClick={() => set_preview(work)}
+                              >
+                                <img
+                                  src={work.data_url}
+                                  alt={work.name}
+                                  className="aspect-square w-full rounded-xl object-cover"
+                                />
+                                <span className="mt-1 block truncate text-xs text-neutral-500">{work.name}</span>
+                              </button>
+                            ))}
+                          </div>
+                        ) : (
+                          <p>фото не прикрепили</p>
+                        )}
+                      </div>
+                    ) : (
+                      <>
                     <p>
                       <span className="text-neutral-400">график </span>
                       {row.schedule.join(', ') || '—'}
@@ -243,6 +298,8 @@ export default function InternsManage() {
                       <span className="text-neutral-400">любит готовить </span>
                       {row.cook || '—'}
                     </p>
+                      </>
+                    )}
                     {row.feedback_mood || row.feedback_liked || row.feedback_disliked ? (
                       <div className="rounded-xl bg-neutral-50 p-3 space-y-2">
                         <p className="text-xs font-semibold uppercase tracking-wider text-neutral-400">отзыв</p>
@@ -299,6 +356,13 @@ export default function InternsManage() {
           })}
         </ul>
       )}
+
+      {preview ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
+          <button type="button" className="absolute inset-0" aria-label="закрыть" onClick={() => set_preview(null)} />
+          <img src={preview.data_url} alt={preview.name} className="relative max-h-[85vh] max-w-full rounded-2xl" />
+        </div>
+      ) : null}
     </div>
   );
 }

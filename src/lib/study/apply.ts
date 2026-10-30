@@ -1,6 +1,14 @@
 import { save_student } from '@/lib/study/student'
 
+export type ApplyRole = 'barista' | 'creator'
+
+export type ApplyWork = {
+  name: string
+  data_url: string
+}
+
 export type Apply = {
+  role: ApplyRole
   name: string
   phone: string
   city: string
@@ -12,11 +20,13 @@ export type Apply = {
   guest: string
   shift: string
   cook: string
+  works: ApplyWork[]
 }
 
 const key = 'yostudy-apply'
 
 export const empty_apply: Apply = {
+  role: 'barista',
   name: '',
   phone: '',
   city: '',
@@ -28,6 +38,7 @@ export const empty_apply: Apply = {
   guest: '',
   shift: '',
   cook: '',
+  works: [],
 }
 
 export function load_apply(): Apply | null {
@@ -38,14 +49,39 @@ export function load_apply(): Apply | null {
     if (!parsed.name) return null
     const intern_date = /^\d{4}-\d{2}-\d{2}$/.test(parsed.intern_date ?? '') ? parsed.intern_date ?? '' : ''
     const intern_time = /^\d{2}:\d{2}$/.test(parsed.intern_time ?? '') ? parsed.intern_time ?? '' : ''
-    return { ...empty_apply, ...parsed, when: Array.isArray(parsed.when) ? parsed.when : [], intern_date, intern_time }
+    const works = Array.isArray(parsed.works)
+      ? parsed.works.filter(
+          (item): item is ApplyWork =>
+            Boolean(item) &&
+            typeof item === 'object' &&
+            typeof item.data_url === 'string' &&
+            item.data_url.startsWith('data:image/'),
+        )
+      : []
+    return {
+      ...empty_apply,
+      ...parsed,
+      role: parsed.role === 'creator' ? 'creator' : 'barista',
+      when: Array.isArray(parsed.when) ? parsed.when : [],
+      intern_date,
+      intern_time,
+      works,
+    }
   } catch {
     return null
   }
 }
 
 export function save_apply(apply: Apply) {
-  localStorage.setItem(key, JSON.stringify(apply))
+  try {
+    localStorage.setItem(key, JSON.stringify(apply))
+  } catch {
+    try {
+      localStorage.setItem(key, JSON.stringify({ ...apply, works: [] }))
+    } catch {
+      /* фото не влезли в браузер — на сервере они уже есть */
+    }
+  }
   if (apply.name) {
     save_student({ name: apply.name })
   }

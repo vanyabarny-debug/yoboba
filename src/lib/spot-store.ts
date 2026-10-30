@@ -1,4 +1,4 @@
-import type { store_spot } from '@/lib/types';
+import type { spot_hours, store_spot } from '@/lib/types';
 import { schedule_publish_catalog } from '@/lib/published-client';
 
 export const spot_store_version = 1;
@@ -13,6 +13,7 @@ export const default_spots: store_spot[] = [
     address: 'Кимры, ул. Урицкого, 12',
     label: 'центр',
     is_active: true,
+    yandex_org_id: '79502836324',
   },
 ];
 
@@ -45,6 +46,12 @@ function repair_spot_store(store: spot_store): spot_store {
       ...existing,
       address: existing?.address || def.address,
       is_active: existing?.is_active ?? def.is_active,
+      yandex_org_id:
+        existing && 'yandex_org_id' in existing
+          ? existing.yandex_org_id
+          : def.yandex_org_id,
+      review_url:
+        existing && 'review_url' in existing ? existing.review_url : def.review_url,
     });
   }
   let spots = [...by_id.values()];
@@ -86,6 +93,44 @@ export function get_spot_store(): spot_store {
     localStorage.setItem(storage_key, JSON.stringify(seed));
     return seed;
   }
+}
+
+function clock_minutes(value: string) {
+  const match = /^(\d{1,2}):(\d{2})$/.exec(value.trim());
+  if (!match) return null;
+  const hour = Number(match[1]);
+  const minute = Number(match[2]);
+  if (hour > 23 || minute > 59) return null;
+  return hour * 60 + minute;
+}
+
+export function clean_spot_hours(raw: Partial<spot_hours> | null | undefined): spot_hours | null {
+  const open = clock_minutes(raw?.open || '');
+  const close = clock_minutes(raw?.close || '');
+  if (open == null || close == null || open === close) return null;
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return { open: `${pad(Math.floor(open / 60))}:${pad(open % 60)}`, close: `${pad(Math.floor(close / 60))}:${pad(close % 60)}` };
+}
+
+/** сейчас точка открыта по своему режиму. без режима — нет */
+export function spot_is_open(hours: spot_hours | null | undefined, now = new Date()) {
+  const clean = clean_spot_hours(hours);
+  if (!clean) return false;
+  const open = clock_minutes(clean.open);
+  const close = clock_minutes(clean.close);
+  if (open == null || close == null) return false;
+  const parts = new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'Europe/Moscow',
+    hour: '2-digit',
+    minute: '2-digit',
+    hourCycle: 'h23',
+  }).formatToParts(now);
+  const hour = Number(parts.find((part) => part.type === 'hour')?.value);
+  const minute = Number(parts.find((part) => part.type === 'minute')?.value);
+  if (!Number.isFinite(hour) || !Number.isFinite(minute)) return false;
+  const current = hour * 60 + minute;
+  if (open < close) return current >= open && current < close;
+  return current >= open || current < close;
 }
 
 export function get_spots(): store_spot[] {

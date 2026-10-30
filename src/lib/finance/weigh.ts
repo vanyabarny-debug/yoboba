@@ -23,8 +23,14 @@ export function weigh_unit(kind: weigh_kind) {
 
 export function weigh_hint(kind: weigh_kind) {
   if (kind === 'pcs') return 'по штукам, как лежит на полке';
-  if (kind === 'L') return 'молоко, вода, сиропы — в литрах; 0,5 л = пол-литра';
-  return 'на весах, в граммах';
+  if (kind === 'L') return 'сколько налито, в литрах; тара вычитается отдельно';
+  return 'сколько на весах, в граммах; тара вычитается отдельно';
+}
+
+/** вес тары в тех же единицах, что поле инвентаризации (г или л) */
+export function stored_tare(m: { tareWeight?: number }) {
+  const n = Number(m.tareWeight);
+  return Number.isFinite(n) && n > 0 ? n : 0;
 }
 
 export function to_base_qty(m: Pick<material, 'unit'>, entered: number) {

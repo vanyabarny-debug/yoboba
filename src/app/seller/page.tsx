@@ -67,6 +67,7 @@ import {
 } from '@/lib/management-board';
 import drink_craft from '@/components/seller/drink-craft';
 import business_pulse from '@/components/seller/business-pulse';
+import cashier_radio from '@/components/seller/cashier-radio';
 import push_broadcast from '@/components/push-broadcast';
 
 const seller_panes = [
@@ -258,6 +259,7 @@ function expand_drinks(o: order, lines: schedule_line[]): drink_row[] {
         menu_id: item.menu_id,
         prep_minutes: prep_by_menu.get(item.menu_id) || DEFAULT_PREP_MINUTES,
         volume: normalized.volume,
+        temp: item.temp,
       });
     }
   }
@@ -385,8 +387,15 @@ export default function seller_board() {
   const empty_board_streak = useRef(0);
   const handed_day_ref = useRef(moscow_today_iso());
   const sales_sync_ref = useRef('');
+  const sales_seller_ref = useRef('');
   shift_date_ref.current = shift?.shift_date;
   seller_id_ref.current = seller_id;
+
+  useEffect(() => {
+    if (sales_seller_ref.current === seller_id) return;
+    sales_seller_ref.current = seller_id;
+    sales_sync_ref.current = '';
+  }, [seller_id]);
   const panes = seller_panes.filter((pane) => rights[pane.right]);
   const tab_index = panes.findIndex((pane) => pane.id === tab);
 
@@ -635,8 +644,9 @@ export default function seller_board() {
           headers: { 'content-type': 'application/json' },
           credentials: 'same-origin',
           body: JSON.stringify({ kind: 'sales', shift_date: day }),
-        }).then((res) => {
-          if (!res.ok) sales_sync_ref.current = '';
+        }).then(async (res) => {
+          const body = (await res.json().catch(() => null)) as { skipped?: boolean } | null;
+          if (!res.ok || body?.skipped) sales_sync_ref.current = '';
         }).catch(() => {
           sales_sync_ref.current = '';
         });
@@ -1501,16 +1511,8 @@ export default function seller_board() {
   }
 
   function render_work_list() {
-    const items = work_board_count;
-    if (items === 0) {
-      return (
-        <div className="flex-1 flex items-center justify-center rounded-2xl border border-dashed border-neutral-300 bg-white/70 text-sm text-neutral-400">
-          пусто
-        </div>
-      );
-    }
     return render_fill_grid(
-      items,
+      work_board_count + 1,
       <>
         {stations.map((s) =>
           createElement(prep_station_card, {
@@ -1519,6 +1521,10 @@ export default function seller_board() {
             on_open: () => set_prep_open_id(s.id),
           })
         )}
+        {createElement(cashier_radio, {
+          key: 'cashier-radio',
+          hours: shift_spots.find((spot) => spot.id === shift?.spot_id)?.hours ?? null,
+        })}
         {show_opening && opening_task_state
           ? createElement(opening_task_card, {
               key: 'opening-task',
@@ -1939,6 +1945,8 @@ export default function seller_board() {
               ? createElement(seller_inventory, {
                   on_nav_depth: set_stock_depth,
                   active: tab === 'stock',
+                  spot_id: shift?.spot_id || '',
+                  spot_label: shift?.address || '',
                 })
               : null}
             {pane.id === 'craft' ? createElement(drink_craft) : null}
@@ -1962,6 +1970,7 @@ export default function seller_board() {
         open_id: prep_open_id,
         on_open_change: set_prep_open_id,
         on_stations: set_prep_stations,
+        spot_id: shift?.spot_id || '',
       })}
       {createElement(cash_register_modal, {
         order: paying,

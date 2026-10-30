@@ -158,13 +158,10 @@ export async function apply_staff_cookies(
   const opts = base_cookie_options();
   res.cookies.set(session_cookie, input.role, opts);
   res.cookies.set(staff_proof_cookie, token, opts);
-  if (input.seller_id) {
-    res.cookies.set(seller_id_cookie, input.seller_id, opts);
-    res.cookies.set(seller_name_cookie, input.name || '', opts);
-  } else {
-    res.cookies.set(seller_id_cookie, '', { ...opts, maxAge: 0 });
-    res.cookies.set(seller_name_cookie, '', { ...opts, maxAge: 0 });
-  }
+  if (input.seller_id) res.cookies.set(seller_id_cookie, input.seller_id, opts);
+  else res.cookies.set(seller_id_cookie, '', { ...opts, maxAge: 0 });
+  if (input.name) res.cookies.set(seller_name_cookie, input.name, opts);
+  else res.cookies.set(seller_name_cookie, '', { ...opts, maxAge: 0 });
   res.cookies.set('yoboba_admin', '', { ...opts, maxAge: 0 });
   return true;
 }

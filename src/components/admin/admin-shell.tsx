@@ -55,12 +55,20 @@ export const admin_tabs = [
 
 const settings_links = [
   { href: '/admin/account', label: 'аккаунт' },
+  { href: '/admin/radio', label: 'музыка' },
 ] as const;
 
 function AdminSpotSwitch() {
   const { spot_id, set_spot_id, spot_options, current_label } = use_admin_spot();
+  const pathname = usePathname();
+  const warehouse = pathname.startsWith('/admin/sklad');
   const [open, set_open] = useState(false);
   const root = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!warehouse || spot_id || !spot_options[0]?.id) return;
+    set_spot_id(spot_options[0].id);
+  }, [warehouse, spot_id, spot_options, set_spot_id]);
 
   useEffect(() => {
     if (!open) return;
@@ -81,7 +89,7 @@ function AdminSpotSwitch() {
   if (!spot_options.length) return null;
 
   const all_label = spot_options.length > 1 ? 'все точки · среднее' : 'все точки';
-  const options = [{ id: '', label: all_label }, ...spot_options];
+  const options = warehouse ? spot_options : [{ id: '', label: all_label }, ...spot_options];
 
   return (
     <div className="relative min-w-0" ref={root}>
@@ -162,7 +170,7 @@ function SettingsMenu() {
   const [open, set_open] = useState(false);
   const root = useRef<HTMLDivElement>(null);
   const close_timer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const on_account = pathname.startsWith('/admin/account');
+  const on_account = settings_links.some((link) => pathname.startsWith(link.href));
 
   function clear_close() {
     if (close_timer.current) {

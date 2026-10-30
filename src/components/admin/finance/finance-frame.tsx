@@ -51,6 +51,7 @@ export default function FinanceFrame({
           set_menu: f.set_menu,
           flush: f.flush,
           reload: f.reload,
+          save_status: f.save_status,
         })}
     </AdminShell>
   );

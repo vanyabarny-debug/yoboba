@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { is_supabase_configured } from '@/lib/supabase/config';
 import { staff_actor } from '@/lib/staff-actor';
 import { mutate_finance_state, read_finance_state } from '@/lib/finance/finance-server';
+import { bind_spot, commit_spot, resolve_stock_spot } from '@/lib/finance/model';
 import {
   apply_prep_cook,
   apply_prep_discard,
@@ -10,6 +11,7 @@ import {
   apply_prep_still_have,
   heal_prep_batch_scales,
   prep_station_views,
+  tapioca_dry_choices,
   update_prep_station,
 } from '@/lib/finance/prep-stations';
 
@@ -21,27 +23,34 @@ async function require_actor() {
   return actor;
 }
 
-export async function GET() {
+function spot_of(raw: unknown) {
+  return resolve_stock_spot(typeof raw === 'string' ? raw : '');
+}
+
+export async function GET(request: Request) {
   if (!(await require_actor())) {
     return NextResponse.json({ error: 'доступ запрещён' }, { status: 403 });
   }
-  let state = await read_finance_state();
-  const healed = heal_prep_batch_scales(state);
-  if (healed !== state) {
+  const spot = spot_of(new URL(request.url).searchParams.get('spot_id'));
+  let full = await read_finance_state();
+  const view = bind_spot(full, spot);
+  const healed = heal_prep_batch_scales(view);
+  if (healed !== view) {
     try {
-      state = await mutate_finance_state((fresh) => {
-        const again = heal_prep_batch_scales(fresh);
-        if (again === fresh) return { state: null, value: fresh };
-        return { state: again, value: again };
+      full = await mutate_finance_state((fresh) => {
+        const again_view = bind_spot(fresh, spot);
+        const again = heal_prep_batch_scales(again_view);
+        if (again === again_view) return { state: null, value: fresh };
+        const committed = commit_spot(fresh, spot, again);
+        return { state: committed, value: committed };
       });
     } catch {
-      state = healed;
+      full = commit_spot(full, spot, healed);
     }
-  } else {
-    state = healed;
   }
+  const ready = bind_spot(full, spot);
   return NextResponse.json(
-    { stations: prep_station_views(state) },
+    { stations: prep_station_views(ready), tapioca: tapioca_dry_choices(ready) },
     { headers: { 'cache-control': 'private, no-store, max-age=0' } }
   );
 }
@@ -63,6 +72,7 @@ export async function POST(request: Request) {
   }
 
   const kind = (body as { kind?: string })?.kind;
+  const spot = spot_of((body as { spot_id?: unknown }).spot_id);
 
   if (
     kind === 'cook' ||
@@ -74,22 +84,43 @@ export async function POST(request: Request) {
     try {
       const saved = await mutate_finance_state<
         | { ok: false; error: string }
-        | { ok: true; stations: ReturnType<typeof prep_station_views>; message: string }
-      >((state) => {
+        | {
+            ok: true;
+            stations: ReturnType<typeof prep_station_views>;
+            tapioca: ReturnType<typeof tapioca_dry_choices>;
+            message: string;
+          }
+      >((full) => {
+        const state = bind_spot(full, spot);
         if (kind === 'cook') {
-          const b = body as { stationId?: string; dryG?: number; note?: string };
+          const b = body as {
+            stationId?: string;
+            dryG?: number;
+            actualG?: number | null;
+            lines?: { materialId?: string; grams?: number }[];
+            note?: string;
+          };
+          const lines = Array.isArray(b.lines)
+            ? b.lines.map((line) => ({
+                materialId: String(line?.materialId || ''),
+                grams: Number(line?.grams),
+              }))
+            : undefined;
           const result = apply_prep_cook(state, {
             stationId: String(b.stationId || ''),
-            dryG: Number(b.dryG),
+            dryG: b.dryG == null ? undefined : Number(b.dryG),
+            lines,
+            actualG: b.actualG == null ? null : Number(b.actualG),
             note: b.note,
             actor,
           });
           if (!result.ok) return { state: null, value: { ok: false as const, error: result.error } };
           return {
-            state: result.state,
+            state: commit_spot(full, spot, result.state),
             value: {
               ok: true as const,
               stations: prep_station_views(result.state),
+              tapioca: tapioca_dry_choices(result.state),
               message: result.message,
             },
           };
@@ -99,8 +130,9 @@ export async function POST(request: Request) {
           const result = apply_prep_marinade(state, { stationId, actor });
           if (!result.ok) return { state: null, value: { ok: false as const, error: result.error } };
           return {
-            state: result.state,
-            value: { ok: true as const, stations: prep_station_views(result.state), message: '' },
+            state: commit_spot(full, spot, result.state),
+            value: { ok: true as const, stations: prep_station_views(result.state),
+              tapioca: tapioca_dry_choices(result.state), message: '' },
           };
         }
         if (kind === 'still_have') {
@@ -112,10 +144,11 @@ export async function POST(request: Request) {
           });
           if (!result.ok) return { state: null, value: { ok: false as const, error: result.error } };
           return {
-            state: result.state,
+            state: commit_spot(full, spot, result.state),
             value: {
               ok: true as const,
               stations: prep_station_views(result.state),
+              tapioca: tapioca_dry_choices(result.state),
               message: result.message,
             },
           };
@@ -130,10 +163,11 @@ export async function POST(request: Request) {
           });
           if (!result.ok) return { state: null, value: { ok: false as const, error: result.error } };
           return {
-            state: result.state,
+            state: commit_spot(full, spot, result.state),
             value: {
               ok: true as const,
               stations: prep_station_views(result.state),
+              tapioca: tapioca_dry_choices(result.state),
               message: result.message,
             },
           };
@@ -143,12 +177,18 @@ export async function POST(request: Request) {
         const result = apply_prep_discard(state, { stationId, note, actor });
         if (!result.ok) return { state: null, value: { ok: false as const, error: result.error } };
         return {
-          state: result.state,
-          value: { ok: true as const, stations: prep_station_views(result.state), message: '' },
+          state: commit_spot(full, spot, result.state),
+          value: { ok: true as const, stations: prep_station_views(result.state),
+              tapioca: tapioca_dry_choices(result.state), message: '' },
         };
       });
       if (!saved.ok) return NextResponse.json({ error: saved.error }, { status: 400 });
-      return NextResponse.json({ ok: true, stations: saved.stations, message: saved.message });
+      return NextResponse.json({
+        ok: true,
+        stations: saved.stations,
+        tapioca: saved.tapioca,
+        message: saved.message,
+      });
     } catch (e) {
       return NextResponse.json(
         { error: e instanceof Error ? e.message : 'ошибка записи' },
@@ -173,36 +213,21 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'нужна станция' }, { status: 400 });
     }
     try {
-      const saved = await mutate_finance_state((state) => {
-        let next = update_prep_station(state, stationId, {
+      const saved = await mutate_finance_state((full) => {
+        const state = bind_spot(full, spot);
+        const next = update_prep_station(state, stationId, {
           ...(b.portionG != null ? { portionG: Number(b.portionG) } : {}),
           ...(b.defaultDryG != null ? { defaultDryG: Number(b.defaultDryG) } : {}),
           ...(b.defaultCookedG != null ? { defaultCookedG: Number(b.defaultCookedG) } : {}),
           ...(b.label != null ? { label: b.label } : {}),
           ...(b.enabled != null ? { enabled: b.enabled } : {}),
         });
-        const station = (next.prepStations || []).find((s) => s.id === stationId);
-        if (station) {
-          next = {
-            ...next,
-            materials: next.materials.map((m) => {
-              if (b.dryCostPerKg != null && m.id === station.dryMaterialId && Number.isFinite(b.dryCostPerKg)) {
-                return { ...m, costPerUnit: Math.round(Number(b.dryCostPerKg) * 100) / 100 };
-              }
-              if (
-                b.cookedCostPerKg != null &&
-                m.id === station.cookedMaterialId &&
-                Number.isFinite(b.cookedCostPerKg)
-              ) {
-                return { ...m, costPerUnit: Math.round(Number(b.cookedCostPerKg) * 100) / 100 };
-              }
-              return m;
-            }),
-          };
-        }
-        return { state: next, value: prep_station_views(next) };
+        return {
+          state: commit_spot(full, spot, next),
+          value: { stations: prep_station_views(next), tapioca: tapioca_dry_choices(next) },
+        };
       });
-      return NextResponse.json({ ok: true, stations: saved });
+      return NextResponse.json({ ok: true, stations: saved.stations, tapioca: saved.tapioca });
     } catch (e) {
       return NextResponse.json(
         { error: e instanceof Error ? e.message : 'ошибка записи' },

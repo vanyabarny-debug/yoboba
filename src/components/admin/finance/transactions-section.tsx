@@ -1,7 +1,8 @@
 'use client';
 
 import { useState } from 'react';
-import { apply_receipt, format_rub, month_label, new_id, update_month, type transaction } from '@/lib/finance/model';
+import { apply_receipt, format_rub, month_label, new_id, resolve_stock_spot, update_month, type transaction } from '@/lib/finance/model';
+import { use_admin_spot } from '@/components/admin/admin-spot-context';
 import type { section_props } from '@/components/admin/finance/use-finance';
 import {
   Card,
@@ -27,6 +28,8 @@ const fixed_categories: { id: string; label: string; kind: 'expense' | 'income' 
 ];
 
 export default function TransactionsSection({ state, set_state, month, compact }: section_props) {
+  const admin = use_admin_spot();
+  const receipt_spot = resolve_stock_spot(admin.spot_id || admin.spot_options[0]?.id);
   const md = state.monthsData.find((m) => m.month === month);
   const [category, set_category] = useState('material');
   const [material_id, set_material_id] = useState(state.materials[0]?.id ?? '');
@@ -49,7 +52,7 @@ export default function TransactionsSection({ state, set_state, month, compact }
     const kind = fixed_categories.find((c) => c.id === category)?.kind ?? 'expense';
     const date = `${month}-${String(day).padStart(2, '0')}T12:00:00.000Z`;
     if (category === 'material' && to_stock && material_id && quantity > 0) {
-      set_state((prev) => apply_receipt(prev, { materialId: material_id, quantity, total: amount, date, note: description || undefined, update_price: amount > 0, actor: { id: 'admin', name: 'админ', role: 'admin' } }));
+      set_state((prev) => apply_receipt(prev, { materialId: material_id, quantity, total: amount, date, note: description || undefined, update_price: amount > 0, spotId: receipt_spot, actor: { id: 'admin', name: 'админ', role: 'admin' } }));
     } else {
       const row: transaction = {
         id: new_id('tx'),

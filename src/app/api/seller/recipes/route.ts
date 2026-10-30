@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 import { session_cookie } from '@/lib/session';
 import { read_finance_state } from '@/lib/finance/finance-server';
-import { effective_card_size, size_label } from '@/lib/finance/model';
+import { effective_card_size, materials_with_preps, size_label } from '@/lib/finance/model';
 import {
   cook_steps_view,
   resolved_prep_steps_for_volume,
@@ -20,19 +20,20 @@ export async function GET() {
     return NextResponse.json({ error: 'доступ запрещён' }, { status: 403 });
   }
   const state = await read_finance_state();
+  const materials = materials_with_preps(state);
   const recipes: public_recipe[] = state.techCards
     .filter((c) => c.menu_item_id)
     .map((card) => {
       const sizes: public_recipe['sizes'] = {};
       for (const key of Object.keys(card.sizes)) {
-        const size = effective_card_size(card, key, state.materials);
+        const size = effective_card_size(card, key, materials);
         if (!size) continue;
         sizes[key] = {
           volume: size.volume,
           label: size_label(key),
           steps: cook_steps_view(
-            resolved_prep_steps_for_volume(card, key, state.materials, size),
-            state.materials
+            resolved_prep_steps_for_volume(card, key, materials, size),
+            materials
           ),
         };
       }

@@ -105,7 +105,13 @@ async function load_order(id: string): Promise<order | null> {
   return data as order;
 }
 
-async function sync_stock(id: string, items: order_item[], status: order['status'], date?: string) {
+async function sync_stock(
+  id: string,
+  items: order_item[],
+  status: order['status'],
+  date?: string,
+  spotId?: string | null
+) {
   const stock_items = items.filter((item) => item.menu_id);
   const result = await replace_order_stock({
     orderId: id,
@@ -113,6 +119,7 @@ async function sync_stock(id: string, items: order_item[], status: order['status
     keep: status !== 'cancelled' && stock_items.length > 0,
     date,
     kind: stock_items.every((item) => item.kind === 'staff') ? 'staff' : 'sale',
+    spotId,
   });
   if (!result.ok) console.error('sync_stock', id, result.error);
 }
@@ -141,6 +148,7 @@ export async function revise_order(input: {
     const stock_ok = await assert_order_stock({
       items: input.items.filter((item) => item.menu_id),
       releaseOrderId: input.id,
+      spotId: existing.spot_id,
     });
     if (!stock_ok.ok) {
       return {
@@ -177,7 +185,7 @@ export async function revise_order(input: {
   }
   if (!updated) return { ok: false, error: 'заказ не найден', status: 404 };
 
-  await sync_stock(input.id, input.items, updated.status, existing.created_at);
+  await sync_stock(input.id, input.items, updated.status, existing.created_at, existing.spot_id);
   await replace_handed_snapshot(updated);
   await retitle_cash_for_order(input.id, total_price, items_text(input.items));
 

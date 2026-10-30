@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { createElement, useEffect, useMemo, useState } from 'react';
 import {
   get_location,
   normalize_city,
@@ -8,6 +8,8 @@ import {
   type user_location,
 } from '@/lib/location';
 import { get_active_spots, subscribe_spot_store } from '@/lib/spot-store';
+import spot_rating from '@/components/spot-rating';
+import { spot_has_yandex } from '@/lib/yandex-spot';
 import type { store_spot } from '@/lib/types';
 
 type props = {
@@ -73,25 +75,33 @@ export default function spot_picker({ on_confirm }: props) {
             {city}
           </p>
           <div className="space-y-2">
-            {city_spots.map((spot) => (
-              <button
-                key={spot.id}
-                type="button"
-                onClick={() => handle_select(spot)}
-                className={`w-full text-left rounded-xl px-4 py-3 border transition-colors ${
-                  selected_id === spot.id
-                    ? 'border-accent bg-cream'
-                    : 'border-surface bg-white hover:bg-surface/50'
-                }`}
-              >
-                <p className="font-semibold text-neutral-900 text-[15px] leading-snug">
-                  {spot.address}
-                </p>
-                {spot.label && (
-                  <p className="text-xs text-neutral-500 mt-1">{spot.label}</p>
-                )}
-              </button>
-            ))}
+            {city_spots.map((spot) => {
+              const rated = spot_has_yandex(spot);
+              return (
+                <div
+                  key={spot.id}
+                  className={`rounded-xl border px-4 py-3 transition-colors ${
+                    selected_id === spot.id
+                      ? 'border-accent bg-cream'
+                      : 'border-surface bg-white'
+                  }`}
+                >
+                  <button
+                    type="button"
+                    onClick={() => handle_select(spot)}
+                    className="w-full text-left"
+                  >
+                    <p className="font-semibold text-neutral-900 text-[15px] leading-snug">
+                      {spot.address}
+                    </p>
+                    {spot.label && (
+                      <p className="text-xs text-neutral-500 mt-1">{spot.label}</p>
+                    )}
+                  </button>
+                  {rated ? createElement(spot_rating, { spot }) : null}
+                </div>
+              );
+            })}
           </div>
         </div>
       ))}

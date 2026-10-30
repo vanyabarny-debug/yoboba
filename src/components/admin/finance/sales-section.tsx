@@ -3,6 +3,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
   format_rub,
+  next_lot_cost_per_unit,
+  tech_card_unpriced,
   menu_price_for_size,
   month_label,
   size_label,
@@ -216,6 +218,7 @@ export default function SalesSection({ state, set_state, month, menu, spot_id = 
                       {keys.map((key) => {
                         const cell = md.sales[card.id]?.[key] ?? { price: item ? menu_price_for_size(item, key) : 0, qty: 0 };
                         const cost = tech_card_cost(state, card, key);
+                        const gap = tech_card_unpriced(state, card, key);
                         const f = fact?.sales[card.id]?.[key];
                         const fact_qty = f?.qty ?? 0;
                         const ratio = cell.qty > 0 ? fact_qty / cell.qty : 0;
@@ -253,9 +256,11 @@ export default function SalesSection({ state, set_state, month, menu, spot_id = 
                               )}
                             </td>
                             <td className="py-2 text-right tabular-nums">{format_rub(rev)}</td>
-                            <td className="py-2 text-right tabular-nums text-neutral-500">{format_rub(cost * cell.qty)}</td>
+                            <td className="py-2 text-right tabular-nums text-neutral-500">
+                              {gap ? <span className="text-amber-600">нет поставки</span> : format_rub(cost * cell.qty)}
+                            </td>
                             <td className={`py-2 text-right tabular-nums ${margin < 0.6 ? 'text-red-500' : 'text-emerald-600'}`}>
-                              {cell.price > 0 ? `${(margin * 100).toFixed(0)}%` : '—'}
+                              {gap || cell.price <= 0 ? '—' : `${(margin * 100).toFixed(0)}%`}
                             </td>
                           </tr>
                         );
@@ -298,7 +303,7 @@ function RetailSales({ state, set_state, month }: Pick<section_props, 'state' | 
             return (
               <tr key={m.id} className="border-t border-neutral-100">
                 <td className={td_class}>{m.name}</td>
-                <td className={`${td_num_class} text-neutral-500`}>{format_rub(m.costPerUnit)}</td>
+                <td className={`${td_num_class} text-neutral-500`}>{format_rub(next_lot_cost_per_unit(state, m))}</td>
                 <td className={`${td_num_class} w-28`}>
                   <NumInput
                     value={cell.price}

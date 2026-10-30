@@ -418,6 +418,8 @@ export async function POST(request: Request) {
   }
 
   const body = await request.json();
+  const spot_id_raw = typeof body.spot_id === 'string' ? body.spot_id.trim() : '';
+  const spot_id = spot_id_raw || null;
   const raw_items = body.items as order_item[] | undefined;
   if (!raw_items?.length) {
     return NextResponse.json({ error: 'корзина пуста' }, { status: 400 });
@@ -586,7 +588,7 @@ export async function POST(request: Request) {
   const { FREE_DRINK_BONUS_THRESHOLD } = await import('@/lib/cart-summary');
   const actor = await staff_actor_name();
 
-  const stock_ok = await assert_order_stock({ items });
+  const stock_ok = await assert_order_stock({ items, spotId: spot_id });
   if (!stock_ok.ok) {
     return NextResponse.json(
       { error: stock_ok.error, shortages: stock_ok.shortages },
@@ -660,8 +662,6 @@ export async function POST(request: Request) {
       }
 
       const daily = await allocate_daily_order_number(admin);
-      const spot_id_raw = typeof body.spot_id === 'string' ? body.spot_id.trim() : '';
-      const spot_id = spot_id_raw || null;
       const payload = {
         user_id,
         items,
@@ -763,6 +763,7 @@ export async function POST(request: Request) {
         orderId: String((data as { id?: string }).id || ''),
         items,
         kind: staff ? 'staff' : 'sale',
+        spotId: spot_id,
       });
 
       // сжигаем код только если заказ привязали по pickup-коду
@@ -844,6 +845,7 @@ export async function POST(request: Request) {
     orderId: order.id,
     items,
     kind: staff ? 'staff' : 'sale',
+    spotId: spot_id,
   });
 
   if (pickup_code_used && !staff) {
