@@ -8,7 +8,9 @@ import {
   actor_on_movement,
   base_unit,
   base_unit_label,
+  day_key,
   fifo_consume_cost,
+  moscow_today,
   next_lot_cost_per_base,
   fifo_values_map,
   material_is_free,
@@ -28,7 +30,7 @@ export type prep_station_kind = 'pot' | 'teapot';
 export type prep_yield_sample = { dryG: number; cookedG: number };
 
 /** варки после последней сверки: по ним понимаем, совпал ли выход */
-export type prep_open_batch = { dryG: number; predictedG: number };
+export type prep_open_batch = { dryG: number; predictedG: number; /** первая варка этой партии */ at?: string };
 
 export type prep_input = { materialId: string; qty: number };
 
@@ -146,13 +148,15 @@ const PREP_COOKED_MATERIALS: material[] = [
   },
 ];
 
+/**
+ * Дневной маринад: ~50 г самоварного сиропа на 500 мл воды.
+ * Сироп 2:1 по весу — из 50 г это 33 г тростникового сахара и 17 мл воды.
+ * 500 мл маринада хватает на день, второй раз за день сахар не списываем.
+ */
 export const DEFAULT_TAPIOCA_MARINADE: prep_marinade = {
   enabled: true,
   label: 'маринад',
-  inputs: [
-    { materialId: 'cane_sugar_cube', qty: 4 },
-    { materialId: 'syrup_brown_sugar', qty: 40 },
-  ],
+  inputs: [{ materialId: 'cane_sugar', qty: 33 }],
   waterMl: 500,
   addG: 0,
 };
@@ -279,7 +283,15 @@ function normalize_open_batch(raw: unknown): prep_open_batch | null {
   const dryG = Math.max(0, Math.round(Number(r.dryG) || 0));
   const predictedG = Math.max(0, Math.round(Number(r.predictedG) || 0));
   if (dryG <= 0 || predictedG <= 0) return null;
-  return { dryG, predictedG };
+  const at = typeof r.at === 'string' && r.at.trim() ? r.at.trim() : undefined;
+  return { dryG, predictedG, ...(at ? { at } : {}) };
+}
+
+function fresh_tapioca_marinade(): prep_marinade {
+  return {
+    ...DEFAULT_TAPIOCA_MARINADE,
+    inputs: DEFAULT_TAPIOCA_MARINADE.inputs.map((input) => ({ ...input })),
+  };
 }
 
 function blank_station(id: string, kind: prep_station_kind): prep_station {
@@ -326,7 +338,10 @@ export function normalize_prep_stations(raw: unknown): prep_station[] {
       const base =
         by_id.get(id) ??
         blank_station(id, r.kind === 'teapot' ? 'teapot' : 'pot');
-      const marinade = normalize_marinade('marinade' in r ? r.marinade : undefined, base.marinade);
+      const marinade =
+        id === 'tapioca'
+          ? fresh_tapioca_marinade()
+          : normalize_marinade('marinade' in r ? r.marinade : undefined, base.marinade);
       by_id.set(id, {
         ...base,
         label: String(r.label || base.label).trim() || base.label,
@@ -447,7 +462,10 @@ export function ensure_prep_materials(state: finance_state): finance_state {
 
 const YIELD_KEEP = 12;
 
-/** стартовая норма + сверки. чем больше сваренного сухого, тем сильнее опыт */
+/**
+ * стартовая норма + сверки.
+ * последняя сверка сразу перетягивает следующую варку, старые остаются фоном.
+ */
 export function yield_ratio(station: Pick<prep_station, 'defaultDryG' | 'defaultCookedG' | 'yieldSamples'>): {
   cookedPerDry: number;
   samples: number;
@@ -457,16 +475,17 @@ export function yield_ratio(station: Pick<prep_station, 'defaultDryG' | 'default
     station.defaultDryG > 0 && station.defaultCookedG > 0
       ? station.defaultCookedG / station.defaultDryG
       : 0;
-  const dry = station.yieldSamples.reduce((sum, sample) => sum + sample.dryG, 0);
-  const cooked = station.yieldSamples.reduce((sum, sample) => sum + sample.cookedG, 0);
-  if (dry <= 0 || cooked <= 0 || manual <= 0) {
+  const samples = station.yieldSamples.filter((sample) => sample.dryG > 0 && sample.cookedG > 0);
+  if (!samples.length || manual <= 0) {
     return { cookedPerDry: manual, samples: station.yieldSamples.length, fromExperience: false };
   }
-  const learned = cooked / dry;
-  const weight = dry / Math.max(1, station.defaultDryG);
-  const blended = (manual + learned * weight) / (1 + weight);
+  const latest = samples[samples.length - 1];
+  const latestRatio = latest.cookedG / latest.dryG;
+  const olderDry = samples.reduce((sum, sample) => sum + sample.dryG, 0) - latest.dryG;
+  const olderCooked = samples.reduce((sum, sample) => sum + sample.cookedG, 0) - latest.cookedG;
+  const prior = olderDry > 0 ? olderCooked / olderDry : manual;
   return {
-    cookedPerDry: blended,
+    cookedPerDry: prior * 0.25 + latestRatio * 0.75,
     samples: station.yieldSamples.length,
     fromExperience: true,
   };
@@ -521,6 +540,7 @@ export function cups_from_grams(qty: number, bounds: { minG: number; maxG: numbe
 function marinade_hint(station: prep_station, materials: Map<string, material>): string | null {
   const marinade = station.marinade;
   if (!marinade?.enabled) return null;
+  if (station.id === 'tapioca') return '50 г самоварного сиропа на 500 мл воды';
   const parts = marinade.inputs.map((input) => {
     const mat = materials.get(input.materialId);
     const unit = mat ? base_unit_label(mat.unit) : 'г';
@@ -529,6 +549,21 @@ function marinade_hint(station: prep_station, materials: Map<string, material>):
   if (marinade.waterMl > 0) parts.push(`${marinade.waterMl} мл воды`);
   if (!parts.length) return null;
   return parts.join(' + ');
+}
+
+function moscow_day(iso: string) {
+  const t = new Date(iso);
+  if (!Number.isFinite(t.getTime())) return day_key(iso);
+  return moscow_today(t);
+}
+
+/** дневная порция маринада уже списана — вторую кастрюлю в тот же день только отмечаем */
+function marinade_poured_today(state: finance_state, station: prep_station, iso: string) {
+  const day = moscow_day(iso);
+  const note = `маринад: ${station.label}`;
+  return state.stockMovements.some(
+    (mv) => mv.type === 'out' && (mv.note || '').startsWith(note) && moscow_day(mv.date) === day
+  );
 }
 
 export function prep_station_views(state: finance_state): prep_station_view[] {
@@ -763,9 +798,6 @@ export function apply_prep_cook(
 
   const weighed = input.actualG != null;
   const actualG = weighed ? Math.round(Number(input.actualG)) : null;
-  if (station.kind === 'pot' && (actualG == null || !Number.isFinite(actualG) || actualG < 0 || actualG > 8000)) {
-    return { ok: false, error: 'напишите, сколько грамм тапиоки сейчас в кастрюле' };
-  }
   if (actualG != null && (!Number.isFinite(actualG) || actualG < 0 || actualG > 8000)) {
     return { ok: false, error: 'напишите, сколько грамм сейчас в кастрюле' };
   }
@@ -871,6 +903,7 @@ export function apply_prep_cook(
       openBatch: {
         dryG: (prev?.dryG ?? 0) + dryG,
         predictedG: (prev?.predictedG ?? 0) + cookedG,
+        at: prev?.at || date,
       },
     };
   });
@@ -898,7 +931,9 @@ export function apply_prep_cook(
     },
   ]);
 
-  if (actualG == null) return { ok: true, state: next, message: '' };
+  if (actualG == null) {
+    return { ok: true, state: next, message: `${verb}: +${cookedG} г по навару` };
+  }
 
   const settled = apply_prep_reconcile(next, {
     stationId: station.id,
@@ -1036,6 +1071,75 @@ export function apply_prep_still_have(
   };
 }
 
+function round_money(n: number) {
+  return Math.round(n * 100) / 100;
+}
+
+function batch_start_iso(state: finance_state, materialId: string, batch: prep_open_batch): string {
+  if (batch.at) return batch.at;
+  const ins = state.stockMovements
+    .filter(
+      (mv) =>
+        mv.materialId === materialId &&
+        mv.type === 'in' &&
+        /^(варка|заваривание)\b/i.test((mv.note || '').trim()) &&
+        !/маринад/i.test(mv.note || '')
+    )
+    .sort((a, b) => a.date.localeCompare(b.date) || a.id.localeCompare(b.id));
+  let sum = 0;
+  let start = ins.length ? ins[ins.length - 1].date : '';
+  for (let i = ins.length - 1; i >= 0; i--) {
+    sum += ins[i].qty;
+    start = ins[i].date;
+    if (sum + 0.5 >= batch.predictedG) break;
+  }
+  return start;
+}
+
+/** деньги партии разложить по уже проданным стаканам и тому, что ещё лежит */
+function reprice_batch_drinks(
+  state: finance_state,
+  materialId: string,
+  since: string,
+  actualG: number
+): { state: finance_state; unit: number; drinks: number } | null {
+  if (!since) return null;
+  const sales = state.stockMovements
+    .filter(
+      (mv) =>
+        mv.materialId === materialId &&
+        (mv.type === 'sale' || mv.type === 'staff') &&
+        mv.date >= since
+    )
+    .sort((a, b) => a.date.localeCompare(b.date) || a.id.localeCompare(b.id));
+  const soldQty = sales.reduce((sum, mv) => sum + mv.qty, 0);
+  const trueG = soldQty + Math.max(0, actualG);
+  if (trueG <= 0.5 || !sales.length) return null;
+  const onHand = fifo_values_map(state).get(materialId) ?? 0;
+  const soldValue = sales.reduce((sum, mv) => sum + (Number(mv.total) || 0), 0);
+  const pool = onHand + soldValue;
+  if (!(pool > 0)) return null;
+  const unit = pool / trueG;
+  let assigned = 0;
+  const totals = new Map<string, number>();
+  sales.forEach((mv, index) => {
+    const total =
+      index === sales.length - 1 ? round_money(soldQty * unit - assigned) : round_money(mv.qty * unit);
+    assigned = round_money(assigned + total);
+    totals.set(mv.id, Math.max(0, total));
+  });
+  return {
+    state: {
+      ...state,
+      stockMovements: state.stockMovements.map((mv) =>
+        totals.has(mv.id) ? { ...mv, total: totals.get(mv.id) } : mv
+      ),
+    },
+    unit,
+    drinks: new Set(sales.map((mv) => mv.orderId || mv.id)).size,
+  };
+}
+
 /**
  * кассир говорит, сколько реально в кастрюле (и при желании в пачке).
  * разница с программой правит остаток и, если была варка, уточняет выход.
@@ -1080,9 +1184,8 @@ export function apply_prep_reconcile(
   let yield_ok = false;
   if (batch && batch.dryG > 0) {
     implied = Math.round(batch.predictedG + (actual - book_cooked));
-    const lo = batch.predictedG * 0.25;
-    const hi = batch.predictedG * 4;
-    yield_ok = implied >= lo && implied <= hi && implied > 0;
+    const perDry = implied / batch.dryG;
+    yield_ok = implied > 0 && perDry >= 0.2 && perDry <= 6;
   }
 
   let learned = false;
@@ -1102,9 +1205,20 @@ export function apply_prep_reconcile(
       : Math.abs(actual - book_cooked) > 0.5
         ? `факт: ${actual} г`
         : 'так и есть, ничего не менял';
+  let priced: { unit: number; drinks: number } | null = null;
+  if (learned && batch) {
+    const since = batch_start_iso(state, cooked.id, batch);
+    const repriced = reprice_batch_drinks(state, cooked.id, since, actual);
+    if (repriced) {
+      state = repriced.state;
+      priced = { unit: repriced.unit, drinks: repriced.drinks };
+    }
+  }
+
   if (learned && batch && batch.dryG > 0) {
     const per100 = Math.round((implied / batch.dryG) * 100);
-    message = `факт ${actual} г. по варке из 100 г сухого ≈ ${per100} г`;
+    message = `факт ${actual} г. из 100 г сухого ≈ ${per100} г`;
+    if (priced) message += `. себестоимость ${priced.drinks} стаканов пересчитана`;
   } else if (batch && short > 0.5) {
     message =
       implied > 0
@@ -1117,7 +1231,8 @@ export function apply_prep_reconcile(
   }
 
   if (learned && Math.abs(actual - book_cooked) > 0.5) {
-    const value = Math.round((fifo_values_map(state).get(cooked.id) ?? 0) * 100) / 100;
+    const fallback = round_money(fifo_values_map(state).get(cooked.id) ?? 0);
+    const remain = priced ? round_money(Math.max(0, actual) * priced.unit) : fallback;
     movements.push({
       id: new_id('mv'),
       date,
@@ -1134,7 +1249,7 @@ export function apply_prep_reconcile(
         type: 'in',
         materialId: cooked.id,
         qty: actual,
-        total: value,
+        total: remain,
         note: `варка: навар ${station.label}`,
         ...actor_on_movement(input.actor),
       });
@@ -1188,9 +1303,10 @@ export function apply_prep_reconcile(
     prepStations: next_stations,
     stockMovements: movements.length ? [...state.stockMovements, ...movements] : state.stockMovements,
   };
-  if (learned && actual > 0) {
-    const value = fifo_values_map(next).get(cooked.id) ?? 0;
-    const per = value / actual;
+  if (learned && (priced || actual > 0)) {
+    const per = priced
+      ? priced.unit
+      : (fifo_values_map(next).get(cooked.id) ?? 0) / Math.max(1, actual);
     const unit = cooked.unit === 'kg' || cooked.unit === 'L' ? per * 1000 : per;
     next = {
       ...next,
@@ -1243,13 +1359,35 @@ export function apply_prep_marinade(
   }
 
   const date = input.date || new Date().toISOString();
-  const note = `маринад: ${station.label}`;
+  const note = `маринад: ${station.label} · 50 г сиропа на 500 мл воды`;
+  if (marinade_poured_today(state, station, date)) {
+    const next_stations = stations.map((s) =>
+      s.id === station.id ? { ...s, marinadePending: false } : s
+    );
+    const next = push_stock_audit(
+      { ...state, prepStations: next_stations },
+      [
+        {
+          id: new_id('aud'),
+          at: date,
+          ...audit_actor(input.actor),
+          action: 'prep',
+          materialId: cooked.id,
+          materialName: cooked.name,
+          qtyBefore: cooked_qty,
+          qtyAfter: cooked_qty,
+          note: 'маринад на сегодня уже есть — 500 мл хватает на день',
+        },
+      ]
+    );
+    return { ok: true, state: next };
+  }
   const outs: stock_movement[] = [];
   let add_cost = 0;
-  // нет на складе — уйдёт в минус, админ потом внесёт поступление
+  // нет на складе — уйдёт в минус, админ потом внесёт поступление. вода бесплатная, в минус её не гоним
   for (const line of lines) {
     const mat = mats.get(line.materialId)!;
-    if (material_is_infinite(mat)) continue;
+    if (material_is_infinite(mat) || material_is_free(mat)) continue;
     const cost = fifo_consume_cost(state, mat.id, line.qty);
     add_cost += cost;
     outs.push({
@@ -1319,6 +1457,19 @@ export function apply_prep_marinade(
     },
   ]);
   return { ok: true, state: next };
+}
+
+/** заказ с этой кастрюлей нельзя создать, пока не залили маринад */
+export function marinade_order_block(
+  state: finance_state,
+  need: Map<string, number>
+): { error: string; stationId: string } | null {
+  for (const station of normalize_prep_stations(state.prepStations)) {
+    if (!station.enabled || !station.marinade?.enabled || !station.marinadePending) continue;
+    if ((need.get(station.cookedMaterialId) ?? 0) <= 0) continue;
+    return { error: `сначала залей маринад — ${station.label}`, stationId: station.id };
+  }
+  return null;
 }
 
 /** кастрюля/чайник по id сырья (варёное или сухое) */

@@ -48,7 +48,6 @@ export default function prep_stations_board({
   const [notice, set_notice] = useState('');
   const [dry_g, set_dry_g] = useState('');
   const [still_g, set_still_g] = useState('');
-  const [actual_g, set_actual_g] = useState('');
   const [tapioca, set_tapioca] = useState<{ id: string; name: string; qty: number }[]>([]);
   const [lines, set_lines] = useState<{ key: string; materialId: string; grams: string }[]>([]);
   const line_seq = useRef(1);
@@ -118,8 +117,7 @@ export default function prep_stations_board({
   useEffect(() => {
     if (!active) return;
     set_dry_g('');
-    set_actual_g('');
-    set_still_g(String(Math.max(0, Math.round(active.cookedQty) || 0)));
+    set_still_g('');
     line_seq.current = 1;
     set_lines([{ key: '1', materialId: active.dryMaterialId, grams: '' }]);
     set_error('');
@@ -180,12 +178,9 @@ export default function prep_stations_board({
     if (body.tapioca) set_tapioca(body.tapioca);
     on_stations_ref.current?.(next);
     const fresh = next.find((s) => s.id === active?.id);
-    if (fresh) {
-      set_still_g(String(Math.max(0, Math.round(fresh.cookedQty) || 0)));
-    }
+    if (fresh) set_still_g('');
     if (body.message) {
       set_notice(body.message);
-      set_actual_g('');
       set_dry_g('');
       line_seq.current += 1;
       set_lines([
@@ -231,7 +226,6 @@ export default function prep_stations_board({
   const minus = !!active && active.cookedQty < -0.5;
   const empty = !active || active.cookedQty <= 0;
   const still_ok = still_g.trim() !== '' && Number.isFinite(Number(still_g)) && Number(still_g) >= 0;
-  const actual_ok = actual_g.trim() !== '' && Number.isFinite(Number(actual_g)) && Number(actual_g) >= 0;
   const cook_label = active?.kind === 'pot' ? 'сварить' : 'заварить';
   const dry_debts = (active?.kind === 'pot'
     ? choices
@@ -310,14 +304,21 @@ export default function prep_stations_board({
                   </p>
                 ) : null}
                 {active.marinadePending ? (
-                  <button
-                    type="button"
-                    disabled={busy}
-                    onClick={() => void post({ kind: 'marinade' }, 'не удалось записать маринад')}
-                    className="w-full rounded-2xl bg-amber-500 py-3 text-sm font-bold text-white disabled:opacity-50"
-                  >
-                    {busy ? '…' : 'залил маринад'}
-                  </button>
+                  <div className="space-y-1">
+                    <button
+                      type="button"
+                      disabled={busy}
+                      onClick={() => void post({ kind: 'marinade' }, 'не удалось записать маринад')}
+                      className="w-full rounded-2xl bg-amber-500 py-3 text-sm font-bold text-white disabled:opacity-50"
+                    >
+                      {busy ? '…' : 'залил маринад'}
+                    </button>
+                    {active.marinadeHint ? (
+                      <p className="text-center text-[11px] text-neutral-500">
+                        {active.marinadeHint}. 500 мл хватает на день. без этого стакан с тапиокой не пробьётся
+                      </p>
+                    ) : null}
+                  </div>
                 ) : null}
 
                 {active.kind === 'pot' ? (
@@ -399,40 +400,33 @@ export default function prep_stations_board({
                       ) : null}
                       {preview_cups ? <span className="text-neutral-400"> · {preview_cups}</span> : null}
                     </p>
-                    <div className="flex gap-2">
-                      <input
-                        inputMode="numeric"
-                        value={actual_g}
-                        onChange={(e) => set_actual_g(e.target.value)}
-                        placeholder="сейчас, г"
-                        aria-label="сколько сейчас в кастрюле, г"
-                        className="w-28 shrink-0 rounded-2xl border border-neutral-200 bg-neutral-50 px-3 py-3 text-center text-base font-bold tabular-nums outline-none focus:border-accent"
-                      />
-                      <button
-                        type="button"
-                        disabled={busy || preview_cooked <= 0 || !actual_ok}
-                        onClick={() =>
-                          void post(
-                            {
-                              kind: 'cook',
-                              lines: lines
-                                .filter((row) => Number(row.grams) > 0)
-                                .map((row) => ({
-                                  materialId: row.materialId,
-                                  grams: Number(row.grams),
-                                })),
-                              actualG: Number(actual_g),
-                            },
-                            'не удалось сварить'
-                          )
-                        }
-                        className="min-w-0 flex-1 rounded-2xl bg-accent/95 py-3 text-sm font-bold text-white shadow-lg disabled:opacity-50"
-                      >
-                        {busy ? '…' : 'записать'}
-                      </button>
-                    </div>
+                    <button
+                      type="button"
+                      disabled={busy || preview_cooked <= 0}
+                      onClick={() =>
+                        void post(
+                          {
+                            kind: 'cook',
+                            lines: lines
+                              .filter((row) => Number(row.grams) > 0)
+                              .map((row) => ({
+                                materialId: row.materialId,
+                                grams: Number(row.grams),
+                              })),
+                          },
+                          'не удалось сварить'
+                        )
+                      }
+                      className="w-full rounded-2xl bg-accent/95 py-3 text-sm font-bold text-white shadow-lg disabled:opacity-50"
+                    >
+                      {busy
+                        ? '…'
+                        : preview_cooked > 0
+                          ? `${cook_label} → ${format_g(preview_cooked)}`
+                          : cook_label}
+                    </button>
                     <p className="text-center text-[11px] text-neutral-400">
-                      вес по навару, потом сколько реально в кастрюле. нехватка — в навар или в потеряно
+                      в кастрюлю ложится расчётный навар. факт — только если в конце не сошлось
                     </p>
                   </div>
                 ) : (
@@ -476,8 +470,8 @@ export default function prep_stations_board({
                     inputMode="numeric"
                     value={still_g}
                     onChange={(e) => set_still_g(e.target.value)}
-                    placeholder="г"
-                    aria-label="факт, г"
+                    placeholder="на самом деле, г"
+                    aria-label="сколько тапиоки на самом деле, г"
                     className="w-28 shrink-0 rounded-2xl border border-neutral-200 bg-neutral-50 px-3 py-3 text-center text-base font-bold tabular-nums outline-none focus:border-accent"
                   />
                   <button
@@ -491,12 +485,12 @@ export default function prep_stations_board({
                     }
                     className="min-w-0 flex-1 rounded-2xl border border-neutral-200 py-3 text-sm font-semibold text-neutral-700 disabled:opacity-50"
                   >
-                    {busy ? '…' : active.kind === 'pot' ? 'только факт, без варки' : 'факт'}
+                    {busy ? '…' : active.kind === 'pot' ? 'пересчитать' : 'факт'}
                   </button>
                 </div>
                 <p className="text-center text-[11px] text-neutral-400">
                   {active.kind === 'pot'
-                    ? '0 г: навар уменьшится, только если выход всё ещё похож на прогноз. иначе граммы уйдут в потеряно'
+                    ? 'когда пусто или осталось около 20 г, а программа ещё показывает порции. навар и себестоимость уже проданных стаканов пересчитаются'
                     : 'сколько реально в кастрюле сейчас — можно 0'}
                 </p>
 

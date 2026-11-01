@@ -4,14 +4,20 @@ import {
   apply_order_consumption,
   bind_spot,
   commit_spot,
+  consumption_for_items,
   format_stock_shortages,
   order_stock_shortages,
   resolve_stock_spot,
   reverse_order_consumption,
+  type finance_state,
   type order_stock_item,
   type stock_shortage,
 } from '@/lib/finance/model';
-import { prep_station_id_for_material } from '@/lib/finance/prep-stations';
+import {
+  marinade_order_block,
+  normalize_prep_stations,
+  prep_station_id_for_material,
+} from '@/lib/finance/prep-stations';
 import { mutate_finance_state, read_finance_state } from '@/lib/finance/finance-server';
 import type { menu_item } from '@/lib/types';
 
@@ -31,6 +37,34 @@ async function load_menu(): Promise<menu_item[]> {
   return upgrade_menu_store(await read_published_menu()).items;
 }
 
+function marinade_stop(
+  state: finance_state,
+  items: order_stock_item[],
+  menu: menu_item[]
+): { error: string; shortages: stock_shortage_row[] } | null {
+  const block = marinade_order_block(state, consumption_for_items(state, items, menu));
+  if (!block) return null;
+  const station = normalize_station(state, block.stationId);
+  return {
+    error: block.error,
+    shortages: station
+      ? [
+          {
+            materialId: station.cookedMaterialId,
+            name: station.label,
+            need: 0,
+            have: 0,
+            stationId: station.id,
+          },
+        ]
+      : [],
+  };
+}
+
+function normalize_station(state: finance_state, stationId: string) {
+  return normalize_prep_stations(state.prepStations).find((s) => s.id === stationId) ?? null;
+}
+
 /** проверка до создания/правки заказа — без списания */
 export async function assert_order_stock(opts: {
   items: order_stock_item[];
@@ -42,6 +76,8 @@ export async function assert_order_stock(opts: {
   try {
     const [full, menu] = await Promise.all([read_finance_state(), load_menu()]);
     const state = bind_spot(full, opts.spotId);
+    const blocked = marinade_stop(state, opts.items, menu);
+    if (blocked) return { ok: false, error: blocked.error, shortages: blocked.shortages };
     const shortages = enrich_shortages(
       state,
       order_stock_shortages(state, opts.items, menu, {
@@ -69,6 +105,8 @@ export async function record_order_stock(opts: {
     const spot = resolve_stock_spot(opts.spotId);
     return await mutate_finance_state<{ ok: true } | { ok: false; error: string }>((full) => {
       const state = bind_spot(full, spot);
+      const blocked = marinade_stop(state, opts.items, menu);
+      if (blocked) return { state: null, value: { ok: false as const, error: blocked.error } };
       const shortages = order_stock_shortages(state, opts.items, menu, {
         releaseOrderId: opts.orderId,
       });
@@ -133,6 +171,8 @@ export async function replace_order_stock(opts: {
         return { state: changed ? released : null, value: { ok: true as const } };
       }
       const view = bind_spot(released, spot);
+      const blocked = marinade_stop(view, opts.items, menu);
+      if (blocked) return { state: null, value: { ok: false as const, error: blocked.error } };
       const shortages = order_stock_shortages(view, opts.items, menu);
       if (shortages.length) {
         return {

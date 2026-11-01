@@ -123,6 +123,10 @@ export default function cashier_radio({ hours }: { hours?: spot_hours | null }) 
   const scrub_ref = useRef(false);
   const gen_ref = useRef(0);
   const fail_ref = useRef(0);
+  const drops_ref = useRef(0);
+  const live_ref = useRef(false);
+  const heard_ref = useRef(0);
+  const resume_lock_ref = useRef(0);
   const load_failed = useRef(false);
   const hours_ref = useRef(hours ?? null);
   const nag_ctx = useRef<AudioContext | null>(null);
@@ -217,8 +221,10 @@ export default function cashier_radio({ hours }: { hours?: spot_hours | null }) 
     const length = track.duration && track.duration > 0 ? track.duration : duration_ref.current;
     const begin = length ? Math.min(Math.max(0, at), Math.max(0, length - 0.4)) : Math.max(0, at);
     origin_ref.current = begin;
+    heard_ref.current = begin;
     set_shown(begin);
     remember_duration(tracks, index);
+    live_ref.current = false;
     const my = ++gen_ref.current;
     const query = new URLSearchParams({ id: track.id, start: String(begin) });
     audio.src = `/api/seller/radio/stream?${query}`;
@@ -258,6 +264,7 @@ export default function cashier_radio({ hours }: { hours?: spot_hours | null }) 
       mode_ref.current = 'playing';
       set_mode('playing');
       fail_ref.current = 0;
+      drops_ref.current = 0;
       start_stream(origin_ref.current);
     };
     if (tracks_ref.current.length) {
@@ -294,27 +301,65 @@ export default function cashier_radio({ hours }: { hours?: spot_hours | null }) 
     seek(at);
   }
 
-  function on_time() {
-    if (scrub_ref.current || mode_ref.current === 'stopped') return;
+  function place() {
     const audio = audio_ref.current;
-    if (!audio) return;
-    set_shown(origin_ref.current + (audio.currentTime || 0));
+    return Math.max(heard_ref.current, origin_ref.current + (audio?.currentTime || 0));
   }
 
-  function on_ended() {
-    if (mode_ref.current !== 'playing') return;
+  function same_song(at: number) {
+    const length = duration_ref.current;
+    return length > 20 && at > 1 && at < length - 8;
+  }
+
+  function hold_song(at: number) {
+    const now = Date.now();
+    if (now - resume_lock_ref.current < 700) return true;
+    if (drops_ref.current >= 6) return false;
+    resume_lock_ref.current = now;
+    drops_ref.current += 1;
+    start_stream(at);
+    return true;
+  }
+
+  function next_track() {
     const tracks = tracks_ref.current;
     if (!tracks.length) return;
+    drops_ref.current = 0;
     fail_ref.current = 0;
     index_ref.current = (index_ref.current + 1) % tracks.length;
     origin_ref.current = 0;
     start_stream(0);
   }
 
+  function on_time() {
+    if (scrub_ref.current || mode_ref.current === 'stopped') return;
+    const audio = audio_ref.current;
+    if (!audio) return;
+    const at = origin_ref.current + (audio.currentTime || 0);
+    if ((audio.currentTime || 0) > 0.3) live_ref.current = true;
+    if (at > heard_ref.current) heard_ref.current = at;
+    if ((audio.currentTime || 0) > 12) drops_ref.current = 0;
+    set_shown(at);
+  }
+
+  function on_ended() {
+    if (mode_ref.current !== 'playing' || !live_ref.current) return;
+    live_ref.current = false;
+    const at = place();
+    if (same_song(at) && hold_song(at)) return;
+    next_track();
+  }
+
   function on_audio_error() {
     const audio = audio_ref.current;
     if (mode_ref.current !== 'playing' || !audio) return;
     if (audio.error?.code === 1) return;
+    const was_live = live_ref.current;
+    live_ref.current = false;
+    const at = place();
+    if (was_live && same_song(at) && hold_song(at)) return;
+    if (!was_live && drops_ref.current < 2 && hold_song(origin_ref.current)) return;
+    drops_ref.current = 0;
     fail_ref.current += 1;
     if (!tracks_ref.current.length || fail_ref.current >= tracks_ref.current.length) {
       mode_ref.current = 'stopped';
@@ -400,7 +445,7 @@ export default function cashier_radio({ hours }: { hours?: spot_hours | null }) 
           <span>{max ? clock(max) : '–:–'}</span>
         </div>
       </div>
-      <audio ref={audio_ref} hidden onTimeUpdate={on_time} onEnded={on_ended} onError={on_audio_error} />
+      <audio ref={audio_ref} hidden onTimeUpdate={on_time} onPlaying={on_time} onEnded={on_ended} onError={on_audio_error} />
       <style>{`
         .radio-line {
           appearance: none;
