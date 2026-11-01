@@ -118,7 +118,9 @@ export default function drink_craft({
     .map((shelf) => ({
       ...shelf,
       materials: shelf.materials.filter(
-        (mat) => !used.has(mat.id) && (!q || mat.name.toLowerCase().includes(q))
+        (mat) =>
+          !used.has(mat.id) &&
+          (!q || mat.name.toLowerCase().includes(q) || shelf.name.toLowerCase().includes(q))
       ),
     }))
     .filter((shelf) => shelf.materials.length > 0);
@@ -616,8 +618,12 @@ export default function drink_craft({
       ) : null}
 
       {pick_board ? (
-        <div className="absolute inset-0 z-20 flex items-end justify-center bg-black/30 p-3 sm:items-center">
-          <div className="max-h-[80vh] w-full max-w-lg overflow-y-auto rounded-3xl bg-white p-4">
+        <div
+          className="absolute inset-0 z-20 flex items-end justify-center bg-black/30 p-3 sm:items-center"
+          onTouchStart={(e) => e.stopPropagation()}
+          onTouchMove={(e) => e.stopPropagation()}
+        >
+          <div className="max-h-[80vh] w-full max-w-lg touch-pan-y overflow-y-auto overscroll-contain rounded-3xl bg-white p-4">
             <div className="flex items-center justify-between">
               <p className="text-sm font-medium">со склада</p>
               <button type="button" onClick={() => set_pick_board(null)} className="text-sm text-neutral-400">

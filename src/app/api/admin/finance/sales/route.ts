@@ -320,7 +320,6 @@ export async function GET(request: Request) {
     for (const raw of (o.items as order_item[]) ?? []) {
       const qty = Number(raw.quantity) || 0;
       if (qty <= 0) continue;
-      if ((raw as { kind?: string }).kind === 'staff') continue;
       const price = Number(raw.price) || 0;
       const card = card_by_menu.get(raw.menu_id);
       if (!card) {
@@ -344,7 +343,9 @@ export async function GET(request: Request) {
           let best = size;
           let best_diff = Infinity;
           for (const k of size_keys) {
-            const diff = Math.abs(menu_price_for_size(item, k) - price);
+            const menu_price = menu_price_for_size(item, k);
+            // себе пробивается за половину цены — размер всё равно тот, что в меню
+            const diff = Math.min(Math.abs(menu_price - price), Math.abs(menu_price - price * 2));
             if (diff < best_diff) {
               best = k;
               best_diff = diff;

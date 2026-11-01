@@ -10,6 +10,9 @@ import {
   material_unpriced,
   material_is_infinite,
   materials_with_preps,
+  is_prep_recipe_id,
+  is_station_prep,
+  stock_category_for,
   derive_size_from_base,
   effective_card_size,
   size_label,
@@ -1212,12 +1215,25 @@ function RecipeBox({
   on_add_size: (key: string) => void;
 }) {
   const materials = materials_with_preps(state);
+  const prep_label = (id: string, name: string, category?: string) => {
+    const clean = name.trim();
+    const prep =
+      is_prep_recipe_id(id) ||
+      is_station_prep({ id, name: clean }) ||
+      stock_category_for({ id, name: clean, category }) === 'prep';
+    return prep && !clean.startsWith('заготовка') ? `заготовка · ${clean}` : clean;
+  };
   const ingredient_options = [
-    ...raw_materials,
+    ...raw_materials.map((m) => ({ ...m, name: prep_label(m.id, m.name, m.category) })),
     ...(state.prepRecipes ?? [])
-      .filter((p) => p.name.trim())
-      .map((p) => ({ id: p.id, name: `заготовка · ${p.name.trim()}`, unit: 'g' as const })),
-  ];
+      .filter((p) => p.name.trim() && !raw_materials.some((m) => m.id === p.id))
+      .map((p) => ({ id: p.id, name: prep_label(p.id, p.name), unit: 'g' as const })),
+  ].sort((a, b) => {
+    const ap = a.name.startsWith('заготовка') ? 0 : 1;
+    const bp = b.name.startsWith('заготовка') ? 0 : 1;
+    if (ap !== bp) return ap - bp;
+    return a.name.localeCompare(b.name, 'ru');
+  });
   const size_keys = Object.keys(card.sizes).sort(
     (a, b) => (Number(a) || 0) - (Number(b) || 0) || a.localeCompare(b)
   );

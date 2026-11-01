@@ -103,6 +103,16 @@ export function merge_stock_categories(existing: stock_category[]): stock_catego
   return out;
 }
 
+const STATION_PREP_IDS = new Set(['tapioca', 'tea_black', 'tea_jasmine']);
+
+/** сваренная тапиока и заваренный чай — это заготовка, не сухая смесь */
+export function is_station_prep(m: { id: string; name?: string }) {
+  if (STATION_PREP_IDS.has(m.id)) return true;
+  const n = (m.name || '').toLowerCase().replace(/ё/g, 'е');
+  if (/сух/.test(n)) return false;
+  return /заварен|сварен/.test(n);
+}
+
 /** полка по названию. упаковка и готовая еда остаются отдельными: это не ингредиент напитка. */
 export function classify_material(m: { id: string; name?: string }): string {
   const id = m.id.toLowerCase();
@@ -110,7 +120,7 @@ export function classify_material(m: { id: string; name?: string }): string {
   const pack_id = id === 'lid' || id === 'film' || id === 'straw' || id.startsWith('cup_');
   if (/стакан|крышк|пленк|трубоч|упаков/.test(n) || pack_id) return 'packaging';
   if (/моти|макарун/.test(n) || id === 'mochi' || id === 'macaroon') return 'retail';
-  if (id.startsWith('batch_') || /сварен/.test(n) || id === 'tapioca') return 'prep';
+  if (id.startsWith('batch_') || is_station_prep(m)) return 'prep';
   if (/сироп/.test(n) || id.startsWith('syrup_') || id === 'honey') return 'syrups';
   if (
     /концентрат|пюре|экстракт|сок/.test(n) ||
@@ -142,8 +152,10 @@ export function classify_material(m: { id: string; name?: string }): string {
   return 'mixes';
 }
 
-/** уже выбранную полку не трогаем. пустую и старые id раскладываем по названию. */
+/** уже выбранную полку не трогаем. пустую и старые id раскладываем по названию.
+ *  сваренное и заваренное всегда остаётся заготовкой — иначе чай уезжает в смеси и его не видно в рецепте. */
 export function stock_category_for(m: { id: string; name: string; category?: string }): string {
+  if (is_station_prep(m)) return 'prep';
   const chosen = m.category?.trim() || '';
   if (chosen && STOCK_SHELF_IDS.has(chosen)) return chosen;
   return classify_material(m);
@@ -1900,7 +1912,11 @@ export function normalize_finance_state(raw: unknown): finance_state {
   const shelves_ready = Boolean((v as { stockShelvesMigrated?: unknown }).stockShelvesMigrated);
   // сохранённый каталог не добираем из кода: удалённые какао и заваренные чаи иначе возвращаются
   materials = materials.map((m) => {
-    const cat = shelves_ready && STOCK_SHELF_IDS.has(m.category) ? m.category : classify_material(m);
+    const cat = is_station_prep(m)
+      ? 'prep'
+      : shelves_ready && STOCK_SHELF_IDS.has(m.category)
+        ? m.category
+        : classify_material(m);
     const next = cat === m.category ? m : { ...m, category: cat };
     if (!material_is_free(next)) return next;
     const free = { ...next, costPerUnit: 0 };
@@ -3232,6 +3248,9 @@ export function summarize_period(
     }
   }
   const cogs_calc = opts?.sales ? sales_fifo_cogs(state, opts.sales) : 0;
+  // себе по 50% входит в факт продаж, его себес уже внутри cogs_calc
+  const staff_outside_sales =
+    opts?.sales && cogs_calc > 0 ? from_stock.staff : from_stock.staff + from_stock.staff_on_orders;
   // чистая: себес каждого проданного напитка по техкарте; склад — персонал и списания
   const cogs = cogs_calc > 0 ? cogs_calc : from_stock.sold;
   let patent = 0;
@@ -3245,7 +3264,7 @@ export function summarize_period(
     revenue,
     cogs_calc,
     cogs_sold: from_stock.sold,
-    cogs_staff: from_stock.staff,
+    cogs_staff: staff_outside_sales,
     cogs_writeoff: from_stock.writeoff,
     cogs,
     cogs_actual: purchases,
@@ -3394,6 +3413,8 @@ export function project_month_net(
 export function movement_cogs_range(state: finance_state, from: string, to: string) {
   let sold = 0;
   let staff = 0;
+  /** себе за 50%: заказ уже в факте продаж, второй раз в «персонал» не вычитаем */
+  let staff_on_orders = 0;
   let writeoff = 0;
   const a = from <= to ? from : to;
   const b = from <= to ? to : from;
@@ -3404,10 +3425,11 @@ export function movement_cogs_range(state: finance_state, from: string, to: stri
     if (!mat || material_is_free(mat)) continue;
     const cost = movement_money(mat, mv);
     if (mv.type === 'sale') sold += cost;
+    else if (mv.type === 'staff' && mv.orderId) staff_on_orders += cost;
     else if (mv.type === 'staff') staff += cost;
     else if (mv.type === 'writeoff') writeoff += cost;
   }
-  return { sold, staff, writeoff };
+  return { sold, staff, staff_on_orders, writeoff };
 }
 
 /** сколько реально заплатили за закупки на склад за период (касса, не себестоимость продаж) */

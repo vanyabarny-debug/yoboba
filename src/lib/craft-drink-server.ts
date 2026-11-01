@@ -70,20 +70,30 @@ export async function craft_catalog(): Promise<{ categories: string[]; shelves: 
 
   const preps = (state.prepRecipes ?? []).filter((p) => p.name.trim());
   if (preps.length) {
-    shelves.push({
-      id: 'prep',
-      name: 'заготовки',
-      materials: preps.map((p) => ({
+    let shelf = shelves.find((row) => row.id === 'prep');
+    if (!shelf) {
+      shelf = { id: 'prep', name: 'заготовки', materials: [] };
+      shelves.push(shelf);
+    }
+    for (const p of preps) {
+      if (shelf.materials.some((row) => row.id === p.id)) continue;
+      shelf.materials.push({
         id: p.id,
         name: p.name.trim(),
         unit_label: 'г',
         cost_per_base: Math.round(material_cost(state, p.id, 1) * 1000) / 1000,
-      })),
-    });
+      });
+    }
   }
 
   for (const shelf of shelves) {
     shelf.materials.sort((a, b) => a.name.localeCompare(b.name, 'ru'));
+  }
+
+  const prep_at = shelves.findIndex((shelf) => shelf.id === 'prep');
+  if (prep_at > 0) {
+    const [prep_shelf] = shelves.splice(prep_at, 1);
+    shelves.unshift(prep_shelf);
   }
 
   return {

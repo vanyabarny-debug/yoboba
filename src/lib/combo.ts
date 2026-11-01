@@ -245,7 +245,6 @@ export function count_order_cups(
   const menu_by_id = new Map(menu.map((m) => [m.id, m]));
   let cups = 0;
   for (const raw of items ?? []) {
-    if ((raw.kind || '') === 'staff') continue;
     const line_qty = Math.max(0, Math.round(Number(raw.quantity) || 0));
     if (line_qty <= 0) continue;
 

@@ -6,7 +6,7 @@ import {
   unit_label_for_material,
 } from '@/lib/finance/prep-steps';
 import { cup_fill_summary, edible_grams_from_steps } from '@/lib/finance/cup-fill';
-import { base_unit, new_id, type material, type prep_step } from '@/lib/finance/model';
+import { base_unit, is_prep_recipe_id, is_station_prep, new_id, stock_category_for, type material, type prep_step } from '@/lib/finance/model';
 import { btn_ghost_danger, btn_secondary, cell_input_class, field_class } from '@/components/admin/finance/ui';
 
 function qty_stays(mat: material | undefined) {
@@ -96,7 +96,15 @@ export default function PrepStepsEditor({
   }
 
   const used = new Set(steps.map((s) => s.materialId).filter(Boolean) as string[]);
-  const available = materials.filter((m) => m.name.trim() && !used.has(m.id));
+  const available = materials
+    .filter((m) => m.name.trim() && !used.has(m.id))
+    .slice()
+    .sort((a, b) => {
+      const ap = is_prep_recipe_id(a.id) || is_station_prep(a) || stock_category_for(a) === 'prep' ? 0 : 1;
+      const bp = is_prep_recipe_id(b.id) || is_station_prep(b) || stock_category_for(b) === 'prep' ? 0 : 1;
+      if (ap !== bp) return ap - bp;
+      return a.name.localeCompare(b.name, 'ru');
+    });
   const fill = show_fill_total
     ? cup_fill_summary(edible_grams_from_steps(shown, materials), view_ml)
     : null;
@@ -237,11 +245,18 @@ export default function PrepStepsEditor({
             }}
           >
             <option value="">+ из склада…</option>
-            {available.map((o) => (
-              <option key={o.id} value={o.id}>
-                {o.name}
-              </option>
-            ))}
+            {available.map((o) => {
+              const prep =
+                is_prep_recipe_id(o.id) ||
+                is_station_prep(o) ||
+                stock_category_for(o) === 'prep';
+              const label = prep && !o.name.startsWith('заготовка') ? `заготовка · ${o.name}` : o.name;
+              return (
+                <option key={o.id} value={o.id}>
+                  {label}
+                </option>
+              );
+            })}
           </select>
         ) : null}
         <button
