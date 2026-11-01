@@ -1,5 +1,5 @@
 import { type ChildProcess, spawn } from 'child_process';
-import { existsSync } from 'fs';
+import { existsSync, mkdirSync, readdirSync, renameSync, rmSync, statSync } from 'fs';
 import { delimiter, join } from 'path';
 import { clean_duration, clean_media_url } from '@/lib/radio-server';
 
@@ -320,117 +320,105 @@ export async function resolve_stream_target(
   return { ok: true, media_url: media.url, headers: media.headers, duration: clean_duration(data.duration) };
 }
 
-export async function open_mp3_stream(media_url: string, headers: string, signal: AbortSignal, start_sec = 0) {
+const save_timeout_ms = 60 * 60 * 1000;
+
+async function ffmpeg_to_mp3(input: string, headers: string, dest: string, signal?: AbortSignal) {
   const bin = await find_bin('ffmpeg');
-  const args = [
-    '-hide_banner',
-    '-loglevel',
-    'error',
-    '-nostdin',
-    '-reconnect',
-    '1',
-    '-reconnect_streamed',
-    '1',
-    '-reconnect_delay_max',
-    '5',
-  ];
-  const start = Number.isFinite(start_sec) && start_sec > 0.2 ? Math.min(start_sec, 60 * 60 * 24) : 0;
-  if (start > 0) args.push('-ss', start.toFixed(3));
-  if (headers) args.push('-headers', headers);
-  args.push('-i', media_url, '-vn', '-acodec', 'libmp3lame', '-ar', '44100', '-ac', '2', '-b:a', '160k', '-f', 'mp3', 'pipe:1');
-
-  const proc = spawn(bin, args, { env: child_env(), stdio: ['ignore', 'pipe', 'pipe'] });
-  let stderr = '';
-  proc.stderr?.on('data', (chunk: Buffer) => {
-    stderr = (stderr + chunk.toString()).slice(-500);
-  });
-
-  const kill = () => kill_proc(proc);
-  const on_abort = () => kill();
-  if (signal.aborted) kill();
-  else signal.addEventListener('abort', on_abort, { once: true });
-
-  const queued: Buffer[] = [];
-  let mode: 'wait' | 'queue' | 'live' = 'wait';
-  let controller: ReadableStreamDefaultController<Uint8Array> | null = null;
-  let failed: 'ffmpeg' | 'spawn' | null = null;
-
-  const first = await new Promise<Buffer | null>((resolve) => {
-    const timer = setTimeout(() => {
-      kill();
-      resolve(null);
-    }, 30_000);
-    const done = (chunk: Buffer | null) => {
-      clearTimeout(timer);
-      resolve(chunk);
-    };
-    proc.stdout?.on('data', (chunk: Buffer) => {
-      if (mode === 'wait') {
-        mode = 'queue';
-        done(chunk);
-        return;
-      }
-      if (mode === 'queue') queued.push(chunk);
-      else {
-        try {
-          controller?.enqueue(new Uint8Array(chunk));
-        } catch {
-          kill();
-        }
-      }
-    });
-    proc.on('error', (err: NodeJS.ErrnoException) => {
-      failed = err.code === 'ENOENT' ? 'ffmpeg' : 'spawn';
-      done(null);
-    });
-    proc.on('close', () => {
-      if (mode === 'wait') done(null);
-      else {
-        try {
-          controller?.close();
-        } catch {
-          /* поток уже закрыт */
-        }
-      }
-    });
-  });
-
-  if (!first || failed) {
-    kill();
-    signal.removeEventListener('abort', on_abort);
-    if (!first && stderr) console.error('radio stream', stderr.slice(-300));
-    const error = failed === 'ffmpeg' ? 'на сервере нет ffmpeg' : 'не удалось включить поток';
-    return new Response(JSON.stringify({ error }), {
-      status: 502,
-      headers: { 'content-type': 'application/json; charset=utf-8' },
-    });
+  const remote = /^https?:\/\//i.test(input);
+  const args = ['-y', '-hide_banner', '-loglevel', 'error', '-nostdin'];
+  if (remote) {
+    args.push('-reconnect', '1', '-reconnect_streamed', '1', '-reconnect_delay_max', '5');
+    if (!/user-agent/i.test(headers)) args.push('-user_agent', 'Mozilla/5.0');
+    if (/googlevideo\.com/i.test(input) && !/referer/i.test(headers)) {
+      args.push('-referer', 'https://www.youtube.com/');
+    }
+    if (headers) args.push('-headers', headers);
   }
+  args.push('-i', input, '-vn', '-acodec', 'libmp3lame', '-ar', '44100', '-ac', '2', '-b:a', '160k', dest);
+  const result = await run_capture(bin, args, save_timeout_ms, signal);
+  if (signal?.aborted || result.error === 'abort') return { ok: false as const, error: 'отменено' };
+  if (result.code !== 0 || result.error) {
+    if (result.stderr) console.error('radio ffmpeg', result.stderr.replace(/https?:\/\/\S+/g, '[url]').slice(-300));
+    const missing = result.error === 'missing';
+    return { ok: false as const, error: missing ? 'на сервере нет ffmpeg' : 'не удалось сохранить запись' };
+  }
+  return { ok: true as const };
+}
 
-  const stream = new ReadableStream<Uint8Array>({
-    start(ctrl) {
-      controller = ctrl;
-      ctrl.enqueue(new Uint8Array(first));
-      for (const chunk of queued) ctrl.enqueue(new Uint8Array(chunk));
-      queued.length = 0;
-      mode = 'live';
-      if (proc.exitCode !== null) {
-        try {
-          ctrl.close();
-        } catch {
-          /* уже закрыт */
-        }
+async function probe_duration(file: string) {
+  const bin = await find_bin('ffprobe');
+  const result = await run_capture(
+    bin,
+    ['-v', 'error', '-show_entries', 'format=duration', '-of', 'csv=p=0', file],
+    30_000
+  );
+  return clean_duration(result.stdout.trim());
+}
+
+/** Скачивает ролик целиком в mp3. Пока файл не собран, наружу его не отдаём. */
+export async function download_source_mp3(
+  page_url: string,
+  dest: string,
+  signal?: AbortSignal
+): Promise<{ ok: true; duration: number | null } | { ok: false; error: string }> {
+  const work = `${dest}.work`;
+  const partial = `${dest}.part`;
+  rmSync(work, { recursive: true, force: true });
+  rmSync(partial, { force: true });
+  mkdirSync(work, { recursive: true });
+  try {
+    const ytdlp = await find_bin('yt-dlp');
+    const fetched = await run_capture(
+      ytdlp,
+      [
+        '-f',
+        'ba[acodec!=none]/ba/b',
+        '--no-playlist',
+        '--no-warnings',
+        '--no-cache-dir',
+        '--js-runtimes',
+        'node',
+        '--retries',
+        '10',
+        '--fragment-retries',
+        '20',
+        '--extractor-retries',
+        '3',
+        '--no-mtime',
+        '-o',
+        join(work, 'media.%(ext)s'),
+        ...auth_args(),
+        page_url,
+      ],
+      save_timeout_ms,
+      signal
+    );
+    if (signal?.aborted) return { ok: false, error: 'отменено' };
+
+    let saved: { ok: true } | { ok: false; error: string };
+    const names =
+      fetched.code === 0 && !fetched.error
+        ? readdirSync(work).filter((name) => /^media\.[a-z0-9]+$/i.test(name))
+        : [];
+    if (names.length === 1) {
+      saved = await ffmpeg_to_mp3(join(work, names[0]), '', partial, signal);
+    } else {
+      const target = await resolve_stream_target(page_url, signal);
+      if (!target.ok) {
+        return { ok: false, error: fetched.code === 0 ? target.error : human_ytdlp_error(fetched) };
       }
-    },
-    cancel() {
-      kill();
-    },
-  });
-
-  return new Response(stream, {
-    headers: {
-      'Content-Type': 'audio/mpeg',
-      'Cache-Control': 'no-store',
-      'X-Content-Type-Options': 'nosniff',
-    },
-  });
+      saved = await ffmpeg_to_mp3(target.media_url, target.headers, partial, signal);
+      if (!saved.ok && fetched.code !== 0) return { ok: false, error: human_ytdlp_error(fetched) };
+    }
+    if (!saved.ok) return saved;
+    if (!existsSync(partial) || statSync(partial).size < 200_000) {
+      return { ok: false, error: 'файл скачался не целиком' };
+    }
+    mkdirSync(join(dest, '..'), { recursive: true });
+    renameSync(partial, dest);
+    return { ok: true, duration: await probe_duration(dest) };
+  } finally {
+    rmSync(work, { recursive: true, force: true });
+    rmSync(partial, { force: true });
+  }
 }

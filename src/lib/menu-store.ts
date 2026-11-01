@@ -14,22 +14,6 @@ export const store_version = 111;
 export const WARM_DRINKS_CATEGORY = 'тёплые напитки';
 export const CLASSIC_CATEGORY = 'классика';
 const folded_warm_categories = new Set(['матча & таро']);
-const warm_drink_item_ids = new Set([
-  'original-black',
-  'jasmine-green',
-  'matcha-latte-tiger',
-  'matcha-lichi',
-  'cherny-karamel',
-  'taro',
-  'kakao',
-  'masala-chai',
-  'medovy-tykvenny-latte',
-]);
-const classic_drink_item_ids = new Set([
-  'original-black-led',
-  'jasmine-green-led',
-]);
-const milk_drink_item_ids = new Set(['vanilny-milktea']);
 
 /** снятые с меню эксперименты — не возвращать через merge */
 export const dropped_menu_item_ids = new Set(['malinovy-fuz', 'taisky-chai']);
@@ -39,7 +23,6 @@ const iced_only_ids = new Set(['original-black', 'jasmine-green']);
 
 /** «со льдом» слили в одну карточку с cold+hot */
 const dual_temp_led_ids = new Set(['matcha-latte-tiger-led', 'taro-led', 'cherny-karamel-led']);
-const dual_temp_base_ids = new Set(['matcha-latte-tiger', 'taro', 'cherny-karamel']);
 const dual_temp_led_to_base: Record<string, string> = {
   'matcha-latte-tiger-led': 'matcha-latte-tiger',
   'taro-led': 'taro',
@@ -113,31 +96,12 @@ export function fold_warm_drink_categories(categories: string[]): string[] {
   return out;
 }
 
-function resolve_catalog_category(
-  item_id: string,
-  category: string,
-  fallback_id?: string
-): string | undefined {
-  if (
-    warm_drink_item_ids.has(item_id) ||
-    (fallback_id && warm_drink_item_ids.has(fallback_id)) ||
-    folded_warm_categories.has(category)
-  ) {
-    return WARM_DRINKS_CATEGORY;
-  }
-  if (
-    classic_drink_item_ids.has(item_id) ||
-    (fallback_id && classic_drink_item_ids.has(fallback_id))
-  ) {
-    return CLASSIC_CATEGORY;
-  }
-  if (
-    milk_drink_item_ids.has(item_id) ||
-    (fallback_id && milk_drink_item_ids.has(fallback_id))
-  ) {
-    return 'молочные';
-  }
-  return undefined;
+/** старые слитые категории → «тёплые напитки»; выбранные в админке категории не трогаем */
+function fold_legacy_categories(item: menu_item): menu_item {
+  const cats = item_categories(item);
+  if (!cats.some((c) => folded_warm_categories.has(c))) return item;
+  const fold = (c: string) => (folded_warm_categories.has(c) ? WARM_DRINKS_CATEGORY : c);
+  return set_item_categories({ ...item, category: fold(item.category) }, cats.map(fold));
 }
 
 const local = (name: string) => `/images/menu/${name}.png`;
@@ -576,15 +540,12 @@ export function normalize_menu_item_images(items: menu_item[]) {
 export function merge_menu_item_catalog(items: menu_item[], removed_ids: Iterable<string> = []): menu_item[] {
   const removed = new Set([...removed_ids, ...dropped_menu_item_ids]);
   const { by_id, by_name } = get_default_lookups();
-  const merged = items.filter((item) => !removed.has(item.id) && !dropped_menu_item_ids.has(item.id)).map((item) => {
-    const fallback = find_default_item(item, by_id, by_name);
-    if (!fallback) return item;
-    const moved_category = resolve_catalog_category(item.id, item.category, fallback.id);
+  const merged = items.filter((item) => !removed.has(item.id) && !dropped_menu_item_ids.has(item.id)).map((raw) => {
+    const fallback = find_default_item(raw, by_id, by_name);
+    if (!fallback) return raw;
+    const item = fold_legacy_categories(raw);
     return {
       ...item,
-      ...(moved_category
-        ? set_item_categories({ ...item, category: moved_category }, [moved_category])
-        : {}),
       price: fallback.price,
       volumes: fallback.volumes,
       has_toppings: fallback.has_toppings,
@@ -627,21 +588,16 @@ export function merge_menu_item_catalog(items: menu_item[], removed_ids: Iterabl
                 image_url: classic_snapshot,
               }
             : null;
-      const dual = dual_temp_base_ids.has(item.id)
-        ? { cold: true as const, hot: true as const }
-        : null;
-      const pumpkin =
-        item.id === 'medovy-tykvenny-latte' ? { cold: false as const, hot: true as const } : null;
       const recommendations = (item.recommendations ?? [])
         .map((id) => dual_temp_led_to_base[id] ?? id)
         .filter((id) => !retired_item_ids.has(id) && !dual_temp_led_ids.has(id));
+      // снятые позиции уходят в архив один раз; вернуть из архива админ может сам
+      const retire = is_retired_menu_item(item) && typeof item.archived !== 'boolean';
       return {
         ...item,
         ...iced,
-        ...dual,
-        ...pumpkin,
-        is_available: is_retired_menu_item(item) ? false : item.is_available,
-        archived: is_retired_menu_item(item) ? true : item.archived,
+        is_available: retire ? false : item.is_available,
+        archived: retire ? true : item.archived,
         image_url: freshen_menu_photo(iced?.image_url || item.image_url),
         recommendations: [...new Set(recommendations)],
       };
@@ -694,19 +650,11 @@ function repair_menu_store(store: menu_store): menu_store {
   const existing_ids = new Set((store.items ?? []).map((i) => i.id));
   const items = merge_default_badges(
     merge_menu_item_catalog(
-      (store.items ?? []).map((item) => {
-        const fallback = find_default_item(item, default_by_id, default_by_name);
+      (store.items ?? []).map((raw) => {
+        const fallback = find_default_item(raw, default_by_id, default_by_name);
+        const item = fold_legacy_categories(raw);
         const known_cats = item_categories(item).filter((c) => categories.includes(c));
-        const moved_category = resolve_catalog_category(
-          item.id,
-          item.category,
-          fallback?.id
-        );
-        const category = moved_category
-          ?? known_cats[0]
-          ?? (categories.includes(item.category) ? item.category : null)
-          ?? fallback?.category
-          ?? categories[0];
+        const category = known_cats[0] ?? fallback?.category ?? categories[0];
         const image_url = resolve_image_url(item, fallback);
         const prep_minutes =
           typeof item.prep_minutes === 'number' && item.prep_minutes > 0
@@ -715,7 +663,7 @@ function repair_menu_store(store: menu_store): menu_store {
         return {
           ...item,
           category,
-          categories: moved_category ? [moved_category] : known_cats.length ? known_cats : [category],
+          categories: known_cats.length ? known_cats : [category],
           image_url,
           prep_minutes,
         };

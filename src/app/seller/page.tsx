@@ -31,6 +31,7 @@ import barista_login_sheet from '@/components/seller/barista-login-sheet';
 import pos_panel from '@/components/seller/pos-panel';
 import prep_pots_hud from '@/components/seller/prep-pots-hud';
 import prep_station_card from '@/components/seller/prep-station-card';
+import prep_batches_card, { PrepBatchesSheet, usePrepBatches } from '@/components/seller/prep-batches';
 import seller_inventory from '@/components/seller/seller-inventory';
 import type { prep_station_view } from '@/lib/finance/prep-stations';
 import drink_cook_guide from '@/components/seller/drink-cook-guide';
@@ -376,6 +377,8 @@ export default function seller_board() {
   const [stock_depth, set_stock_depth] = useState(false);
   const [prep_stations, set_prep_stations] = useState<prep_station_view[]>([]);
   const [prep_open_id, set_prep_open_id] = useState<string | null>(null);
+  const [preps_open, set_preps_open] = useState(false);
+  const prep_batches = usePrepBatches(shift?.spot_id || '');
   const known_ids = useRef<Set<string> | null>(null);
   const pending_blink_ref = useRef<Set<string>>(new Set());
   const seller_ref = useRef({ id: '', name: 'бариста' });
@@ -405,7 +408,7 @@ export default function seller_board() {
   const { viewport_ref, page_style, width: board_w, height: board_h } = use_page_swipe({
     index: Math.max(0, tab_index),
     count: Math.max(1, panes.length),
-    enabled: !paying && !cook && !revising && !task_guide_id && !need_shift && !need_barista && !switch_barista_open && !prep_open_id && !(tab === 'pos' && pos_depth) && !(tab === 'stock' && stock_depth),
+    enabled: !paying && !cook && !revising && !task_guide_id && !need_shift && !need_barista && !switch_barista_open && !prep_open_id && !preps_open && !(tab === 'pos' && pos_depth) && !(tab === 'stock' && stock_depth),
     on_index: (next) => set_tab(panes[next]?.id ?? panes[0]?.id ?? 'work'),
   });
 
@@ -1610,11 +1613,16 @@ export default function seller_board() {
   const stations = widget_refs
     ? prep_stations.filter((station) => widget_refs.includes(station.id))
     : prep_stations;
+  // пока виджет заготовок никуда не положили на доске менеджмента — он у всех
+  const preps_placed = Boolean(board?.placements.some((row) => row.card_id === 'widget:preps'));
+  const show_preps =
+    prep_batches.preps.length > 0 && (!widget_refs || !preps_placed || widget_refs.includes('preps'));
 
   const work_board_count =
     in_work.length +
     open_tasks.length +
     stations.length +
+    (show_preps ? 1 : 0) +
     (show_opening ? 1 : 0) +
     (show_closing ? 1 : 0);
   const ready_board_count =
@@ -1657,6 +1665,16 @@ export default function seller_board() {
             on_open: () => set_prep_open_id(s.id),
           })
         )}
+        {show_preps
+          ? createElement(prep_batches_card, {
+              key: 'prep-batches',
+              preps: prep_batches.preps,
+              on_open: () => {
+                set_preps_open(true);
+                void prep_batches.reload();
+              },
+            })
+          : null}
         {createElement(cashier_radio, {
           key: 'cashier-radio',
           hours: shift_spots.find((spot) => spot.id === shift?.spot_id)?.hours ?? null,
@@ -2110,6 +2128,15 @@ export default function seller_board() {
         on_stations: set_prep_stations,
         spot_id: shift?.spot_id || '',
       })}
+      {preps_open ? (
+        <PrepBatchesSheet
+          preps={prep_batches.preps}
+          materials={prep_batches.materials}
+          spot_id={shift?.spot_id || ''}
+          on_close={() => set_preps_open(false)}
+          on_preps={prep_batches.set_preps}
+        />
+      ) : null}
       {createElement(cash_register_modal, {
         order: paying,
         seller_name,

@@ -1,10 +1,11 @@
 'use client';
 
 import { createElement, useEffect, useRef, useState } from 'react';
+import { forget_other_radio, peek_radio_blob, pull_radio_file } from '@/lib/radio-device';
 import { spot_is_open } from '@/lib/spot-store';
 import type { spot_hours } from '@/lib/types';
 
-type radio_track = { id: string; title: string; duration: number | null };
+type radio_track = { id: string; title: string; duration: number | null; bytes?: number };
 type play_mode = 'stopped' | 'playing' | 'paused';
 
 const skip_sec = 15;
@@ -118,15 +119,13 @@ export default function cashier_radio({ hours }: { hours?: spot_hours | null }) 
   const audio_ref = useRef<HTMLAudioElement | null>(null);
   const tracks_ref = useRef<radio_track[]>([]);
   const index_ref = useRef(0);
-  const origin_ref = useRef(0);
+  const target_ref = useRef(0);
   const mode_ref = useRef<play_mode>('stopped');
   const scrub_ref = useRef(false);
   const gen_ref = useRef(0);
-  const fail_ref = useRef(0);
-  const drops_ref = useRef(0);
-  const live_ref = useRef(false);
-  const heard_ref = useRef(0);
-  const resume_lock_ref = useRef(0);
+  const warm_gen = useRef(0);
+  const blob_url = useRef('');
+  const stop_ref = useRef<AbortController | null>(null);
   const load_failed = useRef(false);
   const hours_ref = useRef(hours ?? null);
   const nag_ctx = useRef<AudioContext | null>(null);
@@ -134,6 +133,7 @@ export default function cashier_radio({ hours }: { hours?: spot_hours | null }) 
   const [shown, set_shown] = useState(0);
   const [duration, set_duration] = useState(0);
   const [error, set_error] = useState('');
+  const [hint, set_hint] = useState('');
   const [title, set_title] = useState('');
   const duration_ref = useRef(0);
   hours_ref.current = hours ?? null;
@@ -175,18 +175,51 @@ export default function cashier_radio({ hours }: { hours?: spot_hours | null }) 
   }
 
   useEffect(() => {
-    void load_tracks();
+    const stop = new AbortController();
+    stop_ref.current = stop;
+    const warm = (tracks: radio_track[]) => {
+      const my = ++warm_gen.current;
+      void (async () => {
+        await forget_other_radio(tracks.map((track) => track.id)).catch(() => {});
+        for (const track of tracks) {
+          if (stop.signal.aborted || warm_gen.current !== my) return;
+          const timer = window.setTimeout(() => {
+            if (warm_gen.current === my) set_hint('качаю на устройство');
+          }, 400);
+          try {
+            await pull_radio_file(track.id, track.bytes || 0, false, stop.signal);
+          } catch (err) {
+            if (stop.signal.aborted || warm_gen.current !== my) return;
+            if (err instanceof DOMException && err.name === 'AbortError') return;
+            set_error(err instanceof Error && err.message ? err.message : 'не скачалось');
+          } finally {
+            window.clearTimeout(timer);
+            if (!stop.signal.aborted && warm_gen.current === my) set_hint('');
+          }
+        }
+      })();
+    };
+    void load_tracks().then((tracks) => {
+      if (!stop.signal.aborted) warm(tracks);
+    });
     function on_visible() {
-      if (document.visibilityState === 'visible' && mode_ref.current === 'stopped') void load_tracks();
+      if (document.visibilityState !== 'visible') return;
+      void load_tracks().then((tracks) => {
+        if (!stop.signal.aborted) warm(tracks);
+      });
     }
     document.addEventListener('visibilitychange', on_visible);
     return () => {
       mode_ref.current = 'stopped';
+      stop.abort();
       document.removeEventListener('visibilitychange', on_visible);
+      if (blob_url.current) URL.revokeObjectURL(blob_url.current);
+      blob_url.current = '';
       const audio = audio_ref.current;
       if (!audio) return;
       audio.pause();
       audio.removeAttribute('src');
+      audio.dataset.track = '';
     };
   }, []);
 
@@ -211,26 +244,78 @@ export default function cashier_radio({ hours }: { hours?: spot_hours | null }) 
     };
   }, [mode, hours]);
 
-  function start_stream(at: number) {
+  function begin(my: number) {
+    const audio = audio_ref.current;
+    if (!audio || gen_ref.current !== my || mode_ref.current !== 'playing') return;
+    if (Number.isFinite(audio.duration) && audio.duration > 0) {
+      duration_ref.current = audio.duration;
+      set_duration(audio.duration);
+    }
+    const length = duration_ref.current;
+    const at = length ? Math.min(Math.max(0, target_ref.current), length) : Math.max(0, target_ref.current);
+    try {
+      if (Math.abs((audio.currentTime || 0) - at) > 0.35) audio.currentTime = at;
+    } catch {
+      /* позиция встанет, когда метаданные будут готовы */
+    }
+    set_shown(at);
+    void audio.play().catch((err: unknown) => {
+      if (err instanceof DOMException && err.name === 'AbortError') return;
+      if (gen_ref.current !== my || mode_ref.current !== 'playing') return;
+      mode_ref.current = 'stopped';
+      set_mode('stopped');
+      set_error('нажмите ещё раз');
+    });
+  }
+
+  async function play_from(at: number, retry: boolean) {
     const tracks = tracks_ref.current;
     const audio = audio_ref.current;
     if (!audio || !tracks.length) return;
     const index = ((index_ref.current % tracks.length) + tracks.length) % tracks.length;
     index_ref.current = index;
     const track = tracks[index];
-    const length = track.duration && track.duration > 0 ? track.duration : duration_ref.current;
-    const begin = length ? Math.min(Math.max(0, at), Math.max(0, length - 0.4)) : Math.max(0, at);
-    origin_ref.current = begin;
-    heard_ref.current = begin;
-    set_shown(begin);
     remember_duration(tracks, index);
-    live_ref.current = false;
+    target_ref.current = at;
     const my = ++gen_ref.current;
-    const query = new URLSearchParams({ id: track.id, start: String(begin) });
-    audio.src = `/api/seller/radio/stream?${query}`;
-    const started = audio.play();
-    if (!started) return;
-    void started.catch(() => {
+    const wait = window.setTimeout(() => {
+      if (gen_ref.current === my && mode_ref.current === 'playing') set_error('качаю на устройство');
+    }, 400);
+    try {
+      const blob = await pull_radio_file(track.id, track.bytes || 0, retry, stop_ref.current?.signal);
+      if (gen_ref.current !== my || mode_ref.current !== 'playing') return;
+      set_error('');
+      const same = audio.dataset.track === track.id && Boolean(audio.src);
+      if (!same) {
+        if (blob_url.current) URL.revokeObjectURL(blob_url.current);
+        const url = URL.createObjectURL(blob);
+        blob_url.current = url;
+        audio.dataset.track = track.id;
+        audio.addEventListener('loadedmetadata', () => begin(my), { once: true });
+        audio.src = url;
+        return;
+      }
+      begin(my);
+    } catch (err) {
+      if (gen_ref.current !== my || mode_ref.current !== 'playing') return;
+      if (err instanceof DOMException && err.name === 'AbortError') return;
+      mode_ref.current = 'stopped';
+      set_mode('stopped');
+      set_error(err instanceof Error && err.message ? err.message : 'не скачалось');
+    } finally {
+      window.clearTimeout(wait);
+    }
+  }
+
+  function play_now(at: number) {
+    const audio = audio_ref.current;
+    if (!audio) return;
+    target_ref.current = at;
+    const my = ++gen_ref.current;
+    if (audio.readyState >= 1) begin(my);
+    else audio.addEventListener('loadedmetadata', () => begin(my), { once: true });
+    void audio.play().catch((err: unknown) => {
+      if (err instanceof DOMException && err.name === 'AbortError') return;
       if (gen_ref.current !== my || mode_ref.current !== 'playing') return;
       mode_ref.current = 'stopped';
       set_mode('stopped');
@@ -248,12 +333,23 @@ export default function cashier_radio({ hours }: { hours?: spot_hours | null }) 
       audio?.pause();
       return;
     }
-    if (mode_ref.current === 'paused' && audio?.getAttribute('src')) {
+    const track = tracks_ref.current[index_ref.current];
+    if (audio && track && audio.dataset.track === track.id && audio.getAttribute('src')) {
       mode_ref.current = 'playing';
       set_mode('playing');
-      void audio.play().catch(() => {
-        start_stream(origin_ref.current);
-      });
+      play_now(audio.currentTime || target_ref.current);
+      return;
+    }
+    const hot = track ? peek_radio_blob(track.id, track.bytes || 0) : null;
+    if (audio && track && hot) {
+      mode_ref.current = 'playing';
+      set_mode('playing');
+      if (blob_url.current) URL.revokeObjectURL(blob_url.current);
+      const url = URL.createObjectURL(hot);
+      blob_url.current = url;
+      audio.dataset.track = track.id;
+      audio.src = url;
+      play_now(target_ref.current);
       return;
     }
     const go = (tracks: radio_track[]) => {
@@ -263,9 +359,7 @@ export default function cashier_radio({ hours }: { hours?: spot_hours | null }) 
       }
       mode_ref.current = 'playing';
       set_mode('playing');
-      fail_ref.current = 0;
-      drops_ref.current = 0;
-      start_stream(origin_ref.current);
+      void play_from(target_ref.current, true);
     };
     if (tracks_ref.current.length) {
       go(tracks_ref.current);
@@ -278,18 +372,18 @@ export default function cashier_radio({ hours }: { hours?: spot_hours | null }) 
   function seek(seconds: number) {
     const length = duration_ref.current;
     const at = length ? Math.min(Math.max(0, seconds), length) : Math.max(0, seconds);
-    origin_ref.current = at;
+    target_ref.current = at;
     set_shown(at);
     if (mode_ref.current === 'stopped') return;
-    if (mode_ref.current === 'paused') {
-      const audio = audio_ref.current;
-      if (!audio) return;
-      audio.pause();
-      audio.removeAttribute('src');
-      audio.load();
-      return;
+    const audio = audio_ref.current;
+    const track = tracks_ref.current[index_ref.current];
+    if (audio && track && audio.dataset.track === track.id && audio.readyState >= 1) {
+      try {
+        audio.currentTime = at;
+      } catch {
+        /* файл ещё открывается, позиция уже записана */
+      }
     }
-    start_stream(at);
   }
 
   function skip(dir: -1 | 1) {
@@ -301,52 +395,35 @@ export default function cashier_radio({ hours }: { hours?: spot_hours | null }) 
     seek(at);
   }
 
-  function place() {
-    const audio = audio_ref.current;
-    return Math.max(heard_ref.current, origin_ref.current + (audio?.currentTime || 0));
-  }
-
-  function same_song(at: number) {
-    const length = duration_ref.current;
-    return length > 20 && at > 1 && at < length - 8;
-  }
-
-  function hold_song(at: number) {
-    const now = Date.now();
-    if (now - resume_lock_ref.current < 700) return true;
-    if (drops_ref.current >= 6) return false;
-    resume_lock_ref.current = now;
-    drops_ref.current += 1;
-    start_stream(at);
-    return true;
-  }
-
   function next_track() {
     const tracks = tracks_ref.current;
     if (!tracks.length) return;
-    drops_ref.current = 0;
-    fail_ref.current = 0;
     index_ref.current = (index_ref.current + 1) % tracks.length;
-    origin_ref.current = 0;
-    start_stream(0);
+    void play_from(0, false);
+  }
+
+  function on_meta() {
+    const audio = audio_ref.current;
+    if (!audio || !Number.isFinite(audio.duration) || audio.duration <= 0) return;
+    duration_ref.current = audio.duration;
+    set_duration(audio.duration);
   }
 
   function on_time() {
     if (scrub_ref.current || mode_ref.current === 'stopped') return;
     const audio = audio_ref.current;
     if (!audio) return;
-    const at = origin_ref.current + (audio.currentTime || 0);
-    if ((audio.currentTime || 0) > 0.3) live_ref.current = true;
-    if (at > heard_ref.current) heard_ref.current = at;
-    if ((audio.currentTime || 0) > 12) drops_ref.current = 0;
+    const at = audio.currentTime || 0;
+    target_ref.current = at;
     set_shown(at);
   }
 
   function on_ended() {
-    if (mode_ref.current !== 'playing' || !live_ref.current) return;
-    live_ref.current = false;
-    const at = place();
-    if (same_song(at) && hold_song(at)) return;
+    if (mode_ref.current !== 'playing') return;
+    const audio = audio_ref.current;
+    const length = audio?.duration || 0;
+    const at = audio?.currentTime || 0;
+    if (!Number.isFinite(length) || length < 1 || at < length - 1.5) return;
     next_track();
   }
 
@@ -354,22 +431,9 @@ export default function cashier_radio({ hours }: { hours?: spot_hours | null }) 
     const audio = audio_ref.current;
     if (mode_ref.current !== 'playing' || !audio) return;
     if (audio.error?.code === 1) return;
-    const was_live = live_ref.current;
-    live_ref.current = false;
-    const at = place();
-    if (was_live && same_song(at) && hold_song(at)) return;
-    if (!was_live && drops_ref.current < 2 && hold_song(origin_ref.current)) return;
-    drops_ref.current = 0;
-    fail_ref.current += 1;
-    if (!tracks_ref.current.length || fail_ref.current >= tracks_ref.current.length) {
-      mode_ref.current = 'stopped';
-      set_mode('stopped');
-      set_error('поток не открылся');
-      return;
-    }
-    index_ref.current = (index_ref.current + 1) % tracks_ref.current.length;
-    origin_ref.current = 0;
-    start_stream(0);
+    mode_ref.current = 'stopped';
+    set_mode('stopped');
+    set_error('запись не открылась');
   }
 
   const max = duration > 0 ? duration : 0;
@@ -411,7 +475,7 @@ export default function cashier_radio({ hours }: { hours?: spot_hours | null }) 
       </div>
       <div className="shrink-0 px-2.5 pb-2">
         {createElement(floating_title, { text: title })}
-        {error ? <p className="mb-1 truncate text-left text-[10px] opacity-70">{error}</p> : null}
+        {error || hint ? <p className="mb-1 truncate text-left text-[10px] opacity-70">{error || hint}</p> : null}
         <input
           type="range"
           min={0}
@@ -445,7 +509,16 @@ export default function cashier_radio({ hours }: { hours?: spot_hours | null }) 
           <span>{max ? clock(max) : '–:–'}</span>
         </div>
       </div>
-      <audio ref={audio_ref} hidden onTimeUpdate={on_time} onPlaying={on_time} onEnded={on_ended} onError={on_audio_error} />
+      <audio
+        ref={audio_ref}
+        hidden
+        preload="auto"
+        onLoadedMetadata={on_meta}
+        onTimeUpdate={on_time}
+        onPlaying={on_time}
+        onEnded={on_ended}
+        onError={on_audio_error}
+      />
       <style>{`
         .radio-line {
           appearance: none;

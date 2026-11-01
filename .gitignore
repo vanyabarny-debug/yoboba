@@ -48,6 +48,7 @@ next-env.d.ts
 /data/order-audit.json
 /data/designer-exports/
 /data/yt-dlp-cookies.txt
+/data/radio-cache/
 
 # OpenNext
 .open-next

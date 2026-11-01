@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 import { session_cookie } from '@/lib/session';
+import { discard_radio_file } from '@/lib/radio-cache';
 import { list_source_entries } from '@/lib/radio-ytdlp';
 import {
   clean_media_url,
@@ -67,6 +68,7 @@ export async function DELETE(request: Request) {
   const id = typeof body?.id === 'string' ? body.id : '';
   if (!id) return NextResponse.json({ error: 'нет id' }, { status: 400 });
   const source = await read_radio();
+  discard_radio_file(id);
   const tracks = source.tracks.filter((track) => track.id !== id);
   if (tracks.length === source.tracks.length) {
     return NextResponse.json({ error: 'такой ссылки нет' }, { status: 404 });

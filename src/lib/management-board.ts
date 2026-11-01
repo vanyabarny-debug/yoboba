@@ -115,6 +115,7 @@ export const widget_catalog = [
   { id: 'tapioca', title: 'тапиока' },
   { id: 'tea_black', title: 'чай чёрный' },
   { id: 'tea_jasmine', title: 'чай жасмин' },
+  { id: 'preps', title: 'заготовки' },
 ] as const;
 
 const category_ids = new Set<string>(task_categories.map((c) => c.id));

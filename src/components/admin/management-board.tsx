@@ -79,6 +79,7 @@ const widget_card: Record<string, { bg: string; fg: string; border: string; kind
   tapioca: { bg: '#FFF1E3', fg: '#C45E1A', border: '#FFD7B0', kind: 'pot' },
   tea_black: { bg: '#F3E8DC', fg: '#6B3A14', border: '#E0C4A8', kind: 'teapot' },
   tea_jasmine: { bg: '#F0F7E8', fg: '#4F7A22', border: '#D4E8B8', kind: 'teapot' },
+  preps: { bg: '#FFF8E6', fg: '#8A5A12', border: '#F2DDB0', kind: 'pot' },
 };
 
 const proof_options: { id: day_task_proof; label: string }[] = [

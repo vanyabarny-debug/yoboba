@@ -5,6 +5,7 @@ import {
   new_id,
   stock_category_for,
   type material,
+  type prep_recipe,
   type prep_step,
   type tech_card,
   type tech_card_size,
@@ -29,6 +30,8 @@ export type cook_step_view = {
   hint: string;
   qty_label: string;
   when?: 'cold' | 'hot';
+  /** как собрать заготовку этого шага. пусто, пока бариста сам не раскроет */
+  make?: { id: string; title: string; hint: string; qty_label: string }[];
 };
 
 function barista_title(name: string) {
@@ -231,6 +234,58 @@ export function resolved_prep_steps_for_volume(
 export function resolved_prep_steps(size: tech_card_size, materials: material[]): prep_step[] {
   if (size.steps?.length) return decorate_steps(size.steps, materials);
   return steps_from_size_ingredients(size, materials);
+}
+
+function prep_yield_g(prep: prep_recipe) {
+  if (prep.yieldG > 0) return prep.yieldG;
+  return Object.values(prep.ingredients).reduce((sum, qty) => sum + (qty > 0 ? qty : 0), 0);
+}
+
+/** шаги заготовки на граммы, которые кладут в этот стакан */
+export function attach_prep_howto(
+  views: cook_step_view[],
+  source: prep_step[],
+  preps: prep_recipe[],
+  materials: material[]
+): cook_step_view[] {
+  const by_id = new Map(materials.map((m) => [m.id, m]));
+  return views.map((view, index) => {
+    const src = source[index];
+    const prep = src?.materialId ? preps.find((row) => row.id === src.materialId) : undefined;
+    if (!prep) return view;
+    const yield_g = prep_yield_g(prep);
+    const k = yield_g > 0 && src.qty > 0 ? src.qty / yield_g : 0;
+    const raw: prep_step[] = prep.steps?.length
+      ? prep.steps
+      : Object.entries(prep.ingredients)
+          .filter(([, qty]) => qty > 0)
+          .map(([id, qty]) => {
+            const mat = by_id.get(id);
+            return {
+              id,
+              title: mat ? barista_title(mat.name) : id,
+              hint: mat ? hint_for(mat) : 'добавить',
+              materialId: id,
+              qty,
+            };
+          });
+    if (!raw.length) return view;
+    const make = raw.map((step) => {
+      const qty = k > 0 ? Math.round(step.qty * k * 10) / 10 : step.qty;
+      const mat = step.materialId ? by_id.get(step.materialId) : undefined;
+      const plain =
+        qty > 0
+          ? `${new Intl.NumberFormat('ru-RU', { maximumFractionDigits: 1 }).format(qty)} г`
+          : '';
+      return {
+        id: step.id,
+        title: step.title.trim() || (mat ? barista_title(mat.name) : 'шаг'),
+        hint: step.hint?.trim() || (mat ? hint_for(mat) : 'добавить'),
+        qty_label: step.qty_label || (mat && qty > 0 ? format_base_qty(mat, qty) : plain),
+      };
+    });
+    return { ...view, make };
+  });
 }
 
 export function cook_steps_view(steps: prep_step[], materials: material[]): cook_step_view[] {

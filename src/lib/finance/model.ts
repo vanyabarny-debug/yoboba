@@ -431,11 +431,39 @@ export type prep_recipe = {
   /** грамм готовой заготовки, которые даёт этот рецепт */
   yieldG: number;
   ingredients: Record<string, number>;
+  /** как собрать заготовку. кассир видит это свёрнутым внутри шага напитка */
+  steps?: prep_step[];
 };
 
 export function is_prep_recipe_id(id: string) {
   return id.startsWith('batch_');
 }
+
+/**
+ * живая партия заготовки на точке. сама заготовка на складе не лежит:
+ * сырьё списывается по заказам через рецепт, а партия только показывает, сколько осталось в контейнере.
+ * уровень = baseG минус граммы заготовки в заказах после baseAt.
+ */
+export type prep_batch = {
+  recipeId: string;
+  spotId?: string;
+  /** когда приготовили текущую партию */
+  startedAt: string;
+  /** граммы в контейнере на момент baseAt */
+  baseG: number;
+  baseAt: string;
+  /** 100% шкалы — сколько было сразу после готовки / доготовки */
+  fullG: number;
+};
+
+/** сколько граммов заготовки ушло в заказ — чтобы уровень партии падал и возвращался при отмене */
+export type prep_usage = {
+  orderId: string;
+  recipeId: string;
+  grams: number;
+  date: string;
+  spotId?: string;
+};
 
 export function prep_as_material(p: prep_recipe): material {
   return {
@@ -481,6 +509,10 @@ export type finance_state = {
    * в напитке указывается, сколько грамм заготовки кладут — сырьё списывается само.
    */
   prepRecipes: prep_recipe[];
+  /** партии заготовок по точкам: сколько осталось в контейнере */
+  prepBatches?: prep_batch[];
+  /** граммы заготовок в заказах после последней отметки партии */
+  prepUsage?: prep_usage[];
   /** один раз перенесли старый остаток на сухие SKU */
   prepStockMigrated?: boolean;
   /**
@@ -1661,6 +1693,8 @@ export function bind_spot(state: finance_state, spotId?: string | null): finance
     stockMovements: state.stockMovements.filter((mv) => movement_on_spot(mv, id)),
     stockAudit: (state.stockAudit ?? []).filter((e) => movement_on_spot(e, id)),
     prepStations: prep_for_spot(state, id),
+    prepBatches: (state.prepBatches ?? []).filter((row) => movement_on_spot(row, id)),
+    prepUsage: (state.prepUsage ?? []).filter((row) => movement_on_spot(row, id)),
     stockCountedAt: counted,
   };
 }
@@ -1687,6 +1721,14 @@ export function commit_spot(
     ...next,
     stockMovements: [...full.stockMovements.filter((mv) => !movement_on_spot(mv, id)), ...stamp_mv],
     stockAudit: [...(full.stockAudit ?? []).filter((e) => !movement_on_spot(e, id)), ...stamp_aud],
+    prepBatches: [
+      ...(full.prepBatches ?? []).filter((row) => !movement_on_spot(row, id)),
+      ...(next.prepBatches ?? []).map((row) => ({ ...row, spotId: row.spotId || id })),
+    ],
+    prepUsage: [
+      ...(full.prepUsage ?? []).filter((row) => !movement_on_spot(row, id)),
+      ...(next.prepUsage ?? []).map((row) => ({ ...row, spotId: row.spotId || id })),
+    ],
     prepBySpot:
       id === LEGACY_SPOT_ID ? full.prepBySpot : { ...(full.prepBySpot ?? {}), [id]: next.prepStations ?? [] },
     prepStations: id === LEGACY_SPOT_ID ? next.prepStations : full.prepStations,
@@ -1730,6 +1772,49 @@ function read_prep_by_spot(raw: unknown): finance_state['prepBySpot'] {
 function clean_iso(value: unknown) {
   if (typeof value !== 'string' || value.length < 10 || value.length > 40) return '';
   return Number.isFinite(new Date(value).getTime()) ? value : '';
+}
+
+function clean_spot(value: unknown) {
+  const id = typeof value === 'string' ? value.trim().slice(0, 80) : '';
+  return id ? { spotId: id } : {};
+}
+
+function read_prep_batches(raw: unknown): prep_batch[] | undefined {
+  if (!Array.isArray(raw)) return undefined;
+  const out: prep_batch[] = [];
+  for (const row of raw) {
+    if (!row || typeof row !== 'object') continue;
+    const o = row as Record<string, unknown>;
+    const recipeId = String(o.recipeId || '').trim();
+    const startedAt = clean_iso(o.startedAt);
+    const baseAt = clean_iso(o.baseAt);
+    if (!recipeId || !startedAt || !baseAt) continue;
+    out.push({
+      recipeId,
+      ...clean_spot(o.spotId),
+      startedAt,
+      baseG: Math.round(num(o.baseG) * 10) / 10,
+      baseAt,
+      fullG: Math.max(0, Math.round(num(o.fullG))),
+    });
+  }
+  return out;
+}
+
+function read_prep_usage(raw: unknown): prep_usage[] | undefined {
+  if (!Array.isArray(raw)) return undefined;
+  const out: prep_usage[] = [];
+  for (const row of raw) {
+    if (!row || typeof row !== 'object') continue;
+    const o = row as Record<string, unknown>;
+    const orderId = String(o.orderId || '').trim();
+    const recipeId = String(o.recipeId || '').trim();
+    const date = clean_iso(o.date);
+    const grams = num(o.grams);
+    if (!orderId || !recipeId || !date || !(grams > 0)) continue;
+    out.push({ orderId, recipeId, grams: Math.round(grams * 10) / 10, date, ...clean_spot(o.spotId) });
+  }
+  return out;
 }
 
 function read_transaction_edits(raw: unknown): transaction_edit[] | undefined {
@@ -1864,11 +1949,13 @@ function normalize_prep_recipes(raw: unknown, material_ids: Set<string>): prep_r
         if (n >= 0) ingredients[k] = n;
       }
     }
+    const steps = read_prep_steps(o.steps);
     out.push({
       id,
       name: String(o.name || '').trim(),
       yieldG: Math.max(0, num(o.yieldG)),
       ingredients,
+      ...(steps ? { steps } : {}),
     });
   }
   return out;
@@ -2315,6 +2402,8 @@ export function normalize_finance_state(raw: unknown): finance_state {
       : undefined,
     prepBySpot: read_prep_by_spot((v as { prepBySpot?: unknown }).prepBySpot),
     prepRecipes: normalize_prep_recipes((v as { prepRecipes?: unknown }).prepRecipes, new Set(materials.map((m) => m.id))),
+    prepBatches: read_prep_batches((v as { prepBatches?: unknown }).prepBatches),
+    prepUsage: read_prep_usage((v as { prepUsage?: unknown }).prepUsage),
     prepStockMigrated: Boolean((v as { prepStockMigrated?: unknown }).prepStockMigrated),
     stockGuard: normalize_stock_guard((v as { stockGuard?: unknown }).stockGuard),
   };
@@ -2491,8 +2580,6 @@ function fold_dual_temp_tech_cards(cards: tech_card[]) {
           : null);
     if (!fold) continue;
     if (led.menu_item_id === fold.base_id) {
-      led.cold = true;
-      led.hot = true;
       led.name = fold.name;
       continue;
     }
@@ -2532,12 +2619,6 @@ function fold_dual_temp_tech_cards(cards: tech_card[]) {
   for (const id of drop) {
     const i = cards.findIndex((c) => c.id === id);
     if (i >= 0) cards.splice(i, 1);
-  }
-  for (const card of cards) {
-    if (card.menu_item_id === 'taro' || card.menu_item_id === 'matcha-latte-tiger') {
-      card.cold = true;
-      card.hot = true;
-    }
   }
 }
 
@@ -4495,13 +4576,16 @@ function add_recipe(
   out: Map<string, number>,
   size: tech_card_size | undefined,
   qty: number,
-  preps: prep_recipe[]
+  preps: prep_recipe[],
+  /** граммы самих заготовок — для уровня партии на кассе */
+  prep_out?: Map<string, number>
 ) {
   if (!size || qty <= 0) return;
   for (const [id, q] of Object.entries(size.ingredients)) {
     if (!(q > 0) || is_infinite_stock(id) || is_free_stock_id(id)) continue;
     const prep = preps.find((p) => p.id === id);
     if (prep) {
+      prep_out?.set(id, (prep_out.get(id) ?? 0) + q * qty);
       const implied = Object.values(prep.ingredients).reduce((sum, grams) => sum + (grams > 0 ? grams : 0), 0);
       const yield_g = prep.yieldG > 0 ? prep.yieldG : implied;
       if (!(yield_g > 0)) continue;
@@ -4602,7 +4686,25 @@ export function consumption_for_items(
   items: order_stock_item[],
   menu: menu_item[] = []
 ): Map<string, number> {
+  return walk_order_items(state, items, menu).raw;
+}
+
+/** граммы заготовок в заказе: id рецепта → г */
+export function prep_grams_for_items(
+  state: finance_state,
+  items: order_stock_item[],
+  menu: menu_item[] = []
+): Map<string, number> {
+  return walk_order_items(state, items, menu).preps;
+}
+
+function walk_order_items(
+  state: finance_state,
+  items: order_stock_item[],
+  menu: menu_item[]
+): { raw: Map<string, number>; preps: Map<string, number> } {
   const out = new Map<string, number>();
+  const preps = new Map<string, number>();
   const menu_by_id = new Map(menu.map((m) => [m.id, m]));
   const card_by_menu = new Map(state.techCards.filter((c) => c.menu_item_id).map((c) => [c.menu_item_id as string, c]));
   // комбо раскладываем на выбранные напитки — себестоимость и остатки по ним
@@ -4616,9 +4718,9 @@ export function consumption_for_items(
       price: item.price,
       menu_item: menu_by_id.get(item.menu_id),
     });
-    add_recipe(out, effective_card_size(card, key, state.materials), item.quantity, state.prepRecipes ?? []);
+    add_recipe(out, effective_card_size(card, key, state.materials), item.quantity, state.prepRecipes ?? [], preps);
   }
-  return out;
+  return { raw: out, preps };
 }
 
 export type stock_shortage = {
@@ -4696,7 +4798,33 @@ export function reverse_order_consumption(state: finance_state, orderId: string)
   return {
     ...state,
     stockMovements: state.stockMovements.filter((mv) => mv.orderId !== orderId),
+    ...(state.prepUsage?.some((row) => row.orderId === orderId)
+      ? { prepUsage: state.prepUsage.filter((row) => row.orderId !== orderId) }
+      : {}),
   };
+}
+
+/** граммы заготовок по заказу — только для тех, у кого на точке идёт партия */
+function record_prep_usage(
+  state: finance_state,
+  opts: { orderId: string; items: order_stock_item[]; date: string; menu: menu_item[] }
+): finance_state {
+  const batches = state.prepBatches ?? [];
+  if (!batches.length) return state;
+  const grams = prep_grams_for_items(state, opts.items, opts.menu);
+  const live = new Map(batches.map((b) => [b.recipeId, b]));
+  const added: prep_usage[] = [];
+  for (const [recipeId, g] of grams) {
+    if (!(g > 0) || !live.has(recipeId)) continue;
+    added.push({ orderId: opts.orderId, recipeId, grams: Math.round(g * 10) / 10, date: opts.date });
+  }
+  // строки до последней отметки партии на уровень уже не влияют
+  const kept = (state.prepUsage ?? []).filter((row) => {
+    const batch = live.get(row.recipeId);
+    return batch ? row.date > batch.baseAt : false;
+  });
+  if (!added.length && kept.length === (state.prepUsage ?? []).length) return state;
+  return { ...state, prepUsage: [...kept, ...added] };
 }
 
 /** списывает сырьё по техкарте заказа; повторный вызов заменяет прошлый расход этого заказа */
@@ -4729,7 +4857,10 @@ export function apply_order_consumption(
     added.push(mv);
     cursor = { ...cursor, stockMovements: [...cursor.stockMovements, mv] };
   }
-  return { ...next, stockMovements: [...next.stockMovements, ...added] };
+  return record_prep_usage(
+    { ...next, stockMovements: [...next.stockMovements, ...added] },
+    { orderId: opts.orderId, items: opts.items, date, menu: opts.menu ?? [] }
+  );
 }
 
 /**

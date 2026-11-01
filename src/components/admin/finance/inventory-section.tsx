@@ -50,9 +50,10 @@ import {
   type stock_movement,
 } from '@/lib/finance/model';
 import InventoryCount from '@/components/admin/finance/inventory-count';
-import PrepRecipesSection from '@/components/admin/finance/prep-recipes-section';
+import PrepRecipeCard from '@/components/admin/finance/prep-recipes-section';
 import { weigh_kind_of, weigh_unit } from '@/lib/finance/weigh';
 import { material_is_prep_dry, normalize_prep_stations } from '@/lib/finance/prep-stations';
+import { materials_in_drinks, swap_material_for_prep } from '@/lib/finance/prep-batches';
 import {
   Card,
   EmptyState,
@@ -885,6 +886,7 @@ export default function InventorySection({ state: full, set_state: set_full, sav
   const [new_cat_name, set_new_cat_name] = useState('');
   const [cat_pick, set_cat_pick] = useState<{ x: number; y: number; materialId: string | 'new' } | null>(null);
   const [focus_mat, set_focus_mat] = useState<string | null>(null);
+  const [open_prep, set_open_prep] = useState<string | null>(null);
   const [dates_open, set_dates_open] = useState(false);
   const [mv_sort, set_mv_sort] = useState<mv_sort_id>('date_desc');
   const [stock_sort, set_stock_sort] = useState<stock_sort_id>('cat');
@@ -938,6 +940,19 @@ export default function InventorySection({ state: full, set_state: set_full, sav
   const stock = useMemo(() => stock_levels(state, range_to), [state, range_to]);
   const lots_by_id = useMemo(() => fifo_batches_map(state, range_to), [state, range_to]);
   const prep_stations = useMemo(() => normalize_prep_stations(state.prepStations), [state.prepStations]);
+  const drink_use = useMemo(() => materials_in_drinks(state), [state]);
+  const swap_options = useCallback(
+    (recipe_id: string, own: string[]) => {
+      const rows = state.materials
+        .filter((m) => m.id !== recipe_id && !m.id.startsWith('batch_') && (drink_use.get(m.id) ?? 0) > 0)
+        .map((m) => ({ id: m.id, name: m.name, drinks: drink_use.get(m.id) ?? 0 }));
+      // сырьё из состава заготовки — первым: обычно его и надо заменить
+      return rows.sort(
+        (a, b) => Number(own.includes(b.id)) - Number(own.includes(a.id)) || a.name.localeCompare(b.name, 'ru')
+      );
+    },
+    [state.materials, drink_use]
+  );
   const dry_debts = useMemo(
     () => stock.filter((s) => s.qty < -0.5 && material_is_prep_dry(s.material, prep_stations)),
     [stock, prep_stations]
@@ -1221,6 +1236,21 @@ export default function InventorySection({ state: full, set_state: set_full, sav
       });
   }, [stock, stock_category, stock_query, stock_sort, cats, last_activity]);
 
+  const ingredient_rows = useMemo(() => {
+    const show = stock_category === 'все' || stock_category === 'prep';
+    const q = stock_query.trim().toLowerCase();
+    const preps = show
+      ? (state.prepRecipes ?? []).filter((recipe) => !q || recipe.name.toLowerCase().includes(q))
+      : [];
+    const mats = visible.map((stock_row) => ({ kind: 'mat' as const, stock: stock_row }));
+    const prep_nodes = preps.map((recipe) => ({ kind: 'prep' as const, recipe }));
+    if (stock_sort !== 'cat') return [...mats, ...prep_nodes];
+    const slot = cat_index(cats, 'prep');
+    const before = mats.filter((row) => cat_index(cats, row.stock.material.category) <= slot);
+    const after = mats.filter((row) => cat_index(cats, row.stock.material.category) > slot);
+    return [...before, ...prep_nodes, ...after];
+  }, [visible, state.prepRecipes, stock_category, stock_query, stock_sort, cats]);
+
   useEffect(() => {
     if (!focus_mat) return;
     const el = document.querySelector(`[data-mat-name="${focus_mat}"]`) as HTMLInputElement | null;
@@ -1243,10 +1273,45 @@ export default function InventorySection({ state: full, set_state: set_full, sav
     set_cat_pick(null);
   }
 
+  function remove_prep(id: string) {
+    if (!window.confirm('убрать заготовку из рецептов?')) return;
+    set_state((prev) => ({
+      ...prev,
+      prepRecipes: (prev.prepRecipes ?? []).filter((recipe) => recipe.id !== id),
+      techCards: prev.techCards.map((card) => ({
+        ...card,
+        steps: card.steps?.filter((step) => step.materialId !== id),
+        sizes: Object.fromEntries(
+          Object.entries(card.sizes).map(([key, size]) => {
+            if (size.ingredients[id] == null) return [key, size];
+            const ingredients = { ...size.ingredients };
+            delete ingredients[id];
+            return [key, { ...size, ingredients }];
+          })
+        ),
+      })),
+    }));
+  }
+
+  function add_prep() {
+    const id = new_id('batch');
+    set_state((prev) => ({
+      ...prev,
+      prepRecipes: [...(prev.prepRecipes ?? []), { id, name: '', yieldG: 0, ingredients: {} }],
+    }));
+    set_stock_category('prep');
+    set_open_prep(id);
+    set_cat_pick(null);
+  }
+
   function pick_category(cat_id: string) {
     if (!cat_pick) return;
-    if (cat_pick.materialId === 'new') add_material(cat_id);
-    else update_material(cat_pick.materialId, { category: cat_id });
+    if (cat_pick.materialId === 'new') {
+      if (cat_id === 'prep') add_prep();
+      else add_material(cat_id);
+      return;
+    }
+    update_material(cat_pick.materialId, { category: cat_id });
     set_cat_pick(null);
   }
 
@@ -1969,32 +2034,6 @@ export default function InventorySection({ state: full, set_state: set_full, sav
           ) : null}
         </div>
 
-        <PrepRecipesSection
-          materials={state.materials}
-          recipes={state.prepRecipes ?? []}
-          cost_of={(id, qty) => material_cost(state, id, qty)}
-          on_change={(prepRecipes, removed_id) =>
-            set_state((prev) => ({
-              ...prev,
-              prepRecipes,
-              techCards: removed_id
-                ? prev.techCards.map((c) => ({
-                    ...c,
-                    steps: c.steps?.filter((s) => s.materialId !== removed_id),
-                    sizes: Object.fromEntries(
-                      Object.entries(c.sizes).map(([k, s]) => {
-                        if (s.ingredients[removed_id] == null) return [k, s];
-                        const ingredients = { ...s.ingredients };
-                        delete ingredients[removed_id];
-                        return [k, { ...s, ingredients }];
-                      })
-                    ),
-                  }))
-                : prev.techCards,
-            }))
-          }
-        />
-
         <CategoryChips
           cats={cats}
           value={stock_category}
@@ -2028,8 +2067,36 @@ export default function InventorySection({ state: full, set_state: set_full, sav
         </div>
 
         <ul className="overflow-hidden rounded-2xl border border-neutral-200 bg-white">
-          {visible.length === 0 && <li className="px-4 py-10 text-center text-sm text-neutral-400">пусто</li>}
-          {visible.map((s) => {
+          {ingredient_rows.length === 0 && <li className="px-4 py-10 text-center text-sm text-neutral-400">пусто</li>}
+          {ingredient_rows.map((row) => {
+            if (row.kind === 'prep') {
+              const recipe = row.recipe;
+              return (
+                <li key={recipe.id} className="border-t border-neutral-100 first:border-t-0">
+                  <PrepRecipeCard
+                    recipe={recipe}
+                    materials={state.materials}
+                    cost_of={(id, qty) => material_cost(state, id, qty)}
+                    tag={cat_of(cats, 'prep')}
+                    open={open_prep === recipe.id}
+                    on_toggle={() => set_open_prep((cur) => (cur === recipe.id ? null : recipe.id))}
+                    on_change={(next) =>
+                      set_state((prev) => ({
+                        ...prev,
+                        prepRecipes: (prev.prepRecipes ?? []).map((item) => (item.id === next.id ? next : item)),
+                      }))
+                    }
+                    on_remove={() => remove_prep(recipe.id)}
+                    drinks={drink_use.get(recipe.id) ?? 0}
+                    swaps={swap_options(recipe.id, Object.keys(recipe.ingredients))}
+                    on_swap={(material_id) =>
+                      set_state((prev) => swap_material_for_prep(prev, material_id, recipe.id))
+                    }
+                  />
+                </li>
+              );
+            }
+            const s = row.stock;
             const tag = cat_of(cats, s.material.category);
             const free = material_is_free(s.material);
             const lots = (lots_by_id.get(s.material.id) ?? []).filter((b) => b.qty > 0.5);

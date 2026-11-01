@@ -97,7 +97,7 @@ export default function radio_manage() {
     <AdminShell>
       <h1 className="font-heading-soft text-xl text-neutral-900">музыка</h1>
       <p className="mt-1 text-sm text-neutral-500">
-        в источник попадает один ролик по ссылке. на кассе его включает плеер.
+        в источник попадает один ролик по ссылке. касса скачивает его на устройство и играет уже оттуда.
       </p>
 
       <form onSubmit={(e) => void add_link(e)} className="mt-6 max-w-xl rounded-2xl border border-neutral-200 bg-white p-5">

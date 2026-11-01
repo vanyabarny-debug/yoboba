@@ -85,6 +85,9 @@ export async function PUT(request: Request) {
     ...incoming,
     removedMaterialIds,
     materials: incoming.materials.filter((m) => !removed_mats.has(m.id)),
+    // партии заготовок ведёт касса — старая вкладка админки их не затирает
+    prepBatches: cloud.prepBatches,
+    prepUsage: cloud.prepUsage,
     stockAudit: filter_stock_audit(merge_stock_audit(table_audit, [...(cloud.stockAudit ?? []), ...(incoming.stockAudit ?? [])])),
   };
   try {

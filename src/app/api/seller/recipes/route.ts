@@ -4,6 +4,7 @@ import { session_cookie } from '@/lib/session';
 import { read_finance_state } from '@/lib/finance/finance-server';
 import { effective_card_size, materials_with_preps, size_label } from '@/lib/finance/model';
 import {
+  attach_prep_howto,
   cook_steps_view,
   resolved_prep_steps_for_volume,
   type public_recipe,
@@ -28,11 +29,14 @@ export async function GET() {
       for (const key of Object.keys(card.sizes)) {
         const size = effective_card_size(card, key, materials);
         if (!size) continue;
+        const resolved = resolved_prep_steps_for_volume(card, key, materials, size);
         sizes[key] = {
           volume: size.volume,
           label: size_label(key),
-          steps: cook_steps_view(
-            resolved_prep_steps_for_volume(card, key, materials, size),
+          steps: attach_prep_howto(
+            cook_steps_view(resolved, materials),
+            resolved,
+            state.prepRecipes ?? [],
             materials
           ),
         };

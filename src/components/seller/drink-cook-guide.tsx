@@ -3,9 +3,37 @@
 import { useEffect, useRef, useState } from 'react';
 import { play_start_chime } from '@/lib/order-chime';
 import type { drink_row } from '@/components/seller/order-prep-card';
-import { pick_recipe_size, type public_recipe } from '@/lib/finance/prep-steps';
+import { pick_recipe_size, type cook_step_view, type public_recipe } from '@/lib/finance/prep-steps';
 
 type phase = 'intro' | 'step' | 'empty';
+
+function PrepHowTo({ make }: { make: NonNullable<cook_step_view['make']> }) {
+  const [open, set_open] = useState(false);
+  return (
+    <div className="mt-1">
+      <button
+        type="button"
+        className="text-xs text-neutral-400 hover:text-neutral-700"
+        onClick={() => set_open((value) => !value)}
+      >
+        {open ? 'скрыть' : 'как делать'}
+      </button>
+      {open ? (
+        <ul className="mt-1 space-y-1">
+          {make.map((row) => (
+            <li key={row.id} className="flex items-baseline justify-between gap-3 text-sm text-neutral-600">
+              <span className="min-w-0">
+                {row.hint ? `${row.hint} · ` : ''}
+                {row.title}
+              </span>
+              {row.qty_label ? <span className="shrink-0 tabular-nums text-neutral-800">{row.qty_label}</span> : null}
+            </li>
+          ))}
+        </ul>
+      ) : null}
+    </div>
+  );
+}
 
 function RecipePane({
   drink,
@@ -143,6 +171,7 @@ function RecipePane({
                       <p className={`mt-0.5 font-medium leading-snug ${compact ? 'text-base' : 'text-lg'}`}>
                         {s.title}
                       </p>
+                      {s.make?.length ? <PrepHowTo make={s.make} /> : null}
                     </div>
                     {s.qty_label ? (
                       <p className={`shrink-0 tabular-nums text-neutral-900 ${compact ? 'text-base' : 'text-lg'}`}>
@@ -191,6 +220,11 @@ function RecipePane({
             ) : (
               <p className="mt-6 text-sm text-neutral-400">без граммовки — просто сделайте шаг</p>
             )}
+            {current.make?.length ? (
+              <div className="mx-auto mt-4 max-w-sm text-left">
+                <PrepHowTo make={current.make} />
+              </div>
+            ) : null}
             <button
               type="button"
               className="mt-10 w-full rounded-pill bg-neutral-900 py-3.5 text-base text-white"

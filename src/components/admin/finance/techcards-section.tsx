@@ -482,7 +482,7 @@ export default function TechcardsSection({
     commit_item({
       ...item,
       archived: next_archived,
-      is_available: next_archived ? false : item.is_available,
+      is_available: !next_archived,
     });
     if (next_archived && selected_id === item.id) set_selected_id(null);
   }

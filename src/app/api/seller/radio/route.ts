@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 import { session_cookie } from '@/lib/session';
+import { radio_mp3_bytes } from '@/lib/radio-cache';
 import { read_radio } from '@/lib/radio-server';
 
 export const dynamic = 'force-dynamic';
@@ -21,6 +22,7 @@ export async function GET() {
       id: track.id,
       title: track.title,
       duration: track.duration,
+      bytes: radio_mp3_bytes(track.id),
     })),
   });
 }
