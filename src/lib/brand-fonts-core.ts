@@ -1,11 +1,12 @@
 import localFont from 'next/font/local';
-import { Inter } from 'next/font/google';
 
-/** только базовые шрифты через next/font — остальные грузятся по выбору с Google CDN */
-export const inter = Inter({
+/** только базовые шрифты через next/font — остальные грузятся по выбору с Google CDN.
+ * Inter лежит в репозитории: сборка на сервере не должна зависеть от доступа к Google Fonts */
+export const inter = localFont({
+  src: '../assets/fonts/inter/InterVariable.woff2',
   variable: '--font-inter',
-  subsets: ['latin', 'cyrillic'],
-  weight: ['400', '500', '600', '700'],
+  weight: '100 900',
+  display: 'swap',
 });
 
 export const soyuz_grotesk = localFont({
