@@ -247,18 +247,39 @@ function menu_row({
 
 function archive_button({ item, on_toggle }: { item: menu_item; on_toggle: () => void }) {
   const archived = item.archived === true;
+  if (archived) {
+    return (
+      <button
+        type="button"
+        aria-label={`вернуть «${item.name}» из архива`}
+        onClick={(e) => {
+          e.stopPropagation();
+          on_toggle();
+        }}
+        className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-full bg-accent px-3 text-sm text-white hover:opacity-90"
+      >
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden>
+          <path
+            d="M4.5 9.5A8 8 0 1 1 4 13.5"
+            stroke="currentColor"
+            strokeWidth="1.8"
+            strokeLinecap="round"
+          />
+          <path d="M4 4.5v5h5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+        вернуть
+      </button>
+    );
+  }
   return (
     <button
       type="button"
-      aria-label={archived ? `вернуть «${item.name}» из архива` : `в архив «${item.name}»`}
-      aria-pressed={archived}
+      aria-label={`в архив «${item.name}»`}
       onClick={(e) => {
         e.stopPropagation();
         on_toggle();
       }}
-      className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full ${
-        archived ? 'bg-neutral-900 text-white' : 'bg-neutral-100 text-neutral-500 hover:text-neutral-800'
-      }`}
+      className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-neutral-100 text-neutral-500 hover:text-neutral-800"
     >
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden>
         <path d="M4 7h16" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
