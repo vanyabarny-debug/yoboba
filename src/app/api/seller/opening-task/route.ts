@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { create_service_client } from '@/lib/supabase/service';
 import { is_supabase_configured } from '@/lib/supabase/config';
 import { moscow_today_iso } from '@/lib/order-number';
+import { shift_closed_message, shift_is_open } from '@/lib/shift-window';
+import { mark_shift_row } from '@/lib/shift-log-server';
 import { is_opening_complete, type opening_task } from '@/lib/opening-checklist';
 import {
   checklist_items_for_new_task,
@@ -183,6 +185,10 @@ export async function PATCH(request: NextRequest) {
     );
   }
 
+  if (body.is_checked && !shift_is_open()) {
+    return NextResponse.json({ error: shift_closed_message }, { status: 409 });
+  }
+
   const supabase = create_service_client();
 
   const { data: item_row } = await supabase
@@ -301,6 +307,18 @@ export async function PATCH(request: NextRequest) {
         return NextResponse.json({ error: open_result.error, task }, { status: 409 });
       }
       shift = open_result.shift;
+    }
+
+    if (spot_id) {
+      await mark_shift_row({
+        spot_id,
+        shift_date: task_data?.shift_date || task.shift_date || moscow_today_iso(),
+        ref: 'opening',
+        kind: 'opening',
+        title: 'открытие',
+        status: 'пробил',
+        seller_name: body.seller_name || task_data?.seller_name || null,
+      });
     }
 
     // Получить всех админов

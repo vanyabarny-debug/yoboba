@@ -496,7 +496,7 @@ export default function prep_stations_board({
                 </div>
                 <p className="text-center text-[11px] text-neutral-400">
                   {active.kind === 'pot'
-                    ? 'если не варили: нехватка уйдёт в потеряно'
+                    ? '0 г: навар уменьшится, только если выход всё ещё похож на прогноз. иначе граммы уйдут в потеряно'
                     : 'сколько реально в кастрюле сейчас — можно 0'}
                 </p>
 

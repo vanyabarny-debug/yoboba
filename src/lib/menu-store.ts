@@ -648,8 +648,8 @@ export function merge_menu_item_catalog(items: menu_item[], removed_ids: Iterabl
     });
 }
 
-function freshen_menu_photo(url: string | null | undefined): string | null | undefined {
-  if (!url || url.startsWith('data:') || url.startsWith('blob:') || url.startsWith('http')) return url;
+function freshen_menu_photo(url: string | null | undefined): string | null {
+  if (!url || url.startsWith('data:') || url.startsWith('blob:') || url.startsWith('http')) return url || null;
   const path = url.split('?')[0];
   const versions: Record<string, string> = {
     '/images/menu/original-black.png': '12',

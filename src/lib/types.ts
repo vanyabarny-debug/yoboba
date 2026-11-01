@@ -292,6 +292,8 @@ export type seller_shift_record = {
   open_geo?: shift_open_geo | null;
   /** все бариста, кто был на этой смене */
   crew?: shift_crew_member[];
+  /** закрыл Аня / не закрыл — как строка в истории смены */
+  close_note?: string | null;
 };
 
 /** одно приготовление напитка баристой */

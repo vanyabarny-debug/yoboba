@@ -63,9 +63,19 @@ function crew_from_shift_and_txs(
   return names;
 }
 
+type shift_log_row = {
+  id: string;
+  spot_id: string;
+  title: string;
+  status: string;
+  seller_name: string | null;
+  at: string;
+};
+
 export default function shifts_manage({ embedded = false }: { embedded?: boolean } = {}) {
   const [shifts, set_shifts] = useState<seller_shift_record[]>([]);
   const [day_txs, set_day_txs] = useState<cash_transaction[]>([]);
+  const [day_log, set_day_log] = useState<shift_log_row[]>([]);
   const [day, set_day] = useState(moscow_today_iso());
   const [spot_filter, set_spot_filter] = useState('');
   const [selected, set_selected] = useState<seller_shift_record | null>(null);
@@ -77,19 +87,23 @@ export default function shifts_manage({ embedded = false }: { embedded?: boolean
     Promise.all([
       fetch(`/api/seller/shifts?${qs}`, { credentials: 'same-origin' }).then((r) => r.json()),
       fetch(`/api/cash?${qs}`, { credentials: 'same-origin' }).then((r) => r.json()),
+      fetch(`/api/seller/shift-log?${qs}`, { credentials: 'same-origin' }).then((r) => r.json()),
     ])
       .then(
-        ([shifts_body, cash_body]: [
+        ([shifts_body, cash_body, log_body]: [
           { shifts?: seller_shift_record[] },
           { transactions?: cash_transaction[] },
+          { rows?: shift_log_row[] },
         ]) => {
           set_shifts(shifts_body.shifts || []);
           set_day_txs(cash_body.transactions || []);
+          set_day_log(log_body.rows || []);
         }
       )
       .catch(() => {
         set_shifts([]);
         set_day_txs([]);
+        set_day_log([]);
       })
       .finally(() => set_busy(false));
   }, [day]);
@@ -130,6 +144,7 @@ export default function shifts_manage({ embedded = false }: { embedded?: boolean
   }, [shifts, day_txs]);
 
   const selected_txs = selected ? txs_for_shift.get(selected.id) || [] : [];
+  const selected_log = selected ? day_log.filter((row) => row.spot_id === selected.spot_id) : [];
   const selected_total = selected_txs.reduce((sum, t) => sum + t.order_total, 0);
   const selected_crew = selected ? crew_from_shift_and_txs(selected, selected_txs) : [];
   const selected_maps = maps_url(selected?.open_geo);
@@ -247,7 +262,7 @@ export default function shifts_manage({ embedded = false }: { embedded?: boolean
                                 : 'bg-emerald-50 text-emerald-700'
                             }`}
                           >
-                            {s.closed_at ? 'закрыта' : 'открыта'}
+                            {s.close_note || (s.closed_at ? 'закрыта' : 'открыта')}
                           </span>
                         </div>
                       </div>
@@ -300,12 +315,26 @@ export default function shifts_manage({ embedded = false }: { embedded?: boolean
           </div>
           {!selected ? (
             <p className="px-4 py-10 text-center text-sm text-neutral-400">нет выбора</p>
-          ) : selected_txs.length === 0 ? (
+          ) : selected_txs.length === 0 && selected_log.length === 0 ? (
             <p className="px-4 py-10 text-center text-sm text-neutral-400">
               операций в этой смене нет
             </p>
           ) : (
             <ul className="divide-y divide-neutral-100 max-h-[28rem] overflow-y-auto">
+              {selected_log.map((row) => (
+                <li key={row.id} className="px-4 py-3">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium text-neutral-900 truncate">{row.title}</p>
+                      <p className="text-[11px] text-neutral-400 mt-0.5">
+                        {format_dt(row.at)}
+                        {row.seller_name ? ` · ${row.seller_name}` : ''}
+                      </p>
+                    </div>
+                    <p className="shrink-0 text-sm font-semibold text-neutral-700">{row.status}</p>
+                  </div>
+                </li>
+              ))}
               {selected_txs.map((t) => (
                 <li key={t.id} className="px-4 py-3">
                   <div className="flex items-start justify-between gap-2">

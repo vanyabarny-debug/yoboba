@@ -186,10 +186,10 @@ export default function shift_task_card({ task, mode, on_open_guide }: props) {
           color: color.fg,
         })}
         {createElement(circle_wrap, {
-          under: task.title,
+          under: task.outcome === 'missed' ? `${task.title} · не пробил` : task.title,
           children: createElement(circular_timer, {
             progress: 1,
-            label: '✓',
+            label: task.outcome === 'missed' ? '—' : '✓',
             tone: 'handout',
             colors: timer_colors,
             fill: true,

@@ -1,0 +1,2920 @@
+[
+  {
+    "order": {
+      "id": "82222cc0-3659-4444-ab83-34b8ac30b5bd",
+      "items": [
+        {
+          "kind": "sale",
+          "name": "чёрный сахар холодный",
+          "price": 0,
+          "volume": "500",
+          "menu_id": "original-black-led",
+          "quantity": 1
+        }
+      ],
+      "status": "completed",
+      "is_paid": true,
+      "user_id": "6e3ac1c9-c4b5-4475-bd59-9ec4c078694d",
+      "order_day": "2026-10-15",
+      "created_at": "2026-10-15T14:20:11.708865+00:00",
+      "updated_at": "2026-10-15T14:20:19.147732+00:00",
+      "pickup_time": "2026-10-15T14:30:11.445+00:00",
+      "total_price": 0,
+      "order_number": 5,
+      "payment_type": "card",
+      "customer_name": "гость точки",
+      "customer_phone": null
+    },
+    "order_id": "82222cc0-3659-4444-ab83-34b8ac30b5bd",
+    "handed_at": "2026-10-15T14:20:21.363Z",
+    "seller_id": "seller-test-1",
+    "shift_date": "2026-10-15",
+    "seller_name": "Аня"
+  },
+  {
+    "order": {
+      "id": "e0836cad-b45b-43ff-a001-043197b0417e",
+      "items": [
+        {
+          "kind": "sale",
+          "name": "таро холодный",
+          "price": 450,
+          "volume": "500",
+          "menu_id": "taro",
+          "quantity": 1
+        }
+      ],
+      "status": "completed",
+      "is_paid": true,
+      "user_id": "6e3ac1c9-c4b5-4475-bd59-9ec4c078694d",
+      "order_day": "2026-10-15",
+      "created_at": "2026-10-15T13:03:40.564855+00:00",
+      "updated_at": "2026-10-15T13:03:47.263383+00:00",
+      "pickup_time": "2026-10-15T13:13:40.178+00:00",
+      "total_price": 450,
+      "order_number": 4,
+      "payment_type": "cash",
+      "customer_name": "гость точки",
+      "customer_phone": null
+    },
+    "order_id": "e0836cad-b45b-43ff-a001-043197b0417e",
+    "handed_at": "2026-10-15T13:03:47.997Z",
+    "seller_id": "seller-test-1",
+    "shift_date": "2026-10-15",
+    "seller_name": "Аня"
+  },
+  {
+    "order": {
+      "id": "7e783fbc-5797-4e79-b644-38c9ffef61d9",
+      "items": [
+        {
+          "kind": "sale",
+          "name": "двойной",
+          "price": 719,
+          "menu_id": "combo-dabl-drop",
+          "quantity": 1,
+          "combo_picks": [
+            "таро",
+            "нежная роза"
+          ],
+          "combo_components": [
+            {
+              "name": "таро",
+              "volume": "500",
+              "menu_id": "taro",
+              "quantity": 1
+            },
+            {
+              "name": "нежная роза",
+              "volume": "500",
+              "menu_id": "nezhnaya-roza",
+              "quantity": 1
+            }
+          ]
+        }
+      ],
+      "status": "completed",
+      "is_paid": true,
+      "user_id": "6e3ac1c9-c4b5-4475-bd59-9ec4c078694d",
+      "order_day": "2026-10-15",
+      "created_at": "2026-10-15T12:16:09.825301+00:00",
+      "updated_at": "2026-10-15T12:16:13.563238+00:00",
+      "pickup_time": "2026-10-15T12:26:09.412+00:00",
+      "total_price": 719,
+      "order_number": 3,
+      "payment_type": "cash",
+      "customer_name": "гость точки",
+      "customer_phone": null
+    },
+    "order_id": "7e783fbc-5797-4e79-b644-38c9ffef61d9",
+    "handed_at": "2026-10-15T12:16:14.261Z",
+    "seller_id": "seller-test-1",
+    "shift_date": "2026-10-15",
+    "seller_name": "Аня"
+  },
+  {
+    "order": {
+      "id": "25cff66c-30fa-4ee4-be0e-9be8b115a3c0",
+      "items": [
+        {
+          "kind": "sale",
+          "name": "нежная роза холодный",
+          "price": 420,
+          "volume": "500",
+          "menu_id": "nezhnaya-roza",
+          "quantity": 1
+        }
+      ],
+      "status": "completed",
+      "is_paid": true,
+      "user_id": "e8d9c1fc-2eb0-4341-b505-7e49dc967f86",
+      "order_day": "2026-10-15",
+      "created_at": "2026-10-15T11:09:31.9074+00:00",
+      "updated_at": "2026-10-15T11:12:16.040726+00:00",
+      "pickup_time": "2026-10-15T11:19:30.309+00:00",
+      "total_price": 420,
+      "order_number": 2,
+      "payment_type": "cash",
+      "customer_name": "гость точки",
+      "customer_phone": "+79607001201"
+    },
+    "order_id": "25cff66c-30fa-4ee4-be0e-9be8b115a3c0",
+    "handed_at": "2026-10-15T11:12:16.745Z",
+    "seller_id": "seller-test-1",
+    "shift_date": "2026-10-15",
+    "seller_name": "Аня"
+  },
+  {
+    "order": {
+      "id": "ad367b6a-5005-489d-845d-78a1d0a618f7",
+      "items": [
+        {
+          "kind": "sale",
+          "name": "матча латте холодный",
+          "price": 520,
+          "volume": "650",
+          "menu_id": "matcha-latte-tiger",
+          "quantity": 1
+        }
+      ],
+      "status": "completed",
+      "is_paid": true,
+      "user_id": "077db0e2-87d2-410e-9693-1bd1dedd19bb",
+      "order_day": "2026-10-15",
+      "created_at": "2026-10-15T10:16:50.61824+00:00",
+      "updated_at": "2026-10-15T10:24:05.830441+00:00",
+      "pickup_time": "2026-10-15T10:26:50.096+00:00",
+      "total_price": 520,
+      "order_number": 1,
+      "payment_type": "cash",
+      "customer_name": "гость точки",
+      "customer_phone": "+79043542096"
+    },
+    "order_id": "ad367b6a-5005-489d-845d-78a1d0a618f7",
+    "handed_at": "2026-10-15T10:16:50.61824+00:00",
+    "seller_id": "seller-test-1",
+    "shift_date": "2026-10-15",
+    "seller_name": "Аня"
+  },
+  {
+    "order": {
+      "id": "fe5bd605-0866-4fd5-a83d-c924527de301",
+      "items": [
+        {
+          "kind": "staff",
+          "name": "матча латте холодный",
+          "price": 225,
+          "volume": "500",
+          "menu_id": "matcha-latte-tiger",
+          "quantity": 1
+        }
+      ],
+      "status": "completed",
+      "is_paid": true,
+      "user_id": "6e3ac1c9-c4b5-4475-bd59-9ec4c078694d",
+      "order_day": "2026-10-14",
+      "created_at": "2026-10-14T15:54:44.652226+00:00",
+      "updated_at": "2026-10-14T16:25:36.250869+00:00",
+      "pickup_time": "2026-10-14T16:04:44.194+00:00",
+      "total_price": 225,
+      "order_number": 9,
+      "payment_type": "cash",
+      "customer_name": "Аня",
+      "customer_phone": null
+    },
+    "order_id": "fe5bd605-0866-4fd5-a83d-c924527de301",
+    "handed_at": "2026-10-14T16:25:39.798Z",
+    "seller_id": "seller-test-1",
+    "shift_date": "2026-10-14",
+    "seller_name": "Аня"
+  },
+  {
+    "order": {
+      "id": "0dbd185c-03e0-4674-bb4e-30dff6a9a330",
+      "items": [
+        {
+          "kind": "sale",
+          "name": "зелёный жасмин холодный",
+          "price": 390,
+          "volume": "500",
+          "menu_id": "jasmine-green-led",
+          "quantity": 1
+        }
+      ],
+      "status": "completed",
+      "is_paid": true,
+      "user_id": "2cddcb50-7805-41ac-b4c4-a34dd43d9488",
+      "order_day": "2026-10-14",
+      "created_at": "2026-10-14T15:41:08.139683+00:00",
+      "updated_at": "2026-10-14T15:41:17.368924+00:00",
+      "pickup_time": "2026-10-14T15:51:06.945+00:00",
+      "total_price": 390,
+      "order_number": 8,
+      "payment_type": "cash",
+      "customer_name": "гость точки",
+      "customer_phone": "+79670846312"
+    },
+    "order_id": "0dbd185c-03e0-4674-bb4e-30dff6a9a330",
+    "handed_at": "2026-10-14T15:41:17.861Z",
+    "seller_id": "seller-test-1",
+    "shift_date": "2026-10-14",
+    "seller_name": "Аня"
+  },
+  {
+    "order": {
+      "id": "81bcaad3-8bd5-43f0-bc2b-4c986f2d0ec0",
+      "items": [
+        {
+          "kind": "sale",
+          "name": "таро холодный",
+          "price": 499,
+          "volume": "650",
+          "menu_id": "taro",
+          "quantity": 1
+        }
+      ],
+      "status": "completed",
+      "is_paid": true,
+      "user_id": "6e3ac1c9-c4b5-4475-bd59-9ec4c078694d",
+      "order_day": "2026-10-14",
+      "created_at": "2026-10-14T15:06:50.427581+00:00",
+      "updated_at": "2026-10-14T15:07:33.924836+00:00",
+      "pickup_time": "2026-10-14T15:16:50.147+00:00",
+      "total_price": 499,
+      "order_number": 7,
+      "payment_type": "cash",
+      "customer_name": "гость точки",
+      "customer_phone": null
+    },
+    "order_id": "81bcaad3-8bd5-43f0-bc2b-4c986f2d0ec0",
+    "handed_at": "2026-10-14T15:07:44.833Z",
+    "seller_id": "seller-test-1",
+    "shift_date": "2026-10-14",
+    "seller_name": "Аня"
+  },
+  {
+    "order": {
+      "id": "2cba19a2-8fb8-40bc-86e2-834fd93ed7e8",
+      "items": [
+        {
+          "kind": "sale",
+          "name": "чёрный сахар холодный",
+          "price": 450,
+          "volume": "650",
+          "menu_id": "original-black-led",
+          "quantity": 1
+        }
+      ],
+      "status": "completed",
+      "is_paid": true,
+      "user_id": "9ad494e8-dec4-4c12-8ae7-0df1eb5296b7",
+      "order_day": "2026-10-14",
+      "created_at": "2026-10-14T13:47:53.697716+00:00",
+      "updated_at": "2026-10-14T15:05:29.518099+00:00",
+      "pickup_time": "2026-10-14T13:57:52.351+00:00",
+      "total_price": 450,
+      "order_number": 6,
+      "payment_type": "cash",
+      "customer_name": "гость точки",
+      "customer_phone": "+79031950697"
+    },
+    "order_id": "2cba19a2-8fb8-40bc-86e2-834fd93ed7e8",
+    "handed_at": "2026-10-14T15:05:30.312Z",
+    "seller_id": "seller-test-1",
+    "shift_date": "2026-10-14",
+    "seller_name": "Аня"
+  },
+  {
+    "order": {
+      "id": "82f8d709-6dc2-470f-8658-e9b125cb5504",
+      "items": [
+        {
+          "kind": "sale",
+          "name": "клубничный лимонад холодный",
+          "price": 319,
+          "volume": "500",
+          "menu_id": "klubnichny-limonad",
+          "quantity": 1
+        }
+      ],
+      "status": "completed",
+      "is_paid": true,
+      "user_id": "077db0e2-87d2-410e-9693-1bd1dedd19bb",
+      "order_day": "2026-10-14",
+      "created_at": "2026-10-14T12:01:38.604921+00:00",
+      "updated_at": "2026-10-14T12:01:45.259562+00:00",
+      "pickup_time": "2026-10-14T12:11:38.219+00:00",
+      "total_price": 319,
+      "order_number": 5,
+      "payment_type": "card",
+      "customer_name": "гость точки",
+      "customer_phone": "+79043542096"
+    },
+    "order_id": "82f8d709-6dc2-470f-8658-e9b125cb5504",
+    "handed_at": "2026-10-14T12:01:46.882Z",
+    "seller_id": "seller-test-1",
+    "shift_date": "2026-10-14",
+    "seller_name": "Аня"
+  },
+  {
+    "order": {
+      "id": "01bee0af-4d3f-4774-bddb-b368c6f76602",
+      "items": [
+        {
+          "kind": "sale",
+          "name": "чёрный сахар холодный",
+          "price": 450,
+          "volume": "650",
+          "menu_id": "original-black-led",
+          "quantity": 1
+        }
+      ],
+      "status": "completed",
+      "is_paid": true,
+      "user_id": "077db0e2-87d2-410e-9693-1bd1dedd19bb",
+      "order_day": "2026-10-14",
+      "created_at": "2026-10-14T12:01:13.800343+00:00",
+      "updated_at": "2026-10-14T12:01:17.597481+00:00",
+      "pickup_time": "2026-10-14T12:11:13.118+00:00",
+      "total_price": 0,
+      "order_number": 4,
+      "payment_type": "online",
+      "customer_name": "гость точки",
+      "customer_phone": "+79043542096"
+    },
+    "order_id": "01bee0af-4d3f-4774-bddb-b368c6f76602",
+    "handed_at": "2026-10-14T12:01:17.937Z",
+    "seller_id": "seller-test-1",
+    "shift_date": "2026-10-14",
+    "seller_name": "Аня"
+  },
+  {
+    "order": {
+      "id": "16d91005-70cb-4d91-a50a-a43eaa261db7",
+      "items": [
+        {
+          "kind": "sale",
+          "name": "клубничный лимонад холодный",
+          "price": 319,
+          "volume": "500",
+          "menu_id": "klubnichny-limonad",
+          "quantity": 1
+        }
+      ],
+      "status": "completed",
+      "is_paid": true,
+      "user_id": "077db0e2-87d2-410e-9693-1bd1dedd19bb",
+      "order_day": "2026-10-14",
+      "created_at": "2026-10-14T11:59:36.006008+00:00",
+      "updated_at": "2026-10-14T12:00:29.726599+00:00",
+      "pickup_time": "2026-10-14T12:09:35.625+00:00",
+      "total_price": 319,
+      "order_number": 3,
+      "payment_type": "card",
+      "customer_name": "гость точки",
+      "customer_phone": "+79043542096"
+    },
+    "order_id": "16d91005-70cb-4d91-a50a-a43eaa261db7",
+    "handed_at": "2026-10-14T12:00:31.303Z",
+    "seller_id": "seller-test-1",
+    "shift_date": "2026-10-14",
+    "seller_name": "Аня"
+  },
+  {
+    "order": {
+      "id": "2e04d32c-1d27-4a72-8045-c30754ca1194",
+      "items": [
+        {
+          "kind": "sale",
+          "name": "таро горячий",
+          "price": 0,
+          "volume": "500",
+          "menu_id": "taro",
+          "quantity": 1
+        }
+      ],
+      "status": "completed",
+      "is_paid": true,
+      "user_id": "af21a80e-55de-4b04-a0a1-95d74cb7ae92",
+      "order_day": "2026-10-14",
+      "created_at": "2026-10-14T11:30:23.409294+00:00",
+      "updated_at": "2026-10-14T11:30:33.532851+00:00",
+      "pickup_time": "2026-10-14T11:40:22.908+00:00",
+      "total_price": 0,
+      "order_number": 2,
+      "payment_type": "card",
+      "customer_name": "гость точки",
+      "customer_phone": "+79066554795"
+    },
+    "order_id": "2e04d32c-1d27-4a72-8045-c30754ca1194",
+    "handed_at": "2026-10-14T11:30:34.414Z",
+    "seller_id": "seller-test-1",
+    "shift_date": "2026-10-14",
+    "seller_name": "Аня"
+  },
+  {
+    "order": {
+      "id": "efad3a6a-e1e4-48b3-8167-a2f21c52adb5",
+      "items": [
+        {
+          "kind": "sale",
+          "name": "таро горячий",
+          "price": 450,
+          "volume": "500",
+          "menu_id": "taro",
+          "quantity": 1
+        }
+      ],
+      "status": "completed",
+      "is_paid": true,
+      "user_id": "af21a80e-55de-4b04-a0a1-95d74cb7ae92",
+      "order_day": "2026-10-14",
+      "created_at": "2026-10-14T11:28:55.228269+00:00",
+      "updated_at": "2026-10-14T11:28:59.422954+00:00",
+      "pickup_time": "2026-10-14T11:38:53.854+00:00",
+      "total_price": 450,
+      "order_number": 1,
+      "payment_type": "cash",
+      "customer_name": "гость точки",
+      "customer_phone": "+79066554795"
+    },
+    "order_id": "efad3a6a-e1e4-48b3-8167-a2f21c52adb5",
+    "handed_at": "2026-10-14T11:29:00.317Z",
+    "seller_id": "seller-test-1",
+    "shift_date": "2026-10-14",
+    "seller_name": "Аня"
+  },
+  {
+    "order": {
+      "id": "cacbb142-52ec-442b-a24b-4d3212bface7",
+      "items": [
+        {
+          "kind": "staff",
+          "name": "масала чай горячий",
+          "price": 260,
+          "volume": "650",
+          "menu_id": "masala-chai",
+          "quantity": 1
+        }
+      ],
+      "status": "completed",
+      "is_paid": true,
+      "user_id": "6e3ac1c9-c4b5-4475-bd59-9ec4c078694d",
+      "order_day": "2026-10-13",
+      "created_at": "2026-10-13T11:42:22.177996+00:00",
+      "updated_at": "2026-10-13T11:59:59.763756+00:00",
+      "pickup_time": "2026-10-13T11:52:21.864+00:00",
+      "total_price": 260,
+      "order_number": 3,
+      "payment_type": "cash",
+      "customer_name": "Аня",
+      "customer_phone": null
+    },
+    "order_id": "cacbb142-52ec-442b-a24b-4d3212bface7",
+    "handed_at": "2026-10-13T12:00:00.153Z",
+    "seller_id": "seller-test-1",
+    "shift_date": "2026-10-13",
+    "seller_name": "Аня"
+  },
+  {
+    "order": {
+      "id": "c0b0fcc1-2caa-4f21-95b1-9d0b6b287395",
+      "items": [
+        {
+          "kind": "staff",
+          "name": "матча латте холодный",
+          "price": 225,
+          "volume": "500",
+          "menu_id": "matcha-latte-tiger",
+          "quantity": 1
+        }
+      ],
+      "status": "completed",
+      "is_paid": true,
+      "user_id": "6e3ac1c9-c4b5-4475-bd59-9ec4c078694d",
+      "order_day": "2026-10-13",
+      "created_at": "2026-10-13T11:22:44.71091+00:00",
+      "updated_at": "2026-10-13T11:33:24.974288+00:00",
+      "pickup_time": "2026-10-13T11:32:44.214+00:00",
+      "total_price": 225,
+      "order_number": 2,
+      "payment_type": "cash",
+      "customer_name": "Аня",
+      "customer_phone": null
+    },
+    "order_id": "c0b0fcc1-2caa-4f21-95b1-9d0b6b287395",
+    "handed_at": "2026-10-13T11:33:25.551Z",
+    "seller_id": "seller-test-1",
+    "shift_date": "2026-10-13",
+    "seller_name": "Аня"
+  },
+  {
+    "order": {
+      "id": "542fc77f-57de-4368-b95f-331bf5930266",
+      "items": [
+        {
+          "kind": "staff",
+          "name": "таро горячий",
+          "price": 225,
+          "volume": "500",
+          "menu_id": "taro",
+          "quantity": 1
+        }
+      ],
+      "status": "completed",
+      "is_paid": true,
+      "user_id": "6e3ac1c9-c4b5-4475-bd59-9ec4c078694d",
+      "order_day": "2026-10-13",
+      "created_at": "2026-10-13T09:54:34.404157+00:00",
+      "updated_at": "2026-10-13T10:04:39.838892+00:00",
+      "pickup_time": "2026-10-13T10:04:33.881+00:00",
+      "total_price": 225,
+      "order_number": 1,
+      "payment_type": "card",
+      "customer_name": "Аня",
+      "customer_phone": null
+    },
+    "order_id": "542fc77f-57de-4368-b95f-331bf5930266",
+    "handed_at": "2026-10-13T10:04:41.036Z",
+    "seller_id": "seller-test-1",
+    "shift_date": "2026-10-13",
+    "seller_name": "Аня"
+  },
+  {
+    "order": {
+      "id": "c53659a7-b230-43e1-bdf4-307b2f2e42a8",
+      "items": [
+        {
+          "kind": "sale",
+          "name": "таро горячий",
+          "price": 450,
+          "volume": "500",
+          "menu_id": "taro",
+          "quantity": 1
+        }
+      ],
+      "status": "completed",
+      "is_paid": true,
+      "user_id": "6e3ac1c9-c4b5-4475-bd59-9ec4c078694d",
+      "order_day": "2026-10-12",
+      "created_at": "2026-10-12T15:43:48.213342+00:00",
+      "updated_at": "2026-10-12T15:50:28.008675+00:00",
+      "pickup_time": "2026-10-12T15:53:47.83+00:00",
+      "total_price": 450,
+      "order_number": 10,
+      "payment_type": "cash",
+      "customer_name": "гость точки",
+      "customer_phone": null
+    },
+    "order_id": "c53659a7-b230-43e1-bdf4-307b2f2e42a8",
+    "handed_at": "2026-10-12T15:50:28.575Z",
+    "seller_id": "seller-test-1",
+    "shift_date": "2026-10-12",
+    "seller_name": "Аня"
+  },
+  {
+    "order": {
+      "id": "d829b7ff-f304-4782-b1d0-aec2c9736750",
+      "items": [
+        {
+          "kind": "staff",
+          "name": "матча латте холодный",
+          "price": 225,
+          "volume": "500",
+          "menu_id": "matcha-latte-tiger",
+          "quantity": 1
+        }
+      ],
+      "status": "completed",
+      "is_paid": true,
+      "user_id": "6e3ac1c9-c4b5-4475-bd59-9ec4c078694d",
+      "order_day": "2026-10-12",
+      "created_at": "2026-10-12T15:15:03.856752+00:00",
+      "updated_at": "2026-10-12T15:24:16.056855+00:00",
+      "pickup_time": "2026-10-12T15:25:03.415+00:00",
+      "total_price": 225,
+      "order_number": 9,
+      "payment_type": "cash",
+      "customer_name": "Аня",
+      "customer_phone": null
+    },
+    "order_id": "d829b7ff-f304-4782-b1d0-aec2c9736750",
+    "handed_at": "2026-10-12T15:24:17.324Z",
+    "seller_id": "seller-test-1",
+    "shift_date": "2026-10-12",
+    "seller_name": "Аня"
+  },
+  {
+    "order": {
+      "id": "d2c70eb9-5772-4ec7-9bd0-96920ad60a9c",
+      "items": [
+        {
+          "kind": "sale",
+          "name": "нежная роза холодный",
+          "price": 480,
+          "volume": "650",
+          "menu_id": "nezhnaya-roza",
+          "quantity": 1
+        },
+        {
+          "kind": "sale",
+          "name": "малиновый йогурт холодный",
+          "price": 480,
+          "volume": "650",
+          "menu_id": "malinovy-yogurt",
+          "quantity": 1
+        }
+      ],
+      "status": "completed",
+      "is_paid": true,
+      "user_id": "6e3ac1c9-c4b5-4475-bd59-9ec4c078694d",
+      "order_day": "2026-10-12",
+      "created_at": "2026-10-12T14:09:18.155214+00:00",
+      "updated_at": "2026-10-12T14:18:47.585262+00:00",
+      "pickup_time": "2026-10-12T14:19:17.739+00:00",
+      "total_price": 960,
+      "order_number": 8,
+      "payment_type": "cash",
+      "customer_name": "гость точки",
+      "customer_phone": null
+    },
+    "order_id": "d2c70eb9-5772-4ec7-9bd0-96920ad60a9c",
+    "handed_at": "2026-10-12T14:18:48.197Z",
+    "seller_id": "seller-test-1",
+    "shift_date": "2026-10-12",
+    "seller_name": "Аня"
+  },
+  {
+    "order": {
+      "id": "69bd4fe7-2027-4e01-855a-faa79317c1de",
+      "items": [
+        {
+          "kind": "sale",
+          "name": "чёрный сахар холодный",
+          "price": 390,
+          "volume": "500",
+          "menu_id": "original-black-led",
+          "quantity": 1
+        }
+      ],
+      "status": "completed",
+      "is_paid": true,
+      "user_id": "6e3ac1c9-c4b5-4475-bd59-9ec4c078694d",
+      "order_day": "2026-10-12",
+      "created_at": "2026-10-12T13:15:45.107672+00:00",
+      "updated_at": "2026-10-12T13:18:50.593184+00:00",
+      "pickup_time": "2026-10-12T13:25:44.678+00:00",
+      "total_price": 390,
+      "order_number": 7,
+      "payment_type": "cash",
+      "customer_name": "гость точки",
+      "customer_phone": null
+    },
+    "order_id": "69bd4fe7-2027-4e01-855a-faa79317c1de",
+    "handed_at": "2026-10-12T13:15:45.107672+00:00",
+    "seller_id": "seller-test-1",
+    "shift_date": "2026-10-12",
+    "seller_name": "Аня"
+  },
+  {
+    "order": {
+      "id": "8caef616-dd31-4159-aba3-576bb715f81a",
+      "items": [
+        {
+          "kind": "sale",
+          "name": "нежная роза холодный",
+          "price": 480,
+          "volume": "650",
+          "menu_id": "nezhnaya-roza",
+          "quantity": 1
+        }
+      ],
+      "status": "completed",
+      "is_paid": true,
+      "user_id": "6e3ac1c9-c4b5-4475-bd59-9ec4c078694d",
+      "order_day": "2026-10-12",
+      "created_at": "2026-10-12T13:10:18.249523+00:00",
+      "updated_at": "2026-10-12T13:11:14.030555+00:00",
+      "pickup_time": "2026-10-12T13:20:17.895+00:00",
+      "total_price": 480,
+      "order_number": 5,
+      "payment_type": "cash",
+      "customer_name": "гость точки",
+      "customer_phone": null
+    },
+    "order_id": "8caef616-dd31-4159-aba3-576bb715f81a",
+    "handed_at": "2026-10-12T13:11:03.352Z",
+    "seller_id": "seller-test-1",
+    "shift_date": "2026-10-12",
+    "seller_name": "Аня"
+  },
+  {
+    "order": {
+      "id": "8ddd3b1d-fc7e-4963-ac75-003e18ea728c",
+      "items": [
+        {
+          "kind": "staff",
+          "name": "малиновый йогурт холодный",
+          "price": 210,
+          "volume": "500",
+          "menu_id": "malinovy-yogurt",
+          "quantity": 1
+        }
+      ],
+      "status": "completed",
+      "is_paid": true,
+      "user_id": "6e3ac1c9-c4b5-4475-bd59-9ec4c078694d",
+      "order_day": "2026-10-12",
+      "created_at": "2026-10-12T12:24:16.69769+00:00",
+      "updated_at": "2026-10-12T12:30:30.742792+00:00",
+      "pickup_time": "2026-10-12T12:34:16.393+00:00",
+      "total_price": 210,
+      "order_number": 4,
+      "payment_type": "cash",
+      "customer_name": "Аня",
+      "customer_phone": null
+    },
+    "order_id": "8ddd3b1d-fc7e-4963-ac75-003e18ea728c",
+    "handed_at": "2026-10-12T12:30:32.304Z",
+    "seller_id": "seller-test-1",
+    "shift_date": "2026-10-12",
+    "seller_name": "Аня"
+  },
+  {
+    "order": {
+      "id": "7df40cbf-fc31-44b7-8a95-8fa274e85076",
+      "items": [
+        {
+          "kind": "sale",
+          "name": "таро холодный",
+          "price": 450,
+          "volume": "500",
+          "menu_id": "taro",
+          "quantity": 1
+        }
+      ],
+      "status": "completed",
+      "is_paid": true,
+      "user_id": "6e3ac1c9-c4b5-4475-bd59-9ec4c078694d",
+      "order_day": "2026-10-12",
+      "created_at": "2026-10-12T12:15:38.372359+00:00",
+      "updated_at": "2026-10-12T12:20:22.607513+00:00",
+      "pickup_time": "2026-10-12T12:25:38.027+00:00",
+      "total_price": 450,
+      "order_number": 3,
+      "payment_type": "cash",
+      "customer_name": "гость точки",
+      "customer_phone": null
+    },
+    "order_id": "7df40cbf-fc31-44b7-8a95-8fa274e85076",
+    "handed_at": "2026-10-12T12:20:23.485Z",
+    "seller_id": "seller-test-1",
+    "shift_date": "2026-10-12",
+    "seller_name": "Аня"
+  },
+  {
+    "order": {
+      "id": "dabeea66-9bf6-441e-b81b-6ff6d5faba7e",
+      "items": [
+        {
+          "kind": "sale",
+          "name": "таро холодный",
+          "price": 315,
+          "volume": "500",
+          "menu_id": "taro",
+          "quantity": 1
+        }
+      ],
+      "status": "completed",
+      "is_paid": true,
+      "user_id": "4f84dc33-e233-438d-9c0d-2c4f11edc4b3",
+      "order_day": "2026-10-12",
+      "created_at": "2026-10-12T11:08:47.429381+00:00",
+      "updated_at": "2026-10-12T11:12:52.116394+00:00",
+      "pickup_time": "2026-10-12T11:18:46.894+00:00",
+      "total_price": 315,
+      "order_number": 2,
+      "payment_type": "cash",
+      "customer_name": "гость точки",
+      "customer_phone": "+79031191294"
+    },
+    "order_id": "dabeea66-9bf6-441e-b81b-6ff6d5faba7e",
+    "handed_at": "2026-10-12T11:18:55.302Z",
+    "seller_id": "seller-test-1",
+    "shift_date": "2026-10-12",
+    "seller_name": "Аня"
+  },
+  {
+    "order": {
+      "id": "c1162c28-dbe4-4671-966d-67a47a1aa55e",
+      "items": [
+        {
+          "kind": "sale",
+          "name": "клубничный лимонад холодный",
+          "price": 319,
+          "volume": "500",
+          "menu_id": "klubnichny-limonad",
+          "quantity": 1
+        }
+      ],
+      "status": "completed",
+      "is_paid": true,
+      "user_id": "6e3ac1c9-c4b5-4475-bd59-9ec4c078694d",
+      "order_day": "2026-10-12",
+      "created_at": "2026-10-12T08:25:26.995763+00:00",
+      "updated_at": "2026-10-12T08:25:58.318032+00:00",
+      "pickup_time": "2026-10-12T08:35:26.64+00:00",
+      "total_price": 319,
+      "order_number": 1,
+      "payment_type": "cash",
+      "customer_name": "гость точки",
+      "customer_phone": null
+    },
+    "order_id": "c1162c28-dbe4-4671-966d-67a47a1aa55e",
+    "handed_at": "2026-10-12T08:26:18.106Z",
+    "seller_id": "seller-test-1",
+    "shift_date": "2026-10-12",
+    "seller_name": "Аня"
+  },
+  {
+    "order": {
+      "id": "cda634a9-7b74-4f3f-bb85-b396996d55ac",
+      "items": [
+        {
+          "kind": "sale",
+          "name": "клубничный лимонад холодный",
+          "price": 319,
+          "volume": "500",
+          "menu_id": "klubnichny-limonad",
+          "quantity": 1
+        }
+      ],
+      "status": "completed",
+      "is_paid": true,
+      "user_id": "09d3c25b-8d51-4efb-ac52-c01161dd081d",
+      "order_day": "2026-10-11",
+      "created_at": "2026-10-11T14:38:26.550385+00:00",
+      "updated_at": "2026-10-11T14:39:45.486319+00:00",
+      "pickup_time": "2026-10-11T14:48:26.231+00:00",
+      "total_price": 319,
+      "order_number": 4,
+      "payment_type": "card",
+      "customer_name": "гость акции",
+      "customer_phone": "+79001164771"
+    },
+    "order_id": "cda634a9-7b74-4f3f-bb85-b396996d55ac",
+    "handed_at": "2026-10-11T14:39:47.162Z",
+    "seller_id": "seller-test-1",
+    "shift_date": "2026-10-11",
+    "seller_name": "Аня"
+  },
+  {
+    "order": {
+      "id": "345e0761-f785-4246-b31b-c733ff75005b",
+      "items": [
+        {
+          "kind": "sale",
+          "name": "клубничный лимонад холодный",
+          "price": 319,
+          "volume": "500",
+          "menu_id": "klubnichny-limonad",
+          "quantity": 1
+        }
+      ],
+      "status": "completed",
+      "is_paid": true,
+      "user_id": "4b63f4bc-bcda-440b-8a43-55c08ca8c1a7",
+      "order_day": "2026-10-11",
+      "created_at": "2026-10-11T14:39:15.783183+00:00",
+      "updated_at": "2026-10-11T14:39:42.071546+00:00",
+      "pickup_time": "2026-10-11T14:49:15.433+00:00",
+      "total_price": 319,
+      "order_number": 5,
+      "payment_type": "cash",
+      "customer_name": "гость акции",
+      "customer_phone": "+79105364745"
+    },
+    "order_id": "345e0761-f785-4246-b31b-c733ff75005b",
+    "handed_at": "2026-10-11T14:39:46.203Z",
+    "seller_id": "seller-test-1",
+    "shift_date": "2026-10-11",
+    "seller_name": "Аня"
+  },
+  {
+    "order": {
+      "id": "eaa36b6f-5014-4457-9a22-30cadaf93ac6",
+      "items": [
+        {
+          "kind": "sale",
+          "name": "чёрный сахар холодный",
+          "price": 450,
+          "volume": "650",
+          "menu_id": "original-black-led",
+          "quantity": 1
+        }
+      ],
+      "status": "completed",
+      "is_paid": true,
+      "user_id": "09d3c25b-8d51-4efb-ac52-c01161dd081d",
+      "order_day": "2026-10-11",
+      "created_at": "2026-10-11T12:47:08.435815+00:00",
+      "updated_at": "2026-10-11T12:47:14.113779+00:00",
+      "pickup_time": "2026-10-11T12:57:08.112+00:00",
+      "total_price": 450,
+      "order_number": 3,
+      "payment_type": "cash",
+      "customer_name": "гость акции",
+      "customer_phone": "+79001164771"
+    },
+    "order_id": "eaa36b6f-5014-4457-9a22-30cadaf93ac6",
+    "handed_at": "2026-10-11T12:47:14.483Z",
+    "seller_id": "seller-test-1",
+    "shift_date": "2026-10-11",
+    "seller_name": "Аня"
+  },
+  {
+    "order": {
+      "id": "8dbb7d00-0f72-46df-8b03-237863845b1f",
+      "items": [
+        {
+          "kind": "sale",
+          "name": "чёрный сахар холодный",
+          "price": 450,
+          "volume": "650",
+          "menu_id": "original-black-led",
+          "quantity": 1
+        }
+      ],
+      "status": "completed",
+      "is_paid": true,
+      "user_id": "613b1ae2-cc15-43fc-bbfb-a11cebbbe067",
+      "order_day": "2026-10-11",
+      "created_at": "2026-10-11T12:46:05.821285+00:00",
+      "updated_at": "2026-10-11T12:46:09.48448+00:00",
+      "pickup_time": "2026-10-11T12:56:05.456+00:00",
+      "total_price": 450,
+      "order_number": 2,
+      "payment_type": "cash",
+      "customer_name": "гость точки",
+      "customer_phone": "+79956703846"
+    },
+    "order_id": "8dbb7d00-0f72-46df-8b03-237863845b1f",
+    "handed_at": "2026-10-11T12:46:09.909Z",
+    "seller_id": "seller-test-1",
+    "shift_date": "2026-10-11",
+    "seller_name": "Аня"
+  },
+  {
+    "order": {
+      "id": "7cf81aa2-75af-44ae-aa93-9367ede5de9c",
+      "items": [
+        {
+          "kind": "sale",
+          "name": "нежная роза холодный",
+          "price": 480,
+          "volume": "650",
+          "menu_id": "nezhnaya-roza",
+          "quantity": 1
+        }
+      ],
+      "status": "completed",
+      "is_paid": true,
+      "user_id": "4b63f4bc-bcda-440b-8a43-55c08ca8c1a7",
+      "order_day": "2026-10-11",
+      "created_at": "2026-10-11T12:28:24.351726+00:00",
+      "updated_at": "2026-10-11T12:28:31.252007+00:00",
+      "pickup_time": "2026-10-11T12:38:23.91+00:00",
+      "total_price": 0,
+      "order_number": 1,
+      "payment_type": "online",
+      "customer_name": "гость акции",
+      "customer_phone": "+79105364745"
+    },
+    "order_id": "7cf81aa2-75af-44ae-aa93-9367ede5de9c",
+    "handed_at": "2026-10-11T12:28:31.731Z",
+    "seller_id": "seller-test-1",
+    "shift_date": "2026-10-11",
+    "seller_name": "Аня"
+  },
+  {
+    "order": {
+      "id": "1ff25894-be01-4191-9c31-76fb85233a3c",
+      "items": [
+        {
+          "kind": "sale",
+          "name": "двойной",
+          "price": 719,
+          "menu_id": "combo-dabl-drop",
+          "quantity": 1,
+          "combo_picks": [
+            "чёрный сахар",
+            "клубника манго"
+          ],
+          "combo_components": [
+            {
+              "name": "чёрный сахар",
+              "volume": "500",
+              "menu_id": "original-black-led",
+              "quantity": 1
+            },
+            {
+              "name": "клубника манго",
+              "volume": "500",
+              "menu_id": "klubnika-mango",
+              "quantity": 1
+            }
+          ]
+        }
+      ],
+      "status": "completed",
+      "is_paid": true,
+      "user_id": "15c46104-9303-415f-ab1c-5913d544261f",
+      "order_day": "2026-10-10",
+      "created_at": "2026-10-10T16:45:48.405281+00:00",
+      "updated_at": "2026-10-10T16:45:50.523426+00:00",
+      "pickup_time": "2026-10-10T16:55:47.328+00:00",
+      "total_price": 719,
+      "order_number": 9,
+      "payment_type": "cash",
+      "customer_name": "гость точки",
+      "customer_phone": "+79040037102"
+    },
+    "order_id": "1ff25894-be01-4191-9c31-76fb85233a3c",
+    "handed_at": "2026-10-10T16:45:51.907Z",
+    "seller_id": "seller-test-1",
+    "shift_date": "2026-10-10",
+    "seller_name": "Аня"
+  },
+  {
+    "order": {
+      "id": "3381f680-ea9b-4283-a080-45259866e444",
+      "items": [
+        {
+          "kind": "sale",
+          "name": "чёрный сахар 500мл холодный",
+          "price": 273,
+          "volume": "500",
+          "menu_id": "original-black-led",
+          "quantity": 1
+        }
+      ],
+      "status": "completed",
+      "is_paid": true,
+      "user_id": "6e3ac1c9-c4b5-4475-bd59-9ec4c078694d",
+      "order_day": "2026-10-10",
+      "created_at": "2026-10-10T13:45:01.069994+00:00",
+      "updated_at": "2026-10-10T13:45:08.745678+00:00",
+      "pickup_time": "2026-10-10T13:55:00.943+00:00",
+      "total_price": 273,
+      "order_number": 8,
+      "payment_type": "card",
+      "customer_name": "гость точки",
+      "customer_phone": null
+    },
+    "order_id": "3381f680-ea9b-4283-a080-45259866e444",
+    "handed_at": "2026-10-10T13:45:09.505Z",
+    "seller_id": "seller-test-1",
+    "shift_date": "2026-10-10",
+    "seller_name": "Аня"
+  },
+  {
+    "order": {
+      "id": "8770d050-8102-427e-82d4-fffc788a4efb",
+      "items": [
+        {
+          "kind": "sale",
+          "name": "чёрный сахар 650мл холодный",
+          "price": 315,
+          "volume": "650",
+          "menu_id": "original-black-led",
+          "quantity": 1
+        }
+      ],
+      "status": "completed",
+      "is_paid": true,
+      "user_id": "6e3ac1c9-c4b5-4475-bd59-9ec4c078694d",
+      "order_day": "2026-10-10",
+      "created_at": "2026-10-10T13:44:31.346179+00:00",
+      "updated_at": "2026-10-10T13:44:39.412506+00:00",
+      "pickup_time": "2026-10-10T13:54:31.075+00:00",
+      "total_price": 315,
+      "order_number": 7,
+      "payment_type": "card",
+      "customer_name": "гость точки",
+      "customer_phone": null
+    },
+    "order_id": "8770d050-8102-427e-82d4-fffc788a4efb",
+    "handed_at": "2026-10-10T13:44:31.346179+00:00",
+    "seller_id": "seller-test-1",
+    "shift_date": "2026-10-10",
+    "seller_name": "Аня"
+  },
+  {
+    "order": {
+      "id": "b6e41505-0a14-412e-9697-963d207a48db",
+      "items": [
+        {
+          "kind": "sale",
+          "name": "клубничный лимонад 650мл холодный",
+          "price": 273,
+          "volume": "650",
+          "menu_id": "klubnichny-limonad",
+          "quantity": 1
+        }
+      ],
+      "status": "completed",
+      "is_paid": true,
+      "user_id": "08836aa9-e02d-4e82-a8bb-5f77890cf864",
+      "order_day": "2026-10-10",
+      "created_at": "2026-10-10T13:19:38.934936+00:00",
+      "updated_at": "2026-10-10T13:33:33.024751+00:00",
+      "pickup_time": "2026-10-10T13:29:38.653+00:00",
+      "total_price": 273,
+      "order_number": 6,
+      "payment_type": "cash",
+      "customer_name": "гость точки",
+      "customer_phone": "+79806394927"
+    },
+    "order_id": "b6e41505-0a14-412e-9697-963d207a48db",
+    "handed_at": "2026-10-10T13:33:34.031Z",
+    "seller_id": "seller-test-1",
+    "shift_date": "2026-10-10",
+    "seller_name": "Аня"
+  },
+  {
+    "order": {
+      "id": "b8eafdb5-7493-44fe-b628-021fe7321539",
+      "items": [
+        {
+          "kind": "sale",
+          "name": "чёрный сахар 500мл холодный",
+          "price": 390,
+          "volume": "500",
+          "menu_id": "original-black-led",
+          "quantity": 1
+        }
+      ],
+      "status": "completed",
+      "is_paid": true,
+      "user_id": "6e3ac1c9-c4b5-4475-bd59-9ec4c078694d",
+      "order_day": "2026-10-10",
+      "created_at": "2026-10-10T12:18:52.122128+00:00",
+      "updated_at": "2026-10-10T12:18:57.591877+00:00",
+      "pickup_time": "2026-10-10T12:28:51.987+00:00",
+      "total_price": 390,
+      "order_number": 4,
+      "payment_type": "card",
+      "customer_name": "гость точки",
+      "customer_phone": null
+    },
+    "order_id": "b8eafdb5-7493-44fe-b628-021fe7321539",
+    "handed_at": "2026-10-10T13:17:34.104Z",
+    "seller_id": "seller-test-1",
+    "shift_date": "2026-10-10",
+    "seller_name": "Аня"
+  },
+  {
+    "order": {
+      "id": "5d4d0059-3990-4a24-ab5d-096936a08b5a",
+      "items": [
+        {
+          "kind": "sale",
+          "name": "чёрный сахар 500мл холодный",
+          "price": 273,
+          "volume": "500",
+          "menu_id": "original-black-led",
+          "quantity": 1
+        }
+      ],
+      "status": "completed",
+      "is_paid": true,
+      "user_id": "6e3ac1c9-c4b5-4475-bd59-9ec4c078694d",
+      "order_day": "2026-10-10",
+      "created_at": "2026-10-10T13:17:25.223865+00:00",
+      "updated_at": "2026-10-10T13:17:32.425106+00:00",
+      "pickup_time": "2026-10-10T13:27:25.064+00:00",
+      "total_price": 273,
+      "order_number": 5,
+      "payment_type": "card",
+      "customer_name": "гость точки",
+      "customer_phone": null
+    },
+    "order_id": "5d4d0059-3990-4a24-ab5d-096936a08b5a",
+    "handed_at": "2026-10-10T13:17:33.076Z",
+    "seller_id": "seller-test-1",
+    "shift_date": "2026-10-10",
+    "seller_name": "Аня"
+  },
+  {
+    "order": {
+      "id": "7967329d-671d-44db-8d40-a39aa8a245fb",
+      "items": [
+        {
+          "kind": "sale",
+          "name": "матча латте со льдом 500мл холодный",
+          "price": 450,
+          "volume": "500",
+          "menu_id": "matcha-latte-tiger-led",
+          "quantity": 1
+        }
+      ],
+      "status": "completed",
+      "is_paid": true,
+      "user_id": "2eaa9594-eb2a-4d4b-a8ca-55848b83c303",
+      "order_day": "2026-10-10",
+      "created_at": "2026-10-10T11:21:29.677346+00:00",
+      "updated_at": "2026-10-10T11:29:47.503531+00:00",
+      "pickup_time": "2026-10-10T11:31:29.296+00:00",
+      "total_price": 450,
+      "order_number": 3,
+      "payment_type": "card",
+      "customer_name": "гость точки",
+      "customer_phone": "+79520637812"
+    },
+    "order_id": "7967329d-671d-44db-8d40-a39aa8a245fb",
+    "handed_at": "2026-10-10T11:29:48.636Z",
+    "seller_id": "seller-test-1",
+    "shift_date": "2026-10-10",
+    "seller_name": "Аня"
+  },
+  {
+    "order": {
+      "id": "2da32e56-655c-4007-975f-78e97fce41ef",
+      "items": [
+        {
+          "kind": "sale",
+          "name": "клубника манго 650мл холодный",
+          "price": 235,
+          "volume": "650",
+          "menu_id": "klubnika-mango",
+          "quantity": 1
+        }
+      ],
+      "status": "completed",
+      "is_paid": true,
+      "user_id": "6e3ac1c9-c4b5-4475-bd59-9ec4c078694d",
+      "order_day": "2026-10-10",
+      "created_at": "2026-10-10T10:29:05.057439+00:00",
+      "updated_at": "2026-10-10T10:29:10.271737+00:00",
+      "pickup_time": "2026-10-10T10:39:04.889+00:00",
+      "total_price": 235,
+      "order_number": 2,
+      "payment_type": "card",
+      "customer_name": "гость точки",
+      "customer_phone": null
+    },
+    "order_id": "2da32e56-655c-4007-975f-78e97fce41ef",
+    "handed_at": "2026-10-10T11:29:17.681Z",
+    "seller_id": "seller-test-1",
+    "shift_date": "2026-10-10",
+    "seller_name": "Аня"
+  },
+  {
+    "order": {
+      "id": "a5662b1c-bab0-45c0-b948-988069189664",
+      "items": [
+        {
+          "kind": "sale",
+          "name": "чёрный сахар 500мл холодный",
+          "price": 390,
+          "volume": "500",
+          "menu_id": "original-black-led",
+          "quantity": 2
+        }
+      ],
+      "status": "completed",
+      "is_paid": true,
+      "user_id": "4b63f4bc-bcda-440b-8a43-55c08ca8c1a7",
+      "order_day": "2026-10-10",
+      "created_at": "2026-10-10T09:37:18.154153+00:00",
+      "updated_at": "2026-10-10T09:37:54.875146+00:00",
+      "pickup_time": "2026-10-10T09:47:17.853+00:00",
+      "total_price": 780,
+      "order_number": 1,
+      "payment_type": "cash",
+      "customer_name": "гость акции",
+      "customer_phone": "+79105364745"
+    },
+    "order_id": "a5662b1c-bab0-45c0-b948-988069189664",
+    "handed_at": "2026-10-10T09:37:56.260Z",
+    "seller_id": "seller-test-1",
+    "shift_date": "2026-10-10",
+    "seller_name": "Аня"
+  },
+  {
+    "order": {
+      "id": "a43f99e7-e7bd-4ca0-98cf-11d671efc0ed",
+      "items": [
+        {
+          "kind": "sale",
+          "name": "чёрный сахар 650мл холодный",
+          "price": 450,
+          "volume": "650",
+          "menu_id": "original-black-led",
+          "quantity": 1
+        }
+      ],
+      "status": "completed",
+      "is_paid": true,
+      "user_id": "e3785db4-a474-478e-a7e6-f972752d225e",
+      "order_day": "2026-10-09",
+      "created_at": "2026-10-09T13:58:02.507926+00:00",
+      "updated_at": "2026-10-09T13:58:36.392711+00:00",
+      "pickup_time": "2026-10-09T14:08:01.785+00:00",
+      "total_price": 450,
+      "order_number": 8,
+      "payment_type": "cash",
+      "customer_name": "гость точки",
+      "customer_phone": "+79065552527"
+    },
+    "order_id": "a43f99e7-e7bd-4ca0-98cf-11d671efc0ed",
+    "handed_at": "2026-10-09T13:58:36.607Z",
+    "seller_id": "seller-test-1",
+    "shift_date": "2026-10-09",
+    "seller_name": "Аня"
+  },
+  {
+    "order": {
+      "id": "08845c12-98f3-485b-b4ed-2e991acb5015",
+      "items": [
+        {
+          "kind": "sale",
+          "name": "нежная роза 650мл холодный",
+          "price": 480,
+          "volume": "650",
+          "menu_id": "nezhnaya-roza",
+          "quantity": 1
+        },
+        {
+          "kind": "sale",
+          "name": "чёрный сахар 650мл холодный",
+          "price": 450,
+          "volume": "650",
+          "menu_id": "original-black-led",
+          "quantity": 1
+        }
+      ],
+      "status": "completed",
+      "is_paid": true,
+      "user_id": "81acdbea-38d8-48ac-b910-3260603afb02",
+      "order_day": "2026-10-09",
+      "created_at": "2026-10-09T13:43:49.720062+00:00",
+      "updated_at": "2026-10-09T14:00:02.884714+00:00",
+      "pickup_time": "2026-10-09T13:53:48.676+00:00",
+      "total_price": 930,
+      "order_number": 7,
+      "payment_type": "cash",
+      "customer_name": "гость точки",
+      "customer_phone": "+79157321016"
+    },
+    "order_id": "08845c12-98f3-485b-b4ed-2e991acb5015",
+    "handed_at": "2026-10-09T14:00:09.884Z",
+    "seller_id": "seller-test-1",
+    "shift_date": "2026-10-09",
+    "seller_name": "Аня"
+  },
+  {
+    "order": {
+      "id": "29a5741a-8128-47e9-b667-4c69f887427e",
+      "items": [
+        {
+          "kind": "sale",
+          "name": "двойной",
+          "price": 719,
+          "menu_id": "combo-dabl-drop",
+          "quantity": 1
+        }
+      ],
+      "status": "completed",
+      "is_paid": true,
+      "user_id": "92487b16-54b8-4047-91dc-8b4d8ee429de",
+      "order_day": "2026-10-09",
+      "created_at": "2026-10-09T13:18:27.902664+00:00",
+      "updated_at": "2026-10-09T13:18:30.477145+00:00",
+      "pickup_time": "2026-10-09T13:28:26.833+00:00",
+      "total_price": 719,
+      "order_number": 6,
+      "payment_type": "cash",
+      "customer_name": "гость точки",
+      "customer_phone": "+79043578344"
+    },
+    "order_id": "29a5741a-8128-47e9-b667-4c69f887427e",
+    "handed_at": "2026-10-09T13:18:30.515Z",
+    "seller_id": "seller-test-1",
+    "shift_date": "2026-10-09",
+    "seller_name": "Аня"
+  },
+  {
+    "order": {
+      "id": "37e89dc6-c74f-4706-92a9-7157e9b28523",
+      "items": [
+        {
+          "kind": "sale",
+          "name": "таро со льдом 650мл холодный",
+          "price": 520,
+          "volume": "650",
+          "menu_id": "taro-led",
+          "quantity": 2
+        }
+      ],
+      "status": "completed",
+      "is_paid": true,
+      "user_id": "077db0e2-87d2-410e-9693-1bd1dedd19bb",
+      "order_day": "2026-10-09",
+      "created_at": "2026-10-09T12:09:42.752992+00:00",
+      "updated_at": "2026-10-09T12:12:08.85021+00:00",
+      "pickup_time": "2026-10-09T12:19:42.019+00:00",
+      "total_price": 1040,
+      "order_number": 5,
+      "payment_type": "cash",
+      "customer_name": "гость точки",
+      "customer_phone": "+79043542096"
+    },
+    "order_id": "37e89dc6-c74f-4706-92a9-7157e9b28523",
+    "handed_at": "2026-10-09T12:22:10.287Z",
+    "seller_id": "seller-test-1",
+    "shift_date": "2026-10-09",
+    "seller_name": "Аня"
+  },
+  {
+    "order": {
+      "id": "d355d2ed-e285-495d-8bda-64f79641f4e0",
+      "items": [
+        {
+          "kind": "sale",
+          "name": "двойной",
+          "price": 719,
+          "menu_id": "combo-dabl-drop",
+          "quantity": 1
+        }
+      ],
+      "status": "completed",
+      "is_paid": true,
+      "user_id": "6e3ac1c9-c4b5-4475-bd59-9ec4c078694d",
+      "order_day": "2026-10-09",
+      "created_at": "2026-10-09T12:01:58.676489+00:00",
+      "updated_at": "2026-10-09T12:02:00.926601+00:00",
+      "pickup_time": "2026-10-09T12:11:58.556+00:00",
+      "total_price": 719,
+      "order_number": 4,
+      "payment_type": "cash",
+      "customer_name": "гость точки",
+      "customer_phone": null
+    },
+    "order_id": "d355d2ed-e285-495d-8bda-64f79641f4e0",
+    "handed_at": "2026-10-09T12:02:01.263Z",
+    "seller_id": "seller-test-1",
+    "shift_date": "2026-10-09",
+    "seller_name": "Аня"
+  },
+  {
+    "order": {
+      "id": "16a2ccc8-4ede-43eb-9de7-019ba7d473b1",
+      "items": [
+        {
+          "kind": "sale",
+          "name": "матча латте со льдом 650мл холодный",
+          "price": 520,
+          "volume": "650",
+          "menu_id": "matcha-latte-tiger-led",
+          "quantity": 1
+        }
+      ],
+      "status": "completed",
+      "is_paid": true,
+      "user_id": "8ed62e9a-c1e9-4a91-ba4a-0af3a68ebc75",
+      "order_day": "2026-10-09",
+      "created_at": "2026-10-09T11:42:37.073183+00:00",
+      "updated_at": "2026-10-09T12:01:49.020837+00:00",
+      "pickup_time": "2026-10-09T11:52:36.163+00:00",
+      "total_price": 520,
+      "order_number": 3,
+      "payment_type": "card",
+      "customer_name": "гость точки",
+      "customer_phone": "+79043563084"
+    },
+    "order_id": "16a2ccc8-4ede-43eb-9de7-019ba7d473b1",
+    "handed_at": "2026-10-09T12:01:49.860Z",
+    "seller_id": "seller-test-1",
+    "shift_date": "2026-10-09",
+    "seller_name": "Аня"
+  },
+  {
+    "order": {
+      "id": "cc892778-778e-40fa-8fa5-e03bd082182f",
+      "items": [
+        {
+          "kind": "sale",
+          "name": "клубничный лимонад 500мл холодный",
+          "price": 319,
+          "volume": "500",
+          "menu_id": "klubnichny-limonad",
+          "quantity": 1
+        }
+      ],
+      "status": "completed",
+      "is_paid": true,
+      "user_id": "6e3ac1c9-c4b5-4475-bd59-9ec4c078694d",
+      "order_day": "2026-10-09",
+      "created_at": "2026-10-09T10:50:41.338639+00:00",
+      "updated_at": "2026-10-09T10:50:44.718857+00:00",
+      "pickup_time": "2026-10-09T11:00:41.176+00:00",
+      "total_price": 319,
+      "order_number": 2,
+      "payment_type": "cash",
+      "customer_name": "гость точки",
+      "customer_phone": null
+    },
+    "order_id": "cc892778-778e-40fa-8fa5-e03bd082182f",
+    "handed_at": "2026-10-09T10:50:44.785Z",
+    "seller_id": "seller-test-1",
+    "shift_date": "2026-10-09",
+    "seller_name": "Аня"
+  },
+  {
+    "order": {
+      "id": "8ec81198-94e0-408e-a62e-dd0ded6e2f3a",
+      "items": [
+        {
+          "kind": "sale",
+          "name": "клубника манго 500мл холодный",
+          "price": 390,
+          "volume": "500",
+          "menu_id": "klubnika-mango",
+          "quantity": 1
+        }
+      ],
+      "status": "completed",
+      "is_paid": true,
+      "user_id": "6d0bd9e6-b7b5-4689-8dff-4f3adb0eb6cc",
+      "order_day": "2026-10-09",
+      "created_at": "2026-10-09T08:29:56.821511+00:00",
+      "updated_at": "2026-10-09T08:34:18.645038+00:00",
+      "pickup_time": "2026-10-09T08:39:56.613+00:00",
+      "total_price": 390,
+      "order_number": 1,
+      "payment_type": "card",
+      "customer_name": "гость точки",
+      "customer_phone": "+79806432977"
+    },
+    "order_id": "8ec81198-94e0-408e-a62e-dd0ded6e2f3a",
+    "handed_at": "2026-10-09T08:34:41.052Z",
+    "seller_id": "seller-test-1",
+    "shift_date": "2026-10-09",
+    "seller_name": "Аня"
+  },
+  {
+    "order": {
+      "id": "4bc88ed5-6508-44c7-8d24-dcaed3d7cd4b",
+      "items": [
+        {
+          "kind": "sale",
+          "name": "таро со льдом 500мл холодный",
+          "price": 450,
+          "volume": "500",
+          "menu_id": "taro-led",
+          "quantity": 1
+        }
+      ],
+      "status": "completed",
+      "is_paid": true,
+      "user_id": "b149672f-12bf-4b0a-b781-e3d3fa2a8914",
+      "order_day": "2026-10-08",
+      "created_at": "2026-10-08T17:23:09.458261+00:00",
+      "updated_at": "2026-10-08T17:23:11.995861+00:00",
+      "pickup_time": "2026-10-08T17:33:09.241+00:00",
+      "total_price": 450,
+      "order_number": 11,
+      "payment_type": "cash",
+      "customer_name": "гость точки",
+      "customer_phone": "+79607114020"
+    },
+    "order_id": "4bc88ed5-6508-44c7-8d24-dcaed3d7cd4b",
+    "handed_at": "2026-10-08T17:23:13.050Z",
+    "seller_id": "seller-test-1",
+    "shift_date": "2026-10-08",
+    "seller_name": "Аня"
+  },
+  {
+    "order": {
+      "id": "27b1b9b5-7776-4d7c-b8ea-b1bc2b8ee4fd",
+      "items": [
+        {
+          "kind": "sale",
+          "name": "двойной",
+          "price": 719,
+          "menu_id": "combo-dabl-drop",
+          "quantity": 1
+        }
+      ],
+      "status": "completed",
+      "is_paid": true,
+      "user_id": "a7666506-80f7-4c48-8b85-e7d4893271ad",
+      "order_day": "2026-10-08",
+      "created_at": "2026-10-08T15:45:27.903876+00:00",
+      "updated_at": "2026-10-08T15:45:40.585902+00:00",
+      "pickup_time": "2026-10-08T15:55:27.013+00:00",
+      "total_price": 719,
+      "order_number": 10,
+      "payment_type": "cash",
+      "customer_name": "гость точки",
+      "customer_phone": "+79671932517"
+    },
+    "order_id": "27b1b9b5-7776-4d7c-b8ea-b1bc2b8ee4fd",
+    "handed_at": "2026-10-08T15:45:40.790Z",
+    "seller_id": "seller-test-1",
+    "shift_date": "2026-10-08",
+    "seller_name": "Аня"
+  },
+  {
+    "order": {
+      "id": "02045fc2-31c1-4043-b815-de6a061901c0",
+      "items": [
+        {
+          "kind": "sale",
+          "name": "таро со льдом 650мл холодный",
+          "price": 520,
+          "volume": "650",
+          "menu_id": "taro-led",
+          "quantity": 1
+        }
+      ],
+      "status": "completed",
+      "is_paid": true,
+      "user_id": "79e2a193-9395-407d-87e6-89b32efa921b",
+      "order_day": "2026-10-08",
+      "created_at": "2026-10-08T15:29:10.290594+00:00",
+      "updated_at": "2026-10-08T15:29:15.580785+00:00",
+      "pickup_time": "2026-10-08T15:39:09.371+00:00",
+      "total_price": 520,
+      "order_number": 9,
+      "payment_type": "cash",
+      "customer_name": "гость точки",
+      "customer_phone": "+79011173773"
+    },
+    "order_id": "02045fc2-31c1-4043-b815-de6a061901c0",
+    "handed_at": "2026-10-08T15:29:18.544Z",
+    "seller_id": "seller-test-1",
+    "shift_date": "2026-10-08",
+    "seller_name": "Аня"
+  },
+  {
+    "order": {
+      "id": "38b417d9-a875-4756-aa37-1d0f92f68f04",
+      "items": [
+        {
+          "kind": "sale",
+          "name": "клубничный лимонад 650мл холодный",
+          "price": 390,
+          "volume": "650",
+          "menu_id": "klubnichny-limonad",
+          "quantity": 1
+        },
+        {
+          "kind": "sale",
+          "name": "таро со льдом 500мл холодный",
+          "price": 450,
+          "volume": "500",
+          "menu_id": "taro-led",
+          "quantity": 1
+        }
+      ],
+      "status": "completed",
+      "is_paid": true,
+      "user_id": "45ce03dd-2733-4da3-9cc6-be63ed27f2df",
+      "order_day": "2026-10-08",
+      "created_at": "2026-10-08T15:03:11.276148+00:00",
+      "updated_at": "2026-10-08T15:03:19.966866+00:00",
+      "pickup_time": "2026-10-08T15:13:10.504+00:00",
+      "total_price": 840,
+      "order_number": 8,
+      "payment_type": "card",
+      "customer_name": "гость точки",
+      "customer_phone": "+79611401045"
+    },
+    "order_id": "38b417d9-a875-4756-aa37-1d0f92f68f04",
+    "handed_at": "2026-10-08T15:05:37.741Z",
+    "seller_id": "seller-test-1",
+    "shift_date": "2026-10-08",
+    "seller_name": "Аня"
+  },
+  {
+    "order": {
+      "id": "22995b4b-b601-401e-b490-98becd2e08f0",
+      "items": [
+        {
+          "kind": "sale",
+          "name": "клубничный лимонад 500мл холодный",
+          "price": 160,
+          "volume": "500",
+          "menu_id": "klubnichny-limonad",
+          "quantity": 1
+        },
+        {
+          "kind": "sale",
+          "name": "таро со льдом 500мл холодный",
+          "price": 225,
+          "volume": "500",
+          "menu_id": "taro-led",
+          "quantity": 1
+        },
+        {
+          "kind": "sale",
+          "name": "клубничный лимонад 650мл холодный",
+          "price": 195,
+          "volume": "650",
+          "menu_id": "klubnichny-limonad",
+          "quantity": 1
+        },
+        {
+          "kind": "sale",
+          "name": "клубника манго 500мл холодный",
+          "price": 195,
+          "volume": "500",
+          "menu_id": "klubnika-mango",
+          "quantity": 1
+        }
+      ],
+      "status": "completed",
+      "is_paid": true,
+      "user_id": "6e3ac1c9-c4b5-4475-bd59-9ec4c078694d",
+      "order_day": "2026-10-08",
+      "created_at": "2026-10-08T13:25:43.022423+00:00",
+      "updated_at": "2026-10-08T13:36:11.277156+00:00",
+      "pickup_time": "2026-10-08T13:35:42.895+00:00",
+      "total_price": 775,
+      "order_number": 7,
+      "payment_type": "card",
+      "customer_name": "гость точки",
+      "customer_phone": null
+    },
+    "order_id": "22995b4b-b601-401e-b490-98becd2e08f0",
+    "handed_at": "2026-10-08T13:36:12.665Z",
+    "seller_id": "seller-test-1",
+    "shift_date": "2026-10-08",
+    "seller_name": "Аня"
+  },
+  {
+    "order": {
+      "id": "e51da015-9d83-483d-bb7c-2c916b919d9d",
+      "items": [
+        {
+          "kind": "sale",
+          "name": "клубничный лимонад 650мл холодный",
+          "price": 390,
+          "volume": "650",
+          "menu_id": "klubnichny-limonad",
+          "quantity": 1
+        }
+      ],
+      "status": "completed",
+      "is_paid": true,
+      "user_id": "d1f0d34c-efaf-4ee9-ae9c-f78a80d5841d",
+      "order_day": "2026-10-08",
+      "created_at": "2026-10-08T12:24:22.743+00:00",
+      "updated_at": "2026-10-08T12:24:26.627271+00:00",
+      "pickup_time": "2026-10-08T12:34:22.383+00:00",
+      "total_price": 0,
+      "order_number": 5,
+      "payment_type": "online",
+      "customer_name": "гость точки",
+      "customer_phone": "+79001134458"
+    },
+    "order_id": "e51da015-9d83-483d-bb7c-2c916b919d9d",
+    "handed_at": "2026-10-08T12:24:26.907Z",
+    "seller_id": "seller-test-1",
+    "shift_date": "2026-10-08",
+    "seller_name": "Аня"
+  },
+  {
+    "order": {
+      "id": "1fd92a7d-9aa0-48f2-a676-90eb374f19da",
+      "items": [
+        {
+          "kind": "sale",
+          "name": "клубничный лимонад 500мл холодный",
+          "price": 319,
+          "volume": "500",
+          "menu_id": "klubnichny-limonad",
+          "quantity": 1
+        }
+      ],
+      "status": "completed",
+      "is_paid": true,
+      "user_id": "d1f0d34c-efaf-4ee9-ae9c-f78a80d5841d",
+      "order_day": "2026-10-08",
+      "created_at": "2026-10-08T12:23:53.258032+00:00",
+      "updated_at": "2026-10-08T12:23:57.444746+00:00",
+      "pickup_time": "2026-10-08T12:33:53.024+00:00",
+      "total_price": 319,
+      "order_number": 4,
+      "payment_type": "cash",
+      "customer_name": "гость точки",
+      "customer_phone": "+79001134458"
+    },
+    "order_id": "1fd92a7d-9aa0-48f2-a676-90eb374f19da",
+    "handed_at": "2026-10-08T12:23:57.630Z",
+    "seller_id": "seller-test-1",
+    "shift_date": "2026-10-08",
+    "seller_name": "Аня"
+  },
+  {
+    "order": {
+      "id": "5fc0cb50-8800-4bf7-aed6-d50a2c26d9a1",
+      "items": [
+        {
+          "kind": "sale",
+          "name": "нежная роза 650мл холодный",
+          "price": 480,
+          "volume": "650",
+          "menu_id": "nezhnaya-roza",
+          "quantity": 1
+        }
+      ],
+      "status": "completed",
+      "is_paid": true,
+      "user_id": "248a4357-08c3-4a4c-af9e-7900d3ae2f90",
+      "order_day": "2026-10-08",
+      "created_at": "2026-10-08T09:16:08.61084+00:00",
+      "updated_at": "2026-10-08T09:16:16.233944+00:00",
+      "pickup_time": "2026-10-08T09:26:07.694+00:00",
+      "total_price": 480,
+      "order_number": 3,
+      "payment_type": "cash",
+      "customer_name": "гость точки",
+      "customer_phone": "+79109365621"
+    },
+    "order_id": "5fc0cb50-8800-4bf7-aed6-d50a2c26d9a1",
+    "handed_at": "2026-10-08T09:16:16.339Z",
+    "seller_id": "seller-test-1",
+    "shift_date": "2026-10-08",
+    "seller_name": "Аня"
+  },
+  {
+    "order": {
+      "id": "08e8b20b-a6da-46bd-8957-56cab7e7b077",
+      "items": [
+        {
+          "kind": "sale",
+          "name": "нежная роза 650мл холодный",
+          "price": 480,
+          "volume": "650",
+          "menu_id": "nezhnaya-roza",
+          "quantity": 1
+        }
+      ],
+      "status": "completed",
+      "is_paid": true,
+      "user_id": "09d3c25b-8d51-4efb-ac52-c01161dd081d",
+      "order_day": "2026-10-08",
+      "created_at": "2026-10-08T09:07:28.194505+00:00",
+      "updated_at": "2026-10-08T09:07:32.499923+00:00",
+      "pickup_time": "2026-10-08T09:17:27.9+00:00",
+      "total_price": 480,
+      "order_number": 2,
+      "payment_type": "cash",
+      "customer_name": "гость акции",
+      "customer_phone": "+79001164771"
+    },
+    "order_id": "08e8b20b-a6da-46bd-8957-56cab7e7b077",
+    "handed_at": "2026-10-08T09:07:32.597Z",
+    "seller_id": "seller-test-1",
+    "shift_date": "2026-10-08",
+    "seller_name": "Аня"
+  },
+  {
+    "order": {
+      "id": "463a2820-f489-4da1-b587-e2eec83b4fe8",
+      "items": [
+        {
+          "kind": "sale",
+          "name": "глинтвейн 500мл горячий",
+          "price": 470,
+          "volume": "500",
+          "menu_id": "item-1791049201658-izy7u",
+          "quantity": 1
+        }
+      ],
+      "status": "completed",
+      "is_paid": true,
+      "user_id": "8d9ff806-1ff6-490d-be9a-f5cf1bd7f975",
+      "order_day": "2026-10-08",
+      "created_at": "2026-10-07T21:35:45.241056+00:00",
+      "updated_at": "2026-10-08T08:38:39.672916+00:00",
+      "pickup_time": "2026-10-07T21:45:44.997+00:00",
+      "total_price": 470,
+      "order_number": 1,
+      "payment_type": "card",
+      "customer_name": "Yo Moyo",
+      "customer_phone": "+79962709601"
+    },
+    "order_id": "463a2820-f489-4da1-b587-e2eec83b4fe8",
+    "handed_at": "2026-10-08T08:38:40.682Z",
+    "seller_id": "seller-test-1",
+    "shift_date": "2026-10-08",
+    "seller_name": "Аня"
+  },
+  {
+    "order": {
+      "id": "8ce17fa6-3398-445a-8813-e32974581153",
+      "items": [
+        {
+          "kind": "sale",
+          "name": "глинтвейн 500мл горячий",
+          "price": 470,
+          "volume": "500",
+          "menu_id": "item-1791049201658-izy7u",
+          "quantity": 1
+        }
+      ],
+      "status": "completed",
+      "is_paid": true,
+      "user_id": "6e3ac1c9-c4b5-4475-bd59-9ec4c078694d",
+      "order_day": "2026-10-07",
+      "created_at": "2026-10-07T17:25:20.058119+00:00",
+      "updated_at": "2026-10-07T17:26:04.742322+00:00",
+      "pickup_time": "2026-10-07T17:35:19.876+00:00",
+      "total_price": 470,
+      "order_number": 10,
+      "payment_type": "cash",
+      "customer_name": "гость точки",
+      "customer_phone": null
+    },
+    "order_id": "8ce17fa6-3398-445a-8813-e32974581153",
+    "handed_at": "2026-10-07T17:26:05.152Z",
+    "seller_id": "seller-test-1",
+    "shift_date": "2026-10-07",
+    "seller_name": "Аня"
+  },
+  {
+    "order": {
+      "id": "b349e61f-054c-40ed-ac8c-1df60f36ab6c",
+      "items": [
+        {
+          "kind": "sale",
+          "name": "нежная роза 500мл холодный",
+          "price": 420,
+          "volume": "500",
+          "menu_id": "nezhnaya-roza",
+          "quantity": 1
+        }
+      ],
+      "status": "completed",
+      "is_paid": true,
+      "user_id": "3bc90d97-d152-4beb-a0f3-f70236264e06",
+      "order_day": "2026-10-07",
+      "created_at": "2026-10-07T17:24:15.500016+00:00",
+      "updated_at": "2026-10-07T17:25:04.96438+00:00",
+      "pickup_time": "2026-10-07T17:34:03.284+00:00",
+      "total_price": 420,
+      "order_number": 8,
+      "payment_type": "card",
+      "customer_name": "гость точки",
+      "customer_phone": "+79776805258"
+    },
+    "order_id": "b349e61f-054c-40ed-ac8c-1df60f36ab6c",
+    "handed_at": "2026-10-07T17:25:07.205Z",
+    "seller_id": "seller-test-1",
+    "shift_date": "2026-10-07",
+    "seller_name": "Аня"
+  },
+  {
+    "order": {
+      "id": "e996b436-5ddb-4dc8-8728-71354840d91f",
+      "items": [
+        {
+          "kind": "sale",
+          "name": "таро со льдом 500мл холодный",
+          "price": 315,
+          "volume": "500",
+          "menu_id": "taro-led",
+          "quantity": 1
+        },
+        {
+          "kind": "sale",
+          "name": "клубничный лимонад 500мл холодный",
+          "price": 223,
+          "volume": "500",
+          "menu_id": "klubnichny-limonad",
+          "quantity": 1
+        }
+      ],
+      "status": "completed",
+      "is_paid": true,
+      "user_id": "6e3ac1c9-c4b5-4475-bd59-9ec4c078694d",
+      "order_day": "2026-10-07",
+      "created_at": "2026-10-07T14:18:14.958553+00:00",
+      "updated_at": "2026-10-07T14:18:39.432091+00:00",
+      "pickup_time": "2026-10-07T14:28:14.835+00:00",
+      "total_price": 538,
+      "order_number": 7,
+      "payment_type": "card",
+      "customer_name": "гость точки",
+      "customer_phone": null
+    },
+    "order_id": "e996b436-5ddb-4dc8-8728-71354840d91f",
+    "handed_at": "2026-10-07T14:18:41.996Z",
+    "seller_id": "seller-test-1",
+    "shift_date": "2026-10-07",
+    "seller_name": "Аня"
+  },
+  {
+    "order": {
+      "id": "0d436da7-dbe4-4c03-bdf6-54b6431b40a2",
+      "items": [
+        {
+          "kind": "sale",
+          "name": "матча латте со льдом 650мл холодный",
+          "price": 520,
+          "volume": "650",
+          "menu_id": "matcha-latte-tiger-led",
+          "quantity": 1
+        }
+      ],
+      "status": "completed",
+      "is_paid": true,
+      "user_id": "6e3ac1c9-c4b5-4475-bd59-9ec4c078694d",
+      "order_day": "2026-10-07",
+      "created_at": "2026-10-07T13:36:13.409034+00:00",
+      "updated_at": "2026-10-07T13:36:17.232402+00:00",
+      "pickup_time": "2026-10-07T13:46:13.224+00:00",
+      "total_price": 520,
+      "order_number": 5,
+      "payment_type": "cash",
+      "customer_name": "гость точки",
+      "customer_phone": null
+    },
+    "order_id": "0d436da7-dbe4-4c03-bdf6-54b6431b40a2",
+    "handed_at": "2026-10-07T13:36:17.602Z",
+    "seller_id": "seller-test-1",
+    "shift_date": "2026-10-07",
+    "seller_name": "Аня"
+  },
+  {
+    "order": {
+      "id": "cd1c542a-3e51-4c71-ace8-7705b1cf575d",
+      "items": [
+        {
+          "kind": "sale",
+          "name": "клубничный лимонад 650мл холодный",
+          "price": 390,
+          "volume": "650",
+          "menu_id": "klubnichny-limonad",
+          "quantity": 2
+        }
+      ],
+      "status": "completed",
+      "is_paid": true,
+      "user_id": "d1f0d34c-efaf-4ee9-ae9c-f78a80d5841d",
+      "order_day": "2026-10-07",
+      "created_at": "2026-10-07T10:32:51.728939+00:00",
+      "updated_at": "2026-10-07T10:33:20.332136+00:00",
+      "pickup_time": "2026-10-07T10:42:50.941+00:00",
+      "total_price": 780,
+      "order_number": 4,
+      "payment_type": "card",
+      "customer_name": "гость точки",
+      "customer_phone": "+79001134458"
+    },
+    "order_id": "cd1c542a-3e51-4c71-ace8-7705b1cf575d",
+    "handed_at": "2026-10-07T10:37:50.462Z",
+    "seller_id": "seller-test-1",
+    "shift_date": "2026-10-07",
+    "seller_name": "Аня"
+  },
+  {
+    "order": {
+      "id": "0ab0978b-61d0-49e9-9c39-da8c97ea9b8e",
+      "items": [
+        {
+          "kind": "sale",
+          "name": "таро со льдом 500мл холодный",
+          "price": 260,
+          "volume": "500",
+          "menu_id": "taro-led",
+          "quantity": 1
+        }
+      ],
+      "status": "completed",
+      "is_paid": true,
+      "user_id": "8672139d-0fda-4d2b-aa0f-fe4e0339bd34",
+      "order_day": "2026-10-07",
+      "created_at": "2026-10-07T09:48:38.791342+00:00",
+      "updated_at": "2026-10-07T09:57:36.737458+00:00",
+      "pickup_time": "2026-10-07T09:58:37.951+00:00",
+      "total_price": 260,
+      "order_number": 3,
+      "payment_type": "card",
+      "customer_name": "гость точки",
+      "customer_phone": "+79000189348"
+    },
+    "order_id": "0ab0978b-61d0-49e9-9c39-da8c97ea9b8e",
+    "handed_at": "2026-10-07T09:48:57.940Z",
+    "seller_id": "seller-test-1",
+    "shift_date": "2026-10-07",
+    "seller_name": "Аня"
+  },
+  {
+    "order": {
+      "id": "e3c82cc1-fb64-449e-82ec-58184aec97eb",
+      "items": [
+        {
+          "kind": "sale",
+          "name": "клубника манго 500мл холодный",
+          "price": 390,
+          "volume": "500",
+          "menu_id": "klubnika-mango",
+          "quantity": 1
+        }
+      ],
+      "status": "completed",
+      "is_paid": true,
+      "user_id": "831de177-251a-48cd-9179-d9e88666be24",
+      "order_day": "2026-10-07",
+      "created_at": "2026-10-07T09:32:05.102524+00:00",
+      "updated_at": "2026-10-07T09:32:25.531808+00:00",
+      "pickup_time": "2026-10-07T09:42:04.189+00:00",
+      "total_price": 390,
+      "order_number": 2,
+      "payment_type": "cash",
+      "customer_name": "гость точки",
+      "customer_phone": "+79520945021"
+    },
+    "order_id": "e3c82cc1-fb64-449e-82ec-58184aec97eb",
+    "handed_at": "2026-10-07T09:32:25.829Z",
+    "seller_id": "seller-test-1",
+    "shift_date": "2026-10-07",
+    "seller_name": "Аня"
+  },
+  {
+    "order": {
+      "id": "6cbfcb39-d8e6-49c1-a1de-33fc18e6c56a",
+      "items": [
+        {
+          "kind": "sale",
+          "name": "чёрный сахар 500мл холодный",
+          "price": 390,
+          "volume": "500",
+          "menu_id": "original-black-led",
+          "quantity": 1
+        }
+      ],
+      "status": "completed",
+      "is_paid": true,
+      "user_id": "e21e584e-e150-4642-8501-bf3268efdca8",
+      "order_day": "2026-10-07",
+      "created_at": "2026-10-07T09:09:23.469105+00:00",
+      "updated_at": "2026-10-07T09:09:28.097366+00:00",
+      "pickup_time": "2026-10-07T09:19:22.551+00:00",
+      "total_price": 390,
+      "order_number": 1,
+      "payment_type": "cash",
+      "customer_name": "гость точки",
+      "customer_phone": "+79051255860"
+    },
+    "order_id": "6cbfcb39-d8e6-49c1-a1de-33fc18e6c56a",
+    "handed_at": "2026-10-07T09:09:28.566Z",
+    "seller_id": "seller-test-1",
+    "shift_date": "2026-10-07",
+    "seller_name": "Аня"
+  },
+  {
+    "order": {
+      "id": "1d846cbf-d3eb-43b7-a0ba-cb064725d204",
+      "items": [
+        {
+          "kind": "sale",
+          "name": "двойной",
+          "price": 719,
+          "menu_id": "combo-dabl-drop",
+          "quantity": 1
+        }
+      ],
+      "status": "completed",
+      "is_paid": true,
+      "user_id": "f1ace8cc-7e3a-451b-83ff-5527fa3ee3af",
+      "order_day": "2026-10-06",
+      "created_at": "2026-10-06T17:32:10.701351+00:00",
+      "updated_at": "2026-10-06T17:32:15.883402+00:00",
+      "pickup_time": "2026-10-06T17:42:10.502+00:00",
+      "total_price": 719,
+      "order_number": 7,
+      "payment_type": "cash",
+      "customer_name": "гость точки",
+      "customer_phone": "+79622471251"
+    },
+    "order_id": "1d846cbf-d3eb-43b7-a0ba-cb064725d204",
+    "handed_at": "2026-10-06T17:32:15.967Z",
+    "seller_id": "seller-test-1",
+    "shift_date": "2026-10-06",
+    "seller_name": "Аня"
+  },
+  {
+    "order": {
+      "id": "8aa20399-d38e-4414-acb2-f846e619df4f",
+      "items": [
+        {
+          "kind": "sale",
+          "name": "клубничный лимонад 650 холодный",
+          "price": 0,
+          "volume": "500",
+          "menu_id": "klubnichny-limonad",
+          "quantity": 1
+        }
+      ],
+      "status": "completed",
+      "is_paid": true,
+      "user_id": "e743373e-34d2-4575-86ed-27ca2cdf41a8",
+      "order_day": "2026-10-06",
+      "created_at": "2026-10-06T15:20:13.865838+00:00",
+      "updated_at": "2026-10-06T15:24:09.532028+00:00",
+      "pickup_time": "2026-10-06T15:30:13.434+00:00",
+      "total_price": 0,
+      "order_number": 5,
+      "payment_type": "online",
+      "customer_name": "гость точки",
+      "customer_phone": "+79283738609"
+    },
+    "order_id": "8aa20399-d38e-4414-acb2-f846e619df4f",
+    "handed_at": "2026-10-06T15:24:09.926Z",
+    "seller_id": "seller-test-1",
+    "shift_date": "2026-10-06",
+    "seller_name": "Аня"
+  },
+  {
+    "order": {
+      "id": "7f8075a5-5df5-40c7-8477-a221e9afb807",
+      "items": [
+        {
+          "kind": "sale",
+          "name": "таро 500мл",
+          "price": 450,
+          "volume": "500",
+          "menu_id": "taro",
+          "quantity": 1
+        }
+      ],
+      "status": "completed",
+      "is_paid": true,
+      "user_id": "0941bf6e-39ae-4583-9602-78d7d44f1fb3",
+      "order_day": "2026-10-06",
+      "created_at": "2026-10-06T11:57:46.458502+00:00",
+      "updated_at": "2026-10-06T11:57:50.553302+00:00",
+      "pickup_time": "2026-10-06T12:07:46.171+00:00",
+      "total_price": 450,
+      "order_number": 4,
+      "payment_type": "cash",
+      "customer_name": "гость точки",
+      "customer_phone": "+79887385303"
+    },
+    "order_id": "7f8075a5-5df5-40c7-8477-a221e9afb807",
+    "handed_at": "2026-10-06T11:57:51.161Z",
+    "seller_id": "seller-test-1",
+    "shift_date": "2026-10-06",
+    "seller_name": "Аня"
+  },
+  {
+    "order": {
+      "id": "a0d0dac9-66a6-4900-ac2e-7de6c4f60423",
+      "items": [
+        {
+          "kind": "sale",
+          "name": "таро 500мл",
+          "price": 450,
+          "volume": "500",
+          "menu_id": "taro",
+          "quantity": 1
+        }
+      ],
+      "status": "completed",
+      "is_paid": true,
+      "user_id": "0941bf6e-39ae-4583-9602-78d7d44f1fb3",
+      "order_day": "2026-10-06",
+      "created_at": "2026-10-06T11:49:17.120029+00:00",
+      "updated_at": "2026-10-06T11:57:13.344239+00:00",
+      "pickup_time": "2026-10-06T11:59:16.182+00:00",
+      "total_price": 450,
+      "order_number": 3,
+      "payment_type": "cash",
+      "customer_name": "гость точки",
+      "customer_phone": "+79887385303"
+    },
+    "order_id": "a0d0dac9-66a6-4900-ac2e-7de6c4f60423",
+    "handed_at": "2026-10-06T11:57:14.055Z",
+    "seller_id": "seller-test-1",
+    "shift_date": "2026-10-06",
+    "seller_name": "Аня"
+  },
+  {
+    "order": {
+      "id": "bd6b185d-6e77-4893-ac94-7e828403e06c",
+      "items": [
+        {
+          "kind": "sale",
+          "name": "клубничный лимонад 650мл",
+          "price": 195,
+          "volume": "650",
+          "menu_id": "klubnichny-limonad",
+          "quantity": 1
+        }
+      ],
+      "status": "completed",
+      "is_paid": true,
+      "user_id": "6e3ac1c9-c4b5-4475-bd59-9ec4c078694d",
+      "order_day": "2026-10-06",
+      "created_at": "2026-10-06T11:40:14.736349+00:00",
+      "updated_at": "2026-10-06T11:40:19.104097+00:00",
+      "pickup_time": "2026-10-06T11:50:14.555+00:00",
+      "total_price": 195,
+      "order_number": 2,
+      "payment_type": "cash",
+      "customer_name": "гость точки",
+      "customer_phone": null
+    },
+    "order_id": "bd6b185d-6e77-4893-ac94-7e828403e06c",
+    "handed_at": "2026-10-06T11:40:19.755Z",
+    "seller_id": "seller-test-1",
+    "shift_date": "2026-10-06",
+    "seller_name": "Аня"
+  },
+  {
+    "order": {
+      "id": "30e65b86-9261-4de8-9102-c2919b6ede01",
+      "items": [
+        {
+          "kind": "sale",
+          "name": "нежная роза 500мл",
+          "price": 0,
+          "volume": "500",
+          "menu_id": "nezhnaya-roza",
+          "quantity": 1
+        }
+      ],
+      "status": "completed",
+      "is_paid": true,
+      "user_id": "6e3ac1c9-c4b5-4475-bd59-9ec4c078694d",
+      "order_day": "2026-10-06",
+      "created_at": "2026-10-06T11:39:42.280724+00:00",
+      "updated_at": "2026-10-06T11:39:52.845416+00:00",
+      "pickup_time": "2026-10-06T11:49:42.109+00:00",
+      "total_price": 0,
+      "order_number": 1,
+      "payment_type": "card",
+      "customer_name": "гость точки",
+      "customer_phone": null
+    },
+    "order_id": "30e65b86-9261-4de8-9102-c2919b6ede01",
+    "handed_at": "2026-10-06T11:39:53.764Z",
+    "seller_id": "seller-test-1",
+    "shift_date": "2026-10-06",
+    "seller_name": "Аня"
+  },
+  {
+    "order": {
+      "id": "c0e15540-e202-4e9c-82ed-e69a5abdc24e",
+      "items": [
+        {
+          "kind": "sale",
+          "name": "тропический манго 650мл",
+          "price": 480,
+          "volume": "650",
+          "menu_id": "tropichesky-mango",
+          "quantity": 1
+        }
+      ],
+      "status": "completed",
+      "is_paid": true,
+      "user_id": "6e3ac1c9-c4b5-4475-bd59-9ec4c078694d",
+      "order_day": "2026-10-05",
+      "created_at": "2026-10-05T16:49:14.819445+00:00",
+      "updated_at": "2026-10-05T16:49:18.569435+00:00",
+      "pickup_time": "2026-10-05T16:59:14.676+00:00",
+      "total_price": 480,
+      "order_number": 9,
+      "payment_type": "cash",
+      "customer_name": "гость точки",
+      "customer_phone": null
+    },
+    "order_id": "c0e15540-e202-4e9c-82ed-e69a5abdc24e",
+    "handed_at": "2026-10-05T16:49:18.728Z",
+    "seller_id": "seller-1791125112185-vcfp7",
+    "shift_date": "2026-10-05",
+    "seller_name": "настя"
+  },
+  {
+    "order": {
+      "id": "3825e643-f753-4337-8944-a39ca0d41aac",
+      "items": [
+        {
+          "kind": "sale",
+          "name": "клубничный лимонад 500мл",
+          "price": 319,
+          "volume": "500",
+          "menu_id": "klubnichny-limonad",
+          "quantity": 1
+        }
+      ],
+      "status": "completed",
+      "is_paid": true,
+      "user_id": "6e3ac1c9-c4b5-4475-bd59-9ec4c078694d",
+      "order_day": "2026-10-05",
+      "created_at": "2026-10-05T14:32:42.559049+00:00",
+      "updated_at": "2026-10-05T14:32:49.559104+00:00",
+      "pickup_time": "2026-10-05T14:42:42.445+00:00",
+      "total_price": 319,
+      "order_number": 7,
+      "payment_type": "card",
+      "customer_name": "гость точки",
+      "customer_phone": null
+    },
+    "order_id": "3825e643-f753-4337-8944-a39ca0d41aac",
+    "handed_at": "2026-10-05T14:51:28.109Z",
+    "seller_id": "seller-1791125112185-vcfp7",
+    "shift_date": "2026-10-05",
+    "seller_name": "настя"
+  },
+  {
+    "order": {
+      "id": "f0983c80-e2e2-4873-a1bc-09642bb12c85",
+      "items": [
+        {
+          "kind": "sale",
+          "name": "зелёный жасмин 500мл +топ.1",
+          "price": 450,
+          "volume": "500",
+          "menu_id": "jasmine-green",
+          "quantity": 1
+        }
+      ],
+      "status": "completed",
+      "is_paid": true,
+      "user_id": "6e3ac1c9-c4b5-4475-bd59-9ec4c078694d",
+      "order_day": "2026-10-05",
+      "created_at": "2026-10-05T14:13:19.620155+00:00",
+      "updated_at": "2026-10-05T14:22:17.968671+00:00",
+      "pickup_time": "2026-10-05T14:23:19.483+00:00",
+      "total_price": 450,
+      "order_number": 4,
+      "payment_type": "cash",
+      "customer_name": "гость точки",
+      "customer_phone": null
+    },
+    "order_id": "f0983c80-e2e2-4873-a1bc-09642bb12c85",
+    "handed_at": "2026-10-05T14:22:18.732Z",
+    "seller_id": "seller-1791125112185-vcfp7",
+    "shift_date": "2026-10-05",
+    "seller_name": "настя"
+  },
+  {
+    "order": {
+      "id": "43d1d584-9b89-4bfc-b30c-b57c098dd788",
+      "items": [
+        {
+          "kind": "sale",
+          "name": "глинтвейн 500мл",
+          "price": 470,
+          "volume": "500",
+          "menu_id": "item-1791049201658-izy7u",
+          "quantity": 1
+        }
+      ],
+      "status": "completed",
+      "is_paid": true,
+      "user_id": "6e3ac1c9-c4b5-4475-bd59-9ec4c078694d",
+      "order_day": "2026-10-05",
+      "created_at": "2026-10-05T12:13:25.926827+00:00",
+      "updated_at": "2026-10-05T12:27:37.145215+00:00",
+      "pickup_time": "2026-10-05T12:23:25.763+00:00",
+      "total_price": 470,
+      "order_number": 3,
+      "payment_type": "card",
+      "customer_name": "гость точки",
+      "customer_phone": null
+    },
+    "order_id": "43d1d584-9b89-4bfc-b30c-b57c098dd788",
+    "handed_at": "2026-10-05T12:27:38.363Z",
+    "seller_id": "seller-1791125112185-vcfp7",
+    "shift_date": "2026-10-05",
+    "seller_name": "настя"
+  },
+  {
+    "order": {
+      "id": "ab18bf8a-b28a-456f-9154-f56c664fc143",
+      "items": [
+        {
+          "kind": "sale",
+          "name": "матча латте 650мл",
+          "price": 520,
+          "volume": "650",
+          "menu_id": "matcha-latte-tiger",
+          "quantity": 1
+        }
+      ],
+      "status": "completed",
+      "is_paid": true,
+      "user_id": "6e3ac1c9-c4b5-4475-bd59-9ec4c078694d",
+      "order_day": "2026-10-05",
+      "created_at": "2026-10-05T10:25:36.2375+00:00",
+      "updated_at": "2026-10-05T11:20:57.259808+00:00",
+      "pickup_time": "2026-10-05T10:35:36.059+00:00",
+      "total_price": 520,
+      "order_number": 2,
+      "payment_type": "card",
+      "customer_name": "гость точки",
+      "customer_phone": null
+    },
+    "order_id": "ab18bf8a-b28a-456f-9154-f56c664fc143",
+    "handed_at": "2026-10-05T11:20:58.571Z",
+    "seller_id": "seller-1791125112185-vcfp7",
+    "shift_date": "2026-10-05",
+    "seller_name": "настя"
+  },
+  {
+    "order": {
+      "id": "e18631c3-acbe-4810-9ab7-b74327bb3c6c",
+      "items": [
+        {
+          "kind": "sale",
+          "name": "чёрный сахар со льдом 500мл",
+          "price": 390,
+          "volume": "500",
+          "menu_id": "original-black-led",
+          "quantity": 1
+        }
+      ],
+      "status": "completed",
+      "is_paid": true,
+      "user_id": "0e81c6b0-e9d2-4cc3-a11e-3d7e3a2f7f1e",
+      "order_day": "2026-10-05",
+      "created_at": "2026-10-05T10:12:30.446794+00:00",
+      "updated_at": "2026-10-05T10:25:11.451321+00:00",
+      "pickup_time": "2026-10-05T10:22:29.695+00:00",
+      "total_price": 390,
+      "order_number": 1,
+      "payment_type": "card",
+      "customer_name": "гость точки",
+      "customer_phone": "+79030343553"
+    },
+    "order_id": "e18631c3-acbe-4810-9ab7-b74327bb3c6c",
+    "handed_at": "2026-10-05T10:25:14.515Z",
+    "seller_id": "seller-1791125112185-vcfp7",
+    "shift_date": "2026-10-05",
+    "seller_name": "настя"
+  },
+  {
+    "order": {
+      "id": "51e18e0f-e4bf-4dc1-8204-688a2ad56a20",
+      "items": [
+        {
+          "kind": "sale",
+          "name": "нежная роза 650мл",
+          "price": 480,
+          "volume": "650",
+          "menu_id": "nezhnaya-roza",
+          "quantity": 1
+        }
+      ],
+      "status": "completed",
+      "is_paid": true,
+      "user_id": "a0435863-a455-4e9a-b15f-3ec1cbb18c40",
+      "order_day": "2026-10-04",
+      "created_at": "2026-10-04T10:15:54.622425+00:00",
+      "updated_at": "2026-10-04T10:16:00.118046+00:00",
+      "pickup_time": "2026-10-04T10:25:53.764+00:00",
+      "total_price": 480,
+      "order_number": 3,
+      "payment_type": "cash",
+      "customer_name": "гость точки",
+      "customer_phone": "+79969238133"
+    },
+    "order_id": "51e18e0f-e4bf-4dc1-8204-688a2ad56a20",
+    "handed_at": "2026-10-04T10:15:54.622425+00:00",
+    "seller_id": "seller-test-1",
+    "shift_date": "2026-10-04",
+    "seller_name": "Аня"
+  },
+  {
+    "order": {
+      "id": "07c1064a-8ead-4267-9c5c-bdc29ccac8b2",
+      "items": [
+        {
+          "kind": "sale",
+          "name": "нежная роза 500мл",
+          "price": 420,
+          "volume": "500",
+          "menu_id": "nezhnaya-roza",
+          "quantity": 1
+        }
+      ],
+      "status": "completed",
+      "is_paid": true,
+      "user_id": "6c8a7eb4-4ab6-4cb8-8943-dc9136e627fa",
+      "order_day": "2026-10-04",
+      "created_at": "2026-10-04T10:58:25.995112+00:00",
+      "updated_at": "2026-10-04T11:01:16.09563+00:00",
+      "pickup_time": "2026-10-04T11:08:24.979+00:00",
+      "total_price": 420,
+      "order_number": 4,
+      "payment_type": "card",
+      "customer_name": "гость точки",
+      "customer_phone": "+79065502036"
+    },
+    "order_id": "07c1064a-8ead-4267-9c5c-bdc29ccac8b2",
+    "handed_at": "2026-10-04T11:01:16.877Z",
+    "seller_id": "seller",
+    "shift_date": "2026-10-04",
+    "seller_name": "бариста"
+  },
+  {
+    "order": {
+      "id": "221bce5e-4ae8-43b2-8d84-7d5f260b03ed",
+      "items": [
+        {
+          "kind": "sale",
+          "name": "матча латте со льдом 500мл",
+          "price": 450,
+          "volume": "500",
+          "menu_id": "matcha-latte-tiger-led",
+          "quantity": 1
+        }
+      ],
+      "status": "completed",
+      "is_paid": true,
+      "user_id": "6e3ac1c9-c4b5-4475-bd59-9ec4c078694d",
+      "order_day": "2026-10-04",
+      "created_at": "2026-10-04T09:23:43.215574+00:00",
+      "updated_at": "2026-10-04T09:39:31.556864+00:00",
+      "pickup_time": "2026-10-04T09:33:42.547+00:00",
+      "total_price": 450,
+      "order_number": 2,
+      "payment_type": "cash",
+      "customer_name": "гость точки",
+      "customer_phone": null
+    },
+    "order_id": "221bce5e-4ae8-43b2-8d84-7d5f260b03ed",
+    "handed_at": "2026-10-04T10:15:59.600Z",
+    "seller_id": "seller",
+    "shift_date": "2026-10-04",
+    "seller_name": "бариста"
+  },
+  {
+    "order": {
+      "id": "a37b92e0-75c0-4fc9-b094-31da5f59a570",
+      "items": [
+        {
+          "kind": "sale",
+          "name": "клубничный лимонад 500мл",
+          "price": 319,
+          "volume": "500",
+          "menu_id": "klubnichny-limonad",
+          "quantity": 1
+        }
+      ],
+      "status": "completed",
+      "is_paid": true,
+      "user_id": "7ebe94c5-79c8-4ee4-b61f-5a32f98e293f",
+      "order_day": "2026-10-04",
+      "created_at": "2026-10-04T09:10:34.329411+00:00",
+      "updated_at": "2026-10-04T09:14:01.884952+00:00",
+      "pickup_time": "2026-10-04T09:20:34.116+00:00",
+      "total_price": 319,
+      "order_number": 1,
+      "payment_type": "cash",
+      "customer_name": "гость точки",
+      "customer_phone": "+79520687646"
+    },
+    "order_id": "a37b92e0-75c0-4fc9-b094-31da5f59a570",
+    "handed_at": "2026-10-04T09:14:02.302Z",
+    "seller_id": "seller",
+    "shift_date": "2026-10-04",
+    "seller_name": "бариста"
+  },
+  {
+    "order": {
+      "id": "e64e39b6-ad5c-440f-9441-cb9a82136f5d",
+      "items": [
+        {
+          "kind": "sale",
+          "name": "зелёный жасмин со льдом 650мл +топ.1",
+          "price": 510,
+          "volume": "650",
+          "menu_id": "jasmine-green-led",
+          "quantity": 1
+        }
+      ],
+      "status": "completed",
+      "is_paid": true,
+      "user_id": "7de5c1e4-7aa0-458f-a555-c317ce22a6ca",
+      "order_day": "2026-10-02",
+      "created_at": "2026-10-02T15:41:07.909063+00:00",
+      "updated_at": "2026-10-02T15:41:33.32895+00:00",
+      "pickup_time": "2026-10-02T15:51:07.271+00:00",
+      "total_price": 510,
+      "order_number": 5,
+      "payment_type": "cash",
+      "customer_name": "гость точки",
+      "customer_phone": null
+    },
+    "order_id": "e64e39b6-ad5c-440f-9441-cb9a82136f5d",
+    "handed_at": "2026-10-02T15:41:34.778Z",
+    "seller_id": "seller-test-1",
+    "shift_date": "2026-10-02",
+    "seller_name": "Аня"
+  },
+  {
+    "order": {
+      "id": "cc13b917-1ebd-44b8-a149-7266b4ed94d1",
+      "items": [
+        {
+          "kind": "sale",
+          "name": "зелёный жасмин со льдом 500мл",
+          "price": 390,
+          "volume": "500",
+          "menu_id": "jasmine-green-led",
+          "quantity": 1
+        },
+        {
+          "kind": "sale",
+          "name": "матча латте со льдом 500мл",
+          "price": 450,
+          "volume": "500",
+          "menu_id": "matcha-latte-tiger-led",
+          "quantity": 1
+        }
+      ],
+      "status": "completed",
+      "is_paid": true,
+      "user_id": "1ddaa011-ae85-44a0-85cd-2943ba658c17",
+      "order_day": "2026-10-01",
+      "created_at": "2026-10-01T19:26:58.134519+00:00",
+      "updated_at": "2026-10-01T19:27:37.266826+00:00",
+      "pickup_time": "2026-10-01T19:36:57.497+00:00",
+      "total_price": 840,
+      "order_number": 7,
+      "payment_type": "cash",
+      "customer_name": "гость точки",
+      "customer_phone": null
+    },
+    "order_id": "cc13b917-1ebd-44b8-a149-7266b4ed94d1",
+    "handed_at": "2026-10-01T19:27:41.778Z",
+    "seller_id": "seller-test-1",
+    "shift_date": "2026-10-01",
+    "seller_name": "Аня"
+  },
+  {
+    "order": {
+      "id": "7c59bafa-e574-4933-9584-b032913e2628",
+      "items": [
+        {
+          "kind": "sale",
+          "name": "зелёный жасмин со льдом 500мл",
+          "price": 390,
+          "volume": "500",
+          "menu_id": "jasmine-green-led",
+          "quantity": 1
+        }
+      ],
+      "status": "completed",
+      "is_paid": true,
+      "user_id": "b373fb8d-7708-4dce-bb5a-7f9872caeadd",
+      "order_day": "2026-10-01",
+      "created_at": "2026-10-01T19:22:57.410687+00:00",
+      "updated_at": "2026-10-01T19:26:42.502996+00:00",
+      "pickup_time": "2026-10-01T19:32:56.338+00:00",
+      "total_price": 390,
+      "order_number": 6,
+      "payment_type": "card",
+      "customer_name": "гость точки",
+      "customer_phone": null
+    },
+    "order_id": "7c59bafa-e574-4933-9584-b032913e2628",
+    "handed_at": "2026-10-01T19:26:44.155Z",
+    "seller_id": "seller-test-1",
+    "shift_date": "2026-10-01",
+    "seller_name": "Аня"
+  },
+  {
+    "order": {
+      "id": "5829c575-4fde-47c4-bb91-f0f3881d8842",
+      "items": [
+        {
+          "kind": "sale",
+          "name": "зелёный жасмин со льдом 500мл",
+          "price": 390,
+          "volume": "500",
+          "menu_id": "jasmine-green-led",
+          "quantity": 1
+        }
+      ],
+      "status": "completed",
+      "is_paid": true,
+      "user_id": "35132d28-a147-4346-9907-c87ff507157b",
+      "order_day": "2026-10-01",
+      "created_at": "2026-10-01T17:55:24.169784+00:00",
+      "updated_at": "2026-10-01T19:20:47.43827+00:00",
+      "pickup_time": "2026-10-01T18:05:22.026+00:00",
+      "total_price": 390,
+      "order_number": 3,
+      "payment_type": "card",
+      "customer_name": "гость точки",
+      "customer_phone": null
+    },
+    "order_id": "5829c575-4fde-47c4-bb91-f0f3881d8842",
+    "handed_at": "2026-10-01T19:23:07.148Z",
+    "seller_id": "seller-test-1",
+    "shift_date": "2026-10-01",
+    "seller_name": "Аня"
+  },
+  {
+    "order": {
+      "id": "c0c65dc1-00a8-4923-86c8-6ac36c6125d9",
+      "items": [
+        {
+          "kind": "sale",
+          "name": "чёрный сахар со льдом 500мл",
+          "price": 390,
+          "volume": "500",
+          "menu_id": "original-black-led",
+          "quantity": 1
+        }
+      ],
+      "status": "completed",
+      "is_paid": true,
+      "user_id": "86a8904f-3339-48f3-b114-6eaf3f209d1c",
+      "order_day": "2026-10-01",
+      "created_at": "2026-10-01T18:59:05.212305+00:00",
+      "updated_at": "2026-10-01T19:03:02.141235+00:00",
+      "pickup_time": "2026-10-01T19:09:04.059+00:00",
+      "total_price": 390,
+      "order_number": 4,
+      "payment_type": "cash",
+      "customer_name": "гость точки",
+      "customer_phone": null
+    },
+    "order_id": "c0c65dc1-00a8-4923-86c8-6ac36c6125d9",
+    "handed_at": "2026-10-01T19:22:21.094Z",
+    "seller_id": "seller-test-1",
+    "shift_date": "2026-10-01",
+    "seller_name": "Аня"
+  },
+  {
+    "order": {
+      "id": "91671994-1be1-4e4f-afdd-e28890bd519e",
+      "items": [
+        {
+          "kind": "sale",
+          "name": "зелёный жасмин со льдом 500мл",
+          "price": 390,
+          "volume": "500",
+          "menu_id": "jasmine-green-led",
+          "quantity": 1
+        },
+        {
+          "kind": "sale",
+          "name": "матча латте со льдом 500мл",
+          "price": 450,
+          "volume": "500",
+          "menu_id": "matcha-latte-tiger-led",
+          "quantity": 1
+        }
+      ],
+      "status": "completed",
+      "is_paid": true,
+      "user_id": "07b73308-faa6-4223-84af-f1689791ff26",
+      "order_day": "2026-10-01",
+      "created_at": "2026-10-01T19:04:08.347711+00:00",
+      "updated_at": "2026-10-01T19:08:12.145191+00:00",
+      "pickup_time": "2026-10-01T19:14:06.967+00:00",
+      "total_price": 840,
+      "order_number": 5,
+      "payment_type": "cash",
+      "customer_name": "гость точки",
+      "customer_phone": null
+    },
+    "order_id": "91671994-1be1-4e4f-afdd-e28890bd519e",
+    "handed_at": "2026-10-01T19:20:10.009Z",
+    "seller_id": "seller-test-1",
+    "shift_date": "2026-10-01",
+    "seller_name": "Аня"
+  }
+]

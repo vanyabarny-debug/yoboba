@@ -7,6 +7,8 @@ import circular_timer from '@/components/seller/circular-timer';
 type props = {
   task: opening_task;
   on_open: () => void;
+  /** смена кончилась, карточку не пробили — та же история, другой статус */
+  missed?: boolean;
 };
 
 /** Цвет задачи открытия */
@@ -54,9 +56,9 @@ function info_button({
   );
 }
 
-export default function opening_task_card({ task, on_open }: props) {
+export default function opening_task_card({ task, on_open, missed = false }: props) {
   const progress = opening_progress(task);
-  const is_complete = task.completed_at != null;
+  const is_complete = task.completed_at != null || missed;
   const timer_colors = {
     fill: '#ffffff',
     ring: opening_color.fg,
@@ -81,10 +83,10 @@ export default function opening_task_card({ task, on_open }: props) {
         color: opening_color.fg,
       })}
       {createElement(circle_wrap, {
-        under: is_complete ? 'открытие ✓' : 'открытие',
+        under: missed ? 'не пробил' : is_complete ? 'открытие ✓' : 'открытие',
         children: createElement(circular_timer, {
           progress: progress / 100,
-          label: is_complete ? '✓' : `${progress}%`,
+          label: missed ? '—' : is_complete ? '✓' : `${progress}%`,
           sublabel: is_complete ? undefined : 'выполнено',
           tone: 'handout',
           colors: timer_colors,

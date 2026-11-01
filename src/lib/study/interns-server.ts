@@ -368,12 +368,13 @@ export async function list_interns(): Promise<intern[]> {
     if (!error && data) {
       const remote = data.map((row) => parse_intern(row as Record<string, unknown>));
       const local = await load_local();
-      const merged = remote.map((row) => {
+      const merged = remote.map((row): intern => {
         const extra = local.find((l) => last10(l.phone) === last10(row.phone) || l.id === row.id);
         if (!extra) return row;
+        const role: intern_role = row.role === 'creator' || extra.role === 'creator' ? 'creator' : row.role;
         return {
           ...row,
-          role: row.role === 'creator' || extra.role === 'creator' ? 'creator' : row.role,
+          role,
           works: row.works.length ? row.works : extra.works,
           feedback_mood: row.feedback_mood ?? extra.feedback_mood,
           feedback_liked: row.feedback_liked || extra.feedback_liked,

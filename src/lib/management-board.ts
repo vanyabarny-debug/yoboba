@@ -476,9 +476,11 @@ export function task_placed(
 ) {
   const card = cards.find((item) => item.id === card_id);
   if (!card || card.kind === 'widget') return false;
-  if (!placements.some((row) => row.card_id === card_id && placement_matches(row, spot_id, seller_id))) {
-    return false;
-  }
+  const rows = placements.filter((row) => row.card_id === card_id);
+  // открытие и закрытие — смена. пока их никуда не клали, они у всех кассиров
+  const implicit = !rows.length && (card.source === 'opening' || card.source === 'closing');
+  const matched = rows.some((row) => placement_matches(row, spot_id, seller_id));
+  if (!matched && !implicit) return false;
   if (!access_allows(card.access, rights)) return false;
   return card_on_day(card, day);
 }

@@ -10,6 +10,7 @@ import {
   apply_prep_reconcile,
   apply_prep_still_have,
   heal_prep_batch_scales,
+  heal_prep_cooked_holes,
   prep_station_views,
   tapioca_dry_choices,
   update_prep_station,
@@ -34,12 +35,12 @@ export async function GET(request: Request) {
   const spot = spot_of(new URL(request.url).searchParams.get('spot_id'));
   let full = await read_finance_state();
   const view = bind_spot(full, spot);
-  const healed = heal_prep_batch_scales(view);
+  const healed = heal_prep_cooked_holes(heal_prep_batch_scales(view));
   if (healed !== view) {
     try {
       full = await mutate_finance_state((fresh) => {
         const again_view = bind_spot(fresh, spot);
-        const again = heal_prep_batch_scales(again_view);
+        const again = heal_prep_cooked_holes(heal_prep_batch_scales(again_view));
         if (again === again_view) return { state: null, value: fresh };
         const committed = commit_spot(fresh, spot, again);
         return { state: committed, value: committed };

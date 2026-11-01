@@ -196,9 +196,11 @@ export async function close_shift_from_closing(input: {
   if (current.closed_at) {
     return { shift: current };
   }
+  const who = (input.seller_name || current.seller_name || '').trim();
   let closed: seller_shift_record = {
     ...current,
     closed_at: new Date().toISOString(),
+    close_note: who ? `закрыл ${who}` : 'закрыл',
   };
   if (input.seller_id) {
     closed = with_crew_member(
@@ -235,12 +237,60 @@ export async function open_or_resume_shift(input: {
   return result.shift;
 }
 
-export async function close_shift(id: string): Promise<seller_shift_record | null> {
+/** день без чек-листа закрытия всё равно попадает в ту же историю смен */
+export async function ensure_day_in_history(input: {
+  spot_id: string;
+  shift_date: string;
+  spot_address?: string;
+  spot_city?: string;
+  seller_name?: string | null;
+  at: string;
+  close_note: string;
+}): Promise<seller_shift_record | null> {
+  const all = await load_shifts();
+  const idx = all.findIndex((s) => s.spot_id === input.spot_id && s.shift_date === input.shift_date);
+  if (idx >= 0) {
+    if (all[idx].closed_at) return all[idx];
+    all[idx] = {
+      ...all[idx],
+      closed_at: input.at,
+      close_note: input.close_note,
+    };
+    await save_shifts(all);
+    return all[idx];
+  }
+  const name = input.seller_name?.trim() || 'касса';
+  const record: seller_shift_record = {
+    id: `shift-${input.shift_date}-${input.spot_id}`.slice(0, 80),
+    spot_id: input.spot_id,
+    spot_address: input.spot_address || '',
+    spot_city: input.spot_city || '',
+    seller_id: '',
+    seller_name: name,
+    opened_at: input.at,
+    closed_at: input.at,
+    shift_date: input.shift_date,
+    close_note: input.close_note,
+    crew: [],
+  };
+  all.push(record);
+  await save_shifts(all);
+  return record;
+}
+
+export async function close_shift(
+  id: string,
+  note?: { at?: string; close_note?: string }
+): Promise<seller_shift_record | null> {
   const all = await load_shifts();
   const idx = all.findIndex((s) => s.id === id);
   if (idx < 0) return null;
   if (!all[idx].closed_at) {
-    all[idx] = { ...all[idx], closed_at: new Date().toISOString() };
+    all[idx] = {
+      ...all[idx],
+      closed_at: note?.at || new Date().toISOString(),
+      close_note: note?.close_note || all[idx].close_note || 'не закрыл',
+    };
     await save_shifts(all);
   }
   return all[idx];

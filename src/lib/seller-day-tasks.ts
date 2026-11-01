@@ -21,6 +21,8 @@ export type day_task = {
   run_started_at: number | null;
   appeared_at: string | null;
   done_at: string | null;
+  /** done — пробил, missed — смена кончилась, карточку не пробили */
+  outcome?: 'done' | 'missed';
 };
 
 /** единый цвет задач дня */
@@ -109,7 +111,7 @@ export function apply_day_templates(
   const saved = read_saved(spot_id, day);
   const by_tpl = new Map(saved.map((t) => [t.template_id, t]));
   const active = templates.filter((tpl) => is_template_active_on(tpl.schedule ?? default_schedule(), day));
-  const tasks = active.map((tpl) => {
+  const tasks: day_task[] = active.map((tpl): day_task => {
     const prev = by_tpl.get(tpl.id);
     const base = blank_task(day, tpl);
     if (!prev) return base;
@@ -127,6 +129,7 @@ export function apply_day_templates(
           : null,
       appeared_at: prev.appeared_at ?? null,
       done_at: prev.done_at ?? null,
+      outcome: prev.outcome === 'missed' ? 'missed' : phase === 'done' ? 'done' : undefined,
     };
   });
   save_day_tasks(spot_id, tasks, day);
@@ -197,10 +200,31 @@ export function press_day_task(spot_id: string, task_id: string, day = moscow_to
         phase: 'done' as const,
         run_started_at: null,
         done_at: new Date().toISOString(),
+        outcome: 'done' as const,
       };
     }
     return t;
   });
   save_day_tasks(spot_id, tasks, day);
   return tasks;
+}
+
+/** к концу смены непробитые карточки дня уходят в готовые со статусом «не пробил» */
+export function miss_due_tasks(spot_id: string, day: string, now = new Date()): day_task[] {
+  const tasks = read_saved(spot_id, day);
+  let changed = false;
+  const next = tasks.map((task) => {
+    if (task.phase === 'done') return task;
+    if (!task.appeared_at && !is_task_due(task.appear_at, now)) return task;
+    changed = true;
+    return {
+      ...task,
+      phase: 'done' as const,
+      run_started_at: null,
+      done_at: task.done_at || now.toISOString(),
+      outcome: 'missed' as const,
+    };
+  });
+  if (changed) save_day_tasks(spot_id, next, day);
+  return next;
 }

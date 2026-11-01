@@ -666,7 +666,8 @@ function RemainderInvoiceModal({
   }
   const ready_lines = rows.flatMap((row) => {
     const d = drafts[row.material.id];
-    if (!d || !(d.packs > 0) || !(d.packSize > 0) || !(d.packPrice > 0)) return [];
+    if (!d || d.packs == null || d.packSize == null || d.packPrice == null) return [];
+    if (!(d.packs > 0) || !(d.packSize > 0) || !(d.packPrice > 0)) return [];
     const purchase = receipt_purchase_qty(d.packs, d.packSize, d.packUnit, row.material.unit);
     if (!(purchase > 0)) return [];
     return [

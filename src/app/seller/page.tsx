@@ -52,9 +52,11 @@ import {
   apply_day_templates,
   get_board_tasks,
   mark_appeared,
+  miss_due_tasks,
   press_day_task,
   type day_task,
 } from '@/lib/seller-day-tasks';
+import { shift_closed_message, shift_has_ended, shift_is_open, yesterday_iso } from '@/lib/shift-window';
 import { board_tile_grid } from '@/lib/seller-tile-grid';
 import { default_seller_access, type seller_access, type seller_right } from '@/lib/seller-access';
 import {
@@ -361,6 +363,7 @@ export default function seller_board() {
   const [revise_error, set_revise_error] = useState('');
   const [task_guide_id, set_task_guide_id] = useState<string | null>(null);
   const [day_tasks, set_day_tasks] = useState<day_task[]>([]);
+  const [clock, set_clock] = useState(() => Date.now());
   const [task_templates, set_task_templates] = useState<day_task_template[] | null>(null);
   const [board, set_board] = useState<{ cards: board_card[]; placements: placement[] } | null>(null);
   const [opening_task_state, set_opening_task_state] = useState<opening_task | null>(null);
@@ -974,13 +977,109 @@ export default function seller_board() {
     return () => window.clearInterval(id);
   }, [shift?.spot_id, task_templates, board, seller_id, rights, load]);
 
+  useEffect(() => {
+    const id = window.setInterval(() => set_clock(Date.now()), 30_000);
+    return () => window.clearInterval(id);
+  }, []);
+
+  useEffect(() => {
+    if (!shift?.spot_id) return;
+    const now = new Date(clock);
+    const today_iso = moscow_today_iso(now);
+    const ended_day = shift_has_ended(today_iso, now)
+      ? today_iso
+      : !shift_is_open(now)
+        ? yesterday_iso(today_iso)
+        : null;
+    if (!ended_day) return;
+    const spot_id = shift.spot_id;
+    const tasks = miss_due_tasks(spot_id, ended_day, now);
+    if (ended_day === today_iso) set_day_tasks(tasks);
+    const same_day = ended_day === today_iso;
+    void fetch('/api/seller/shift-log', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      credentials: 'same-origin',
+      body: JSON.stringify({
+        action: 'settle',
+        spot_id,
+        shift_date: ended_day,
+        spot_address: shift.address,
+        spot_city: shift.city,
+        seller_name: seller_name || seller_ref.current.name,
+        cards: [
+          ...(same_day && opening_task_state
+            ? [{
+                ref: 'opening',
+                title: 'открытие',
+                done: Boolean(opening_task_state.completed_at),
+                seller_name: opening_task_state.seller_name,
+              }]
+            : []),
+          ...(same_day && closing_task_state
+            ? [{
+                ref: 'closing',
+                title: 'закрытие',
+                done: Boolean(closing_task_state.completed_at),
+                seller_name: closing_task_state.seller_name,
+              }]
+            : []),
+          ...tasks
+            .filter((task) => task.outcome === 'done' || task.outcome === 'missed' || task.phase === 'done')
+            .map((task) => ({
+              ref: task.template_id || task.id,
+              title: task.title,
+              done: task.outcome !== 'missed' && task.phase === 'done',
+              seller_name: seller_name || seller_ref.current.name,
+            })),
+        ],
+        orders: same_day
+          ? [
+              ...handed.map((order) => ({
+                ref: order.id,
+                title: order.order_number ? `заказ ${order.order_number}` : 'заказ',
+                handed: true,
+                seller_name: seller_name || seller_ref.current.name,
+              })),
+              ...orders
+                .filter((order) => order.status === 'new' || order.status === 'preparing' || order.status === 'ready')
+                .map((order) => ({
+                  ref: order.id,
+                  title: order.order_number ? `заказ ${order.order_number}` : 'заказ',
+                  handed: false,
+                  seller_name: seller_name || seller_ref.current.name,
+                })),
+            ]
+          : [],
+      }),
+    });
+  }, [clock, shift?.spot_id, shift?.address, shift?.city, seller_name, opening_task_state, closing_task_state, handed, orders]);
+
   function press_task(task_id: string) {
     if (!shift?.spot_id) return;
+    if (!shift_is_open()) {
+      alert(shift_closed_message);
+      return;
+    }
     const next = press_day_task(shift.spot_id, task_id, moscow_today_iso());
     const pressed = next.find((t) => t.id === task_id);
     if (pressed?.phase === 'done') {
       play_task_done_chime();
       set_task_guide_id(null);
+      void fetch('/api/seller/shift-log', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        credentials: 'same-origin',
+        body: JSON.stringify({
+          spot_id: shift.spot_id,
+          shift_date: moscow_today_iso(),
+          seller_name: seller_name || seller_ref.current.name,
+          ref: pressed.template_id || pressed.id,
+          kind: 'card',
+          title: pressed.title,
+          status: 'пробил',
+        }),
+      });
     }
     set_day_tasks(next);
   }
@@ -1310,6 +1409,22 @@ export default function seller_board() {
           }
         }),
         patch_order(o.id, { status: 'completed' }),
+        shift?.spot_id
+          ? fetch('/api/seller/shift-log', {
+              method: 'POST',
+              headers: { 'content-type': 'application/json' },
+              credentials: 'same-origin',
+              body: JSON.stringify({
+                spot_id: shift.spot_id,
+                shift_date: day,
+                seller_name: sname,
+                ref: o.id,
+                kind: 'order',
+                title: o.order_number ? `заказ ${o.order_number}` : 'заказ',
+                status: 'выдал',
+              }),
+            })
+          : Promise.resolve(),
       ]);
     } catch (e) {
       alert(e instanceof Error ? e.message : 'не удалось выдать заказ');
@@ -1462,14 +1577,32 @@ export default function seller_board() {
       closing_card &&
       task_placed(board.cards, board.placements, 'closing', shift.spot_id, seller_id, rights, today)
   );
+  const punching = shift_is_open(new Date(clock));
+  const day_over = shift_has_ended(today, new Date(clock));
   const show_opening = Boolean(
-    opening_placed && opening_card && card_due(opening_card) && opening_task_state && !opening_task_state.completed_at
+    punching &&
+      opening_placed &&
+      opening_card &&
+      card_due(opening_card) &&
+      opening_task_state &&
+      !opening_task_state.completed_at
   );
   const opening_is_done = Boolean(opening_placed && opening_task_state?.completed_at);
+  const opening_missed = Boolean(
+    day_over && opening_placed && opening_task_state && !opening_task_state.completed_at
+  );
   const show_closing = Boolean(
-    closing_placed && closing_card && card_due(closing_card) && closing_task_state && !closing_task_state.completed_at
+    punching &&
+      closing_placed &&
+      closing_card &&
+      card_due(closing_card) &&
+      closing_task_state &&
+      !closing_task_state.completed_at
   );
   const closing_is_done = Boolean(closing_placed && closing_task_state?.completed_at);
+  const closing_missed = Boolean(
+    day_over && closing_placed && closing_task_state && !closing_task_state.completed_at
+  );
   const widget_refs =
     board && shift?.spot_id && seller_id
       ? assigned_widget_refs(board.cards, board.placements, shift.spot_id, seller_id, rights)
@@ -1485,7 +1618,10 @@ export default function seller_board() {
     (show_opening ? 1 : 0) +
     (show_closing ? 1 : 0);
   const ready_board_count =
-    handed_out.length + done_tasks.length + (opening_is_done ? 1 : 0) + (closing_is_done ? 1 : 0);
+    handed_out.length +
+    done_tasks.length +
+    (opening_is_done || opening_missed ? 1 : 0) +
+    (closing_is_done || closing_missed ? 1 : 0);
   const guided_task = day_tasks.find((t) => t.id === task_guide_id) ?? null;
   /** бейдж «готовые» = число выдач, как в аналитике (задачи смены не считаем) */
   const ready_handout_count = handed_out.length;
@@ -1583,17 +1719,19 @@ export default function seller_board() {
     return render_fill_grid(
       items,
       <>
-        {opening_is_done && opening_task_state
+        {(opening_is_done || opening_missed) && opening_task_state
           ? createElement(opening_task_card, {
               key: 'opening-task-done',
               task: opening_task_state,
+              missed: opening_missed,
               on_open: () => set_opening_guide_open(true),
             })
           : null}
-        {closing_is_done && closing_task_state
+        {(closing_is_done || closing_missed) && closing_task_state
           ? createElement(closing_task_card, {
               key: 'closing-task-done',
               task: closing_task_state,
+              missed: closing_missed,
               on_open: () => set_closing_guide_open(true),
             })
           : null}
