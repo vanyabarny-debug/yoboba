@@ -2707,25 +2707,145 @@ export function material_by_id(state: finance_state) {
   return new Map(state.materials.map((m) => [m.id, m]));
 }
 
+type station_cost_src = {
+  cookedMaterialId: string;
+  dryMaterialId: string;
+  defaultDryG: number;
+  defaultCookedG: number;
+  yieldSamples?: { dryG: number; cookedG: number }[];
+  extraInputs?: { materialId: string; qty: number }[];
+  enabled?: boolean;
+};
+
+function prep_stations_of(state: finance_state): station_cost_src[] {
+  const rows: station_cost_src[] = [...(state.prepStations ?? [])];
+  for (const list of Object.values(state.prepBySpot ?? {})) {
+    if (Array.isArray(list)) rows.push(...list);
+  }
+  return rows;
+}
+
+/** готовых грамм на 1 г сухого — та же смесь, что у кастрюли: последняя сверка 75%, остальное 25% */
+function cooked_per_dry(station: station_cost_src) {
+  const manual =
+    station.defaultDryG > 0 && station.defaultCookedG > 0
+      ? station.defaultCookedG / station.defaultDryG
+      : 0;
+  const samples = (station.yieldSamples ?? []).filter((sample) => sample.dryG > 0 && sample.cookedG > 0);
+  if (!samples.length || manual <= 0) return manual;
+  const latest = samples[samples.length - 1];
+  const latest_ratio = latest.cookedG / latest.dryG;
+  const older_dry = samples.reduce((sum, sample) => sum + sample.dryG, 0) - latest.dryG;
+  const older_cooked = samples.reduce((sum, sample) => sum + sample.cookedG, 0) - latest.cookedG;
+  const prior = older_dry > 0 ? older_cooked / older_dry : manual;
+  return prior * 0.25 + latest_ratio * 0.75;
+}
+
+function prep_yield_g(prep: prep_recipe) {
+  if (prep.yieldG > 0) return prep.yieldG;
+  return Object.values(prep.ingredients).reduce((sum, qty) => sum + (qty > 0 ? qty : 0), 0);
+}
+
+/** партия, а если накладной нет — цена карточки. только для сырья внутри заготовки */
+function raw_money(state: finance_state, material_id: string, qty: number) {
+  const fifo = fifo_portion(state, material_id, qty).cost;
+  if (fifo > 0) return fifo;
+  const mat = state.materials.find((row) => row.id === material_id);
+  if (!mat || material_is_free(mat) || material_is_infinite(mat)) return 0;
+  return cost_per_base_unit(mat) * qty;
+}
+
+/** сырьё заготовки: вложенная заготовка считается своим рецептом, остальное — партией или карточкой */
+function component_money(state: finance_state, material_id: string, qty: number) {
+  if (!(qty > 0)) return 0;
+  if (is_prep_recipe_id(material_id) || station_for_cooked(state, material_id)) {
+    return material_cost(state, material_id, qty);
+  }
+  return raw_money(state, material_id, qty);
+}
+
+function station_for_cooked(state: finance_state, material_id: string) {
+  return prep_stations_of(state).find(
+    (station) =>
+      station.enabled !== false &&
+      station.cookedMaterialId === material_id &&
+      station.dryMaterialId &&
+      station.dryMaterialId !== material_id
+  );
+}
+
 /**
  * стоимость `qty` базовых единиц — как при реальном списании.
- * заготовка раскладывается на сырьё. вода и лёд — 0.
- * берётся более ранняя партия. граммы без накладной стоят 0, это не цена карточки.
+ * заготовка раскладывается на своё сырьё. вода и лёд — 0.
+ * берётся более ранняя партия. у сваренного без партии — сухой рецепт станции.
  */
 export function material_cost(state: finance_state, material_id: string, qty: number) {
   if (!(qty > 0)) return 0;
-  const prep = (state.prepRecipes ?? []).find((p) => p.id === material_id);
+  const prep = (state.prepRecipes ?? []).find((row) => row.id === material_id);
   if (prep) {
-    if (!(prep.yieldG > 0)) return 0;
-    const k = qty / prep.yieldG;
+    const yield_g = prep_yield_g(prep);
+    if (!(yield_g > 0)) return 0;
+    const k = qty / yield_g;
     let sum = 0;
     for (const [id, q] of Object.entries(prep.ingredients)) {
-      if (!(q > 0)) continue;
-      sum += material_cost(state, id, q * k);
+      if (!(q > 0) || id === material_id) continue;
+      sum += component_money(state, id, q * k);
     }
     return sum;
   }
-  return fifo_portion(state, material_id, qty).cost;
+  const fifo = fifo_portion(state, material_id, qty).cost;
+  if (fifo > 0) return fifo;
+  const station = station_for_cooked(state, material_id);
+  if (!station) return 0;
+  const per = cooked_per_dry(station);
+  if (!(per > 0)) return 0;
+  let sum = raw_money(state, station.dryMaterialId, qty / per);
+  const batch = station.defaultDryG * per;
+  if (batch > 0) {
+    for (const extra of station.extraInputs ?? []) {
+      if (!(extra.qty > 0) || !extra.materialId || extra.materialId === material_id) continue;
+      sum += raw_money(state, extra.materialId, (extra.qty * qty) / batch);
+    }
+  }
+  return sum;
+}
+
+/** из чего сложились рубли заготовки: имя сырья и его доля на эти граммы */
+export function ingredient_cost_parts(
+  state: finance_state,
+  material_id: string,
+  qty: number
+): { name: string; cost: number }[] {
+  if (!(qty > 0)) return [];
+  const name_of = (id: string) => state.materials.find((row) => row.id === id)?.name || id;
+  const prep = (state.prepRecipes ?? []).find((row) => row.id === material_id);
+  if (prep) {
+    const yield_g = prep_yield_g(prep);
+    if (!(yield_g > 0)) return [];
+    const k = qty / yield_g;
+    const parts: { name: string; cost: number }[] = [];
+    for (const [id, q] of Object.entries(prep.ingredients)) {
+      if (!(q > 0) || id === material_id) continue;
+      parts.push({ name: name_of(id), cost: component_money(state, id, q * k) });
+    }
+    return parts;
+  }
+  const station = station_for_cooked(state, material_id);
+  if (!station) return [];
+  const per = cooked_per_dry(station);
+  if (!(per > 0)) return [];
+  const parts = [{ name: name_of(station.dryMaterialId), cost: raw_money(state, station.dryMaterialId, qty / per) }];
+  const batch = station.defaultDryG * per;
+  if (batch > 0) {
+    for (const extra of station.extraInputs ?? []) {
+      if (!(extra.qty > 0) || !extra.materialId || extra.materialId === material_id) continue;
+      parts.push({
+        name: name_of(extra.materialId),
+        cost: raw_money(state, extra.materialId, (extra.qty * qty) / batch),
+      });
+    }
+  }
+  return parts;
 }
 
 /** true, если в этих граммах есть кусок без поставки */
@@ -2733,8 +2853,11 @@ export function material_unpriced(state: finance_state, material_id: string, qty
   if (!(qty > 0)) return false;
   const prep = (state.prepRecipes ?? []).find((p) => p.id === material_id);
   if (prep) {
-    if (!(prep.yieldG > 0)) return false;
-    const k = qty / prep.yieldG;
+    const yield_g = prep.yieldG > 0
+      ? prep.yieldG
+      : Object.values(prep.ingredients).reduce((sum, q) => sum + (q > 0 ? q : 0), 0);
+    if (!(yield_g > 0)) return false;
+    const k = qty / yield_g;
     for (const [id, q] of Object.entries(prep.ingredients)) {
       if (q > 0 && material_unpriced(state, id, q * k)) return true;
     }
@@ -4379,8 +4502,10 @@ function add_recipe(
     if (!(q > 0) || is_infinite_stock(id) || is_free_stock_id(id)) continue;
     const prep = preps.find((p) => p.id === id);
     if (prep) {
-      if (!(prep.yieldG > 0)) continue;
-      const k = (q * qty) / prep.yieldG;
+      const implied = Object.values(prep.ingredients).reduce((sum, grams) => sum + (grams > 0 ? grams : 0), 0);
+      const yield_g = prep.yieldG > 0 ? prep.yieldG : implied;
+      if (!(yield_g > 0)) continue;
+      const k = (q * qty) / yield_g;
       for (const [cid, cq] of Object.entries(prep.ingredients)) {
         if (!(cq > 0) || is_infinite_stock(cid) || is_free_stock_id(cid)) continue;
         out.set(cid, (out.get(cid) ?? 0) + cq * k);

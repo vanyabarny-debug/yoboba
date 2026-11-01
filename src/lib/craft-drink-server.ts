@@ -1,6 +1,9 @@
 import { read_finance_state, write_finance_state } from '@/lib/finance/finance-server';
 import {
   cost_per_base_unit,
+  is_prep_recipe_id,
+  ingredient_cost_parts,
+  is_station_prep,
   material_cost,
   material_excluded_from_warehouse,
   materials_with_preps,
@@ -27,8 +30,24 @@ export type craft_shelf = {
     name: string;
     unit_label: string;
     cost_per_base: number;
+    prep?: boolean;
+    parts?: { name: string; cost_per_base: number }[];
   }[];
 };
+
+function prep_price(state: Parameters<typeof material_cost>[0], id: string) {
+  const parts = ingredient_cost_parts(state, id, 1)
+    .filter((part) => part.cost > 0)
+    .map((part) => ({
+      name: part.name,
+      cost_per_base: Math.round(part.cost * 1000) / 1000,
+    }));
+  return {
+    prep: true as const,
+    parts,
+    cost_per_base: Math.round(material_cost(state, id, 1) * 1000) / 1000,
+  };
+}
 
 const skip_menu_categories = new Set(['комбо', 'закуски', 'добавки']);
 
@@ -60,11 +79,12 @@ export async function craft_catalog(): Promise<{ categories: string[]; shelves: 
     const shelf_id = stock_category_for(mat);
     const shelf = by_shelf.get(shelf_id) ?? by_shelf.get('raw');
     if (!shelf) continue;
+    const prep = is_prep_recipe_id(mat.id) || is_station_prep(mat) || shelf_id === 'prep';
     shelf.materials.push({
       id: mat.id,
       name: mat.name,
       unit_label: unit_label(mat),
-      cost_per_base: Math.round(cost_per_base_unit(mat) * 1000) / 1000,
+      ...(prep ? prep_price(state, mat.id) : { cost_per_base: Math.round(cost_per_base_unit(mat) * 1000) / 1000 }),
     });
   }
 
@@ -81,7 +101,7 @@ export async function craft_catalog(): Promise<{ categories: string[]; shelves: 
         id: p.id,
         name: p.name.trim(),
         unit_label: 'г',
-        cost_per_base: Math.round(material_cost(state, p.id, 1) * 1000) / 1000,
+        ...prep_price(state, p.id),
       });
     }
   }

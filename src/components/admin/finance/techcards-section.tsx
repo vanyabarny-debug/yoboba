@@ -6,6 +6,7 @@ import type { menu_item } from '@/lib/types';
 import {
   base_unit_label,
   format_rub,
+  ingredient_cost_parts,
   material_cost,
   material_unpriced,
   material_is_infinite,
@@ -1415,6 +1416,7 @@ function RecipeBox({
           options={ingredient_options}
           state_materials={materials}
           cost_of={(mid, q) => material_cost(state, mid, q)}
+          parts_of={(mid, q) => ingredient_cost_parts(state, mid, q)}
           missing_of={(mid, q) => material_unpriced(state, mid, q)}
           on_change={(rows) => {
             const base_ml = card_steps_base_ml(card);
@@ -1489,6 +1491,10 @@ function RecipeBox({
           }}
           show_header={false}
           show_fill_total
+          cost_of={(id, qty) => ({
+            total: material_cost(state, id, qty),
+            parts: ingredient_cost_parts(state, id, qty),
+          })}
           on_change={(next) => on_update_card((c) => apply_steps_to_card(c, next, materials))}
         />
       </div>
@@ -1529,6 +1535,7 @@ function IngredientList({
   options,
   state_materials,
   cost_of,
+  parts_of,
   missing_of,
   on_change,
   quick_pack_ml,
@@ -1539,6 +1546,7 @@ function IngredientList({
   options: { id: string; name: string; unit: import('@/lib/finance/model').material_unit }[];
   state_materials: import('@/lib/finance/model').material[];
   cost_of: (material_id: string, qty: number) => number;
+  parts_of?: (material_id: string, qty: number) => { name: string; cost: number }[];
   missing_of?: (material_id: string, qty: number) => boolean;
   on_change: (rows: Record<string, number>) => void;
   /** если задан — кнопка «стакан + плёнка + трубочка» под этот объём */
@@ -1550,6 +1558,7 @@ function IngredientList({
   const entries = Object.entries(rows);
   const used = new Set(entries.map(([id]) => id));
   const available = options.filter((o) => !used.has(o.id));
+  const prep_tags = available.filter((o) => o.name.startsWith('заготовка'));
   const total = entries.reduce((s, [id, q]) => s + cost_of(id, q), 0);
   const quick =
     quick_pack_ml && quick_pack_ml > 0
@@ -1571,33 +1580,51 @@ function IngredientList({
         <div className="space-y-1.5">
           {entries.map(([id, q]) => {
             const mat = state_materials.find((m) => m.id === id);
+            const prep =
+              is_prep_recipe_id(id) ||
+              (mat ? is_station_prep(mat) || stock_category_for(mat) === 'prep' : false);
+            const parts = prep ? (parts_of?.(id, q) ?? []).filter((part) => part.cost > 0) : [];
             return (
-              <div key={id} className="flex items-center gap-2 text-sm">
-                <span className="min-w-0 flex-1 truncate text-neutral-800">{mat?.name ?? <span className="text-neutral-400">удалённый материал</span>}</span>
-                <div className="flex w-28 items-center gap-1">
-                  <NumInput value={q} min={0} on_change={(v) => on_change({ ...rows, [id]: v })} />
-                  <span className="w-6 text-xs text-neutral-400">{mat ? base_unit_label(mat.unit) : ''}</span>
+              <div key={id} className="text-sm">
+                <div className="flex items-center gap-2">
+                  <span className="min-w-0 flex-1 truncate text-neutral-800">
+                    {prep ? (
+                      <span className="mr-1.5 rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-amber-900">
+                        заготовка
+                      </span>
+                    ) : null}
+                    {mat?.name ?? <span className="text-neutral-400">удалённый материал</span>}
+                  </span>
+                  <div className="flex w-28 items-center gap-1">
+                    <NumInput value={q} min={0} on_change={(v) => on_change({ ...rows, [id]: v })} />
+                    <span className="w-6 text-xs text-neutral-400">{mat ? base_unit_label(mat.unit) : ''}</span>
+                  </div>
+                  <span className="w-24 text-right text-xs tabular-nums text-neutral-500">
+                    {missing_of?.(id, q) ? (
+                      <span className="text-amber-600">
+                        {cost_of(id, q) > 0 ? `${format_rub(cost_of(id, q), 1)} · нет` : 'нет поставки'}
+                      </span>
+                    ) : (
+                      format_rub(cost_of(id, q), 1)
+                    )}
+                  </span>
+                  <button
+                    type="button"
+                    className={btn_ghost_danger}
+                    onClick={() => {
+                      const next = { ...rows };
+                      delete next[id];
+                      on_change(next);
+                    }}
+                  >
+                    ×
+                  </button>
                 </div>
-                <span className="w-24 text-right text-xs tabular-nums text-neutral-500">
-                  {missing_of?.(id, q) ? (
-                    <span className="text-amber-600">
-                      {cost_of(id, q) > 0 ? `${format_rub(cost_of(id, q), 1)} · нет` : 'нет поставки'}
-                    </span>
-                  ) : (
-                    format_rub(cost_of(id, q), 1)
-                  )}
-                </span>
-                <button
-                  type="button"
-                  className={btn_ghost_danger}
-                  onClick={() => {
-                    const next = { ...rows };
-                    delete next[id];
-                    on_change(next);
-                  }}
-                >
-                  ×
-                </button>
+                {parts.length ? (
+                  <p className="mt-0.5 text-[11px] text-neutral-400">
+                    {parts.map((part) => `${part.name} ${format_rub(part.cost, 1)}`).join(' · ')}
+                  </p>
+                ) : null}
               </div>
             );
           })}
@@ -1617,6 +1644,20 @@ function IngredientList({
         >
           {fill.label}
         </p>
+      ) : null}
+      {prep_tags.length ? (
+        <div className="mt-2 flex flex-wrap gap-1.5">
+          {prep_tags.map((tag) => (
+            <button
+              key={tag.id}
+              type="button"
+              onClick={() => on_change({ ...rows, [tag.id]: rows[tag.id] ?? 0 })}
+              className="rounded-full bg-amber-50 px-2.5 py-1 text-xs text-amber-950"
+            >
+              {tag.name}
+            </button>
+          ))}
+        </div>
       ) : null}
       <div className="mt-2 flex flex-wrap items-center gap-2">
         {can_quick && quick ? (

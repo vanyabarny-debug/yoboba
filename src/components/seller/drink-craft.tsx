@@ -16,6 +16,8 @@ type craft_material = {
   name: string;
   unit_label: string;
   cost_per_base: number;
+  prep?: boolean;
+  parts?: { name: string; cost_per_base: number }[];
 };
 
 type craft_shelf = {
@@ -81,27 +83,25 @@ export default function drink_craft({
   const [ttk_status, set_ttk_status] = useState<'idle' | 'ok' | 'err'>('idle');
   const [ttk_open, set_ttk_open] = useState(false);
 
-  useEffect(() => {
-    let stop = false;
+  function reload_catalog() {
     fetch('/api/seller/craft', { credentials: 'same-origin' })
       .then((res) => res.json())
       .then((body: { shelves?: craft_shelf[]; categories?: string[]; error?: string }) => {
-        if (stop) return;
         if (!body.shelves) {
           set_error(body.error || 'не удалось открыть крафт');
-          set_shelves([]);
+          set_shelves((prev) => prev ?? []);
           return;
         }
+        set_error('');
         set_shelves(body.shelves);
         set_categories(body.categories || []);
         set_category((prev) => prev || body.categories?.[0] || '');
       })
-      .catch(() => {
-        if (!stop) set_error('не удалось открыть крафт');
-      });
-    return () => {
-      stop = true;
-    };
+      .catch(() => set_error('не удалось открыть крафт'));
+  }
+
+  useEffect(() => {
+    reload_catalog();
   }, []);
 
   const materials = useMemo(() => {
@@ -392,7 +392,19 @@ export default function drink_craft({
                 return (
                   <li key={drop.key} className="rounded-xl bg-white px-2.5 py-2">
                     <div className="flex items-center gap-2">
-                      <p className="min-w-0 flex-1 truncate text-sm font-medium">{mat?.name || 'ингредиент'}</p>
+                      <p className="min-w-0 flex-1 truncate text-sm font-medium">
+                        {mat?.prep ? (
+                          <span className="mr-1.5 rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-amber-900">
+                            заготовка
+                          </span>
+                        ) : null}
+                        {mat?.name || 'ингредиент'}
+                      </p>
+                      {mat && Number(drop.qty) > 0 ? (
+                        <span className="shrink-0 text-[11px] tabular-nums text-neutral-500">
+                          {Math.round(mat.cost_per_base * Number(drop.qty) * 10) / 10} ₽
+                        </span>
+                      ) : null}
                       <input
                         value={drop.qty}
                         onChange={(e) => {
@@ -421,6 +433,17 @@ export default function drink_craft({
                         ×
                       </button>
                     </div>
+                    {mat?.prep && Number(drop.qty) > 0 && mat.parts?.some((part) => part.cost_per_base > 0) ? (
+                      <p className="mt-1 text-[11px] text-neutral-400">
+                        {mat.parts
+                          .filter((part) => part.cost_per_base > 0)
+                          .map(
+                            (part) =>
+                              `${part.name} ${Math.round(part.cost_per_base * Number(drop.qty) * 10) / 10} ₽`
+                          )
+                          .join(' · ')}
+                      </p>
+                    ) : null}
                     {drop.ask ? (
                       <div className="mt-2">
                         <p className="text-[11px] uppercase tracking-wide text-neutral-400">что с ним сделать</p>
@@ -490,6 +513,7 @@ export default function drink_craft({
             <button
               type="button"
               onClick={() => {
+                reload_catalog();
                 set_pick_board(board.id);
                 set_making(false);
                 set_query('');
@@ -645,9 +669,11 @@ export default function drink_craft({
                       key={mat.id}
                       type="button"
                       onClick={() => add_drop(pick_board, mat.id)}
-                      className="rounded-full border border-neutral-200 px-2.5 py-1 text-sm"
+                      className={`rounded-full px-2.5 py-1 text-sm ${
+                        mat.prep ? 'bg-amber-50 text-amber-950' : 'border border-neutral-200'
+                      }`}
                     >
-                      {mat.name}
+                      {mat.prep && !mat.name.startsWith('заготовка') ? `заготовка · ${mat.name}` : mat.name}
                     </button>
                   ))}
                 </div>

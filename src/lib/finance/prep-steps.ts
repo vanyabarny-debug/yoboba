@@ -265,7 +265,12 @@ export function ingredients_from_steps(
     // 0 г оставляем — только что добавленная позиция в редакторе
     if (!Number.isFinite(q) || q < 0) continue;
     const mat = by_id.get(s.materialId);
-    if (!mat) continue;
+    if (!mat) {
+      if (is_prep_recipe_id(s.materialId)) {
+        ingredients[s.materialId] = (ingredients[s.materialId] || 0) + q;
+      }
+      continue;
+    }
     const cat = stock_category_for(mat);
     if (cat === 'packaging') {
       saw_pack = true;

@@ -6,7 +6,16 @@ import {
   unit_label_for_material,
 } from '@/lib/finance/prep-steps';
 import { cup_fill_summary, edible_grams_from_steps } from '@/lib/finance/cup-fill';
-import { base_unit, is_prep_recipe_id, is_station_prep, new_id, stock_category_for, type material, type prep_step } from '@/lib/finance/model';
+import {
+  base_unit,
+  format_rub,
+  is_prep_recipe_id,
+  is_station_prep,
+  new_id,
+  stock_category_for,
+  type material,
+  type prep_step,
+} from '@/lib/finance/model';
 import { btn_ghost_danger, btn_secondary, cell_input_class, field_class } from '@/components/admin/finance/ui';
 
 function qty_stays(mat: material | undefined) {
@@ -29,6 +38,7 @@ export default function PrepStepsEditor({
   on_view_ml,
   show_header = true,
   show_fill_total = false,
+  cost_of,
   on_change,
 }: {
   steps: prep_step[];
@@ -43,6 +53,8 @@ export default function PrepStepsEditor({
   show_header?: boolean;
   /** итого г съедобного и сколько до цели 490/637 */
   show_fill_total?: boolean;
+  /** рубли строки и из какого сырья они сложились */
+  cost_of?: (material_id: string, qty: number) => { total: number; parts: { name: string; cost: number }[] };
   on_change: (next: prep_step[]) => void;
 }) {
   const volumes = useMemo(() => {
@@ -93,6 +105,26 @@ export default function PrepStepsEditor({
         return { ...s, ...part, qty: to_base_qty(part.qty, view_ml, base_ml, mat) };
       })
     );
+  }
+
+  function is_prep(mat: material) {
+    return is_prep_recipe_id(mat.id) || is_station_prep(mat) || stock_category_for(mat) === 'prep';
+  }
+
+  function add_material(id: string) {
+    const mat = by_id.get(id);
+    if (!mat) return;
+    on_change([
+      ...steps,
+      {
+        id: new_id('step'),
+        title: mat.name.replace(/\s*\([^)]*\)\s*/g, ' ').trim(),
+        hint: '',
+        materialId: mat.id,
+        qty: 0,
+      },
+    ]);
+    set_adding('');
   }
 
   const used = new Set(steps.map((s) => s.materialId).filter(Boolean) as string[]);
@@ -198,7 +230,11 @@ export default function PrepStepsEditor({
                     {s.qty_label && !(s.qty > 0) ? (
                       <p className="text-[10px] text-neutral-400">{s.qty_label}</p>
                     ) : null}
-                    {mat ? <p className="text-[10px] text-neutral-400">склад: {mat.name}</p> : null}
+                    {mat && is_prep(mat) ? (
+                      <PrepMoney mat={mat} qty={s.qty} cost_of={cost_of} />
+                    ) : mat ? (
+                      <p className="text-[10px] text-neutral-400">склад: {mat.name}</p>
+                    ) : null}
                   </div>
                 </div>
               </li>
@@ -221,6 +257,20 @@ export default function PrepStepsEditor({
           {fill.label}
         </p>
       ) : null}
+      {available.some(is_prep) ? (
+        <div className="mt-2 flex flex-wrap gap-1.5">
+          {available.filter(is_prep).map((mat) => (
+            <button
+              key={mat.id}
+              type="button"
+              onClick={() => add_material(mat.id)}
+              className="rounded-full bg-amber-50 px-2.5 py-1 text-xs text-amber-950"
+            >
+              {mat.name.startsWith('заготовка') ? mat.name : `заготовка · ${mat.name}`}
+            </button>
+          ))}
+        </div>
+      ) : null}
       <div className="mt-2 flex flex-wrap gap-2">
         {available.length > 0 ? (
           <select
@@ -229,19 +279,7 @@ export default function PrepStepsEditor({
             onChange={(e) => {
               const id = e.target.value;
               if (!id) return;
-              const mat = by_id.get(id);
-              if (!mat) return;
-              on_change([
-                ...steps,
-                {
-                  id: new_id('step'),
-                  title: mat.name.replace(/\s*\([^)]*\)\s*/g, ' ').trim(),
-                  hint: '',
-                  materialId: mat.id,
-                  qty: 0,
-                },
-              ]);
-              set_adding('');
+              add_material(id);
             }}
           >
             <option value="">+ из склада…</option>
@@ -269,6 +307,39 @@ export default function PrepStepsEditor({
           + действие
         </button>
       </div>
+    </div>
+  );
+}
+
+function PrepMoney({
+  mat,
+  qty,
+  cost_of,
+}: {
+  mat: material;
+  qty: number;
+  cost_of?: (material_id: string, qty: number) => { total: number; parts: { name: string; cost: number }[] };
+}) {
+  const money = qty > 0 && cost_of ? cost_of(mat.id, qty) : null;
+  const parts = money?.parts.filter((part) => part.cost > 0) ?? [];
+  return (
+    <div className="text-[11px] text-neutral-500">
+      <span className="mr-1.5 rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-amber-900">
+        заготовка
+      </span>
+      {money ? (
+        <>
+          {format_rub(money.total, 1)}
+          {parts.length ? (
+            <span className="text-neutral-400">
+              {' '}
+              · {parts.map((part) => `${part.name} ${format_rub(part.cost, 1)}`).join(' · ')}
+            </span>
+          ) : null}
+        </>
+      ) : (
+        <span className="text-neutral-400">склад: {mat.name}</span>
+      )}
     </div>
   );
 }

@@ -62,7 +62,9 @@ export default function PrepRecipesSection({
               (s, [id, q]) => s + cost_of(id, q),
               0
             );
-            const per_gram = recipe.yieldG > 0 ? batch_cost / recipe.yieldG : 0;
+            const implied = Object.values(recipe.ingredients).reduce((s, q) => s + (q > 0 ? q : 0), 0);
+            const yield_g = recipe.yieldG > 0 ? recipe.yieldG : implied;
+            const per_gram = yield_g > 0 ? batch_cost / yield_g : 0;
             return (
               <li key={recipe.id} className="border-t border-neutral-100 px-4 py-3 first:border-t-0">
                 <div className="flex flex-wrap items-end gap-2">
@@ -164,13 +166,14 @@ export default function PrepRecipesSection({
                   </select>
                 ) : null}
                 <p className="mt-2 text-[11px] text-neutral-500">
-                  {recipe.yieldG > 0 ? (
+                  {yield_g > 0 ? (
                     <>
-                      рецепт на {recipe.yieldG.toLocaleString('ru-RU')} г · {format_rub(batch_cost, 1)}
-                      {per_gram > 0 ? ` · ${format_rub(per_gram, 4)}/г` : ''}
+                      рецепт на {yield_g.toLocaleString('ru-RU')} г · {format_rub(batch_cost, 1)}
+                      {per_gram > 0 ? ` · ${format_rub(per_gram, 2)}/г` : ''}
+                      {recipe.yieldG > 0 ? '' : ' · выход = сумма ингредиентов'}
                     </>
                   ) : (
-                    'укажите, сколько грамм получается из этого рецепта'
+                    'добавьте ингредиенты и их граммы — из них считается цена заготовки'
                   )}
                 </p>
               </li>

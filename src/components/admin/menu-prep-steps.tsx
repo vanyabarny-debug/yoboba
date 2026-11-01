@@ -7,7 +7,14 @@ import {
   card_steps_base_ml,
   resolved_card_prep_steps,
 } from '@/lib/finance/prep-steps';
-import { normalize_finance_state, type finance_state, type tech_card } from '@/lib/finance/model';
+import {
+  ingredient_cost_parts,
+  material_cost,
+  materials_with_preps,
+  normalize_finance_state,
+  type finance_state,
+  type tech_card,
+} from '@/lib/finance/model';
 
 export default function MenuPrepSteps({ menu_item_id }: { menu_item_id: string }) {
   const [state, set_state] = useState<finance_state | null>(null);
@@ -96,12 +103,16 @@ export default function MenuPrepSteps({ menu_item_id }: { menu_item_id: string }
         ) : null}
       </div>
       <PrepStepsEditor
-        steps={resolved_card_prep_steps(card, state.materials)}
-        materials={state.materials}
+        steps={resolved_card_prep_steps(card, materials_with_preps(state))}
+        materials={materials_with_preps(state)}
         base_ml={card_steps_base_ml(card)}
         size_keys={Object.keys(card.sizes)}
         show_fill_total
-        on_change={(next) => patch_card((c) => apply_steps_to_card(c, next, state.materials))}
+        cost_of={(id, qty) => ({
+          total: material_cost(state, id, qty),
+          parts: ingredient_cost_parts(state, id, qty),
+        })}
+        on_change={(next) => patch_card((c) => apply_steps_to_card(c, next, materials_with_preps(state)))}
       />
       <p className="mt-2 text-[11px] text-neutral-400">кассир увидит эти шаги, когда нажмёт карточку заказа</p>
     </div>
