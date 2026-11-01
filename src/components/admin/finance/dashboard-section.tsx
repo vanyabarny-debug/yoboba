@@ -49,6 +49,7 @@ import StoreRhythmCard from '@/components/admin/finance/store-rhythm-card';
 import type { store_rhythm } from '@/lib/customer-analytics';
 import type { retention_report } from '@/lib/guest-rank';
 import type { seller, store_spot } from '@/lib/types';
+import { seller_month_pay } from '@/lib/staff-schedule';
 import {
   get_spots,
   seller_spot_labels,
@@ -507,6 +508,7 @@ function FotEditor({
   ndfl_rate,
   tax_toggle_label = 'ндфл',
   people,
+  pay_month,
   sellers_loading,
   sellers_error,
   on_retry_sellers,
@@ -519,7 +521,9 @@ function FotEditor({
   /** подпись чекбокса облагаемой выплаты */
   tax_toggle_label?: string;
   /** активные сотрудники для выбора */
-  people: { id: string; name: string; role_title?: string; salary_net?: number; with_ndfl?: boolean }[];
+  people: Pick<seller, 'id' | 'name' | 'role_title' | 'salary_net' | 'with_ndfl' | 'shift_rate' | 'schedule'>[];
+  /** месяц для расчёта оклада по графику; без него — фикс из карточки */
+  pay_month?: string;
   sellers_loading?: boolean;
   sellers_error?: string;
   on_retry_sellers?: () => void;
@@ -537,6 +541,9 @@ function FotEditor({
     const role = (p.role_title || '').trim();
     return role ? `${role} ${p.name}` : p.name;
   }
+  function person_pay(p: (typeof people)[number]) {
+    return pay_month ? seller_month_pay(p, pay_month) : Math.max(0, Math.round(Number(p.salary_net) || 0));
+  }
   function assign_person(line_id: string, seller_id: string) {
     if (!seller_id) {
       patch(line_id, { sellerId: undefined, name: '' });
@@ -544,7 +551,7 @@ function FotEditor({
     }
     const p = people.find((x) => x.id === seller_id);
     if (!p) return;
-    const amount = Math.max(0, Math.round(Number(p.salary_net) || 0));
+    const amount = person_pay(p);
     patch(line_id, {
       sellerId: p.id,
       name: person_label(p),
@@ -553,7 +560,7 @@ function FotEditor({
   }
   function add_payment(seller_id?: string) {
     const p = seller_id ? people.find((x) => x.id === seller_id) : people[0];
-    const amount = p ? Math.max(0, Math.round(Number(p.salary_net) || 0)) : 0;
+    const amount = p ? person_pay(p) : 0;
     on_change([
       ...lines,
       {
@@ -960,15 +967,22 @@ export default function DashboardSection({
     rows.length ? rows.reduce((s, d) => s + d.revenue, 0) / rows.length : 0;
 
   const month_pay = month_md ? resolve_month_payroll(state, month_md) : null;
+  /** зп по графику считаем только для текущего и будущих месяцев — прошлые не переписываем */
+  const pay_month = month_id >= current_month ? month_id : undefined;
   const stored_payroll = month_md?.payroll;
+  const month_pay_lines = month_pay?.lines;
   const fot_lines = useMemo(() => {
-    const all = merge_payroll_with_sellers(stored_payroll ?? month_pay?.lines, sellers);
+    const all = merge_payroll_with_sellers(
+      stored_payroll ?? month_pay_lines,
+      sellers,
+      month_id >= current_month ? month_id : undefined
+    );
     if (!spot_id) return all;
     const allowed = new Set(
       sellers.filter((s) => seller_works_at(s.spot_ids, spot_id)).map((s) => s.id)
     );
     return all.filter((l) => l.sellerId && allowed.has(l.sellerId));
-  }, [stored_payroll, month_pay?.lines, sellers, spot_id]);
+  }, [stored_payroll, month_pay_lines, sellers, spot_id, month_id, current_month]);
   const sellers_for_fot = useMemo(
     () =>
       sellers.filter(
@@ -1010,11 +1024,15 @@ export default function DashboardSection({
     if (!active.length) return;
     const linked = new Set(existing.map((l) => l.sellerId).filter(Boolean));
     const missing = active.some((s) => !linked.has(s.id));
-    if (!missing && existing.some((l) => l.sellerId)) return;
-    const merged = merge_payroll_with_sellers(existing, sellers);
+    const merged = merge_payroll_with_sellers(existing, sellers, pay_month);
+    const drifted = merged.some((line) => {
+      const before = existing.find((l) => l.id === line.id);
+      return Boolean(before && (before.amount !== line.amount || before.withNdfl !== line.withNdfl));
+    });
+    if (!missing && !drifted && existing.some((l) => l.sellerId)) return;
     if (!merged.length) return;
     set_state((prev) => set_month_payroll(prev, month_id, merged));
-  }, [sellers, month_id, stored_payroll, set_state]);
+  }, [sellers, month_id, pay_month, stored_payroll, set_state]);
 
   const status = fact
     ? month_status({
@@ -1130,6 +1148,7 @@ export default function DashboardSection({
               ndfl_rate={is_custom_tax ? fot_ins_rate : state.ndflRate}
               tax_toggle_label={is_custom_tax ? 'налог' : 'ндфл'}
               people={sellers_for_fot}
+              pay_month={pay_month}
               sellers_loading={sellers_loading}
               sellers_error={sellers_error}
               on_retry_sellers={() => set_sellers_tick((n) => n + 1)}

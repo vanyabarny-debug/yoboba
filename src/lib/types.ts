@@ -212,6 +212,10 @@ export type seller = {
   id: string;
   login: string;
   password: string;
+  /** зашифрованная копия пароля для просмотра админом; наружу не отдаётся */
+  password_view?: string;
+  /** только в ответе админского API: известен ли текущий пароль */
+  password_known?: boolean;
   name: string;
   /** должность своими словами: бариста, менеджер, кассир */
   role_title?: string;
@@ -227,7 +231,21 @@ export type seller = {
   salary_net?: number;
   /** платить ли НДФЛ с этой ЗП (по умолчанию да, если salary_net > 0) */
   with_ndfl?: boolean;
+  /** ставка за смену, ₽ — сверх оклада, в ФОТ не попадает */
+  shift_rate?: number;
+  phone?: string;
+  /** YYYY-MM-DD */
+  birthday?: string;
+  /** YYYY-MM-DD — первый рабочий день */
+  hired_at?: string;
+  note?: string;
+  schedule?: seller_schedule | null;
 };
+
+/** week — по дням недели; cycle — «N через M» от даты start */
+export type seller_schedule =
+  | { kind: 'week'; days: number[]; from: string; to: string }
+  | { kind: 'cycle'; on: number; off: number; start: string; from: string; to: string };
 
 export type cash_transaction = {
   id: string;

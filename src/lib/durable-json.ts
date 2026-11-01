@@ -57,8 +57,22 @@ async function upsert_row(
   return 'fail';
 }
 
+/** строка уже есть в supabase — значит облако главное */
+export async function has_durable_row(key: string): Promise<boolean> {
+  if (!is_supabase_configured()) return false;
+  const admin = create_service_client();
+  const primary = await read_row(admin, table, key);
+  if (primary && primary !== 'missing') return true;
+  const legacy = await read_row(admin, legacy_table, key);
+  return Boolean(legacy && legacy !== 'missing');
+}
+
 /** продажи / выдачи / касса живут в supabase jsonb, диск — только зеркало */
-export async function read_durable_json<T>(key: string, fallback: T): Promise<T> {
+export async function read_durable_json<T>(
+  key: string,
+  fallback: T,
+  opts: { migrate?: boolean } = {}
+): Promise<T> {
   const local = await read_json_store<T>(key, fallback);
   if (!is_supabase_configured()) return local;
   await ensure_finance_cloud_once().catch(() => {});
@@ -68,7 +82,7 @@ export async function read_durable_json<T>(key: string, fallback: T): Promise<T>
     primary === 'missing' || primary == null ? await read_row(admin, legacy_table, key) : primary;
   const store = cloud && cloud !== 'missing' ? (cloud.store as T) : null;
   if (store == null) {
-    if (has_rows(local, fallback)) {
+    if (opts.migrate !== false && has_rows(local, fallback)) {
       await write_durable_json(key, local).catch((e) =>
         console.error(`durable migrate ${key}`, e instanceof Error ? e.message : e)
       );

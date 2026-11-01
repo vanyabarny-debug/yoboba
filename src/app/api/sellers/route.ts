@@ -5,21 +5,41 @@ import { hash_staff_password, min_staff_password_length } from '@/lib/password-h
 import { delete_seller, get_sellers, upsert_seller } from '@/lib/sellers-server';
 import { parse_push_categories } from '@/lib/push-categories';
 import { parse_seller_access } from '@/lib/seller-access';
+import { parse_schedule, seller_month_pay } from '@/lib/staff-schedule';
+import { open_staff_password, seal_staff_password } from '@/lib/staff-password-vault';
+import { moscow_today_iso } from '@/lib/order-number';
 import type { seller } from '@/lib/types';
+
+function clean_text(value: unknown, max: number) {
+  return typeof value === 'string' ? value.trim().slice(0, max) : '';
+}
+
+function clean_day(value: unknown) {
+  return typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value) ? value : '';
+}
 
 async function is_admin() {
   const store = await cookies();
   return store.get(session_cookie)?.value === 'admin';
 }
 
-export async function GET() {
+function public_seller(row: seller): seller {
+  const { password_view, ...rest } = row;
+  return { ...rest, password: '', password_known: Boolean(open_staff_password(password_view)) };
+}
+
+export async function GET(request: Request) {
   if (!(await is_admin())) {
     return NextResponse.json({ error: 'доступ запрещён' }, { status: 403 });
   }
   const sellers = await get_sellers();
-  return NextResponse.json({
-    sellers: sellers.map((seller) => ({ ...seller, password: '' })),
-  });
+  const reveal = new URL(request.url).searchParams.get('reveal');
+  if (reveal) {
+    const row = sellers.find((s) => s.id === reveal);
+    if (!row) return NextResponse.json({ error: 'не найден' }, { status: 404 });
+    return NextResponse.json({ password: open_staff_password(row.password_view) });
+  }
+  return NextResponse.json({ sellers: sellers.map(public_seller) });
 }
 
 export async function POST(request: Request) {
@@ -68,7 +88,13 @@ export async function POST(request: Request) {
     password = hash_staff_password(incoming);
   }
 
-  const salary_net = Math.max(0, Math.round(Number(body.salary_net) || 0));
+  const shift_rate = Math.max(0, Math.round(Number(body.shift_rate) || 0));
+  const schedule = parse_schedule(body.schedule);
+  const salary_net = seller_month_pay(
+    { salary_net: body.salary_net, shift_rate, schedule },
+    moscow_today_iso().slice(0, 7)
+  );
+  const password_view = incoming ? seal_staff_password(incoming) : existing?.password_view;
   const with_ndfl =
     body.with_ndfl != null ? Boolean(body.with_ndfl) : salary_net > 0;
   const push_categories = parse_push_categories(body.push_categories);
@@ -76,8 +102,10 @@ export async function POST(request: Request) {
   access.push = push_categories.length > 0;
   const record = await upsert_seller({
     id: body.id || `seller-${Date.now()}`,
+    created_at: existing?.created_at,
     login: body.login.trim().toLowerCase(),
     password,
+    password_view,
     name: body.name.trim(),
     role_title: (body.role_title || 'бариста').trim().slice(0, 40) || 'бариста',
     access,
@@ -86,9 +114,21 @@ export async function POST(request: Request) {
     spot_ids: Array.isArray(body.spot_ids) ? body.spot_ids : [],
     salary_net,
     with_ndfl,
+    shift_rate,
+    phone: clean_text(body.phone, 32),
+    birthday: clean_day(body.birthday),
+    hired_at: clean_day(body.hired_at),
+    note: clean_text(body.note, 600),
+    schedule,
+  }).catch((e: unknown) => {
+    console.error('sellers save', e instanceof Error ? e.message : e);
+    return null;
   });
+  if (!record) {
+    return NextResponse.json({ error: 'не удалось сохранить — supabase не ответил' }, { status: 502 });
+  }
 
-  return NextResponse.json({ seller: { ...record, password: '' } });
+  return NextResponse.json({ seller: public_seller(record) });
 }
 
 export async function DELETE(request: Request) {
@@ -101,7 +141,14 @@ export async function DELETE(request: Request) {
     return NextResponse.json({ error: 'не указан id' }, { status: 400 });
   }
 
-  if (!(await delete_seller(id))) {
+  const removed = await delete_seller(id).catch((e: unknown) => {
+    console.error('sellers delete', e instanceof Error ? e.message : e);
+    return 'fail' as const;
+  });
+  if (removed === 'fail') {
+    return NextResponse.json({ error: 'не удалось удалить — supabase не ответил' }, { status: 502 });
+  }
+  if (!removed) {
     return NextResponse.json({ error: 'не найден' }, { status: 404 });
   }
 

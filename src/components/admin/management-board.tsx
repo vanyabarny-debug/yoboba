@@ -19,7 +19,10 @@ import {
 import { moscow_today_iso } from '@/lib/order-number';
 import { seller_right_ids, seller_right_label, type seller_right } from '@/lib/seller-access';
 import { get_spots, seller_works_at, spot_short, subscribe_spot_store } from '@/lib/spot-store';
-import type { store_spot } from '@/lib/types';
+import type { seller, seller_schedule, store_spot } from '@/lib/types';
+import StaffProfile from '@/components/admin/staff-profile';
+import { schedule_label, works_on } from '@/lib/staff-schedule';
+import { default_seller_access } from '@/lib/seller-access';
 import CircularTimer from '@/components/seller/circular-timer';
 import PrepVessel, { liquid_tone_for } from '@/components/seller/prep-vessel';
 import {
@@ -38,6 +41,7 @@ type staff = {
   role_title: string;
   is_active: boolean;
   spot_ids: string[];
+  schedule: seller_schedule | null;
 };
 
 type draft = {
@@ -570,28 +574,68 @@ function DayCalendar({
 function FolderCard({
   title,
   meta,
+  badge,
+  dim,
   on_open,
 }: {
   title: string;
   meta?: string;
+  badge?: string;
+  dim?: boolean;
   on_open: () => void;
 }) {
   return (
     <button
       type="button"
       onClick={on_open}
-      className="rounded-2xl border border-neutral-200/80 bg-white px-4 py-4 text-left shadow-sm transition-colors hover:bg-neutral-50"
+      className={`rounded-2xl border border-neutral-200/80 bg-white px-4 py-4 text-left shadow-sm transition-colors hover:bg-neutral-50 ${
+        dim ? 'opacity-50' : ''
+      }`}
     >
-      <p className="truncate text-sm font-semibold text-neutral-900">{title}</p>
+      <span className="flex items-center justify-between gap-2">
+        <span className="truncate text-sm font-semibold text-neutral-900">{title}</span>
+        {badge ? (
+          <span className="shrink-0 rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] text-emerald-700">{badge}</span>
+        ) : null}
+      </span>
       {meta ? <p className="mt-1 truncate text-xs text-neutral-500">{meta}</p> : <span className="mt-1 block h-4" />}
     </button>
   );
 }
 
+function blank_person(): seller {
+  return {
+    id: `seller-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+    login: '',
+    password: '',
+    name: '',
+    role_title: 'бариста',
+    access: default_seller_access(),
+    is_active: true,
+    created_at: '',
+    spot_ids: [],
+    salary_net: 0,
+    with_ndfl: true,
+  };
+}
+
 export default function ManagementBoard() {
-  const [screen, set_screen] = useState<'home' | 'board'>('home');
+  const [screen, set_screen] = useState<'home' | 'board' | 'person'>('home');
   const [spots, set_spots] = useState<store_spot[]>([]);
-  const [staff, set_staff] = useState<staff[]>([]);
+  const [people, set_people] = useState<seller[]>([]);
+  const [person, set_person] = useState<{ row: seller; is_new: boolean } | null>(null);
+  const staff = useMemo<staff[]>(
+    () =>
+      people.map((row) => ({
+        id: row.id,
+        name: row.name,
+        role_title: row.role_title || '',
+        is_active: row.is_active !== false,
+        spot_ids: row.spot_ids || [],
+        schedule: row.schedule ?? null,
+      })),
+    [people]
+  );
   const [store, set_store] = useState<management_store>(empty_management_store);
   const [cards, set_cards] = useState<board_card[]>([]);
   const [ready, set_ready] = useState(false);
@@ -640,24 +684,8 @@ export default function ManagementBoard() {
         set_cards(data.cards);
       }
       if (staff_res.ok) {
-        const data = (await staff_res.json()) as {
-          sellers?: {
-            id: string;
-            name: string;
-            role_title?: string;
-            is_active?: boolean;
-            spot_ids?: string[];
-          }[];
-        };
-        set_staff(
-          (data.sellers || []).map((person) => ({
-            id: person.id,
-            name: person.name,
-            role_title: person.role_title || '',
-            is_active: person.is_active !== false,
-            spot_ids: person.spot_ids || [],
-          }))
-        );
+        const data = (await staff_res.json()) as { sellers?: seller[] };
+        set_people(data.sellers || []);
       }
       set_ready(true);
     })();
@@ -895,6 +923,13 @@ export default function ManagementBoard() {
     if (person && !seller_works_at(person.spot_ids, next)) set_seller_id(null);
   }
 
+  function open_person(id: string) {
+    const row = people.find((item) => item.id === id);
+    if (!row) return;
+    set_person({ row, is_new: false });
+    set_screen('person');
+  }
+
   function pick_seller(id: string) {
     const next = id || null;
     set_seller_id(next);
@@ -1115,20 +1150,57 @@ export default function ManagementBoard() {
                   set_screen('board');
                 }}
               />
-              {active_staff.map((person) => (
+              {[...staff].sort((a, b) => Number(b.is_active) - Number(a.is_active)).map((row) => (
                 <FolderCard
-                  key={person.id}
-                  title={person.name}
-                  meta={person.role_title || undefined}
-                  on_open={() => {
-                    pick_seller(person.id);
-                    set_screen('board');
-                  }}
+                  key={row.id}
+                  title={row.name}
+                  meta={[row.role_title, row.is_active ? schedule_label(row.schedule) : 'не работает']
+                    .filter(Boolean)
+                    .join(' · ')}
+                  badge={row.is_active && works_on(row.schedule, clock.iso) ? 'сегодня' : undefined}
+                  dim={!row.is_active}
+                  on_open={() => open_person(row.id)}
                 />
               ))}
+              <button
+                type="button"
+                onClick={() => {
+                  set_person({ row: blank_person(), is_new: true });
+                  set_screen('person');
+                }}
+                className="rounded-2xl border border-dashed border-neutral-300 px-4 py-4 text-left text-sm text-neutral-500 transition-colors hover:border-neutral-400 hover:text-neutral-800"
+              >
+                + сотрудник
+              </button>
             </div>
           </section>
         </div>
+      ) : null}
+
+      {ready && screen === 'person' && person ? (
+        <StaffProfile
+          key={person.row.id}
+          person={person.row}
+          is_new={person.is_new}
+          spots={active_spots}
+          on_back={() => {
+            set_person(null);
+            set_screen('home');
+          }}
+          on_saved={(next) => {
+            set_people((prev) => (prev.some((row) => row.id === next.id) ? prev.map((row) => (row.id === next.id ? next : row)) : [...prev, next]));
+            if (person.is_new) set_person({ row: next, is_new: false });
+          }}
+          on_deleted={(id) => {
+            set_people((prev) => prev.filter((row) => row.id !== id));
+            set_person(null);
+            set_screen('home');
+          }}
+          on_board={() => {
+            pick_seller(person.row.id);
+            set_screen('board');
+          }}
+        />
       ) : null}
 
       {ready && screen === 'board' ? (

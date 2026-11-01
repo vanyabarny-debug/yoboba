@@ -3,8 +3,9 @@
  * структура состояния совместима с бэкапом bubble_manager_backup_*.json,
  * поэтому старые файлы импортируются без потерь.
  */
-import type { menu_item } from '@/lib/types';
+import type { menu_item, seller_schedule } from '@/lib/types';
 import { expand_items_for_stock } from '@/lib/combo';
+import { seller_month_pay } from '@/lib/staff-schedule';
 import { get_item_volumes } from '@/lib/product-details';
 
 export const FINANCE_STATE_VERSION = 9;
@@ -938,6 +939,8 @@ type seller_pay_source = {
   is_active?: boolean;
   salary_net?: number;
   with_ndfl?: boolean;
+  shift_rate?: number;
+  schedule?: seller_schedule | null;
 };
 
 function is_legacy_fot_lump(p: payroll_line) {
@@ -955,7 +958,8 @@ function seller_pay_label(s: Pick<seller_pay_source, 'name' | 'role_title'>) {
 /** слить ФОТ месяца с актуальным персоналом (база ЗП из карточки сотрудника) */
 export function merge_payroll_with_sellers(
   payroll: payroll_line[] | undefined,
-  sellers: seller_pay_source[]
+  sellers: seller_pay_source[],
+  month?: string
 ): payroll_line[] {
   const active = sellers.filter((s) => s.is_active !== false);
   const stored = Array.isArray(payroll) ? payroll : [];
@@ -975,12 +979,17 @@ export function merge_payroll_with_sellers(
         seen_sellers.add(p.sellerId);
         continue;
       }
+      // строка «зп» из карточки следует за карточкой; ноль в карточке не затирает введённое вручную
+      const card_pay = month && p.id === `pay-${seller.id}` ? seller_month_pay(seller, month) : 0;
       lines.push({
         ...p,
         id: p.id || new_id('pay'),
         sellerId: p.sellerId,
         name: seller_pay_label(seller) || p.name,
         kind: parse_payroll_kind(p.kind),
+        ...(card_pay > 0
+          ? { amount: card_pay, withNdfl: seller.with_ndfl != null ? Boolean(seller.with_ndfl) : true }
+          : {}),
       });
       seen_sellers.add(p.sellerId);
       continue;
@@ -992,7 +1001,7 @@ export function merge_payroll_with_sellers(
   // сотрудники без ни одной выплаты в месяце — одна строка «зп» из карточки (даже с 0 ₽)
   for (const s of active) {
     if (seen_sellers.has(s.id)) continue;
-    const amount = Math.max(0, Math.round(Number(s.salary_net) || 0));
+    const amount = month ? seller_month_pay(s, month) : Math.max(0, Math.round(Number(s.salary_net) || 0));
     lines.push({
       id: `pay-${s.id}`,
       sellerId: s.id,
