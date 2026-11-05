@@ -12,6 +12,7 @@ import { is_supabase_configured } from '@/lib/supabase/config';
 import { create_service_client } from '@/lib/supabase/service';
 import { clear_order_prep } from '@/lib/seller-prep-server';
 import type { order, order_item } from '@/lib/types';
+import { parse_prep_grams } from '@/lib/prep-grams';
 import { student_line_price } from '@/lib/student-discount';
 import { discounted_unit, parse_discount } from '@/lib/pos-pricing';
 import {
@@ -495,6 +496,7 @@ export async function POST(request: Request) {
         quantity: qty,
         volume: normalized.volume,
         category: m?.category,
+        prep_grams: parse_prep_grams(row.prep_grams),
         ...combo,
       };
     });
@@ -510,6 +512,7 @@ export async function POST(request: Request) {
       ...(c.volume ? { volume: c.volume } : {}),
       ...(c.combo_picks?.length ? { combo_picks: c.combo_picks } : {}),
       ...(c.combo_components?.length ? { combo_components: c.combo_components } : {}),
+      ...(c.prep_grams ? { prep_grams: c.prep_grams } : {}),
       kind: staff ? ('staff' as const) : ('sale' as const),
     }));
   })();

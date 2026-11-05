@@ -30,10 +30,11 @@ export async function PUT(request: Request) {
     return NextResponse.json({ error: 'доступ запрещён' }, { status: 403 });
   }
 
-  const body = (await request.json()) as unknown;
+  const body = (await request.json().catch(() => null)) as unknown;
   if (!is_menu_store_payload(body) || body.items.length === 0) {
     return NextResponse.json({ error: 'пустое меню' }, { status: 400 });
   }
+  const partial = (body as { partial?: unknown }).partial === true;
 
   const store: menu_store = {
     version: store_version,
@@ -43,6 +44,11 @@ export async function PUT(request: Request) {
     category_heading_styles: body.category_heading_styles ?? {},
   };
 
-  await write_published_menu(store);
+  try {
+    await write_published_menu(store, { partial });
+  } catch (e) {
+    console.error('menu publish', e instanceof Error ? e.message : e);
+    return NextResponse.json({ error: 'не сохранилось' }, { status: 502 });
+  }
   return NextResponse.json({ ok: true });
 }

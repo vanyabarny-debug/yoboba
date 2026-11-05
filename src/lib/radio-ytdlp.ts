@@ -334,7 +334,7 @@ async function ffmpeg_to_mp3(input: string, headers: string, dest: string, signa
     }
     if (headers) args.push('-headers', headers);
   }
-  args.push('-i', input, '-vn', '-acodec', 'libmp3lame', '-ar', '44100', '-ac', '2', '-b:a', '160k', dest);
+  args.push('-i', input, '-vn', '-acodec', 'libmp3lame', '-ar', '44100', '-ac', '2', '-b:a', '160k', '-f', 'mp3', dest);
   const result = await run_capture(bin, args, save_timeout_ms, signal);
   if (signal?.aborted || result.error === 'abort') return { ok: false as const, error: 'отменено' };
   if (result.code !== 0 || result.error) {
@@ -353,6 +353,46 @@ async function probe_duration(file: string) {
     30_000
   );
   return clean_duration(result.stdout.trim());
+}
+
+/** есть ли в загруженном файле звук и сколько он длится */
+export async function probe_upload(file: string): Promise<{ ok: true; duration: number | null } | { ok: false; error: string }> {
+  const bin = await find_bin('ffprobe');
+  const result = await run_capture(
+    bin,
+    ['-v', 'error', '-select_streams', 'a', '-show_entries', 'stream=codec_type:format=duration', '-of', 'json', file],
+    60_000
+  );
+  if (result.error === 'missing') return { ok: false, error: 'на сервере нет ffmpeg' };
+  let data: { streams?: unknown[]; format?: { duration?: string } } = {};
+  try {
+    data = JSON.parse(result.stdout || '{}');
+  } catch {
+    /* не медиа */
+  }
+  if (result.code !== 0 || !data.streams?.length) return { ok: false, error: 'в файле нет звука' };
+  return { ok: true, duration: clean_duration(data.format?.duration) };
+}
+
+/** свой загруженный файл → mp3; исходник не трогаем */
+export async function convert_upload_mp3(
+  src: string,
+  dest: string,
+  signal?: AbortSignal
+): Promise<{ ok: true; duration: number | null } | { ok: false; error: string }> {
+  const partial = `${dest}.part`;
+  rmSync(partial, { force: true });
+  try {
+    const saved = await ffmpeg_to_mp3(src, '', partial, signal);
+    if (!saved.ok) return saved;
+    if (!existsSync(partial) || statSync(partial).size < 200_000) {
+      return { ok: false, error: 'запись короче 10 секунд' };
+    }
+    renameSync(partial, dest);
+    return { ok: true, duration: await probe_duration(dest) };
+  } finally {
+    rmSync(partial, { force: true });
+  }
 }
 
 /** Скачивает ролик целиком в mp3. Пока файл не собран, наружу его не отдаём. */

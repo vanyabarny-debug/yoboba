@@ -21,13 +21,37 @@ function merge_items(previous: menu_item[], incoming: menu_item[]) {
   return [...by_id.values()];
 }
 
-function merge_stores(previous: menu_store | null, incoming: menu_store): menu_store {
+/** категории, которых ещё нет в каталоге, но они есть у пришедших позиций */
+function categories_with_items(base: string[], items: menu_item[]) {
+  const out = [...base];
+  for (const item of items) {
+    for (const cat of [item.category, ...(item.categories ?? [])]) {
+      if (cat && !out.includes(cat)) out.push(cat);
+    }
+  }
+  return out;
+}
+
+/**
+ * partial — пришли только изменённые позиции: остальное меню, категории и стили берём из базы,
+ * чтобы устаревшая копия с другого устройства не откатывала чужие правки
+ */
+function merge_stores(previous: menu_store | null, incoming: menu_store, partial = false): menu_store {
   if (!previous) return incoming;
   const removed = new Set([...(previous.removed_item_ids ?? []), ...(incoming.removed_item_ids ?? [])]);
+  const items = merge_items(previous.items ?? [], incoming.items ?? []).filter((item) => !removed.has(item.id));
+  if (partial) {
+    return {
+      ...previous,
+      categories: categories_with_items(previous.categories ?? [], incoming.items ?? []),
+      removed_item_ids: [...removed],
+      items,
+    };
+  }
   return {
     ...incoming,
     removed_item_ids: [...removed],
-    items: merge_items(previous.items ?? [], incoming.items ?? []).filter((item) => !removed.has(item.id)),
+    items,
   };
 }
 
@@ -68,12 +92,24 @@ export async function read_published_menu(): Promise<menu_store | null> {
   return fallback;
 }
 
-export async function write_published_menu(store: menu_store): Promise<void> {
+let write_tail: Promise<void> = Promise.resolve();
+
+/** записи по очереди: иначе две одновременные правки читают одно «до» и одна теряется */
+export function write_published_menu(store: menu_store, opts: { partial?: boolean } = {}): Promise<void> {
+  const run = write_tail.then(
+    () => write_now(store, opts.partial === true),
+    () => write_now(store, opts.partial === true)
+  );
+  write_tail = run.catch(() => {});
+  return run;
+}
+
+async function write_now(store: menu_store, partial: boolean): Promise<void> {
   published_cache = null;
   if (is_supabase_configured()) {
     const admin = create_service_client();
     const previous = await read_published_menu();
-    const durable = merge_stores(previous, store);
+    const durable = merge_stores(previous, store, partial);
     try {
       const { error } = await admin.from('menu_catalog').upsert(
         {
@@ -104,7 +140,7 @@ export async function write_published_menu(store: menu_store): Promise<void> {
 
   // локальный диск тоже мержим — иначе GET с дефолтом мог стереть кастомные позиции
   const previous = await read_fallback();
-  const durable = merge_stores(previous, store);
+  const durable = merge_stores(previous, store, partial);
   await write_json_store(store_key, durable);
   published_cache = { at: Date.now(), store: durable };
 }

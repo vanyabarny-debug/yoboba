@@ -8,6 +8,7 @@ import {
 import type { stock_actor } from '@/lib/finance/model';
 import { forget_handed_order, replace_handed_snapshot } from '@/lib/handed-orders-server';
 import { parse_combo_order_fields } from '@/lib/combo';
+import { parse_prep_grams } from '@/lib/prep-grams';
 import { normalize_order_item_fields } from '@/lib/order-item-name';
 import { format_order_number } from '@/lib/order-number';
 import { record_order_audit } from '@/lib/order-audit-server';
@@ -47,6 +48,7 @@ export function parse_order_items(raw: unknown): { ok: true; items: order_item[]
     const kind = rec.kind === 'staff' || rec.kind === 'sale' ? rec.kind : undefined;
     const normalized = normalize_order_item_fields({ name, volume });
     const combo = parse_combo_order_fields(rec);
+    const prep_grams = parse_prep_grams(rec.prep_grams);
     items.push({
       menu_id,
       name: normalized.name,
@@ -55,6 +57,7 @@ export function parse_order_items(raw: unknown): { ok: true; items: order_item[]
       ...(normalized.volume ? { volume: normalized.volume } : {}),
       ...(temp ? { temp } : {}),
       ...(kind ? { kind } : {}),
+      ...(prep_grams ? { prep_grams } : {}),
       ...combo,
     });
   }

@@ -466,21 +466,55 @@ export function apply_published_heading_styles(
   published_heading_styles = styles ?? null;
 }
 
-function publish_payload(store: menu_store) {
-  return JSON.stringify({ ...store, version: store_version });
+/** что изменили на этом устройстве и ещё не доставили на сервер */
+const dirty_ids = new Set<string>();
+let dirty_full = false;
+let publish_retry = 0;
+
+function mark_dirty(ids?: string[]) {
+  if (!ids) dirty_full = true;
+  else for (const id of ids) dirty_ids.add(id);
 }
 
+function has_dirty() {
+  return dirty_full || dirty_ids.size > 0;
+}
+
+/**
+ * Отправляет только свои изменения. Целиком меню уходит лишь после правки категорий —
+ * иначе старая копия меню на другом устройстве откатывала бы чужие правки.
+ */
 export function publish_menu_now(store: menu_store = get_menu_store()) {
-  if (typeof window === 'undefined') return;
+  if (typeof window === 'undefined' || !has_dirty()) return;
+  const full = dirty_full;
+  const ids = [...dirty_ids];
+  dirty_full = false;
+  dirty_ids.clear();
+  const items = full ? store.items : store.items.filter((item) => ids.includes(item.id));
+  if (!items.length) return;
+  const body = JSON.stringify({ ...store, version: store_version, items, partial: !full });
+  const requeue = () => {
+    mark_dirty(full ? undefined : ids);
+    publish_retry = Math.min(publish_retry + 1, 5);
+    window.clearTimeout(publish_timer);
+    publish_timer = window.setTimeout(() => publish_menu_now(), 1500 * 2 ** publish_retry);
+  };
   void fetch('/api/admin/menu', {
     method: 'PUT',
     credentials: 'same-origin',
     headers: { 'content-type': 'application/json' },
-    body: publish_payload(store),
-  });
+    body,
+    // доживает до сервера, даже если вкладку закрыли или перезагрузили
+    keepalive: body.length < 60_000,
+  })
+    .then((res) => {
+      if (!res.ok) throw new Error(String(res.status));
+      publish_retry = 0;
+    })
+    .catch(requeue);
 }
 
-function schedule_publish(_store: menu_store) {
+function schedule_publish() {
   if (typeof window === 'undefined') return;
   window.clearTimeout(publish_timer);
   publish_timer = window.setTimeout(() => publish_menu_now(), 400);
@@ -491,6 +525,16 @@ export function settle_menu_publish() {
   if (typeof window === 'undefined') return;
   window.clearTimeout(publish_timer);
   publish_menu_now();
+}
+
+if (typeof window !== 'undefined') {
+  const flush_on_leave = () => {
+    if (document.visibilityState === 'hidden' && has_dirty()) settle_menu_publish();
+  };
+  window.addEventListener('pagehide', () => {
+    if (has_dirty()) settle_menu_publish();
+  });
+  document.addEventListener('visibilitychange', flush_on_leave);
 }
 
 function merge_default_badges(items: menu_item[]) {
@@ -713,11 +757,8 @@ export function get_default_store(): menu_store {
 export function upgrade_menu_store(stored: menu_store | null | undefined): menu_store {
   if (!stored?.items?.length) return get_default_store();
   const defaults = get_default_store();
-  const default_ids = new Set(defaults.items.map((i) => i.id));
-  // снятые эксперименты держим в removed; позиции из актуального каталога — возвращаем
-  const removed_item_ids = [
-    ...new Set([...(stored.removed_item_ids ?? []), ...dropped_menu_item_ids]),
-  ].filter((id) => dropped_menu_item_ids.has(id) || !default_ids.has(id));
+  // удалённое админом не воскрешаем из каталога по умолчанию
+  const removed_item_ids = [...new Set([...(stored.removed_item_ids ?? []), ...dropped_menu_item_ids])];
   return {
     version: store_version,
     categories: fold_warm_drink_categories(
@@ -755,19 +796,34 @@ export function get_menu_store(): menu_store {
   }
 }
 
-export function save_menu_store(store: menu_store) {
+/** changed — id изменённых позиций; без него на сервер уйдёт всё меню (правка категорий) */
+export function save_menu_store(store: menu_store, changed?: string[]) {
   const next = { ...store, version: store_version };
   localStorage.setItem(storage_key, JSON.stringify(next));
+  mark_dirty(changed);
   emit_update();
-  schedule_publish(next);
+  schedule_publish();
 }
 
 /** применить меню с сервера на всех устройствах (без повторной публикации) */
 export function apply_published_menu_store(store: menu_store) {
   if (typeof window === 'undefined') return null;
   if (!store?.items?.length) return null;
+  // свои ещё не доставленные правки сервер пока не знает — не затираем их его снимком
+  if (dirty_full) return get_menu_store();
+  const local = dirty_ids.size ? new Map(get_menu_store().items.map((item) => [item.id, item])) : null;
+  const items = local
+    ? [
+        ...store.items.map((item) => (dirty_ids.has(item.id) ? local.get(item.id) ?? item : item)),
+        ...[...dirty_ids].flatMap((id) => {
+          const own = local.get(id);
+          return own && !store.items.some((item) => item.id === id) ? [own] : [];
+        }),
+      ]
+    : store.items;
   const repaired = repair_menu_store({
     ...store,
+    items,
     version: store_version,
   });
   localStorage.setItem(storage_key, JSON.stringify(repaired));
@@ -865,7 +921,7 @@ export function upsert_menu_item(data: menu_item) {
   for (const cat of item_categories(next)) {
     if (!store.categories.includes(cat)) store.categories.push(cat);
   }
-  save_menu_store(store);
+  save_menu_store(store, [next.id]);
 }
 
 export function delete_menu_item(id: string) {
@@ -878,7 +934,7 @@ export function delete_menu_item(id: string) {
   const removed = new Set(store.removed_item_ids ?? []);
   removed.add(id);
   store.removed_item_ids = [...removed];
-  save_menu_store(store);
+  save_menu_store(store, [id]);
 }
 
 export function new_item_id() {

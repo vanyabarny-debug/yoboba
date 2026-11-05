@@ -309,9 +309,9 @@ export async function create_crafted_drink(input: {
     ...menu,
     version: store_version,
     categories: menu.categories?.length ? menu.categories : categories,
-    items: [...menu.items, item],
+    items: [item],
   };
-  await write_published_menu(next_menu);
+  await write_published_menu(next_menu, { partial: true });
 
   const next_cards = [...state.techCards, card];
   try {
@@ -320,10 +320,10 @@ export async function create_crafted_drink(input: {
       techCards: next_cards,
     });
   } catch (error) {
-    await write_published_menu({
-      ...next_menu,
-      items: next_menu.items.map((row) => (row.id === item.id ? { ...row, is_available: false } : row)),
-    }).catch(() => {});
+    await write_published_menu(
+      { ...next_menu, items: [{ ...item, is_available: false }] },
+      { partial: true }
+    ).catch(() => {});
     throw error;
   }
 

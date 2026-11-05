@@ -391,6 +391,8 @@ export type order_stock_item = {
     volume?: string;
     quantity?: number;
   }[];
+  /** положено по факту на всю строку, г — меньше техкарты, когда в чане не хватило */
+  prep_grams?: Record<string, number>;
 };
 
 export type stock_guard_settings = {
@@ -4707,29 +4709,48 @@ export function prep_grams_for_items(
   return walk_order_items(state, items, menu).preps;
 }
 
-function walk_order_items(
-  state: finance_state,
-  items: order_stock_item[],
-  menu: menu_item[]
-): { raw: Map<string, number>; preps: Map<string, number> } {
+type order_walk = {
+  raw: Map<string, number>;
+  preps: Map<string, number>;
+  /** расход каждой строки заказа по техкарте, до урезания */
+  lines: Map<string, number>[];
+  /** урезанное по факту: materialId → по техкарте / положили */
+  cut: Map<string, { recipe: number; actual: number }>;
+};
+
+function walk_order_items(state: finance_state, items: order_stock_item[], menu: menu_item[]): order_walk {
   const out = new Map<string, number>();
   const preps = new Map<string, number>();
+  const lines: Map<string, number>[] = [];
+  const cut = new Map<string, { recipe: number; actual: number }>();
   const menu_by_id = new Map(menu.map((m) => [m.id, m]));
   const card_by_menu = new Map(state.techCards.filter((c) => c.menu_item_id).map((c) => [c.menu_item_id as string, c]));
-  // комбо раскладываем на выбранные напитки — себестоимость и остатки по ним
-  const expanded = expand_items_for_stock(items, menu);
-  for (const item of expanded) {
-    const card = card_by_menu.get(item.menu_id);
-    if (!card) continue;
-    const key = size_key_for_item(card, {
-      volume: item.volume,
-      name: item.name,
-      price: item.price,
-      menu_item: menu_by_id.get(item.menu_id),
-    });
-    add_recipe(out, effective_card_size(card, key, state.materials), item.quantity, state.prepRecipes ?? [], preps);
+  for (const line of items) {
+    const line_raw = new Map<string, number>();
+    // комбо раскладываем на выбранные напитки — себестоимость и остатки по ним
+    for (const item of expand_items_for_stock([line], menu)) {
+      const card = card_by_menu.get(item.menu_id);
+      if (!card) continue;
+      const key = size_key_for_item(card, {
+        volume: item.volume,
+        name: item.name,
+        price: item.price,
+        menu_item: menu_by_id.get(item.menu_id),
+      });
+      add_recipe(line_raw, effective_card_size(card, key, state.materials), item.quantity, state.prepRecipes ?? [], preps);
+    }
+    lines.push(new Map(line_raw));
+    for (const [id, grams] of Object.entries(line.prep_grams ?? {})) {
+      const recipe = line_raw.get(id) ?? 0;
+      if (!(recipe > 0) || !Number.isFinite(grams)) continue;
+      const actual = Math.min(recipe, Math.max(0, grams));
+      line_raw.set(id, actual);
+      const prev = cut.get(id) ?? { recipe: 0, actual: 0 };
+      cut.set(id, { recipe: prev.recipe + recipe, actual: prev.actual + actual });
+    }
+    for (const [id, q] of line_raw) out.set(id, (out.get(id) ?? 0) + q);
   }
-  return { raw: out, preps };
+  return { raw: out, preps, lines, cut };
 }
 
 export type stock_shortage = {
@@ -4739,6 +4760,8 @@ export type stock_shortage = {
   have: number;
   /** кастрюля/чайник, если нехватка по prep-станции */
   stationId?: string | null;
+  /** сколько этого сырья просит каждая строка заказа по техкарте */
+  lines?: { index: number; need: number }[];
 };
 
 function prep_guard_material_ids(state: finance_state): Set<string> {
@@ -4763,7 +4786,8 @@ export function order_stock_shortages(
   const base = opts?.releaseOrderId
     ? reverse_order_consumption(state, opts.releaseOrderId)
     : state;
-  const need = consumption_for_items(base, items, menu);
+  const walk = walk_order_items(base, items, menu);
+  const need = walk.raw;
   const have = stock_qty_map(base);
   const mats = new Map(base.materials.map((m) => [m.id, m]));
   const prep_ids = guard.prep ? prep_guard_material_ids(base) : null;
@@ -4780,6 +4804,9 @@ export function order_stock_shortages(
         name: mat?.name || materialId,
         need: qty,
         have: Math.max(0, on_hand),
+        lines: walk.lines
+          .map((line, index) => ({ index, need: Math.round((line.get(materialId) ?? 0) * 10) / 10 }))
+          .filter((row) => row.need > 0),
       });
     }
   }
@@ -4844,7 +4871,8 @@ export function apply_order_consumption(
   const kind = opts.kind ?? (opts.items.every((i) => i.kind === 'staff') ? 'staff' : 'sale');
   const date = opts.date || new Date().toISOString();
   let next = reverse_order_consumption(state, opts.orderId);
-  const cons = consumption_for_items(next, opts.items, opts.menu ?? []);
+  const walk = walk_order_items(next, opts.items, opts.menu ?? []);
+  const cons = walk.raw;
   const added: stock_movement[] = [];
   // последовательный FIFO: каждое списание учитывает предыдущие строки этого заказа
   let cursor: finance_state = next;
@@ -4853,6 +4881,8 @@ export function apply_order_consumption(
     const mat = next.materials.find((m) => m.id === materialId);
     if (mat ? material_is_free(mat) : is_free_stock_id(materialId)) continue;
     const total = fifo_consume_cost(cursor, materialId, qty);
+    const short = walk.cut.get(materialId);
+    const base_note = kind === 'staff' ? `персонал ${opts.orderId.slice(0, 8)}` : `заказ ${opts.orderId.slice(0, 8)}`;
     const mv: stock_movement = {
       id: new_id('mv'),
       date,
@@ -4861,7 +4891,10 @@ export function apply_order_consumption(
       qty,
       total,
       orderId: opts.orderId,
-      note: kind === 'staff' ? `персонал ${opts.orderId.slice(0, 8)}` : `заказ ${opts.orderId.slice(0, 8)}`,
+      note:
+        short && short.actual < short.recipe
+          ? `${base_note} · по факту ${Math.round(short.actual)} из ${Math.round(short.recipe)} г`
+          : base_note,
     };
     added.push(mv);
     cursor = { ...cursor, stockMovements: [...cursor.stockMovements, mv] };

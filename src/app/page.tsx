@@ -7,7 +7,7 @@ import {
   default_menu_items,
   upgrade_menu_store,
 } from '@/lib/menu-store';
-import { read_published_menu, write_published_menu } from '@/lib/menu-catalog-server';
+import { read_published_menu } from '@/lib/menu-catalog-server';
 import { default_promos } from '@/lib/promo-store';
 import {
   default_sidebar_interval_ms,
@@ -21,9 +21,6 @@ export const dynamic = 'force-dynamic';
 async function resolve_live_menu() {
   const stored = await read_published_menu();
   const store = upgrade_menu_store(stored);
-  await write_published_menu(store).catch((e) =>
-    console.error('menu publish skipped', e instanceof Error ? e.message : e)
-  );
   return {
     items: apply_menu_item_badges(store.items),
     categories: store.categories,

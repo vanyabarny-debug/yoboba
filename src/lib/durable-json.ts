@@ -67,12 +67,32 @@ export async function has_durable_row(key: string): Promise<boolean> {
   return Boolean(legacy && legacy !== 'missing');
 }
 
+/** касса опрашивает выдачи каждые 4 с — держим последнюю версию в памяти; пишет только этот процесс и сам сбрасывает её,
+ *  срок нужен лишь чтобы подхватить правки руками в supabase */
+const memo = new Map<string, { at: number; value: unknown }>();
+const memo_gen = new Map<string, number>();
+const memo_ms = 5 * 60_000;
+
+function forget(key: string) {
+  memo.delete(key);
+  memo_gen.set(key, (memo_gen.get(key) ?? 0) + 1);
+}
+
 /** продажи / выдачи / касса живут в supabase jsonb, диск — только зеркало */
 export async function read_durable_json<T>(
   key: string,
   fallback: T,
   opts: { migrate?: boolean } = {}
 ): Promise<T> {
+  const hit = memo.get(key);
+  if (hit && Date.now() - hit.at < memo_ms) return structuredClone(hit.value) as T;
+  const gen = memo_gen.get(key) ?? 0;
+  const value = await read_durable_fresh(key, fallback, opts);
+  if (gen === (memo_gen.get(key) ?? 0)) memo.set(key, { at: Date.now(), value: structuredClone(value) });
+  return value;
+}
+
+async function read_durable_fresh<T>(key: string, fallback: T, opts: { migrate?: boolean }): Promise<T> {
   const local = await read_json_store<T>(key, fallback);
   if (!is_supabase_configured()) return local;
   await ensure_finance_cloud_once().catch(() => {});
@@ -93,6 +113,7 @@ export async function read_durable_json<T>(
 }
 
 export async function write_durable_json<T>(key: string, value: T): Promise<void> {
+  forget(key);
   const local = write_json_store(key, value).catch(() => {});
   if (!is_supabase_configured()) {
     await local;
@@ -113,7 +134,11 @@ export async function write_durable_json<T>(key: string, value: T): Promise<void
     if (legacy === 'ok' || legacy === 'missing') return;
     throw new Error('не удалось записать в supabase');
   })();
-  await Promise.all([local, cloud]);
+  try {
+    await Promise.all([local, cloud]);
+  } finally {
+    forget(key);
+  }
 }
 
 export function keep_since_day(months = 3, now = new Date()): string {

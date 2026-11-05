@@ -145,13 +145,23 @@ export async function ensure_finance_cloud(): Promise<cloud_migrate_report> {
 
 let inflight: Promise<cloud_migrate_report> | null = null;
 
+/** перенос нужен один раз на процесс; повтор каждые 30 с читал из supabase ~0.5 МБ старых копий */
 export function ensure_finance_cloud_once() {
   if (!inflight) {
-    inflight = ensure_finance_cloud().finally(() => {
+    const retry_later = () =>
       setTimeout(() => {
         inflight = null;
       }, 30_000);
-    });
+    inflight = ensure_finance_cloud().then(
+      (report) => {
+        if (report.error || !report.finance_state) retry_later();
+        return report;
+      },
+      (e: unknown) => {
+        retry_later();
+        throw e;
+      }
+    );
   }
   return inflight;
 }

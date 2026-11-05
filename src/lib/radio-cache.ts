@@ -1,7 +1,7 @@
 import { createReadStream, existsSync, mkdirSync, rmSync, statSync } from 'fs';
 import { join } from 'path';
 import { Readable } from 'stream';
-import { download_source_mp3 } from '@/lib/radio-ytdlp';
+import { convert_upload_mp3, download_source_mp3 } from '@/lib/radio-ytdlp';
 import { read_radio, write_radio, type radio_track } from '@/lib/radio-server';
 
 type job = { state: 'running' } | { state: 'failed'; error: string };
@@ -21,6 +21,19 @@ export function radio_mp3_path(id: string) {
   const safe = safe_track_id(id);
   if (!safe) return null;
   return join(radio_cache_dir(), `${safe}.mp3`);
+}
+
+/** загруженный исходник лежит рядом, пока не станет mp3 */
+export function radio_src_path(id: string) {
+  const safe = safe_track_id(id);
+  if (!safe) return null;
+  return join(radio_cache_dir(), `${safe}.src`);
+}
+
+export function radio_upload_path(id: string) {
+  const safe = safe_track_id(id);
+  if (!safe) return null;
+  return join(radio_cache_dir(), `${safe}.upload`);
 }
 
 export function radio_mp3_bytes(id: string) {
@@ -46,7 +59,15 @@ async function finish_job(track: radio_track, signal: AbortSignal) {
       return;
     }
     mkdirSync(radio_cache_dir(), { recursive: true });
-    const result = await download_source_mp3(track.url, path, signal);
+    const src = track.source === 'file' ? radio_src_path(track.id) : null;
+    if (track.source === 'file' && (!src || !existsSync(src))) {
+      jobs.set(track.id, { state: 'failed', error: 'файл потерялся — загрузите заново' });
+      return;
+    }
+    const result = src
+      ? await convert_upload_mp3(src, path, signal)
+      : await download_source_mp3(track.url, path, signal);
+    if (src && result.ok) rmSync(src, { force: true });
     if (signal.aborted) {
       jobs.delete(track.id);
       return;
@@ -108,6 +129,9 @@ export function discard_radio_file(id: string) {
   rmSync(path, { force: true });
   rmSync(`${path}.part`, { force: true });
   rmSync(`${path}.work`, { recursive: true, force: true });
+  for (const extra of [radio_src_path(id), radio_upload_path(id)]) {
+    if (extra) rmSync(extra, { force: true });
+  }
 }
 
 export function radio_file_response(id: string) {

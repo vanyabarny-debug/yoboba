@@ -156,6 +156,8 @@ export type order_item = {
   combo_picks?: string[];
   /** разложение комбо на позиции для склада и себестоимости */
   combo_components?: order_combo_component[];
+  /** положено по факту на всю строку, г (materialId → г) — когда в чане не хватило */
+  prep_grams?: Record<string, number>;
 };
 
 export type gift_status =

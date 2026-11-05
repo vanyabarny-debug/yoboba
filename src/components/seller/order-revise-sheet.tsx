@@ -16,6 +16,7 @@ type line = {
   kind?: order_item['kind'];
   combo_picks?: string[];
   combo_components?: order_item['combo_components'];
+  prep_grams?: order_item['prep_grams'];
   /** цена по меню для выбранного объёма (для подсказки скидки) */
   catalog_price: number;
 };
@@ -46,6 +47,7 @@ export default function order_revise_sheet({ order, busy, error, on_close, on_sa
       kind: item.kind,
       ...(item.combo_picks?.length ? { combo_picks: item.combo_picks } : {}),
       ...(item.combo_components?.length ? { combo_components: item.combo_components } : {}),
+      ...(item.prep_grams ? { prep_grams: item.prep_grams } : {}),
       catalog_price: Math.max(0, Math.round(item.price)),
     }))
   );
@@ -130,6 +132,7 @@ export default function order_revise_sheet({ order, busy, error, on_close, on_sa
       ...(line.kind ? { kind: line.kind } : {}),
       ...(line.combo_picks?.length ? { combo_picks: line.combo_picks } : {}),
       ...(line.combo_components?.length ? { combo_components: line.combo_components } : {}),
+      ...(line.prep_grams ? { prep_grams: line.prep_grams } : {}),
     }));
     on_save(items);
   }

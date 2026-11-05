@@ -7,6 +7,8 @@ export type radio_track = {
   title: string;
   /** длина ролика, секунды; null — ещё не известна */
   duration: number | null;
+  /** загружен файлом, url тогда вида file:имя */
+  source?: 'file';
 };
 
 export type radio_source = {
@@ -63,16 +65,26 @@ function clean_title(raw: unknown) {
   return title.slice(0, 180);
 }
 
+export function file_track_url(name: string) {
+  return `file:${name.replace(/[\u0000-\u001f]/g, '').trim().slice(0, 240) || 'запись'}`;
+}
+
 function clean_track(raw: unknown): radio_track | null {
   if (!raw || typeof raw !== 'object') return null;
   const row = raw as Partial<radio_track>;
-  const url = clean_media_url(row.url);
+  const is_file = row.source === 'file';
+  const url = is_file
+    ? typeof row.url === 'string' && row.url.startsWith('file:')
+      ? file_track_url(row.url.slice(5))
+      : null
+    : clean_media_url(row.url);
   if (!url || typeof row.id !== 'string' || !row.id.trim()) return null;
   return {
     id: row.id.trim().slice(0, 80),
     url,
     title: clean_title(row.title),
     duration: clean_duration(row.duration),
+    ...(is_file ? { source: 'file' as const } : {}),
   };
 }
 

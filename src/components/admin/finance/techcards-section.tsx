@@ -474,6 +474,21 @@ export default function TechcardsSection({
 
   flush_item_ref.current = flush_item;
   useEffect(() => () => flush_item_ref.current(), []);
+  useEffect(() => {
+    const leave = () => {
+      flush_item_ref.current();
+      settle_menu_publish();
+    };
+    const hidden = () => {
+      if (document.visibilityState === 'hidden') leave();
+    };
+    window.addEventListener('pagehide', leave);
+    document.addEventListener('visibilitychange', hidden);
+    return () => {
+      window.removeEventListener('pagehide', leave);
+      document.removeEventListener('visibilitychange', hidden);
+    };
+  }, []);
 
   function edit_item(next: menu_item) {
     set_draft(next);

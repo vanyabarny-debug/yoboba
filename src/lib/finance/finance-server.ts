@@ -120,7 +120,27 @@ async function write_row(
   return false;
 }
 
+/** касса опрашивает склад каждые 20 с — без памяти каждый опрос тянул бы из supabase 270 КБ */
+let finance_memo: { at: number; state: finance_state } | null = null;
+let finance_memo_gen = 0;
+const finance_memo_ms = 5 * 60_000;
+
+function forget_finance_memo() {
+  finance_memo = null;
+  finance_memo_gen += 1;
+}
+
 export async function read_finance_state(): Promise<finance_state> {
+  if (finance_memo && Date.now() - finance_memo.at < finance_memo_ms) {
+    return structuredClone(finance_memo.state);
+  }
+  const gen = finance_memo_gen;
+  const state = await read_finance_state_fresh();
+  if (gen === finance_memo_gen) finance_memo = { at: Date.now(), state };
+  return structuredClone(state);
+}
+
+async function read_finance_state_fresh(): Promise<finance_state> {
   if (is_supabase_configured()) {
     await ensure_finance_cloud_once().catch(() => {});
     const admin = create_service_client();
@@ -143,18 +163,16 @@ async function sync_tech_card_temps(state: finance_state): Promise<void> {
   const menu = await read_published_menu();
   if (!menu?.items?.length) return;
   const by_menu = new Map(tagged.map((card) => [card.menu_item_id as string, card]));
-  let changed = false;
-  const items = menu.items.map((item) => {
+  const items = menu.items.flatMap((item) => {
     const card = by_menu.get(item.id);
-    if (!card) return item;
+    if (!card) return [];
     const cold = typeof card.cold === 'boolean' ? card.cold : item.cold;
     const hot = typeof card.hot === 'boolean' ? card.hot : item.hot;
-    if (item.cold === cold && item.hot === hot) return item;
-    changed = true;
-    return { ...item, cold, hot };
+    if (item.cold === cold && item.hot === hot) return [];
+    return [{ ...item, cold, hot }];
   });
-  if (!changed) return;
-  await write_published_menu({ ...menu, items });
+  if (!items.length) return;
+  await write_published_menu({ ...menu, items }, { partial: true });
 }
 
 let finance_tail: Promise<void> = Promise.resolve();
@@ -208,6 +226,7 @@ async function write_finance_cas(
   previous?: finance_state | null
 ): Promise<'ok' | 'conflict' | 'fail'> {
   const durable = seal_deletions(previous ?? null, prune_stock_retention(finalize_finance(state)));
+  forget_finance_memo();
   await sync_tech_card_temps(durable);
   if (!is_supabase_configured()) {
     await write_json_store(store_key, durable);
@@ -224,6 +243,7 @@ async function write_finance_cas(
     return 'fail';
   }
   if (!data?.length) return 'conflict';
+  forget_finance_memo();
   await write_row(admin, 'menu_catalog', catalog_row_id, durable);
   await write_json_store(store_key, durable).catch(() => {});
   const prev_ids = new Set((previous?.stockAudit ?? []).map((entry) => entry.id));
@@ -262,6 +282,7 @@ export async function write_finance_state(state: finance_state): Promise<void> {
 
 async function write_finance_state_unlocked(state: finance_state): Promise<void> {
   const prepared = prune_stock_retention(finalize_finance(state));
+  forget_finance_memo();
   await sync_tech_card_temps(prepared);
   if (!is_supabase_configured()) {
     await write_json_store(store_key, prepared);
@@ -277,6 +298,7 @@ async function write_finance_state_unlocked(state: finance_state): Promise<void>
   const writes: Promise<boolean>[] = [write_row(admin, 'menu_catalog', catalog_row_id, durable)];
   if (!table_is_missing(table)) writes.unshift(write_row(admin, table, row_id, durable));
   const results = await Promise.all(writes);
+  forget_finance_memo();
   if (!results.some(Boolean)) {
     await local;
     throw new Error('не удалось записать склад в supabase');

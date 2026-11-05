@@ -67,7 +67,41 @@ type stock_shortage_hint = {
   need: number;
   have: number;
   stationId: string | null;
+  /** сколько просит каждая строка корзины по техкарте */
+  lines?: { index: number; need: number }[];
 };
+
+/** в чане меньше техкарты — граммы по факту на строку: `${materialId}:${index}` → г */
+type prep_fact = {
+  station: string;
+  rows: stock_shortage_hint[];
+  grams: Record<string, string>;
+};
+
+function fact_key(material_id: string, index: number) {
+  return `${material_id}:${index}`;
+}
+
+/** остаток чана делим пропорционально техкарте, не больше нормы строки */
+function split_prep_grams(rows: stock_shortage_hint[]) {
+  const out: Record<string, string> = {};
+  for (const row of rows) {
+    const lines = row.lines ?? [];
+    const total = lines.reduce((s, l) => s + l.need, 0);
+    let left = Math.max(0, Math.floor(row.have));
+    lines.forEach((l, i) => {
+      const share = i === lines.length - 1 ? left : Math.floor((row.have * l.need) / (total || 1));
+      const grams = Math.max(0, Math.min(Math.floor(l.need), share, left));
+      out[fact_key(row.materialId, l.index)] = String(grams);
+      left -= grams;
+    });
+  }
+  return out;
+}
+
+function fact_total(fact: prep_fact, row: stock_shortage_hint) {
+  return (row.lines ?? []).reduce((s, l) => s + (Number(fact.grams[fact_key(row.materialId, l.index)]) || 0), 0);
+}
 
 type props = {
   on_created: () => void;
@@ -191,6 +225,7 @@ export default function pos_panel({
   const [lookup_busy, set_lookup_busy] = useState(false);
   const [busy, set_busy] = useState(false);
   const [error, set_error] = useState<string | null>(null);
+  const [prep_fact, set_prep_fact] = useState<prep_fact | null>(null);
   const [paid_now, set_paid_now] = useState(false);
   const [pay_with_bonus, set_pay_with_bonus] = useState(false);
   const [confirm_student, set_confirm_student] = useState(false);
@@ -644,7 +679,7 @@ export default function pos_panel({
     }
   }
 
-  async function submit() {
+  async function submit(prep?: Record<number, Record<string, number>>) {
     if (!cart.length || busy) return;
     const phone = staff_drink ? '' : phone_input_to_e164(phone_draft);
     const pickup_code = staff_drink ? null : active_pickup_code || parse_pickup_code_input(code_draft);
@@ -675,7 +710,7 @@ export default function pos_panel({
         headers: { 'content-type': 'application/json' },
         credentials: 'same-origin',
         body: JSON.stringify({
-          items: cart.map(({ menu_id, name, price, quantity, volume, combo_picks, combo_components }) => ({
+          items: cart.map(({ menu_id, name, price, quantity, volume, combo_picks, combo_components }, index) => ({
             menu_id,
             name,
             price,
@@ -683,6 +718,7 @@ export default function pos_panel({
             volume,
             ...(combo_picks?.length ? { combo_picks } : {}),
             ...(combo_components?.length ? { combo_components } : {}),
+            ...(prep?.[index] ? { prep_grams: prep[index] } : {}),
           })),
           customer_phone: staff_drink ? undefined : phone || undefined,
           pickup_code: staff_drink ? undefined : pickup_code || undefined,
@@ -712,6 +748,11 @@ export default function pos_panel({
           shortages.find((s) => s.stationId)?.stationId ||
           shortages.map((s) => s.stationId).find(Boolean) ||
           null;
+        const fact_rows = shortages.filter((s) => s.stationId && s.need > 0 && s.lines?.length);
+        if (station && fact_rows.length) {
+          set_prep_fact({ station, rows: fact_rows, grams: split_prep_grams(fact_rows) });
+          return;
+        }
         if (station && on_prep_shortage) {
           on_prep_shortage(station, shortages);
         }
@@ -802,6 +843,106 @@ export default function pos_panel({
   }
 
   const hide_paid_checkbox = !cart.length;
+
+  function make_by_fact() {
+    if (!prep_fact) return;
+    const prep: Record<number, Record<string, number>> = {};
+    for (const row of prep_fact.rows) {
+      for (const l of row.lines ?? []) {
+        const grams = Math.max(0, Math.min(l.need, Number(prep_fact.grams[fact_key(row.materialId, l.index)]) || 0));
+        prep[l.index] = { ...prep[l.index], [row.materialId]: grams };
+      }
+    }
+    set_prep_fact(null);
+    void submit(prep);
+  }
+
+  const prep_fact_over = prep_fact
+    ? prep_fact.rows.some((row) => fact_total(prep_fact, row) > Math.floor(row.have))
+    : false;
+
+  const prep_fact_modal = prep_fact ? (
+    <div className="fixed inset-0 z-[60] flex items-end justify-center p-0 sm:items-center sm:p-6">
+      <button
+        type="button"
+        aria-label="закрыть"
+        className="absolute inset-0 bg-black/40"
+        onClick={() => set_prep_fact(null)}
+      />
+      <div className="relative w-full max-w-md rounded-t-3xl bg-white px-5 pb-5 pt-4 shadow-xl sm:rounded-3xl">
+        <div className="mx-auto mb-3 h-1 w-10 rounded-full bg-neutral-200 sm:hidden" />
+        <div className="space-y-4">
+          {prep_fact.rows.map((row) => {
+            const used = fact_total(prep_fact, row);
+            const over = used > Math.floor(row.have);
+            return (
+              <div key={row.materialId}>
+                <div className="flex items-baseline justify-between gap-3">
+                  <h3 className="text-base font-bold text-neutral-900">{row.name}</h3>
+                  <span className={`text-sm tabular-nums ${over ? 'text-rose-600' : 'text-neutral-400'}`}>
+                    {Math.round(used)} из {Math.floor(row.have)} г
+                  </span>
+                </div>
+                <ul className="mt-2 space-y-1.5">
+                  {(row.lines ?? []).map((l) => {
+                    const key = fact_key(row.materialId, l.index);
+                    const line = cart[l.index];
+                    return (
+                      <li key={key} className="flex items-center gap-2">
+                        <span className="min-w-0 flex-1 truncate text-sm text-neutral-700">
+                          {line ? line_label(line) : 'позиция'}
+                          {line && line.quantity > 1 ? ` ×${line.quantity}` : ''}
+                        </span>
+                        <input
+                          value={prep_fact.grams[key] ?? ''}
+                          onChange={(e) => {
+                            const value = e.target.value.replace(/[^\d]/g, '').slice(0, 5);
+                            set_prep_fact((prev) => (prev ? { ...prev, grams: { ...prev.grams, [key]: value } } : prev));
+                          }}
+                          onFocus={(e) => e.currentTarget.select()}
+                          inputMode="numeric"
+                          className="w-16 rounded-xl bg-neutral-100 px-2 py-2 text-right text-base font-semibold tabular-nums outline-none focus:ring-2 focus:ring-neutral-900/10"
+                        />
+                        <span className="w-14 text-xs tabular-nums text-neutral-400">/ {Math.round(l.need)} г</span>
+                      </li>
+                    );
+                  })}
+                </ul>
+              </div>
+            );
+          })}
+        </div>
+        <button
+          type="button"
+          disabled={prep_fact_over || busy}
+          onClick={make_by_fact}
+          className="mt-5 w-full rounded-2xl bg-neutral-900 py-3.5 text-sm font-semibold text-white disabled:opacity-40"
+        >
+          по факту
+        </button>
+        <div className="mt-2 flex gap-2">
+          <button
+            type="button"
+            onClick={() => {
+              const fact = prep_fact;
+              set_prep_fact(null);
+              on_prep_shortage?.(fact.station, fact.rows);
+            }}
+            className="flex-1 rounded-2xl py-3 text-sm text-neutral-600"
+          >
+            доварить
+          </button>
+          <button
+            type="button"
+            onClick={() => set_prep_fact(null)}
+            className="flex-1 rounded-2xl py-3 text-sm text-neutral-400"
+          >
+            отмена
+          </button>
+        </div>
+      </div>
+    </div>
+  ) : null;
 
   const confirm_modal = confirm_open ? (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-6">
@@ -1336,6 +1477,7 @@ export default function pos_panel({
           выдать подарок — код или телефон
         </button>
         {confirm_modal}
+        {prep_fact_modal}
         {scanner_modal}
         {sheet}
       </div>
@@ -1415,6 +1557,7 @@ export default function pos_panel({
         on_work: () => open_confirm('order'),
       })}
       {confirm_modal}
+      {prep_fact_modal}
       {scanner_modal}
       {sheet}
     </div>
