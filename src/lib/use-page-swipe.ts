@@ -3,6 +3,7 @@
 import {
   useCallback,
   useEffect,
+  useLayoutEffect,
   useRef,
   useState,
   type CSSProperties,
@@ -26,7 +27,7 @@ type options = {
 /**
  * Горизонтальное перелистывание: страница едет за пальцем и доезжает к соседней.
  */
-export function use_page_swipe({
+export function usePageSwipe({
   index,
   count,
   on_index,
@@ -50,32 +51,46 @@ export function use_page_swipe({
   const snapping_ref = useRef(false);
   const enabled_ref = useRef(enabled);
 
-  index_ref.current = index;
-  count_ref.current = count;
-  on_index_ref.current = on_index;
-  on_edge_back_ref.current = on_edge_back;
-  enabled_ref.current = enabled;
+  useLayoutEffect(() => {
+    index_ref.current = index;
+    count_ref.current = count;
+    on_index_ref.current = on_index;
+    on_edge_back_ref.current = on_edge_back;
+    enabled_ref.current = enabled;
+  });
 
-  const measure = useCallback(() => {
-    const w = viewport?.clientWidth ?? 0;
-    const h = viewport?.clientHeight ?? 0;
+  const measure = useCallback((el: HTMLDivElement | null) => {
+    const w = el?.clientWidth ?? 0;
+    const h = el?.clientHeight ?? 0;
     width_ref.current = w;
     set_width(w);
     set_height(h);
-  }, [viewport]);
+  }, []);
+
+  const attach_viewport = useCallback(
+    (el: HTMLDivElement | null) => {
+      set_viewport(el);
+      measure(el);
+    },
+    [measure]
+  );
 
   useEffect(() => {
-    measure();
     if (!viewport) return;
-    const ro = new ResizeObserver(measure);
+    const ro = new ResizeObserver(() => measure(viewport));
     ro.observe(viewport);
     return () => ro.disconnect();
   }, [measure, viewport]);
 
-  useEffect(() => {
-    drag_ref.current = 0;
+  const [prev_index, set_prev_index] = useState(index);
+  if (prev_index !== index) {
+    set_prev_index(index);
     set_drag_x(0);
     set_snapping(false);
+  }
+
+  useEffect(() => {
+    drag_ref.current = 0;
     snapping_ref.current = false;
   }, [index]);
 
@@ -207,8 +222,7 @@ export function use_page_swipe({
 
   const page_style = useCallback(
     (page_index: number): CSSProperties => {
-      const w = width || width_ref.current;
-      const base = (page_index - index) * (w || 0);
+      const base = (page_index - index) * width;
       return {
         position: 'absolute',
         inset: 0,
@@ -222,7 +236,7 @@ export function use_page_swipe({
   );
 
   return {
-    viewport_ref: set_viewport as Ref<HTMLDivElement>,
+    viewport_ref: attach_viewport as Ref<HTMLDivElement>,
     page_style,
     dragging: Math.abs(drag_x) > 1 || snapping,
     width,

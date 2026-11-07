@@ -98,6 +98,13 @@ function tries_word(n: number) {
   return 'попыток';
 }
 
+async function fetch_interns() {
+  const res = await fetch('/api/admin/interns');
+  const data = (await res.json()) as { interns?: intern[]; error?: string };
+  if (!res.ok) throw new Error(data.error || 'нет доступа — войдите как админ');
+  return data.interns ?? [];
+}
+
 export default function InternsManage() {
   const [interns, set_interns] = useState<intern[]>([]);
   const [open, set_open] = useState<string | null>(null);
@@ -105,23 +112,14 @@ export default function InternsManage() {
   const [loading, set_loading] = useState(true);
   const [preview, set_preview] = useState<intern_work | null>(null);
 
-  async function reload() {
-    set_loading(true);
-    try {
-      const res = await fetch('/api/admin/interns');
-      const data = (await res.json()) as { interns?: intern[]; error?: string };
-      if (!res.ok) throw new Error(data.error || 'нет доступа — войдите как админ');
-      set_interns(data.interns ?? []);
-      set_error('');
-    } catch (err) {
-      set_error(err instanceof Error ? err.message : 'ошибка загрузки');
-    } finally {
-      set_loading(false);
-    }
-  }
-
   useEffect(() => {
-    reload();
+    fetch_interns()
+      .then((list) => {
+        set_interns(list);
+        set_error('');
+      })
+      .catch((err) => set_error(err instanceof Error ? err.message : 'ошибка загрузки'))
+      .finally(() => set_loading(false));
   }, []);
 
   async function set_status(id: string, status: intern_status) {

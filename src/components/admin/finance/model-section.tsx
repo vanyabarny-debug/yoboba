@@ -8,9 +8,12 @@ import {
   CUSTOM_TAX_BASIS,
   custom_taxes_of,
   default_custom_taxes,
+  effective_month_opex,
+  equipment_active,
   format_rub,
   is_salary_opex,
   new_id,
+  OPEX_TEMPLATE,
   other_opex_sum,
   resolve_month_opex,
   resolve_month_payroll,
@@ -47,7 +50,16 @@ export default function ModelSection({
   const insurance = pay?.insurance ?? 0;
   const rest = state.opexCategories.filter((c) => !is_salary_opex(c.id));
   const opex_inherited = md ? other_opex_sum(md.opex) <= 0 && other_opex_sum(opex) > 0 : false;
-  const amort = amortization_per_month(state);
+  const amort = amortization_per_month(state, month);
+  const effective = md ? effective_month_opex(state, month) : { rows: [], total: 0 };
+  const fact_by_id = new Map(effective.rows.map((r) => [r.id, r]));
+  const plan_total = effective.rows.reduce((s, r) => s + r.plan, 0);
+  const missing_template = OPEX_TEMPLATE.filter(
+    (t) =>
+      !state.opexCategories.some(
+        (c) => c.id === t.id || c.name.trim().toLowerCase() === t.name.trim().toLowerCase()
+      ) && !(t.id === 'ip_insurance' && regime.id.startsWith('ausn'))
+  );
 
   useEffect(() => {
     if (state.opexCategories.some((c) => is_salary_opex(c.id))) return;
@@ -99,6 +111,14 @@ export default function ModelSection({
     const id = /зарплат|фот|salary/i.test(name) ? new_id('salary') : new_id('opex');
     set_state((prev) => ({ ...prev, opexCategories: [...prev.opexCategories, { id, name }] }));
     set_new_cost('');
+  }
+
+  function add_template(ids: string[]) {
+    set_state((prev) => {
+      const rows = OPEX_TEMPLATE.filter((t) => ids.includes(t.id) && !prev.opexCategories.some((c) => c.id === t.id));
+      if (!rows.length) return prev;
+      return { ...prev, opexCategories: [...prev.opexCategories, ...rows.map((t) => ({ id: t.id, name: t.name }))] };
+    });
   }
 
   function remove_cost(id: string, name: string) {
@@ -298,21 +318,83 @@ export default function ModelSection({
           ниже подставлены из другого месяца — правка сразу во все месяцы
         </p>
       ) : null}
-      {rest.map((c) => (
-        <Line
-          key={c.id}
-          name={c.name}
-          value={opex[c.id] ?? 0}
-          on_name={(name) =>
-            set_state((prev) => ({
-              ...prev,
-              opexCategories: prev.opexCategories.map((x) => (x.id === c.id ? { ...x, name } : x)),
-            }))
-          }
-          on_value={(v) => set_opex(c.id, v)}
-          on_remove={() => remove_cost(c.id, c.name)}
+      {rest.map((c) => {
+        const row = fact_by_id.get(c.id);
+        const hint = OPEX_TEMPLATE.find((t) => t.id === c.id)?.hint;
+        return (
+          <Line
+            key={c.id}
+            name={c.name}
+            value={opex[c.id] ?? 0}
+            note={
+              row?.from_fact
+                ? `оплачено в операциях ${format_rub(row.fact)} — в прибыль идёт факт${
+                    row.plan > 0 && row.plan !== row.fact ? `, план ${format_rub(row.plan)}` : ''
+                  }`
+                : hint || undefined
+            }
+            note_tone={row?.from_fact ? 'fact' : 'hint'}
+            on_name={(name) =>
+              set_state((prev) => ({
+                ...prev,
+                opexCategories: prev.opexCategories.map((x) => (x.id === c.id ? { ...x, name } : x)),
+              }))
+            }
+            on_value={(v) => set_opex(c.id, v)}
+            on_remove={() => remove_cost(c.id, c.name)}
+          />
+        );
+      })}
+      <div className="mb-3 mt-1 flex flex-wrap items-baseline justify-between gap-2 border-t border-neutral-100 pt-2 text-sm">
+        <span className="font-medium text-neutral-800">итого в месяц</span>
+        <span className="tabular-nums font-semibold text-neutral-900">
+          {format_rub(effective.total)}
+          {Math.round(plan_total) !== Math.round(effective.total) ? (
+            <span className="ml-1.5 text-[11px] font-normal text-neutral-400">план {format_rub(plan_total)}</span>
+          ) : null}
+        </span>
+      </div>
+      <label className="mb-3 flex flex-wrap items-center gap-2 text-[12px] text-neutral-600">
+        эквайринг
+        <NumInput
+          value={state.acquiringRate ?? 0}
+          min={0}
+          step={0.1}
+          className={`${cell_input_class} w-20`}
+          on_change={(v) => set_state((p) => ({ ...p, acquiringRate: Math.min(10, Math.max(0, v)) }))}
         />
-      ))}
+        <span className="text-neutral-400">% с безнала · переменный, считается от оплат картой</span>
+      </label>
+      {missing_template.length ? (
+        <div className="mb-3 space-y-1.5 rounded-2xl bg-neutral-50 p-2.5">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <p className="text-[11px] text-neutral-500">
+              типовые статьи, которых нет в списке. непредвиденное сюда не добавляйте — разовые траты идут
+              расходом в операциях
+            </p>
+            <button
+              type="button"
+              className="text-xs font-medium text-accent hover:underline"
+              onClick={() => add_template(missing_template.map((t) => t.id))}
+            >
+              добавить все
+            </button>
+          </div>
+          <div className="flex flex-wrap gap-1.5">
+            {missing_template.map((t) => (
+              <button
+                key={t.id}
+                type="button"
+                title={[t.group, t.hint].filter(Boolean).join(' · ')}
+                onClick={() => add_template([t.id])}
+                className="rounded-full bg-white px-2.5 py-1 text-[11px] text-neutral-700 ring-1 ring-neutral-200 hover:ring-neutral-400"
+              >
+                + {t.name}
+              </button>
+            ))}
+          </div>
+        </div>
+      ) : null}
       <form
         className="mt-2 flex gap-2"
         onSubmit={(e) => {
@@ -356,16 +438,25 @@ export default function ModelSection({
           onClick={() =>
             set_state((prev) => ({
               ...prev,
-              equipments: [...prev.equipments, { id: new_id('eq'), name: 'новая техника', price: 0, months: 24 }],
+              equipments: [
+                ...prev.equipments,
+                { id: new_id('eq'), name: 'новая техника', price: 0, months: 24, from: month },
+              ],
             }))
           }
         >
           + техника
         </button>
       </div>
+      {gear_open ? (
+        <p className="mb-2 text-[11px] leading-snug text-neutral-400">
+          цена · срок в годах · месяц покупки. амортизация = цена / срок, идёт с месяца покупки до конца срока.
+          покупка через операции («оборудование») добавляется сюда сама
+        </p>
+      ) : null}
       {gear_open
         ? state.equipments.map((e) => (
-            <div key={e.id} className="mb-2 grid grid-cols-[minmax(0,1fr)_6.5rem_4.5rem_auto] items-center gap-2">
+            <div key={e.id} className="mb-2 grid grid-cols-[minmax(0,1fr)_6.5rem_4.5rem_7.5rem_auto] items-center gap-2">
               <input
                 className={field_class}
                 value={e.name}
@@ -399,6 +490,25 @@ export default function ModelSection({
                   }))
                 }
               />
+              <label className="block">
+                <span className="sr-only">месяц покупки</span>
+                <input
+                  type="month"
+                  value={e.from || ''}
+                  title={equipment_active(e, month) ? 'амортизируется в этом месяце' : 'в этом месяце не амортизируется'}
+                  onChange={(ev) =>
+                    set_state((prev) => ({
+                      ...prev,
+                      equipments: prev.equipments.map((x) =>
+                        x.id === e.id
+                          ? { ...x, from: /^\d{4}-\d{2}$/.test(ev.target.value) ? ev.target.value : undefined }
+                          : x
+                      ),
+                    }))
+                  }
+                  className={`${field_class} px-2 ${equipment_active(e, month) ? '' : 'text-neutral-400'}`}
+                />
+              </label>
               <button
                 type="button"
                 className="px-1 text-lg leading-none text-neutral-300 hover:text-red-500"
@@ -447,6 +557,8 @@ function Line({
   name,
   value,
   name_locked,
+  note,
+  note_tone = 'hint',
   on_name,
   on_value,
   on_remove,
@@ -454,12 +566,14 @@ function Line({
   name: string;
   value: number;
   name_locked?: boolean;
+  note?: string;
+  note_tone?: 'hint' | 'fact';
   on_name?: (v: string) => void;
   on_value: (v: number) => void;
   on_remove?: () => void;
 }) {
   return (
-    <div className="mb-2 grid grid-cols-[minmax(8rem,1fr)_8rem_1.75rem] items-center gap-2">
+    <div className="mb-2 grid grid-cols-[minmax(8rem,1fr)_8rem_1.75rem] items-center gap-x-2 gap-y-0.5">
       {name_locked ? (
         <p className="truncate px-3 text-sm text-neutral-700">{name}</p>
       ) : (
@@ -478,6 +592,15 @@ function Line({
       ) : (
         <span />
       )}
+      {note ? (
+        <p
+          className={`col-span-3 pl-3 text-[11px] leading-snug ${
+            note_tone === 'fact' ? 'text-emerald-700' : 'text-neutral-400'
+          }`}
+        >
+          {note}
+        </p>
+      ) : null}
     </div>
   );
 }

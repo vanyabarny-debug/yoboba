@@ -1,7 +1,39 @@
 import { find_profile_by_phone } from '@/lib/bonus-server';
 import { mutate_finance_state, read_finance_state } from '@/lib/finance/finance-server';
 import { read_money_anchor } from '@/lib/money-anchor';
-import { days_in_month, new_id, update_month, type finance_state, type stock_actor, type transaction } from '@/lib/finance/model';
+import {
+  apply_receipt,
+  consumption_for_items,
+  days_in_month,
+  is_salary_opex,
+  material_is_free,
+  material_is_infinite,
+  LEGACY_SPOT_ID,
+  merge_stock_categories,
+  month_label,
+  month_opex_fact,
+  moscow_today,
+  movement_money,
+  needs_stock_count,
+  new_id,
+  payroll_kind_label,
+  resolve_month_opex,
+  resolve_month_payroll,
+  set_month_payroll,
+  resolve_stock_spot,
+  unit_labels,
+  update_month,
+  type finance_state,
+  type material_unit,
+  type opex_category,
+  type order_stock_item,
+  type receipt_gap,
+  type stock_actor,
+  type stock_movement,
+  type transaction,
+} from '@/lib/finance/model';
+import { read_published_menu } from '@/lib/menu-catalog-server';
+import { upgrade_menu_store } from '@/lib/menu-store';
 import { normalize_order_item_fields } from '@/lib/order-item-name';
 import { get_demo_orders, add_demo_order } from '@/lib/demo-orders-server';
 import {
@@ -68,7 +100,7 @@ function missing_column(message: string) {
 const order_select =
   'id, user_id, items, total_price, status, payment_type, is_paid, customer_name, customer_phone, pickup_time, created_at, order_number, order_day, spot_id';
 
-async function resolve_guest_user(
+export async function resolve_guest_user(
   customer_name: string,
   customer_phone: string | null
 ): Promise<string> {
@@ -183,8 +215,7 @@ function sort_rows(rows: operation_row[], sort: operations_sort) {
 function match_filters(row: operation_row, f: operations_filters) {
   if (f.status && f.status !== 'all' && row.status !== f.status) return false;
   if (f.payment && f.payment !== 'all' && row.payment_type !== f.payment) return false;
-  if (f.spot_id && row.spot_id && row.spot_id !== f.spot_id) return false;
-  if (f.spot_id && !row.spot_id) return false;
+  if (f.spot_id && resolve_stock_spot(row.spot_id) !== resolve_stock_spot(f.spot_id)) return false;
   if (f.from) {
     const t = new Date(row.created_at).getTime();
     if (t < new Date(`${f.from}T00:00:00+03:00`).getTime()) return false;
@@ -255,7 +286,14 @@ export async function list_operations(filters: operations_filters = {}) {
       if (filters.payment && filters.payment !== 'all') {
         query = query.eq('payment_type', filters.payment === 'bonus' ? 'online' : filters.payment);
       }
-      if (filters.spot_id) query = query.eq('spot_id', filters.spot_id);
+      // без колонки spot_id фильтр по точке падал бы на каждой попытке — тогда точку проверяет match_filters
+      if (filters.spot_id && select.includes('spot_id')) {
+        // заказы до появления точек лежат без spot_id — это основная точка, как и на складе
+        query =
+          filters.spot_id === LEGACY_SPOT_ID
+            ? query.or(`spot_id.eq.${LEGACY_SPOT_ID},spot_id.is.null`)
+            : query.eq('spot_id', filters.spot_id);
+      }
       if (filters.from) query = query.gte('created_at', new Date(`${filters.from}T00:00:00+03:00`).toISOString());
       if (filters.to) query = query.lte('created_at', new Date(`${filters.to}T23:59:59.999+03:00`).toISOString());
 
@@ -444,7 +482,9 @@ export type ledger_kind =
   | 'expense'
   | 'collection'
   | 'financing'
-  | 'fixed';
+  | 'fixed'
+  | 'payroll'
+  | 'capex';
 
 export type ledger_change = {
   at: string;
@@ -483,6 +523,8 @@ export type ledger_entry = {
   payment: order['payment_type'] | null;
   /** позиции продажи — чтобы править заказ из ленты */
   items: order_item[];
+  /** срок амортизации, если это покупка оборудования */
+  months: number | null;
 };
 
 const kind_label: Record<ledger_kind, string> = {
@@ -492,6 +534,8 @@ const kind_label: Record<ledger_kind, string> = {
   collection: 'инкассация',
   financing: 'финансирование',
   fixed: 'постоянный расход',
+  payroll: 'зарплата',
+  capex: 'оборудование',
 };
 
 const payment_label: Record<order['payment_type'], string> = {
@@ -511,10 +555,16 @@ function tx_kind(t: transaction, opex_ids: Set<string>): ledger_kind {
   const cat = (t.category || '').toLowerCase();
   const desc = (t.description || '').toLowerCase();
   if (cat === 'material') return 'purchase';
+  if (cat === 'capex') return 'capex';
   if (cat === 'collection' || cat === 'encashment' || desc.includes('инкассац')) return 'collection';
   if (cat === 'investment' || cat === 'other_income' || t.type === 'income') return 'financing';
-  if (opex_ids.has(t.category)) return 'fixed';
+  if (opex_ids.has(t.category)) return is_salary_opex(t.category) ? 'payroll' : 'fixed';
   return 'expense';
+}
+
+/** зарплата правится той же формой, что постоянный расход — статья ФОТ */
+function form_kind(kind: ledger_kind): ledger_kind {
+  return kind === 'payroll' ? 'fixed' : kind;
 }
 
 function money_of(entry: Pick<ledger_entry, 'kind' | 'direction' | 'channel' | 'amount' | 'counts'>) {
@@ -564,19 +614,90 @@ function sale_changes(audit: order_audit_event[]): {
   return { actor_name: created?.actor_name || null, recorded_at: created?.at || null, changes };
 }
 
-function sale_entry(row: operation_row, audit: order_audit_event[] = []): ledger_entry | null {
+type sale_cost = {
+  total: number;
+  items: number[];
+};
+
+const rub_text = (n: number) => `${Math.round(n).toLocaleString('ru-RU')} ₽`;
+
+/**
+ * себестоимость продаж из складских списаний заказа (рубли зафиксированы в момент продажи).
+ * списание лежит по ингредиентам, не по напиткам — делим рубли ингредиента между строками
+ * заказа пропорционально их граммам по техкарте.
+ */
+function sale_costs(state: finance_state, rows: operation_row[], menu: Parameters<typeof consumption_for_items>[2]) {
+  const mats = new Map(state.materials.map((m) => [m.id, m]));
+  const by_order = new Map<string, stock_movement[]>();
+  for (const mv of state.stockMovements) {
+    if (!mv.orderId || (mv.type !== 'sale' && mv.type !== 'staff')) continue;
+    const list = by_order.get(mv.orderId);
+    if (list) list.push(mv);
+    else by_order.set(mv.orderId, [mv]);
+  }
+  const out = new Map<string, sale_cost>();
+  for (const row of rows) {
+    const mvs = by_order.get(row.id);
+    if (!mvs?.length) continue;
+    const money = new Map<string, number>();
+    for (const mv of mvs) {
+      const mat = mats.get(mv.materialId);
+      if (mat && material_is_free(mat)) continue;
+      money.set(mv.materialId, (money.get(mv.materialId) ?? 0) + movement_money(mat, mv));
+    }
+    if (!money.size) continue;
+    const total = [...money.values()].reduce((s, v) => s + v, 0);
+    let items = row.items.map(() => 0);
+    if (row.items.length === 1) items = [total];
+    else if (row.items.length > 1) {
+      const per = row.items.map((item) =>
+        item.menu_id ? consumption_for_items(state, [item as order_stock_item], menu) : new Map<string, number>()
+      );
+      let placed = 0;
+      for (const [id, rub] of money) {
+        const shares = per.map((p) => p.get(id) ?? 0);
+        const sum = shares.reduce((s, v) => s + v, 0);
+        if (!(sum > 0)) continue;
+        shares.forEach((share, i) => {
+          items[i] += (rub * share) / sum;
+        });
+        placed += rub;
+      }
+      const rest = total - placed;
+      if (rest > 0.005) {
+        const base = items.reduce((s, v) => s + v, 0);
+        items = items.map((v) => (base > 0 ? v + (rest * v) / base : v + rest / items.length));
+      }
+    }
+    out.set(row.id, { total, items });
+  }
+  return out;
+}
+
+function item_label(item: operation_row['items'][number]) {
+  const n = normalize_order_item_fields({ name: item.name, volume: item.volume });
+  const vol = n.volume ? ` ${n.volume} мл` : '';
+  const qty = item.quantity > 1 ? ` ×${item.quantity}` : '';
+  return `${n.name}${vol}${qty}`;
+}
+
+function sale_entry(row: operation_row, audit: order_audit_event[] = [], cost?: sale_cost): ledger_entry | null {
   if (row.status === 'cancelled') return null;
   const channel =
     row.payment_type === 'cash' ? 'cash' : row.payment_type === 'bonus' ? 'bonus' : 'card';
-  const lines: { k: string; v: string }[] = row.items.map((item) => {
-    const n = normalize_order_item_fields({ name: item.name, volume: item.volume });
-    const vol = n.volume ? ` ${n.volume} мл` : '';
-    const qty = item.quantity > 1 ? ` ×${item.quantity}` : '';
+  const lines: { k: string; v: string }[] = row.items.map((item, i) => {
+    const line_cost = cost?.items[i];
     return {
-      k: `${n.name}${vol}${qty}`,
-      v: `${Math.round(item.price * item.quantity).toLocaleString('ru-RU')} ₽`,
+      k: item_label(item),
+      v: `${rub_text(item.price * item.quantity)}${line_cost != null ? ` · себест. ${rub_text(line_cost)}` : ''}`,
     };
   });
+  const amount = Math.max(0, Math.round(row.total_price));
+  if (cost) {
+    const share = amount > 0 ? ` · ${Math.round((cost.total / amount) * 100)}%` : '';
+    lines.push({ k: 'себестоимость', v: `${rub_text(cost.total)}${share}` });
+    if (amount > 0) lines.push({ k: 'остаётся с продажи', v: rub_text(amount - cost.total) });
+  }
   lines.push({ k: 'оплата', v: payment_label[row.payment_type] || row.payment_type });
   if (row.customer_name) lines.push({ k: 'клиент', v: row.customer_name });
   if (row.is_paid === false) lines.push({ k: 'статус', v: 'не оплачен' });
@@ -586,7 +707,7 @@ function sale_entry(row: operation_row, audit: order_audit_event[] = []): ledger
     at: row.created_at,
     kind: 'sale',
     title: sale_title(row),
-    amount: Math.max(0, Math.round(row.total_price)),
+    amount,
     direction: 'in',
     channel,
     counts: row.is_paid !== false && channel !== 'bonus' && row.total_price > 0,
@@ -602,6 +723,7 @@ function sale_entry(row: operation_row, audit: order_audit_event[] = []): ledger
     stock_linked: false,
     payment: row.payment_type,
     items: row.items.map((item) => ({ ...item })),
+    months: null,
   };
 }
 
@@ -611,14 +733,18 @@ function finance_entries(
   const opex_ids = new Set(state.opexCategories.map((c) => c.id));
   const opex_name = new Map(state.opexCategories.map((c) => [c.id, c.name]));
   const mat_name = new Map(state.materials.map((m) => [m.id, m.name]));
+  const mat_unit = new Map(state.materials.map((m) => [m.id, unit_labels[m.unit]]));
   const stock_txs = new Set(
     state.stockMovements.map((mv) => mv.transactionId).filter((id): id is string => Boolean(id))
+  );
+  const equipment_by_tx = new Map(
+    state.equipments.filter((e) => e.txId).map((e) => [e.txId as string, e])
   );
   const out: ledger_entry[] = [];
   for (const month of state.monthsData) {
     for (const t of month.transactions ?? []) {
       const amount = Math.round(Number(t.amount) || 0);
-      if (amount <= 0) continue;
+      if (amount <= 0 || t.pending) continue;
       const kind = tx_kind(t, opex_ids);
       const direction: ledger_entry['direction'] =
         kind === 'collection' ? 'move' : kind === 'financing' ? 'in' : 'out';
@@ -630,8 +756,17 @@ function finance_entries(
       const lines: { k: string; v: string }[] = [];
       if (mat && mat !== title) lines.push({ k: 'материал', v: mat });
       if (cat_name) lines.push({ k: 'статья', v: cat_name });
+      if (kind === 'fixed' || kind === 'payroll') lines.push({ k: 'за месяц', v: month_label(month.month) });
       if (t.quantity && t.quantity > 0) {
-        lines.push({ k: 'количество', v: String(t.quantity) });
+        const unit = t.materialId ? mat_unit.get(t.materialId) : undefined;
+        lines.push({ k: 'количество', v: unit ? `${t.quantity.toLocaleString('ru-RU')} ${unit}` : String(t.quantity) });
+      }
+      const eq = equipment_by_tx.get(t.id);
+      if (kind === 'capex' && eq) {
+        lines.push({
+          k: 'амортизация',
+          v: `${Math.round(eq.price / Math.max(1, eq.months)).toLocaleString('ru-RU')} ₽/мес · ${eq.months} мес`,
+        });
       }
       if (kind !== 'collection') lines.push({ k: 'касса', v: channel === 'card' ? 'безнал' : 'нал' });
       out.push({
@@ -655,10 +790,11 @@ function finance_entries(
           actor_name: edit.actorName,
           text: edit.text,
         })),
-        category_id: kind === 'fixed' ? t.category : null,
+        category_id: kind === 'fixed' || kind === 'payroll' ? t.category : null,
         stock_linked: stock_txs.has(t.id),
         payment: null,
         items: [],
+        months: kind === 'capex' ? eq?.months ?? null : null,
       });
     }
   }
@@ -668,12 +804,16 @@ function finance_entries(
 /** продажи + закупки, расходы, инкассация, финансирование, постоянные расходы */
 export async function list_ledger(input: { spot_id?: string } = {}) {
   const spot_id = input.spot_id?.trim() || undefined;
-  const [packed, state, anchor, audit] = await Promise.all([
+  const [packed, state, anchor, audit, menu] = await Promise.all([
     list_operations({ spot_id, unpaged: true, status: 'all' }),
     read_finance_state(),
     read_money_anchor(),
     list_order_audit(),
+    read_published_menu()
+      .then((store) => upgrade_menu_store(store).items)
+      .catch(() => []),
   ]);
+  const costs = sale_costs(state, packed.operations, menu);
   const audit_by_order = new Map<string, order_audit_event[]>();
   for (const event of audit) {
     const rows = audit_by_order.get(event.order_id) || [];
@@ -681,9 +821,11 @@ export async function list_ledger(input: { spot_id?: string } = {}) {
     audit_by_order.set(event.order_id, rows);
   }
   const sales = packed.operations
-    .map((row) => sale_entry(row, audit_by_order.get(row.id) || []))
+    .map((row) => sale_entry(row, audit_by_order.get(row.id) || [], costs.get(row.id)))
     .filter((row): row is ledger_entry => Boolean(row));
-  const entries = [...sales, ...finance_entries(state)].sort(
+  const spot = spot_id ? resolve_stock_spot(spot_id) : '';
+  const money = finance_entries(state).filter((row) => !spot || resolve_stock_spot(row.spot_id) === spot);
+  const entries = [...sales, ...money].sort(
     (a, b) => new Date(b.at).getTime() - new Date(a.at).getTime()
   );
   const since = anchor ? new Date(anchor.at).getTime() : Number.NEGATIVE_INFINITY;
@@ -704,10 +846,217 @@ export async function list_ledger(input: { spot_id?: string } = {}) {
     balance: cash + card,
     anchor,
     opex: state.opexCategories.map((row) => ({ id: row.id, name: row.name })),
+    materials: state.materials
+      .filter((row) => row.name.trim() && !material_is_free(row) && !material_is_infinite(row))
+      .map((row): ledger_material => ({ id: row.id, name: row.name, unit: row.unit })),
+    shelves: merge_stock_categories(state.stockCategories ?? []).map((row) => ({ id: row.id, name: row.name })),
+    must_count: needs_stock_count(state),
+    due: due_payments(state),
+    receipts: pending_receipts(state).filter((row) => !spot || resolve_stock_spot(row.spot_id) === spot),
+    schedule: payment_schedule(state),
   };
 }
 
-const manual_kinds = new Set<ledger_kind>(['purchase', 'expense', 'collection', 'financing', 'fixed']);
+/** постоянный платёж, который пора подтвердить: висит с дня срока, пока по статье за месяц нет оплаты */
+export type ledger_due = {
+  category_id: string;
+  /** строка ФОТ — выплата сотруднику */
+  line_id: string | null;
+  /** зп / аванс / премия — у выплат ФОТ */
+  label: string | null;
+  name: string;
+  /** YYYY-MM, за какой месяц */
+  month: string;
+  /** YYYY-MM-DD, когда ждали оплату */
+  due: string;
+  plan: number;
+};
+
+export type ledger_schedule_row = {
+  id: string;
+  name: string;
+  /** сумма текущего месяца из модели */
+  plan: number;
+  pay_day: number | null;
+  /** оплачено за текущий месяц */
+  paid: number;
+  /** ФОТ: суммы идут из персонала, здесь только число выплаты */
+  payroll: boolean;
+};
+
+function next_month(month: string) {
+  const [y, m] = month.split('-').map(Number);
+  return m === 12 ? `${y + 1}-01` : `${y}-${String(m + 1).padStart(2, '0')}`;
+}
+
+function due_day(month: string, pay_day: number) {
+  return `${month}-${String(Math.min(pay_day, days_in_month(month))).padStart(2, '0')}`;
+}
+
+function due_payments(state: finance_state): ledger_due[] {
+  const today = moscow_today();
+  const current = today.slice(0, 7);
+  const out: ledger_due[] = [];
+  for (const cat of state.opexCategories) {
+    if (!cat.payDay) continue;
+    const salary = is_salary_opex(cat.id);
+    let month = cat.payFrom && cat.payFrom <= current ? cat.payFrom : current;
+    for (let guard = 0; month <= current && guard < 36; guard++, month = next_month(month)) {
+      const due = due_day(month, cat.payDay);
+      if (due > today) continue;
+      if (salary) {
+        const md = state.monthsData.find((row) => row.month === month);
+        if (!md) continue;
+        for (const line of resolve_month_payroll(state, md).lines) {
+          if (!(line.amount > 0) || line.paidTx) continue;
+          out.push({
+            category_id: cat.id,
+            line_id: line.id,
+            label: payroll_kind_label(line.kind),
+            name: line.name,
+            month,
+            due,
+            plan: line.amount,
+          });
+        }
+        continue;
+      }
+      if ((month_opex_fact(state, month)[cat.id] ?? 0) > 0) continue;
+      out.push({
+        category_id: cat.id,
+        line_id: null,
+        label: null,
+        name: cat.name,
+        month,
+        due,
+        plan: Math.round(Number(resolve_month_opex(state, month)[cat.id]) || 0),
+      });
+    }
+  }
+  return out.sort((a, b) => a.due.localeCompare(b.due));
+}
+
+/** поставка со склада без суммы или даты: висит, пока её не подтвердят */
+export type ledger_receipt = {
+  tx_id: string;
+  title: string;
+  material: string;
+  qty: string;
+  gap: receipt_gap;
+  /** YYYY-MM-DD, когда внесли на склад */
+  since: string;
+  /** дата поставки, если её указали */
+  date: string | null;
+  /** сумма, если её указали; иначе 0 */
+  amount: number;
+  channel: 'cash' | 'card';
+  spot_id: string | null;
+};
+
+function pending_receipts(state: finance_state): ledger_receipt[] {
+  const mats = new Map(state.materials.map((m) => [m.id, m]));
+  const out: ledger_receipt[] = [];
+  for (const month of state.monthsData) {
+    for (const t of month.transactions ?? []) {
+      if (!t.pending) continue;
+      const mat = t.materialId ? mats.get(t.materialId) : undefined;
+      const day = `${month.month}-${String(t.day).padStart(2, '0')}`;
+      const since = (t.createdAt && moscow_minute(t.createdAt).slice(0, 10)) || day;
+      out.push({
+        tx_id: t.id,
+        title: tx_title(state, t, 'purchase'),
+        material: mat?.name || '',
+        qty:
+          t.quantity && t.quantity > 0
+            ? `${t.quantity.toLocaleString('ru-RU')} ${mat ? unit_labels[mat.unit] : ''}`.trim()
+            : '',
+        gap: t.pending,
+        since,
+        date: t.pending === 'sum' ? day : null,
+        amount: t.pending === 'date' ? Math.round(Number(t.amount) || 0) : 0,
+        channel: t.channel === 'card' ? 'card' : 'cash',
+        spot_id: t.spotId || null,
+      });
+    }
+  }
+  return out.sort((a, b) => a.since.localeCompare(b.since));
+}
+
+function payment_schedule(state: finance_state): ledger_schedule_row[] {
+  const current = moscow_today().slice(0, 7);
+  const plan = resolve_month_opex(state, current);
+  const fact = month_opex_fact(state, current);
+  const md = state.monthsData.find((row) => row.month === current);
+  const pay = md ? resolve_month_payroll(state, md).lines : [];
+  const pay_net = pay.reduce((s, line) => s + line.amount, 0);
+  const pay_paid = pay.filter((line) => line.paidTx).reduce((s, line) => s + line.amount, 0);
+  return state.opexCategories.map((cat) => {
+    const salary = is_salary_opex(cat.id);
+    return {
+      id: cat.id,
+      name: cat.name,
+      plan: Math.round(salary ? pay_net : Number(plan[cat.id]) || 0),
+      pay_day: cat.payDay ?? null,
+      paid: Math.round(salary ? pay_paid : fact[cat.id] ?? 0),
+      payroll: salary,
+    };
+  });
+}
+
+/** план и число платежа постоянной статьи; новая статья — по названию */
+export async function save_payment_schedule(raw: unknown): Promise<ledger_save> {
+  if (!raw || typeof raw !== 'object') return fail('нет данных', 400);
+  const body = raw as Record<string, unknown>;
+  const id = typeof body.id === 'string' ? body.id.trim().slice(0, 80) : '';
+  const name = typeof body.name === 'string' ? body.name.trim().slice(0, 80) : '';
+  const plan = Math.round(Number(body.plan));
+  if (!Number.isFinite(plan) || plan < 0 || plan > 50_000_000) return fail('сумма — от 0 до 50 000 000 ₽', 400);
+  const day_raw = body.pay_day == null || body.pay_day === '' ? null : Math.round(Number(body.pay_day));
+  if (day_raw != null && !(day_raw >= 1 && day_raw <= 31)) return fail('число месяца — от 1 до 31', 400);
+  if (!id && !name) return fail('напишите, что за платёж', 400);
+  try {
+    return await mutate_finance_state((state): { state: finance_state | null; value: ledger_save } => {
+      const current = moscow_today().slice(0, 7);
+      let cats = state.opexCategories;
+      let cat = id ? cats.find((row) => row.id === id) : undefined;
+      if (id && !cat) return { state: null, value: fail('статья не найдена', 404) };
+      if (!cat) {
+        if (cats.some((row) => name_key(row.name) === name_key(name))) {
+          return { state: null, value: fail(`«${name}» уже есть — поменяйте её в списке`, 400) };
+        }
+        cat = { id: new_id('opex'), name };
+        cats = [...cats, cat];
+      }
+      const next_cat: opex_category = { id: cat.id, name: id && name ? name : cat.name };
+      if (day_raw != null) {
+        next_cat.payDay = day_raw;
+        next_cat.payFrom = cat.payDay && cat.payFrom ? cat.payFrom : current;
+      }
+      cats = cats.map((row) => (row.id === next_cat.id ? next_cat : row));
+      if (is_salary_opex(next_cat.id)) {
+        return { state: { ...state, opexCategories: cats }, value: { ok: true as const } };
+      }
+      const resolved = resolve_month_opex(state, current);
+      const next = update_month({ ...state, opexCategories: cats }, current, (m) => ({
+        ...m,
+        opex: { ...m.opex, ...resolved, [next_cat.id]: plan },
+      }));
+      return { state: next, value: { ok: true as const } };
+    });
+  } catch (e) {
+    return fail(e instanceof Error ? e.message : 'не удалось сохранить платёж', 500);
+  }
+}
+
+const material_units = new Set<material_unit>(['g', 'kg', 'ml', 'L', 'pcs']);
+
+function name_key(text: string) {
+  return text.trim().toLowerCase().replace(/ё/g, 'е');
+}
+
+export type ledger_material = { id: string; name: string; unit: material_unit };
+
+const manual_kinds = new Set<ledger_kind>(['purchase', 'expense', 'collection', 'financing', 'fixed', 'capex']);
 
 type ledger_body = {
   id: string;
@@ -719,6 +1068,18 @@ type ledger_body = {
   channel: 'cash' | 'card';
   category_id: string;
   spot_id: string;
+  /** срок полезного использования оборудования, мес */
+  months: number;
+  /** новая закупка ингредиента — сразу приход на склад */
+  material_id: string;
+  /** в единицах закупки материала (кг / л / шт) */
+  quantity: number;
+  /** новой позиции склада ещё нет — заводим по названию операции */
+  new_material: { unit: material_unit; category: string } | null;
+  /** YYYY-MM: оплата постоянной статьи за этот месяц, даже если платили в другом */
+  for_month: string;
+  /** id строки ФОТ месяца for_month — выплата сотруднику */
+  payroll_line: string;
 };
 
 function fail(error: string, status: number) {
@@ -769,6 +1130,12 @@ function parse_ledger_body(raw: unknown): { ok: true; value: ledger_body } | { o
         channel: 'cash',
         category_id: '',
         spot_id: '',
+        months: 0,
+        material_id: '',
+        quantity: 0,
+        new_material: null,
+        for_month: '',
+        payroll_line: '',
       },
     };
   }
@@ -791,6 +1158,29 @@ function parse_ledger_body(raw: unknown): { ok: true; value: ledger_body } | { o
   const channel = body.channel === 'card' ? 'card' : 'cash';
   const category_id = typeof body.category_id === 'string' ? body.category_id.trim().slice(0, 80) : '';
   const spot_id = typeof body.spot_id === 'string' ? body.spot_id.trim().slice(0, 80) : '';
+  const months_raw = Math.round(Number(body.months));
+  const months = Number.isFinite(months_raw) && months_raw >= 1 && months_raw <= 240 ? months_raw : 0;
+  const material_id =
+    kind === 'purchase' && typeof body.material_id === 'string' ? body.material_id.trim().slice(0, 80) : '';
+  const raw_new = kind === 'purchase' && !material_id ? body.new_material : null;
+  let new_material: ledger_body['new_material'] = null;
+  if (raw_new && typeof raw_new === 'object') {
+    const row = raw_new as Record<string, unknown>;
+    const unit = typeof row.unit === 'string' ? (row.unit as material_unit) : 'g';
+    if (!material_units.has(unit)) return fail('выберите единицу', 400);
+    const category = typeof row.category === 'string' ? row.category.trim().slice(0, 80) : '';
+    new_material = { unit, category };
+  }
+  const quantity = material_id || new_material ? Number(body.quantity) : 0;
+  if ((material_id || new_material) && (!Number.isFinite(quantity) || quantity <= 0 || quantity > 100_000)) {
+    return fail('укажите количество', 400);
+  }
+  const for_month =
+    kind === 'fixed' && typeof body.for_month === 'string' && /^\d{4}-(0[1-9]|1[0-2])$/.test(body.for_month)
+      ? body.for_month
+      : '';
+  const payroll_line =
+    for_month && typeof body.payroll_line === 'string' ? body.payroll_line.trim().slice(0, 80) : '';
   return {
     ok: true,
     value: {
@@ -803,6 +1193,12 @@ function parse_ledger_body(raw: unknown): { ok: true; value: ledger_body } | { o
       channel,
       category_id,
       spot_id,
+      months,
+      material_id,
+      quantity: Math.round(quantity * 1000) / 1000,
+      new_material,
+      for_month,
+      payroll_line,
     },
   };
 }
@@ -846,7 +1242,7 @@ function ledger_diff(
   after: { kind: ledger_kind; amount: number; title: string; at: string; channel: 'cash' | 'card'; category: string }
 ) {
   const opex_ids = new Set(state.opexCategories.map((row) => row.id));
-  const before_kind = tx_kind(before.tx, opex_ids);
+  const before_kind = form_kind(tx_kind(before.tx, opex_ids));
   const bits: string[] = [];
   if (before_kind !== after.kind) bits.push(`${kind_label[before_kind]} → ${kind_label[after.kind]}`);
   if (before_kind === 'fixed' && after.kind === 'fixed' && before.tx.category !== after.category) {
@@ -880,6 +1276,7 @@ function category_of(
   previous: transaction | null
 ): { type: transaction['type']; category: string } | { error: string } {
   if (kind === 'purchase') return { type: 'expense', category: 'material' };
+  if (kind === 'capex') return { type: 'expense', category: 'capex' };
   if (kind === 'collection') return { type: 'expense', category: 'collection' };
   if (kind === 'financing') {
     const keep = previous?.category === 'other_income' ? 'other_income' : 'investment';
@@ -898,6 +1295,31 @@ function category_of(
 
 type ledger_save = { ok: true } | { ok: false; error: string; status: number };
 
+/** выплата ФОТ: сумма строки становится фактом и помечается операцией; tx_id null — выплату удалили */
+function sync_payroll_line(
+  state: finance_state,
+  month: string,
+  line_id: string,
+  tx_id: string | null,
+  amount: number
+): finance_state | null {
+  const md = state.monthsData.find((row) => row.month === month);
+  if (!md) return null;
+  const lines = resolve_month_payroll(state, md).lines;
+  if (!lines.some((line) => line.id === line_id)) return null;
+  return set_month_payroll(
+    state,
+    month,
+    lines.map((line) => {
+      if (line.id !== line_id) return line;
+      if (tx_id) return { ...line, amount, paidTx: tx_id };
+      const open = { ...line };
+      delete open.paidTx;
+      return open;
+    })
+  );
+}
+
 /** ручная операция дня: закупка, расход, инкассация, финансирование, постоянный расход */
 export async function save_ledger_entry(raw: unknown, actor: stock_actor): Promise<ledger_save> {
   const parsed = parse_ledger_body(raw);
@@ -911,7 +1333,15 @@ export async function save_ledger_entry(raw: unknown, actor: stock_actor): Promi
         if (state.stockMovements.some((mv) => mv.transactionId === body.id)) {
           return { state: null, value: fail('закупка на складе удаляется вместе со складским приходом', 400) };
         }
-        return { state: strip_tx(state, body.id), value: { ok: true as const } };
+        let stripped = strip_tx(state, body.id);
+        if (found.tx.payrollLine) {
+          stripped =
+            sync_payroll_line(stripped, found.month, found.tx.payrollLine, null, found.tx.amount) ?? stripped;
+        }
+        return {
+          state: { ...stripped, equipments: stripped.equipments.filter((e) => e.txId !== body.id) },
+          value: { ok: true as const },
+        };
       }
 
       const found = body.id ? locate_tx(state, body.id) : null;
@@ -922,6 +1352,53 @@ export async function save_ledger_entry(raw: unknown, actor: stock_actor): Promi
       }
       const category = category_of(state, body.kind, body.category_id, found?.tx ?? null);
       if ('error' in category) return { state: null, value: fail(category.error, 400) };
+      const line_id = found?.tx.payrollLine || (found ? '' : body.payroll_line);
+      if (line_id && (body.kind !== 'fixed' || !is_salary_opex(category.category))) {
+        return { state: null, value: fail('выплату зарплаты можно поправить или удалить, но не менять статью', 400) };
+      }
+      if (line_id && !found) {
+        const md = state.monthsData.find((row) => row.month === body.for_month);
+        const line = md ? resolve_month_payroll(state, md).lines.find((row) => row.id === line_id) : undefined;
+        if (!line) return { state: null, value: fail('выплата не найдена в ФОТ', 404) };
+        if (line.paidTx) return { state: null, value: fail('эта выплата уже подтверждена', 400) };
+      }
+
+      if (!found && (body.material_id || body.new_material)) {
+        if (needs_stock_count(state)) {
+          return { state: null, value: fail('сначала проведите первую инвентаризацию на складе', 400) };
+        }
+        if (!(body.quantity > 0)) return { state: null, value: fail('укажите количество', 400) };
+        let base = state;
+        let mat = body.material_id ? state.materials.find((row) => row.id === body.material_id) : undefined;
+        if (body.new_material) {
+          if (state.materials.some((row) => name_key(row.name) === name_key(body.title))) {
+            return { state: null, value: fail(`«${body.title}» уже есть на складе — выберите из списка`, 400) };
+          }
+          const shelves = merge_stock_categories(state.stockCategories ?? []);
+          const category = shelves.some((row) => row.id === body.new_material?.category)
+            ? body.new_material.category
+            : shelves[0]?.id || 'mixes';
+          mat = { id: new_id('mat'), name: body.title, category, unit: body.new_material.unit, costPerUnit: 0 };
+          base = { ...state, materials: [...state.materials, mat] };
+        }
+        if (!mat || material_is_free(mat) || material_is_infinite(mat)) {
+          return { state: null, value: fail('такого ингредиента нет на складе', 400) };
+        }
+        const received = apply_receipt(base, {
+          materialId: mat.id,
+          quantity: body.quantity,
+          total: body.amount,
+          date: new Date(body.at).toISOString(),
+          at: body.at,
+          channel: body.channel,
+          note: body.title,
+          update_price: true,
+          actor,
+          ...(body.spot_id ? { spotId: body.spot_id } : {}),
+        });
+        if (received === base) return { state: null, value: fail('не удалось провести на склад', 500) };
+        return { state: received, value: { ok: true as const } };
+      }
 
       const next_view = {
         kind: body.kind,
@@ -931,12 +1408,23 @@ export async function save_ledger_entry(raw: unknown, actor: stock_actor): Promi
         channel: body.kind === 'collection' ? ('cash' as const) : body.channel,
         category: category.category,
       };
-      const text = found ? ledger_diff(state, found, next_view) : '';
+      const linked = found ? state.equipments.find((e) => e.txId === found.tx.id) : undefined;
+      const months_changed = body.kind === 'capex' && body.months > 0 && linked?.months !== body.months;
+      const diff = found ? ledger_diff(state, found, next_view) : '';
+      const confirming = Boolean(found?.tx.pending);
+      const text = [
+        confirming ? 'поставка подтверждена' : '',
+        diff,
+        months_changed && found ? `срок ${linked?.months ?? '—'} → ${body.months} мес` : '',
+      ]
+        .filter(Boolean)
+        .join(', ');
       if (found && !text) return { state: null, value: { ok: true as const } };
 
       const now = new Date().toISOString();
       const day = Number(body.at.slice(8, 10));
-      const month = body.at.slice(0, 7);
+      const for_month = body.kind === 'fixed' ? body.for_month || found?.tx.forMonth || '' : '';
+      const month = for_month || body.at.slice(0, 7);
       const id = found?.tx.id || new_id('tx');
       const edits = found?.tx.edits ? [...found.tx.edits] : [];
       if (text) {
@@ -958,6 +1446,8 @@ export async function save_ledger_entry(raw: unknown, actor: stock_actor): Promi
         ...(found?.tx.createdAt ? { createdAt: found.tx.createdAt } : { createdAt: now }),
         ...(found?.tx.spotId ? { spotId: found.tx.spotId } : body.spot_id ? { spotId: body.spot_id } : {}),
         ...(edits.length ? { edits: edits.slice(-30) } : {}),
+        ...(for_month ? { forMonth: for_month } : {}),
+        ...(line_id ? { payrollLine: line_id } : {}),
       };
 
       let next = found ? strip_tx(state, id) : state;
@@ -965,13 +1455,51 @@ export async function save_ledger_entry(raw: unknown, actor: stock_actor): Promi
         ...row,
         transactions: [...(row.transactions ?? []), tx],
       }));
+      if (line_id) {
+        const synced = sync_payroll_line(next, month, line_id, id, body.amount);
+        if (!synced) return { state: null, value: fail('выплата не найдена в ФОТ', 404) };
+        next = synced;
+      }
       if (stock_linked && tx.at) {
+        const mv_date = new Date(tx.at).toISOString();
         next = {
           ...next,
           stockMovements: next.stockMovements.map((mv) =>
-            mv.transactionId === id ? { ...mv, total: tx.amount, date: tx.at || mv.date } : mv
+            mv.transactionId === id
+              ? {
+                  ...mv,
+                  total: tx.amount,
+                  date: moscow_minute(mv.date).slice(0, 10) === body.at.slice(0, 10) ? mv.date : mv_date,
+                }
+              : mv
           ),
         };
+        if (confirming && tx.materialId && tx.quantity && tx.quantity > 0) {
+          const price = Math.round((tx.amount / tx.quantity) * 100) / 100;
+          next = {
+            ...next,
+            materials: next.materials.map((m) => (m.id === tx.materialId ? { ...m, costPerUnit: price } : m)),
+          };
+        }
+      }
+      const others = next.equipments.filter((e) => e.txId !== id);
+      if (body.kind === 'capex') {
+        next = {
+          ...next,
+          equipments: [
+            ...others,
+            {
+              id: linked?.id || new_id('eq'),
+              name: body.title,
+              price: body.amount,
+              months: body.months || linked?.months || 24,
+              from: month,
+              txId: id,
+            },
+          ],
+        };
+      } else if (linked) {
+        next = { ...next, equipments: others };
       }
       return { state: next, value: { ok: true as const } };
     });

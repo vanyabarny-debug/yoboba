@@ -16,7 +16,7 @@ type props = {
   on_confirm: (location: user_location) => void;
 };
 
-export default function spot_picker({ on_confirm }: props) {
+export default function SpotPicker({ on_confirm }: props) {
   const [spots, set_spots] = useState<store_spot[]>([]);
   const [selected_id, set_selected_id] = useState<string | null>(null);
 

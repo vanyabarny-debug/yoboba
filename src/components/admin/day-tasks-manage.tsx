@@ -42,7 +42,18 @@ function empty_task(): day_task_template {
   };
 }
 
-export default function day_tasks_manage() {
+async function fetch_day_tasks() {
+  const res = await fetch('/api/admin/day-tasks', { credentials: 'same-origin' });
+  const data = (await res.json()) as {
+    error?: string;
+    tasks?: day_task_template[];
+    proofs?: day_task_proof_record[];
+  };
+  if (!res.ok) throw new Error(data.error || 'не удалось загрузить задачи');
+  return data;
+}
+
+export default function DayTasksManage() {
   const [tasks, set_tasks] = useState<day_task_template[]>([]);
   const [proofs, set_proofs] = useState<day_task_proof_record[]>([]);
   const [draft, set_draft] = useState<day_task_template | null>(null);
@@ -51,27 +62,14 @@ export default function day_tasks_manage() {
   const [loading, set_loading] = useState(true);
   const [saving, set_saving] = useState(false);
 
-  async function reload() {
-    set_loading(true);
-    try {
-      const res = await fetch('/api/admin/day-tasks', { credentials: 'same-origin' });
-      const data = (await res.json()) as {
-        error?: string;
-        tasks?: day_task_template[];
-        proofs?: day_task_proof_record[];
-      };
-      if (!res.ok) throw new Error(data.error || 'не удалось загрузить задачи');
-      set_tasks(data.tasks || []);
-      set_proofs(data.proofs || []);
-    } catch (err) {
-      set_error(err instanceof Error ? err.message : 'не удалось загрузить задачи');
-    } finally {
-      set_loading(false);
-    }
-  }
-
   useEffect(() => {
-    void reload();
+    fetch_day_tasks()
+      .then((data) => {
+        set_tasks(data.tasks || []);
+        set_proofs(data.proofs || []);
+      })
+      .catch((err) => set_error(err instanceof Error ? err.message : 'не удалось загрузить задачи'))
+      .finally(() => set_loading(false));
   }, []);
 
   function open_new() {

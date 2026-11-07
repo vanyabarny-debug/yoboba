@@ -24,7 +24,7 @@ export function ensure_promo_title_font() {
   document.head.appendChild(link);
 }
 
-export function promo_title_on_image({
+export function PromoTitleOnImage({
   title,
   layout,
   className = '',
@@ -113,4 +113,4 @@ export function promo_title_on_image({
   );
 }
 
-export default promo_title_on_image;
+export default PromoTitleOnImage;

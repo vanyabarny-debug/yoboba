@@ -6,7 +6,7 @@ import menu_image from '@/components/menu-image';
 import { menu_badge_on_card } from '@/components/menu-badge';
 import { menu_item_has_badge } from '@/lib/menu-badge';
 import edit_pencil from '@/components/admin/edit-pencil';
-import product_photo_picker from '@/components/admin/product-photo-picker';
+import ProductPhotoPicker from '@/components/admin/product-photo-picker';
 import { desktop_category_heading_offset } from '@/components/menu-grid';
 import { get_category_heading_style, subscribe_menu_store } from '@/lib/menu-store';
 import { item_in_category } from '@/lib/menu-item-categories';
@@ -56,7 +56,7 @@ function visibility_eye({ open }: { open: boolean }) {
   );
 }
 
-function admin_dish_card({
+function AdminDishCard({
   item,
   on_item_click,
   on_update_item,
@@ -146,7 +146,7 @@ function admin_dish_card({
             {visibility_eye({ open: item.is_available })}
           </button>
           <div className="absolute top-2 right-2 z-10 flex gap-1">
-            {createElement(product_photo_picker, {
+            {createElement(ProductPhotoPicker, {
               label: 'загрузить фото',
               on_save: (url) => on_update_item({ ...item, image_url: url }),
               size: 'sm',
@@ -248,7 +248,7 @@ function empty_cell(key: string) {
 
 export { desktop_category_heading_offset };
 
-export default function menu_grid_admin({
+export default function MenuGridAdmin({
   items,
   categories,
   active_category,
@@ -315,7 +315,7 @@ export default function menu_grid_admin({
             <div className="grid grid-cols-2 min-[1024px]:grid-cols-4 gap-2 gap-y-5">
               {cat_items.map((item) => (
                 <div key={item.id} className="min-w-0">
-                  {createElement(admin_dish_card, {
+                  {createElement(AdminDishCard, {
                     item,
                     on_item_click,
                     on_update_item,

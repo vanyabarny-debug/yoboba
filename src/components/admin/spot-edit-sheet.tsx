@@ -1,6 +1,6 @@
 'use client';
 
-import { createElement, useEffect, useState } from 'react';
+import { createElement, useState } from 'react';
 import type { store_spot } from '@/lib/types';
 import { admin_sheet } from '@/components/admin/admin-sheet';
 import spot_rating from '@/components/spot-rating';
@@ -15,20 +15,25 @@ type props = {
   on_delete?: (id: string) => void;
 };
 
-export default function spot_edit_sheet({ spot, on_close, on_save, on_delete }: props) {
+export default function SpotEditSheet({ spot, on_close, on_save, on_delete }: props) {
   const [draft, set_draft] = useState<store_spot | null>(spot);
 
-  useEffect(() => {
+  const [draft_for, set_draft_for] = useState(spot);
+  if (draft_for !== spot) {
+    set_draft_for(spot);
     set_draft(spot);
-  }, [spot]);
+  }
 
   if (!draft) return null;
 
-  return createElement(admin_sheet, {
-    open: true,
-    title: draft.id && draft.address ? 'редактировать точку' : 'новая точка',
-    on_close,
-    children: (
+  return createElement(
+    admin_sheet,
+    {
+      open: true,
+      title: draft.id && draft.address ? 'редактировать точку' : 'новая точка',
+      on_close,
+    },
+    (
       <form
         onSubmit={(e) => {
           e.preventDefault();
@@ -167,6 +172,6 @@ export default function spot_edit_sheet({ spot, on_close, on_save, on_delete }: 
           )}
         </div>
       </form>
-    ),
-  });
+    )
+  );
 }

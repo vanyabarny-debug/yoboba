@@ -3,7 +3,7 @@
 import { createElement, useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
-import site_chrome from '@/components/site-chrome';
+import SiteChrome from '@/components/site-chrome';
 import { fetch_order_by_id } from '@/lib/orders';
 import { format_order_number } from '@/lib/order-number';
 import { default_store_address } from '@/lib/location';
@@ -46,28 +46,31 @@ function step_index(status: order['status']) {
   return status_rank[status] ?? 0;
 }
 
-function track_client({ id }: { id: string }) {
+function TrackClient({ id }: { id: string }) {
   const router = useRouter();
   const [order, set_order] = useState<order | null>(null);
   const [error, set_error] = useState('');
   const [loading, set_loading] = useState(true);
 
-  const load = useCallback(async () => {
-    const { data, error: err } = await fetch_order_by_id(id);
-    if (err || !data) {
-      set_error(err?.message || 'заказ не найден');
-      set_order(null);
-      set_loading(false);
-      return;
-    }
-    set_order(data);
-    set_error('');
-    set_loading(false);
-    if (data.status === 'new' || data.status === 'preparing' || data.status === 'ready') {
-      const { set_active_order_id } = await import('@/lib/active-order-store');
-      set_active_order_id(data.id);
-    }
-  }, [id]);
+  const load = useCallback(
+    () =>
+      fetch_order_by_id(id).then(async ({ data, error: err }) => {
+        if (err || !data) {
+          set_error(err?.message || 'заказ не найден');
+          set_order(null);
+          set_loading(false);
+          return;
+        }
+        set_order(data);
+        set_error('');
+        set_loading(false);
+        if (data.status === 'new' || data.status === 'preparing' || data.status === 'ready') {
+          const { set_active_order_id } = await import('@/lib/active-order-store');
+          set_active_order_id(data.id);
+        }
+      }),
+    [id]
+  );
 
   useEffect(() => {
     void load();
@@ -247,15 +250,15 @@ function track_client({ id }: { id: string }) {
   );
 }
 
-export default function order_track_page() {
+export default function OrderTrackPage() {
   const params = useParams();
   const id = typeof params?.id === 'string' ? params.id : '';
 
   return createElement(
-    site_chrome,
+    SiteChrome,
     null,
     id
-      ? createElement(track_client, { id })
+      ? createElement(TrackClient, { id })
       : createElement(
           'div',
           { className: 'mx-auto max-w-lg px-4 py-10 text-center text-sm text-neutral-500' },

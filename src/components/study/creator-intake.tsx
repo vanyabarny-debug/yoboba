@@ -1,7 +1,8 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { useHydrated } from '@/lib/use-hydrated';
 import Topbar from '@/components/study/topbar';
 import {
   empty_apply,
@@ -45,15 +46,18 @@ export default function CreatorIntake() {
   const total = 5;
   const done = i >= 4;
 
-  useEffect(() => {
+  const hydrated = useHydrated();
+  if (hydrated && !ready) {
+    set_ready(true);
     const saved = load_apply();
     if (saved?.role === 'creator') set_apply(saved);
-    set_ready(true);
-  }, []);
+  }
 
-  useEffect(() => {
+  const [error_step, set_error_step] = useState(i);
+  if (error_step !== i) {
+    set_error_step(i);
     set_error('');
-  }, [i]);
+  }
 
   const can_next = useMemo(() => {
     if (done) return true;

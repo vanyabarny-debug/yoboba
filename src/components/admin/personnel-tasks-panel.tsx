@@ -7,7 +7,7 @@ import ShiftChecklistsManage from '@/components/admin/shift-checklists-manage';
 
 type panel_tab = 'checklists' | 'timed' | 'control';
 
-export default function personnel_tasks_panel() {
+export default function PersonnelTasksPanel() {
   const [tab, set_tab] = useState<panel_tab>('checklists');
   const [control, set_control] = useState<{
     progress: { opening: []; closing: [] };

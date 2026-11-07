@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { play_start_chime } from '@/lib/order-chime';
 import type { drink_row } from '@/components/seller/order-prep-card';
 import { pick_recipe_size, type cook_step_view, type public_recipe } from '@/lib/finance/prep-steps';
@@ -58,11 +58,18 @@ function RecipePane({
   const [phase, set_phase] = useState<phase>('intro');
   const [step_i, set_step_i] = useState(0);
 
-  useEffect(() => {
-    if (!recipes) return;
-    set_phase(steps.length ? 'intro' : 'empty');
-    set_step_i(0);
-  }, [drink.key, recipes, steps.length]);
+  const [phase_for, set_phase_for] = useState<{
+    key: string;
+    recipes: public_recipe[] | null;
+    steps: number;
+  } | null>(null);
+  if (phase_for?.key !== drink.key || phase_for.recipes !== recipes || phase_for.steps !== steps.length) {
+    set_phase_for({ key: drink.key, recipes, steps: steps.length });
+    if (recipes) {
+      set_phase(steps.length ? 'intro' : 'empty');
+      set_step_i(0);
+    }
+  }
 
   const progress =
     phase === 'intro' || phase === 'empty'
@@ -259,7 +266,9 @@ export default function DrinkCookGuide({
   const [pair_i, set_pair_i] = useState(Math.floor((start_index >= 0 ? start_index : 0) / 2));
   const [finished, set_finished] = useState<Record<string, true>>({});
   const finished_ref = useRef(finished);
-  finished_ref.current = finished;
+  useLayoutEffect(() => {
+    finished_ref.current = finished;
+  });
   const [recipes, set_recipes] = useState<public_recipe[] | null>(null);
   const [error, set_error] = useState('');
 

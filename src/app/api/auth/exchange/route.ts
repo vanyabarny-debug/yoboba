@@ -9,7 +9,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'missing code' }, { status: 400 });
   }
 
-  let response = NextResponse.json({ ok: true });
+  const response = NextResponse.json({ ok: true });
 
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,

@@ -1,6 +1,15 @@
 'use client';
 
-import { amortization_per_month, format_rub, is_salary_opex, month_label, ndfl_from_net, new_id, update_month } from '@/lib/finance/model';
+import {
+  amortization_per_month,
+  format_rub,
+  is_salary_opex,
+  month_fixed_totals,
+  month_label,
+  ndfl_from_net,
+  new_id,
+  update_month,
+} from '@/lib/finance/model';
 import type { section_props } from '@/components/admin/finance/use-finance';
 import {
   Card,
@@ -20,14 +29,11 @@ import {
 export default function OpexSection({ state, set_state, month, compact }: section_props) {
   const md = state.monthsData.find((m) => m.month === month);
   const prev_month = state.monthsData.filter((m) => m.month < month).pop();
-  const opex_total = md ? Object.values(md.opex).reduce((s, v) => s + (Number(v) || 0), 0) : 0;
-  const amort = amortization_per_month(state);
+  const totals = md ? month_fixed_totals(state, month) : null;
+  const opex_total = totals?.opex ?? 0;
+  const amort = amortization_per_month(state, month);
   const capex_total = state.equipments.reduce((s, e) => s + e.price, 0);
-  const salary = md
-    ? Object.entries(md.opex)
-        .filter(([id]) => is_salary_opex(id))
-        .reduce((s, [, v]) => s + (Number(v) || 0), 0)
-    : 0;
+  const salary = totals?.salary ?? 0;
 
   if (!md) return <EmptyState>месяц {month_label(month)} ещё не создан — добавьте его сверху</EmptyState>;
 
@@ -125,7 +131,12 @@ export default function OpexSection({ state, set_state, month, compact }: sectio
             </tbody>
             <tfoot>
               <tr className="border-t-2 border-neutral-200 font-semibold">
-                <td className={td_class}>итого</td>
+                <td className={td_class}>
+                  итого в прибыль
+                  <span className="ml-2 text-[10px] font-normal text-neutral-400">
+                    оплаченное в операциях заменяет план
+                  </span>
+                </td>
                 <td className={td_num_class}>{format_rub(opex_total)}</td>
                 <td />
               </tr>
@@ -140,7 +151,7 @@ export default function OpexSection({ state, set_state, month, compact }: sectio
             <button
               type="button"
               className={btn_secondary}
-              onClick={() => set_state((prev) => ({ ...prev, equipments: [...prev.equipments, { id: new_id('eq'), name: 'новое оборудование', price: 0, months: 24 }] }))}
+              onClick={() => set_state((prev) => ({ ...prev, equipments: [...prev.equipments, { id: new_id('eq'), name: 'новое оборудование', price: 0, months: 24, from: month }] }))}
             >
               + оборудование
             </button>
@@ -172,7 +183,10 @@ export default function OpexSection({ state, set_state, month, compact }: sectio
                   <td className={`${td_num_class} w-24`}>
                     <NumInput value={e.months} min={1} step={1} on_change={(v) => set_state((prev) => ({ ...prev, equipments: prev.equipments.map((x) => (x.id === e.id ? { ...x, months: Math.max(1, Math.round(v)) } : x)) }))} />
                   </td>
-                  <td className={`${td_num_class} text-neutral-500`}>{format_rub(e.months > 0 ? e.price / e.months : 0)}</td>
+                  <td className={`${td_num_class} text-neutral-500`}>
+                    {format_rub(e.months > 0 ? e.price / e.months : 0)}
+                    {e.from ? <span className="block text-[10px] text-neutral-400">с {e.from}</span> : null}
+                  </td>
                   <td className={`${td_class} text-right`}>
                     <button type="button" className={btn_ghost_danger} onClick={() => set_state((prev) => ({ ...prev, equipments: prev.equipments.filter((x) => x.id !== e.id) }))}>
                       удалить

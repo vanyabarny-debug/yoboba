@@ -3,10 +3,10 @@
 import Link from 'next/link';
 import { createElement, Suspense, useEffect, useState, type ReactNode } from 'react';
 import { useRouter } from 'next/navigation';
-import site_chrome from '@/components/site-chrome';
+import SiteChrome from '@/components/site-chrome';
 import TapicoinIcon from '@/components/tapicoin-icon';
 import { kopi_boby_name } from '@/components/kopi-boby';
-import floating_boba_pearls from '@/components/floating-boba-pearls';
+import FloatingBobaPearls from '@/components/floating-boba-pearls';
 import { get_auth_state, sign_out, update_profile, type profile } from '@/lib/auth';
 import {
   bonus_earning_rules,
@@ -216,7 +216,7 @@ function format_birthday(iso: string) {
   }
 }
 
-export default function profile_page() {
+export default function ProfilePage() {
   const router = useRouter();
   const demo_mode = !is_supabase_configured();
 
@@ -670,7 +670,7 @@ export default function profile_page() {
         <div className="w-full min-w-0 max-w-3xl space-y-10 sm:space-y-12">
         <section className="relative overflow-hidden rounded-[20px] bg-[linear-gradient(100deg,#ff2d6a_0%,#ff4d7d_42%,#ff6b6b_100%)] px-5 py-5 sm:px-7 sm:py-6 text-white">
           <div className="pointer-events-auto absolute inset-y-0 right-0 w-[42%] sm:w-[38%]">
-            {createElement(floating_boba_pearls)}
+            {createElement(FloatingBobaPearls)}
           </div>
           <div className="relative z-10 flex items-start justify-between gap-3">
             <div className="min-w-0 flex-1 pr-2 sm:pr-4">
@@ -1430,6 +1430,6 @@ export default function profile_page() {
   return createElement(
     Suspense,
     { fallback: <div className="min-h-screen bg-page" /> },
-    createElement(site_chrome, null, content)
+    createElement(SiteChrome, null, content)
   );
 }

@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { create_client } from '@/lib/supabase/client';
 import type { live_cart_row } from '@/lib/types';
 
-export default function live_carts() {
+export default function LiveCarts() {
   const [rows, set_rows] = useState<live_cart_row[]>([]);
 
   useEffect(() => {

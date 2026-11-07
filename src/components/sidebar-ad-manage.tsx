@@ -1,6 +1,7 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
+import { useHydrated } from '@/lib/use-hydrated';
 import type { sidebar_ad_slide } from '@/lib/types';
 import {
   delete_sidebar_slide,
@@ -23,7 +24,7 @@ const empty_slide: sidebar_ad_slide = {
   is_active: true,
 };
 
-export default function sidebar_ad_manage() {
+export default function SidebarAdManage() {
   const [slides, set_slides] = useState<sidebar_ad_slide[]>([]);
   const [interval_ms, set_interval_ms] = useState(5000);
   const [editing, set_editing] = useState<sidebar_ad_slide | null>(null);
@@ -34,9 +35,12 @@ export default function sidebar_ad_manage() {
     set_interval_ms(store.interval_ms);
   }
 
-  useEffect(() => {
+  const hydrated = useHydrated();
+  const [restored, set_restored] = useState(false);
+  if (hydrated && !restored) {
+    set_restored(true);
     reload();
-  }, []);
+  }
 
   function handle_save(e: React.FormEvent) {
     e.preventDefault();

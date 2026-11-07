@@ -32,7 +32,7 @@ const WEIGHTS: promo_title_layout['font_weight'][] = [600, 700, 800, 900];
 
 type eye_dropper_result = { sRGBHex: string };
 
-export default function promo_title_layout_editor({
+export default function PromoTitleLayoutEditor({
   title,
   image_url,
   title_in_image = false,

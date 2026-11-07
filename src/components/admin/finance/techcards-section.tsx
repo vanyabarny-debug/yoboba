@@ -1,6 +1,6 @@
 'use client';
 
-import { createElement, useEffect, useMemo, useRef, useState } from 'react';
+import { createElement, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import type { menu_item } from '@/lib/types';
 import {
@@ -68,7 +68,7 @@ import {
   upsert_menu_item,
 } from '@/lib/menu-store';
 import DrinkCraft from '@/components/seller/drink-craft';
-import { product_photo_button } from '@/components/admin/product-photo-picker';
+import { ProductPhotoButton } from '@/components/admin/product-photo-picker';
 import {
   Card,
   DrinkThumb,
@@ -422,13 +422,12 @@ export default function TechcardsSection({
   const selected_drink = selected_id ? menu_by_id.get(selected_id) ?? drinks.find((item) => item.id === selected_id) : null;
   const card = selected_id ? card_by_menu.get(selected_id) ?? null : null;
 
-  useEffect(() => {
-    if (!selected_drink) {
-      set_draft(null);
-      return;
-    }
-    set_draft((prev) => (prev?.id === selected_drink.id ? prev : selected_drink));
-  }, [selected_drink]);
+  const drink_key = selected_drink?.id ?? null;
+  const [draft_for, set_draft_for] = useState<string | null | undefined>(undefined);
+  if (draft_for !== drink_key) {
+    set_draft_for(drink_key);
+    set_draft((prev) => (selected_drink ? (prev?.id === selected_drink.id ? prev : selected_drink) : null));
+  }
 
   useEffect(() => {
     if (!draft || !card || draft.id !== card.menu_item_id) return;
@@ -472,7 +471,9 @@ export default function TechcardsSection({
     });
   }
 
-  flush_item_ref.current = flush_item;
+  useLayoutEffect(() => {
+    flush_item_ref.current = flush_item;
+  });
   useEffect(() => () => flush_item_ref.current(), []);
   useEffect(() => {
     const leave = () => {
@@ -922,12 +923,15 @@ export default function TechcardsSection({
           <div className="relative">
             <Card>
             <div className="mb-4 flex items-start gap-3">
-              {createElement(product_photo_button, {
-                on_save: (url: string) => edit_item({ ...draft, image_url: url }),
-                className: 'shrink-0 rounded-3xl',
-                title: 'фото',
-                children: <DrinkThumb item={draft} size="xl" />,
-              })}
+              {createElement(
+                ProductPhotoButton,
+                {
+                  on_save: (url: string) => edit_item({ ...draft, image_url: url }),
+                  className: 'shrink-0 rounded-3xl',
+                  title: 'фото',
+                },
+                <DrinkThumb item={draft} size="xl" />
+              )}
               <div className="min-w-0 max-w-[16rem] sm:max-w-[20rem]">
                 <input
                   value={draft.name}

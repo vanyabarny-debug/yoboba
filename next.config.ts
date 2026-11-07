@@ -15,12 +15,6 @@ const next_config: NextConfig = {
   experimental: {
     proxyClientMaxBodySize: '20mb',
   },
-  async rewrites() {
-    return [
-      { source: '/admin/designer', destination: '/admin/designer/index.html' },
-      { source: '/admin/designer/', destination: '/admin/designer/index.html' },
-    ];
-  },
   headers: async () => [
     {
       source: '/service-worker.js',

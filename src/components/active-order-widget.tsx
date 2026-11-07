@@ -3,6 +3,7 @@
 import { Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
+import { useHydrated } from '@/lib/use-hydrated';
 import { fetch_my_orders, fetch_order_by_id } from '@/lib/orders';
 import { format_order_number } from '@/lib/order-number';
 import {
@@ -112,10 +113,13 @@ function ActiveOrderWidgetInner() {
     pos_ref.current = pos;
   }, [pos]);
 
-  useEffect(() => {
+  const hydrated = useHydrated();
+  const [pos_restored, set_pos_restored] = useState(false);
+  if (hydrated && !pos_restored) {
+    set_pos_restored(true);
     const saved = read_pos();
     if (saved) set_pos(clamp_pos(saved, 220, 48));
-  }, []);
+  }
 
   const apply_order = useCallback((next: order | null) => {
     if (!next) return;

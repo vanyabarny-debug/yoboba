@@ -1,6 +1,7 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
+import { useHydrated } from '@/lib/use-hydrated';
 import type { promo_banner } from '@/lib/types';
 import {
   delete_promo,
@@ -25,7 +26,7 @@ const empty_promo: promo_banner = {
   is_active: true,
 };
 
-export default function promo_manage() {
+export default function PromoManage() {
   const [promos, set_promos] = useState<promo_banner[]>([]);
   const [editing, set_editing] = useState<promo_banner | null>(null);
 
@@ -33,9 +34,12 @@ export default function promo_manage() {
     set_promos(get_promo_store().promos);
   }
 
-  useEffect(() => {
+  const hydrated = useHydrated();
+  const [restored, set_restored] = useState(false);
+  if (hydrated && !restored) {
+    set_restored(true);
     reload();
-  }, []);
+  }
 
   function handle_save(e: React.FormEvent) {
     e.preventDefault();

@@ -111,11 +111,14 @@ export async function GET() {
   const month_from = `${month_id}-01`;
   const state = await read_finance_state();
   const fact = await sum_order_revenue(month_from, today);
-  const live = summarize_period(state, month_from, today, { revenue: fact.revenue });
+  const live = summarize_period(state, month_from, today, {
+    revenue: fact.revenue,
+    card_revenue: fact.card_revenue,
+  });
   const warehouse = warehouse_money(state, today);
   const month_md = state.monthsData.find((m) => m.month === month_id);
   const break_even = month_md
-    ? with_fact_revenue(summarize_month(state, month_md), fact.revenue, state).break_even
+    ? with_fact_revenue(summarize_month(state, month_md), fact.revenue, state, fact.card_revenue).break_even
     : live.break_even;
   const elapsed = Number(today.slice(8)) || 1;
   const dim = days_in_month(month_id);

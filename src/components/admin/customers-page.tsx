@@ -3,7 +3,7 @@
 import { createElement, useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import AdminShell from '@/components/admin/admin-shell';
-import push_composer from '@/components/admin/push-composer';
+import PushComposer from '@/components/admin/push-composer';
 import avatar_circle from '@/components/avatar-circle';
 import TapicoinIcon from '@/components/tapicoin-icon';
 import { format_phone_display } from '@/lib/phone';
@@ -16,6 +16,10 @@ import { DRAWER_INLINE_CLOSE_BTN_CLASS } from '@/lib/drawer-ui';
 import { normalize_order_item_fields } from '@/lib/order-item-name';
 import { is_combo_item } from '@/lib/combo';
 import { configured_unit_price } from '@/lib/product-details';
+import { sold_to_pct, spread_total } from '@/lib/pos-pricing';
+import DiscountFields from '@/components/admin/discount-fields';
+import LinkOrderPanel from '@/components/admin/link-order-panel';
+import { CustomerJourneyCard, JourneyPanel } from '@/components/admin/journey-panel';
 import {
   active_orders,
   by_hour_bucket,
@@ -45,6 +49,7 @@ type order_line = {
   name: string;
   quantity: number;
   price: number;
+  list_price?: number;
   volume?: string;
   kind?: 'sale' | 'staff';
 };
@@ -54,6 +59,7 @@ type line_draft = {
   name: string;
   quantity: string;
   price: string;
+  list_price?: string;
   volume?: string;
   kind?: 'sale' | 'staff';
 };
@@ -344,14 +350,14 @@ function kind_flyout({ name, color, who }: { name: string; color: string; who: s
   );
 }
 
-export default function customers_page() {
+export default function CustomersPage() {
   const search = useSearchParams();
   const [data, set_data] = useState<payload | null>(null);
   const [error, set_error] = useState('');
   const [query, set_query] = useState('');
   const [only_buyers, set_only_buyers] = useState(false);
   const [kind_filter, set_kind_filter] = useState<guest_kind_id | 'all'>('all');
-  const [sort_by, set_sort_by] = useState<'recent' | 'color'>('color');
+  const [sort_by, set_sort_by] = useState<'recent' | 'color'>('recent');
   const [open_id, set_open_id] = useState<string | null>(null);
   const [student_busy, set_student_busy] = useState<string | null>(null);
   const [student_expiry_draft, set_student_expiry_draft] = useState<Record<string, string>>({});
@@ -359,9 +365,8 @@ export default function customers_page() {
   const [bonus_busy, set_bonus_busy] = useState<string | null>(null);
   const [edit_id, set_edit_id] = useState<string | null>(null);
   const [line_draft, set_line_draft] = useState<line_draft[]>([]);
-  /** черновик «продано за» на весь заказ — раскладывает по позициям */
-  const [sold_total_draft, set_sold_total_draft] = useState('');
   const [order_busy, set_order_busy] = useState<string | null>(null);
+  const [link_note, set_link_note] = useState<{ key: string; text: string } | null>(null);
   const [menu_items, set_menu_items] = useState<menu_item[]>(() => get_menu_store().items);
   const [analytics_period_state, set_analytics_period] = useState<analytics_period>('all');
   const [activity_tab, set_activity_tab] = useState<activity_mode>('days');
@@ -376,37 +381,54 @@ export default function customers_page() {
     );
   }
 
-  useEffect(() => {
-    fetch('/api/admin/customers', { credentials: 'same-origin' })
+  function load_customers(): Promise<payload | null> {
+    return fetch('/api/admin/customers', { credentials: 'same-origin' })
       .then((r) => r.json())
       .then((body: payload) => {
         if (body.error) {
           set_error(body.error);
-          return;
+          return null;
         }
         set_data(body);
+        return body;
       })
-      .catch(() => set_error('не удалось загрузить клиентов'));
-  }, []);
+      .catch(() => {
+        set_error('не удалось загрузить клиентов');
+        return null;
+      });
+  }
 
   useEffect(() => {
+    void load_customers();
+  }, []);
+
+  function after_link(c: customer_row, note: string) {
+    set_link_note({ key: c.phone || c.id, text: note });
+    void load_customers().then((body) => {
+      if (!body || !c.id.startsWith('guest:')) return;
+      const digits = (c.phone || '').replace(/\D/g, '');
+      const hit = body.customers.find((row) => digits && (row.phone || '').replace(/\D/g, '') === digits);
+      if (hit) set_open_id(hit.id);
+    });
+  }
+
+  const [deep_link_seen, set_deep_link_seen] = useState<{ data: typeof data; search: typeof search } | null>(
+    null
+  );
+  if (data?.customers.length && (deep_link_seen?.data !== data || deep_link_seen?.search !== search)) {
+    set_deep_link_seen({ data, search });
     const customer = search.get('customer') || search.get('open');
     const phone = search.get('phone');
-    if (!data?.customers.length) return;
-    if (customer) {
-      const hit = data.customers.find((c) => c.id === customer);
-      if (hit) {
-        set_open_id(hit.id);
-        set_only_buyers(false);
-        return;
-      }
-    }
-    if (phone) {
+    const by_id = customer ? data.customers.find((c) => c.id === customer) : undefined;
+    if (by_id) {
+      set_open_id(by_id.id);
+      set_only_buyers(false);
+    } else if (phone) {
       const digits = phone.replace(/\D/g, '');
       const hit = data.customers.find((c) => (c.phone || '').replace(/\D/g, '').endsWith(digits));
       if (hit) set_open_id(hit.id);
     }
-  }, [data, search]);
+  }
 
   useEffect(() => {
     if (!open_id) return;
@@ -448,38 +470,31 @@ export default function customers_page() {
     return map;
   }, [menu_items]);
 
-  function catalog_unit(line: { menu_id?: string; name?: string; volume?: string; price?: string | number }) {
+  function catalog_unit(line: {
+    menu_id?: string;
+    name?: string;
+    volume?: string;
+    price?: string | number;
+    list_price?: string | number;
+    kind?: 'sale' | 'staff';
+  }) {
+    const paid = Math.max(0, Math.round(Number(line.price) || 0));
+    const stored = Math.round(Number(line.list_price) || 0);
+    if (stored > 0) return Math.max(stored, paid);
     const item = line.menu_id ? menu_by_id.get(line.menu_id) : undefined;
-    if (!item) return Math.max(0, Math.round(Number(line.price) || 0));
-    if (is_combo_item(item)) return Math.max(0, Math.round(item.price));
-    return Math.max(0, Math.round(configured_unit_price(item, line.volume || null, 0)));
+    if (!item || line.kind === 'staff') return paid;
+    if (is_combo_item(item)) return Math.max(paid, Math.round(item.price));
+    return Math.max(paid, Math.round(configured_unit_price(item, line.volume || null, 0)));
   }
 
-  function apply_sold_total(raw: string) {
-    const digits = raw.replace(/[^\d]/g, '');
-    set_sold_total_draft(digits);
+  function apply_sold_total(target: number) {
     set_line_draft((prev) => {
-      if (!prev.length || digits === '') return prev;
-      const catalog_rows = prev.map((row) => ({
-        row,
-        catalog: catalog_unit(row),
-        qty: Math.max(1, Number(row.quantity) || 1),
-      }));
-      const catalog_sum = catalog_rows.reduce((s, x) => s + x.catalog * x.qty, 0);
-      if (catalog_sum <= 0) return prev;
-      const target = Math.max(0, Math.min(catalog_sum, Number(digits) || 0));
-      let assigned = 0;
-      return catalog_rows.map((x, i) => {
-        if (i === catalog_rows.length - 1) {
-          const rem = Math.max(0, target - assigned);
-          const unit = Math.max(0, Math.round(rem / x.qty));
-          return { ...x.row, price: String(unit) };
-        }
-        const share = (x.catalog * x.qty) / catalog_sum;
-        const unit = Math.max(0, Math.round((target * share) / x.qty));
-        assigned += unit * x.qty;
-        return { ...x.row, price: String(unit) };
-      });
+      if (!prev.length) return prev;
+      const units = spread_total(
+        prev.map((row) => ({ unit: catalog_unit(row), qty: Math.max(1, Number(row.quantity) || 1) })),
+        target
+      );
+      return prev.map((row, i) => ({ ...row, list_price: String(catalog_unit(row)), price: String(units[i]) }));
     });
   }
 
@@ -513,8 +528,11 @@ export default function customers_page() {
         .toLowerCase();
       return hay.includes(q);
     });
-    if (sort_by !== 'color') return rows;
-    return [...rows].sort((a, b) => guest_level(b.orders).rank - guest_level(a.orders).rank);
+    if (sort_by === 'color') {
+      return [...rows].sort((a, b) => guest_level(b.orders).rank - guest_level(a.orders).rank);
+    }
+    const moment = (c: customer_row) => new Date(c.last_order_at || c.created_at || 0).getTime() || 0;
+    return [...rows].sort((a, b) => moment(b) - moment(a));
   }, [data, query, only_buyers, kind_filter, sort_by]);
 
   async function set_student(c: customer_row, verified: boolean) {
@@ -585,12 +603,12 @@ export default function customers_page() {
           name: normalized.name,
           quantity: String(item.quantity),
           price: String(item.price),
+          ...(item.list_price ? { list_price: String(item.list_price) } : {}),
           volume: normalized.volume,
           kind: item.kind,
         };
       })
     );
-    set_sold_total_draft(String(Math.round(Number(o.total_price) || 0)));
     set_error('');
   }
 
@@ -619,11 +637,14 @@ export default function customers_page() {
         name: line.name.trim(),
         volume: line.volume,
       });
+      const price = Number(line.price);
+      const list_price = catalog_unit(line);
       return {
         menu_id: line.menu_id,
         name: normalized.name,
         quantity: Number(line.quantity),
-        price: Number(line.price),
+        price,
+        ...(list_price > price ? { list_price } : {}),
         ...(normalized.volume ? { volume: normalized.volume } : {}),
         ...(line.kind ? { kind: line.kind } : {}),
       };
@@ -656,6 +677,7 @@ export default function customers_page() {
                 name: item.name,
                 quantity: Number(item.quantity) || 0,
                 price: Number(item.price) || 0,
+                ...(item.list_price ? { list_price: Number(item.list_price) } : {}),
                 ...(item.volume ? { volume: item.volume } : {}),
                 ...(item.kind ? { kind: item.kind } : {}),
               })),
@@ -804,7 +826,7 @@ export default function customers_page() {
           </button>
           {push_open ? (
             <div className="border-t border-neutral-100 px-4 py-4">
-              {createElement(push_composer)}
+              {createElement(PushComposer)}
             </div>
           ) : null}
         </div>
@@ -831,6 +853,8 @@ export default function customers_page() {
             </div>
           </div>
         )}
+
+        {data ? <JourneyPanel customers={data.customers} /> : null}
 
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
           <input
@@ -879,7 +903,7 @@ export default function customers_page() {
               sort_by === 'color' ? 'bg-neutral-900 text-white' : 'bg-white text-neutral-600 ring-1 ring-neutral-200'
             }`}
           >
-            {sort_by === 'color' ? 'по цвету' : 'по дате'}
+            {sort_by === 'color' ? 'по цвету' : 'свежие сверху'}
           </button>
         </div>
 
@@ -1010,6 +1034,14 @@ export default function customers_page() {
                       <h4 className="font-heading-soft text-xs font-bold uppercase tracking-wide text-neutral-700">
                         Покупки
                       </h4>
+                      <LinkOrderPanel
+                        key={c.id}
+                        customer={{ id: c.id, name: c.name, phone: c.phone }}
+                        on_linked={(note) => after_link(c, note)}
+                      />
+                      {link_note && link_note.key === (c.phone || c.id) ? (
+                        <p className="text-xs text-emerald-700">{link_note.text}</p>
+                      ) : null}
                       {c.orders.length === 0 ? (
                         <p className="rounded-lg border border-dashed border-neutral-200 bg-white px-2.5 py-2 text-xs text-neutral-400">
                           заказов ещё не было
@@ -1119,7 +1151,6 @@ export default function customers_page() {
                                                   idx === i ? { ...row, price } : row
                                                 )
                                               );
-                                              set_sold_total_draft('');
                                             }}
                                             className="w-full rounded-lg border border-neutral-200 bg-white px-1.5 py-1.5 text-right text-sm tabular-nums outline-none focus:ring-2 focus:ring-highlight"
                                           />
@@ -1152,37 +1183,25 @@ export default function customers_page() {
                                       </div>
                                       );
                                     })}
-                                    <label className="flex flex-wrap items-center gap-2 rounded-xl border border-neutral-200 bg-white px-2.5 py-2">
-                                      <span className="text-xs font-medium text-neutral-600">
-                                        продано за
-                                      </span>
-                                      <input
-                                        value={sold_total_draft}
-                                        inputMode="numeric"
-                                        aria-label="итого продано за"
-                                        placeholder={String(catalog_total || draft_total || 0)}
-                                        onChange={(e) => apply_sold_total(e.target.value)}
-                                        className="w-24 rounded-lg border border-neutral-200 bg-white px-2 py-1.5 text-right text-sm tabular-nums outline-none focus:ring-2 focus:ring-highlight"
+                                    {catalog_total > 0 ? (
+                                      <DiscountFields
+                                        list_total={Math.max(catalog_total, draft_total)}
+                                        sold_total={draft_total}
+                                        on_sold={apply_sold_total}
                                       />
-                                      <span className="text-xs text-neutral-500">₽</span>
-                                      {catalog_total > 0 ? (
-                                        <span className="text-[11px] text-neutral-400">
-                                          меню {catalog_total.toLocaleString('ru-RU')} ₽
-                                        </span>
-                                      ) : null}
-                                    </label>
+                                    ) : null}
                                     <p className="text-sm font-bold tabular-nums text-neutral-900">
                                       итого в заказе {draft_total.toLocaleString('ru-RU')} ₽
                                     </p>
                                     {draft_discount > 0 ? (
                                       <p className="text-xs text-amber-700">
-                                        скидка {draft_discount.toLocaleString('ru-RU')} ₽
-                                        автоматически
+                                        скидка {draft_discount.toLocaleString('ru-RU')} ₽ ·{' '}
+                                        {sold_to_pct(catalog_total, draft_total)}%
                                       </p>
                                     ) : (
                                       <p className="text-[11px] text-neutral-400">
-                                        введите сумму продажи — цены по позициям и скидка
-                                        пересчитаются
+                                        введите сумму продажи, скидку в % или в ₽ — цены по
+                                        позициям пересчитаются
                                       </p>
                                     )}
                                     <button
@@ -1219,10 +1238,7 @@ export default function customers_page() {
                                       <button
                                         type="button"
                                         disabled={order_busy === o.id}
-                                        onClick={() => {
-                                          set_edit_id(null);
-                                          set_sold_total_draft('');
-                                        }}
+                                        onClick={() => set_edit_id(null)}
                                         className="rounded-xl border border-neutral-200 bg-white px-3 py-1.5 text-sm font-semibold text-neutral-700 disabled:opacity-40"
                                       >
                                         отмена
@@ -1365,6 +1381,7 @@ export default function customers_page() {
                       <p className="text-sm" style={{ color: level_ink(level), fontWeight: level.weight }}>
                         {level.type_name} · {level.rank} · {level.hint}
                       </p>
+                      <CustomerJourneyCard orders={c.orders} />
                       <div className="grid grid-cols-3 gap-1.5">
                         <div className="rounded-lg border border-neutral-200/80 bg-white px-2 py-1.5">
                           <p className="text-[10px] font-medium text-neutral-500">заказов</p>

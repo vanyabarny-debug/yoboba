@@ -6,7 +6,7 @@ import { format_phone_display } from '@/lib/phone';
 import { play_drink_ready_chime, play_timer_tick } from '@/lib/order-chime';
 import type { order } from '@/lib/types';
 import { color_for_id } from '@/lib/seller-tile-grid';
-import circular_timer from '@/components/seller/circular-timer';
+import CircularTimer from '@/components/seller/circular-timer';
 
 export type drink_row = {
   key: string;
@@ -110,7 +110,7 @@ function info_button({
   );
 }
 
-export default function order_prep_card({
+export default function OrderPrepCard({
   order: o,
   drinks,
   prep,
@@ -125,7 +125,7 @@ export default function order_prep_card({
   on_delete,
   guide_open = false,
 }: props) {
-  const [now, set_now] = useState(Date.now());
+  const [now, set_now] = useState(() => Date.now());
   const [show_info, set_show_info] = useState(false);
   const nudged_bucket = useRef(0);
   const nudge_seen = useRef(false);
@@ -179,9 +179,11 @@ export default function order_prep_card({
     }
   }, [now, mode, order_started]);
 
-  useEffect(() => {
+  const [info_for, set_info_for] = useState({ id: o.id, mode, guide_open });
+  if (info_for.id !== o.id || info_for.mode !== mode || info_for.guide_open !== guide_open) {
+    set_info_for({ id: o.id, mode, guide_open });
     set_show_info(false);
-  }, [o.id, mode, guide_open]);
+  }
 
   const expected_total = drinks.reduce((sum, drink) => sum + Math.max(0, drink.prep_minutes) * 60_000, 0);
   const progress = order_started && expected_total > 0 ? Math.min(1, elapsed / expected_total) : order_started ? 1 : 0;
@@ -421,20 +423,20 @@ export default function order_prep_card({
 
       <div className="flex min-h-0 flex-1 flex-col items-center justify-center px-2 pb-2 pt-3">
         <div className="aspect-square w-[min(100%,68cqh)] shrink-0">
-          {createElement(circular_timer, {
-            progress: ring_progress,
-            label: title,
-            sublabel: subtitle,
-            sublabel_style: subtitle_style,
-            urgent: false,
-            active: mode === 'work' && Boolean(order_started),
-            tone,
-            colors: timer_colors,
-            fill: true,
-            hero: title_hero,
-            disabled: mode === 'done' || (mode === 'ready' && !can_finalize),
-            on_click: handle_circle,
-          })}
+          <CircularTimer
+            progress={ring_progress}
+            label={title}
+            sublabel={subtitle}
+            sublabel_style={subtitle_style}
+            urgent={false}
+            active={mode === 'work' && Boolean(order_started)}
+            tone={tone}
+            colors={timer_colors}
+            fill={true}
+            hero={title_hero}
+            disabled={mode === 'done' || (mode === 'ready' && !can_finalize)}
+            on_click={handle_circle}
+          />
         </div>
         {under_label ? (
           <p className="mt-1.5 max-w-[92%] truncate text-center text-[clamp(0.65rem,2.8cqw,0.82rem)] font-semibold leading-snug opacity-90">

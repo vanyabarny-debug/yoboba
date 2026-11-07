@@ -1,6 +1,6 @@
 'use client';
 
-import { createElement, useEffect, useMemo, useState } from 'react';
+import { createElement, useMemo, useState } from 'react';
 import type { menu_item, order_combo_component } from '@/lib/types';
 import menu_image from '@/components/menu-image';
 import {
@@ -26,7 +26,7 @@ type props = {
   }) => void;
 };
 
-export default function seller_combo_sheet({
+export default function SellerComboSheet({
   combo,
   all_items,
   open,
@@ -41,22 +41,39 @@ export default function seller_combo_sheet({
   const drinks = useMemo(() => combo_selectable_drinks(all_items, combo), [all_items, combo]);
   const includes = useMemo(() => {
     const by_id = new Map(all_items.map((m) => [m.id, m]));
-    return (cfg?.includes ?? [])
+    return (get_combo_config(combo)?.includes ?? [])
       .map((row) => {
         const item = by_id.get(row.menu_id);
         return item ? { item, qty: row.qty } : null;
       })
       .filter(Boolean) as { item: menu_item; qty: number }[];
-  }, [all_items, cfg?.includes]);
+  }, [all_items, combo]);
 
   const [picks, set_picks] = useState<menu_item[]>([]);
   const [qty, set_qty] = useState(1);
 
-  useEffect(() => {
-    if (!open || !combo) return;
-    set_picks(initial_picks?.slice(0, slots) ?? []);
-    set_qty(Math.max(1, initial_qty));
-  }, [open, combo?.id, slots, initial_picks, initial_qty]);
+  const combo_id = combo?.id;
+  const [picks_for, set_picks_for] = useState<{
+    open: boolean;
+    combo_id: string | undefined;
+    slots: number;
+    initial_picks: typeof initial_picks;
+    initial_qty: number;
+  } | null>(null);
+  if (
+    !picks_for ||
+    picks_for.open !== open ||
+    picks_for.combo_id !== combo_id ||
+    picks_for.slots !== slots ||
+    picks_for.initial_picks !== initial_picks ||
+    picks_for.initial_qty !== initial_qty
+  ) {
+    set_picks_for({ open, combo_id, slots, initial_picks, initial_qty });
+    if (open && combo) {
+      set_picks(initial_picks?.slice(0, slots) ?? []);
+      set_qty(Math.max(1, initial_qty));
+    }
+  }
 
   if (!open || !combo || slots <= 0) return null;
 

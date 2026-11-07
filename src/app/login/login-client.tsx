@@ -11,7 +11,7 @@ import { is_vk_auth_configured } from '@/lib/vk-auth-config';
 
 type email_step = 'email' | 'sent';
 
-export default function login_client() {
+export default function LoginClient() {
   const router = useRouter();
   const params = useSearchParams();
   const return_url = sanitize_auth_return_path(params.get('returnUrl'));
@@ -25,7 +25,10 @@ export default function login_client() {
   const [code, set_code] = useState('');
   const [email_step, set_email_step] = useState<email_step>('email');
 
-  useEffect(() => {
+  const params_key = params.toString();
+  const [seen_params, set_seen_params] = useState<string | null>(null);
+  if (seen_params !== params_key) {
+    set_seen_params(params_key);
     const auth_error = params.get('error');
     if (auth_error) {
       const decoded = decodeURIComponent(auth_error).toLowerCase();
@@ -37,20 +40,19 @@ export default function login_client() {
           set_email(email_param);
           set_email_step('sent');
         }
-        return;
+      } else {
+        set_error(
+          auth_error === 'vk_state_mismatch'
+            ? 'сессия vk устарела — попробуйте ещё раз'
+            : auth_error === 'auth_callback_failed' || auth_error === 'session_claim_failed'
+              ? 'не удалось подтвердить вход — попробуйте снова'
+              : auth_error === 'access_denied'
+                ? 'вход через vk отменён'
+                : decodeURIComponent(auth_error).replace(/\+/g, ' ')
+        );
       }
-      
-      set_error(
-        auth_error === 'vk_state_mismatch'
-          ? 'сессия vk устарела — попробуйте ещё раз'
-          : auth_error === 'auth_callback_failed' || auth_error === 'session_claim_failed'
-            ? 'не удалось подтвердить вход — попробуйте снова'
-            : auth_error === 'access_denied'
-              ? 'вход через vk отменён'
-              : decodeURIComponent(auth_error).replace(/\+/g, ' ')
-      );
     }
-  }, [params]);
+  }
 
   useEffect(() => {
     function unlock() {

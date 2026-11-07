@@ -19,7 +19,13 @@ import CashflowSection from '@/components/admin/finance/cashflow-section';
 
 type money_tab = 'report' | 'spend' | 'ops' | 'setup';
 
-type fact_response = { month: string; revenue: number; orders: number; error?: string };
+type fact_response = {
+  month: string;
+  revenue: number;
+  orders: number;
+  money?: { card: number; online: number };
+  error?: string;
+};
 
 function Line({
   label,
@@ -84,15 +90,16 @@ export default function MoneySection(props: section_props) {
   }
 
   const fact_rev = fact?.month === month ? fact.revenue : 0;
-  const cur = with_fact_revenue(cur_plan, fact_rev, state);
+  const fact_card = fact?.month === month ? (fact.money?.card ?? 0) + (fact.money?.online ?? 0) : 0;
+  const cur = with_fact_revenue(cur_plan, fact_rev, state, fact_card);
   const cash = with_fact_cashflow(cash_plan, cur);
   const rows = rows_plan.map((r) =>
-    r.month === month ? with_fact_revenue(r, fact_rev, state) : r
+    r.month === month ? with_fact_revenue(r, fact_rev, state, fact_card) : r
   );
   const flow_live = flow.map((r) => (r.month === month ? cash : r));
 
   const pct = (v: number) => (cur.revenue > 0 ? `${((v / cur.revenue) * 100).toFixed(0)}%` : '');
-  const gross = cur.revenue - cur.cogs;
+  const gross = cur.revenue - cur.cogs - cur.cogs_staff - cur.cogs_writeoff - cur.acquiring;
 
   return (
     <div className="space-y-5">
@@ -129,10 +136,11 @@ export default function MoneySection(props: section_props) {
                 <Line label="себестоимость продаж" value={cur.cogs} sign="−" share={pct(cur.cogs)} />
                 {cur.cogs_staff > 0 ? <Line label="напитки персонала" value={cur.cogs_staff} sign="−" sub /> : null}
                 {cur.cogs_writeoff > 0 ? <Line label="списания" value={cur.cogs_writeoff} sign="−" sub /> : null}
+                {cur.acquiring > 0 ? <Line label="эквайринг" value={cur.acquiring} sign="−" sub /> : null}
                 <Line label="валовая прибыль" value={gross} bold share={pct(gross)} />
                 <Line label="постоянные расходы" value={cur.opex} sign="−" />
                 {cur.salary > 0 ? <Line label="в т.ч. фот" value={cur.salary} sub /> : null}
-                {cur.other_expense > 0 ? <Line label="прочие расходы" value={cur.other_expense} sign="−" /> : null}
+                {cur.other_expense > 0 ? <Line label="непредвиденные" value={cur.other_expense} sign="−" /> : null}
                 {cur.other_income > 0 ? <Line label="прочие доходы" value={cur.other_income} sign="+" /> : null}
                 <Line label={tax_label(state)} value={cur.tax} sign="−" />
                 <Line label="ндфл" value={cur.ndfl} sign="−" />

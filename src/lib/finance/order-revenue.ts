@@ -24,7 +24,7 @@ export async function sum_order_revenue(from: string, to: string) {
     const supabase = create_service_client();
     const { data, error } = await supabase
       .from('orders')
-      .select('id, status, created_at, total_price')
+      .select('id, status, created_at, total_price, payment_type')
       .gte('created_at', start.toISOString())
       .lt('created_at', end.toISOString())
       .neq('status', 'cancelled');
@@ -38,9 +38,11 @@ export async function sum_order_revenue(from: string, to: string) {
 
   const day_map = new Map<string, { revenue: number; orders: number }>();
   let revenue = 0;
+  let card_revenue = 0;
   for (const order of orders) {
     const rev = Number(order.total_price) || 0;
     revenue += rev;
+    if (order.payment_type === 'card' || order.payment_type === 'online') card_revenue += rev;
     const ymd = moscow_ymd(new Date(order.created_at));
     const bucket = day_map.get(ymd) ?? { revenue: 0, orders: 0 };
     bucket.revenue += rev;
@@ -50,6 +52,7 @@ export async function sum_order_revenue(from: string, to: string) {
 
   return {
     revenue: Math.round(revenue),
+    card_revenue: Math.round(card_revenue),
     orders: orders.length,
     by_day: each_day(from, to).map((day) => {
       const row = day_map.get(day);

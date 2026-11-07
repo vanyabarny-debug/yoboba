@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useId, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useId, useRef, useState } from 'react';
 import { parse_pickup_code_input } from '@/lib/pickup-code';
 
 type props = {
@@ -91,7 +91,7 @@ function hard_stop_media(root: HTMLElement | null) {
   });
 }
 
-export default function pos_qr_scanner({ open, on_close, on_scan }: props) {
+export default function PosQrScanner({ open, on_close, on_scan }: props) {
   const region_id = useId().replace(/:/g, '');
   const region_ref = useRef<HTMLDivElement | null>(null);
   const scanner_ref = useRef<import('html5-qrcode').Html5Qrcode | null>(null);
@@ -108,9 +108,11 @@ export default function pos_qr_scanner({ open, on_close, on_scan }: props) {
   const [need_tap, set_need_tap] = useState(true);
   const [show_settings_hint, set_show_settings_hint] = useState(false);
 
-  open_ref.current = open;
-  on_close_ref.current = on_close;
-  on_scan_ref.current = on_scan;
+  useLayoutEffect(() => {
+    open_ref.current = open;
+    on_close_ref.current = on_close;
+    on_scan_ref.current = on_scan;
+  });
 
   const stop_scanner = useCallback(async () => {
     const scanner = scanner_ref.current;
@@ -235,21 +237,26 @@ export default function pos_qr_scanner({ open, on_close, on_scan }: props) {
   }, [region_id, stop_scanner]);
 
   // открытие / закрытие модалки — единственный триггер камеры
-  useEffect(() => {
+  const [was_open, set_was_open] = useState(false);
+  if (was_open !== open) {
+    set_was_open(open);
     if (!open) {
-      starting_ref.current = false;
-      void stop_scanner();
       set_starting(false);
       set_error(null);
       set_permission_denied(false);
       set_show_settings_hint(false);
+    }
+  }
+
+  useEffect(() => {
+    if (!open) {
+      starting_ref.current = false;
       return;
     }
 
     let cancelled = false;
 
-    void (async () => {
-      const perm = await read_camera_permission();
+    void read_camera_permission().then(async (perm) => {
       if (cancelled || !open_ref.current) return;
 
       // уже давали доступ в этой вкладке — не показываем кнопку снова
@@ -261,7 +268,7 @@ export default function pos_qr_scanner({ open, on_close, on_scan }: props) {
         set_need_tap(true);
         set_camera_active(false);
       }
-    })();
+    });
 
     return () => {
       cancelled = true;

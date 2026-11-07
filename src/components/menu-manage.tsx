@@ -38,22 +38,23 @@ import {
   upsert_top_bar_link,
   type top_bar_link,
 } from '@/lib/site-content-store';
-import top_bar from '@/components/top-bar';
-import promo_banners from '@/components/promo-banners';
-import category_nav from '@/components/category-nav';
-import sidebar_ad from '@/components/sidebar-ad';
-import menu_grid_admin, { desktop_category_heading_offset } from '@/components/admin/menu-grid-admin';
-import product_drawer_admin from '@/components/admin/product-drawer-admin';
-import promo_edit_sheet from '@/components/admin/promo-edit-sheet';
-import sidebar_edit_sheet from '@/components/admin/sidebar-edit-sheet';
-import top_bar_edit_sheet from '@/components/admin/top-bar-edit-sheet';
-import category_edit_sheet from '@/components/admin/category-edit-sheet';
+import TopBar from '@/components/top-bar';
+import PromoBanners from '@/components/promo-banners';
+import CategoryNav from '@/components/category-nav';
+import SidebarAd from '@/components/sidebar-ad';
+import MenuGridAdmin, { desktop_category_heading_offset } from '@/components/admin/menu-grid-admin';
+import ProductDrawerAdmin from '@/components/admin/product-drawer-admin';
+import PromoEditSheet from '@/components/admin/promo-edit-sheet';
+import SidebarEditSheet from '@/components/admin/sidebar-edit-sheet';
+import TopBarEditSheet from '@/components/admin/top-bar-edit-sheet';
+import CategoryEditSheet from '@/components/admin/category-edit-sheet';
 import { admin_sheet } from '@/components/admin/admin-sheet';
 import AdminShell from '@/components/admin/admin-shell';
+import { useHydrated } from '@/lib/use-hydrated';
 
 const sticky_ad_gap = 10;
 
-export default function menu_manage() {
+export default function MenuManage() {
   const [categories, set_categories] = useState<string[]>([]);
   const [items, set_items] = useState<menu_item[]>([]);
   const [promos, set_promos] = useState<promo_banner[]>([]);
@@ -86,11 +87,17 @@ export default function menu_manage() {
     set_lang_draft(get_site_content_store().lang_link);
   }
 
-  useEffect(() => {
+  const hydrated = useHydrated();
+  const [restored, set_restored] = useState(false);
+  if (hydrated && !restored) {
+    set_restored(true);
     reload_menu();
     reload_promos();
     reload_sidebar();
     reload_lang();
+  }
+
+  useEffect(() => {
     const unsubs = [
       subscribe_menu_store(reload_menu),
       subscribe_promo_store(reload_promos),
@@ -165,7 +172,7 @@ export default function menu_manage() {
       </div>
 
       <div className="bg-page border-b border-surface/70">
-        {createElement(top_bar, {
+        {createElement(TopBar, {
           edit_mode: true,
           on_edit_link: set_editing_link,
           on_add_link: () =>
@@ -183,7 +190,7 @@ export default function menu_manage() {
       </div>
 
       {active_category === null &&
-        createElement(promo_banners, {
+        createElement(PromoBanners, {
           promos,
           on_promo_click: () => {},
           edit_mode: true,
@@ -200,7 +207,7 @@ export default function menu_manage() {
       <section className="menu-sheet">
         <div className="menu-sheet-head">
           <div className="menu-sheet-nav-box">
-            {createElement(category_nav, {
+            {createElement(CategoryNav, {
               categories,
               active: active_category,
               cart_count: 0,
@@ -217,7 +224,7 @@ export default function menu_manage() {
         <main className="menu-sheet-main py-5 sm:py-6 pb-24 sm:pb-28">
           <div className="page-shell min-[1024px]:hidden mb-6">
             <p className="text-xs text-neutral-500 mb-2">рекламный баннер (на десктопе справа)</p>
-            {createElement(sidebar_ad, {
+            {createElement(SidebarAd, {
               slides: sidebar_slides,
               on_slide_click: () => {},
               edit_mode: true,
@@ -233,7 +240,7 @@ export default function menu_manage() {
           </div>
           <div className="page-shell min-[1024px]:flex min-[1024px]:gap-2">
             <div className="min-w-0 min-[1024px]:flex-[4]">
-              {createElement(menu_grid_admin, {
+              {createElement(MenuGridAdmin, {
                 items,
                 categories,
                 active_category: active_category ?? undefined,
@@ -253,7 +260,7 @@ export default function menu_manage() {
                 marginTop: active_category === null ? desktop_category_heading_offset : 0,
               }}
             >
-              {createElement(sidebar_ad, {
+              {createElement(SidebarAd, {
                 slides: sidebar_slides,
                 on_slide_click: () => {},
                 edit_mode: true,
@@ -271,7 +278,7 @@ export default function menu_manage() {
         </main>
       </section>
 
-      {createElement(product_drawer_admin, {
+      {createElement(ProductDrawerAdmin, {
         item: selected,
         open: drawer_open,
         on_close: () => {
@@ -285,7 +292,7 @@ export default function menu_manage() {
         on_delete: handle_delete_item,
       })}
 
-      {createElement(promo_edit_sheet, {
+      {createElement(PromoEditSheet, {
         promo: editing_promo,
         categories,
         on_close: () => set_editing_promo(null),
@@ -299,7 +306,7 @@ export default function menu_manage() {
         },
       })}
 
-      {createElement(sidebar_edit_sheet, {
+      {createElement(SidebarEditSheet, {
         slide: editing_slide,
         categories,
         on_close: () => set_editing_slide(null),
@@ -313,7 +320,7 @@ export default function menu_manage() {
         },
       })}
 
-      {createElement(top_bar_edit_sheet, {
+      {createElement(TopBarEditSheet, {
         link: editing_link,
         on_close: () => set_editing_link(null),
         on_save: (link, page) => {
@@ -323,7 +330,7 @@ export default function menu_manage() {
         on_delete: (id) => delete_top_bar_link(id),
       })}
 
-      {createElement(category_edit_sheet, {
+      {createElement(CategoryEditSheet, {
         category: editing_category,
         item_count: editing_category
           ? items.filter((i) => item_in_category(i, editing_category)).length
@@ -341,11 +348,10 @@ export default function menu_manage() {
         },
       })}
 
-      {createElement(admin_sheet, {
-        open: editing_lang,
-        title: 'кнопка «язык»',
-        on_close: () => set_editing_lang(false),
-        children: (
+      {createElement(
+        admin_sheet,
+        { open: editing_lang, title: 'кнопка «язык»', on_close: () => set_editing_lang(false) },
+        (
           <form
             onSubmit={(e) => {
               e.preventDefault();
@@ -377,8 +383,8 @@ export default function menu_manage() {
               </button>
             </div>
           </form>
-        ),
-      })}
+        )
+      )}
     </AdminShell>
   );
 }

@@ -1,6 +1,7 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
+import { useHydrated } from '@/lib/use-hydrated';
 import { get_menu_store } from '@/lib/menu-store';
 import {
   delete_top_bar_link,
@@ -23,7 +24,7 @@ const empty_link: top_bar_link = {
   is_active: true,
 };
 
-export default function site_content_manage() {
+export default function SiteContentManage() {
   const [links, set_links] = useState<top_bar_link[]>([]);
   const [lang, set_lang] = useState({ label: 'язык', href: '/yazyk' });
   const [pages, set_pages] = useState<site_page[]>([]);
@@ -44,9 +45,12 @@ export default function site_content_manage() {
     set_categories(get_menu_store().categories);
   }
 
-  useEffect(() => {
+  const hydrated = useHydrated();
+  const [restored, set_restored] = useState(false);
+  if (hydrated && !restored) {
+    set_restored(true);
     reload();
-  }, []);
+  }
 
   function save_lang() {
     set_lang_link(lang);

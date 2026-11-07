@@ -7,7 +7,7 @@ import { item_categories, item_in_category, set_item_categories } from '@/lib/me
 import { add_category } from '@/lib/menu-store';
 import type { menu_item } from '@/lib/types';
 
-export default function category_multi_pick({
+export default function CategoryMultiPick({
   item,
   categories,
   on_change,

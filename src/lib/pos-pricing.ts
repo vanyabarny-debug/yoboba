@@ -107,6 +107,43 @@ export function discount_from_sold(
   return { scope, kind: 'rub', value: cut, lines: selected };
 }
 
+/** скидка в % от суммы по меню, одна цифра после запятой */
+export function sold_to_pct(list_total: number, sold: number) {
+  if (!(list_total > 0)) return 0;
+  const pct = (1 - Math.max(0, sold) / list_total) * 100;
+  return Math.max(0, Math.min(100, Math.round(pct * 10) / 10));
+}
+
+export function pct_to_sold(list_total: number, pct: number) {
+  const p = Math.max(0, Math.min(100, Number(pct) || 0));
+  return round_rub(Math.max(0, list_total) * (1 - p / 100));
+}
+
+/** итоговая скидка чека в % от позиций, на которые она действует */
+export function discount_pct_of(lines: priced_line[], discount: pos_discount | null) {
+  if (!discount || discount.value <= 0) return 0;
+  if (discount.kind === 'pct') return Math.min(100, discount.value);
+  return sold_to_pct(discount_pool(lines, discount), discount_pool(lines, discount) - discount.value);
+}
+
+/**
+ * раскладывает сумму «продано за» по позициям пропорционально цене по меню.
+ * возвращает цену за штуку; остаток от округления уходит в последнюю позицию.
+ */
+export function spread_total(lines: priced_line[], target: number): number[] {
+  const pool = lines.reduce((s, l) => s + l.unit * l.qty, 0);
+  if (pool <= 0) return lines.map((l) => round_rub(l.unit));
+  const goal = round_rub(Math.min(pool, Math.max(0, target)));
+  let assigned = 0;
+  return lines.map((l, i) => {
+    const qty = Math.max(1, l.qty);
+    if (i === lines.length - 1) return round_rub((goal - assigned) / qty);
+    const unit = round_rub((goal * ((l.unit * l.qty) / pool)) / qty);
+    assigned += unit * qty;
+    return unit;
+  });
+}
+
 /** сколько осталось к оплате при текущей скидке (удобно для поля «продано за») */
 export function sold_amount_from_discount(
   lines: priced_line[],

@@ -8,7 +8,7 @@ import {
 } from '@/lib/brand-store';
 import { load_brand_google_fonts } from '@/lib/brand-font-catalog';
 
-export default function brand_theme() {
+export default function BrandTheme() {
   useEffect(() => {
     function sync() {
       const settings = get_brand_settings();

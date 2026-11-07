@@ -33,7 +33,7 @@ function make_supabase(request: NextRequest, cookie_response: NextResponse, writ
 }
 
 export async function GET(request: NextRequest) {
-  let cookie_response = NextResponse.next();
+  const cookie_response = NextResponse.next();
   // не пишем JWT обратно в Set-Cookie — nginx режет слишком большой заголовок
   const supabase = make_supabase(request, cookie_response, false);
 
@@ -156,7 +156,7 @@ export async function GET(request: NextRequest) {
 }
 
 export async function PATCH(request: NextRequest) {
-  let cookie_response = NextResponse.next();
+  const cookie_response = NextResponse.next();
   const supabase = make_supabase(request, cookie_response, true);
 
   const { data: { user } } = await supabase.auth.getUser();
@@ -290,7 +290,7 @@ export async function PATCH(request: NextRequest) {
 }
 
 export async function DELETE(request: NextRequest) {
-  let cookie_response = NextResponse.next();
+  const cookie_response = NextResponse.next();
   const supabase = make_supabase(request, cookie_response, true);
 
   const {

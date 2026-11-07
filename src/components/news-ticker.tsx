@@ -45,7 +45,7 @@ function ticker_copy({ text, hidden }: { text: string; hidden?: boolean }) {
 }
 
 /** бегущая строка как у фарфора — над меню */
-export default function news_ticker({ edit_mode = false, on_edit, embedded = false }: props) {
+export default function NewsTicker({ edit_mode = false, on_edit, embedded = false }: props) {
   const [settings, set_settings] = useState<news_ticker_settings>(default_news_ticker);
 
   useEffect(() => {

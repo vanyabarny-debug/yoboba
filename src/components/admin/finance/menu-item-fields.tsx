@@ -5,7 +5,7 @@ import type { menu_item, menu_nutrition } from '@/lib/types';
 import { item_categories, item_in_category } from '@/lib/menu-item-categories';
 import { item_has_toppings, item_has_volumes } from '@/lib/cart-summary';
 import { get_item_volumes, get_nutrition } from '@/lib/product-details';
-import category_multi_pick from '@/components/admin/category-multi-pick';
+import CategoryMultiPick from '@/components/admin/category-multi-pick';
 import { DrinkThumb, field_class } from '@/components/admin/finance/ui';
 
 function food_level(pct: number) {
@@ -120,7 +120,7 @@ export default function MenuItemFields({
         </div>
       )}
 
-      {createElement(category_multi_pick, {
+      {createElement(CategoryMultiPick, {
         item: draft,
         categories,
         on_change,

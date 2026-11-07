@@ -1,3 +1,4 @@
+import type { SupabaseClient } from '@supabase/supabase-js';
 import type { profile } from '@/lib/auth';
 import { is_student_discount_active, parse_student_status } from '@/lib/student-discount';
 
@@ -11,7 +12,7 @@ export const PROFILE_SELECT_NO_BG =
 type query_error = { message?: string; code?: string } | null;
 
 type profiles_client = {
-  from: (table: string) => any;
+  from: SupabaseClient['from'];
 };
 
 export function is_missing_avatar_bg_column(error: query_error | undefined) {
@@ -48,7 +49,7 @@ export function as_profile_row(
 }
 
 async function select_profile(client: profiles_client, user_id: string, columns: string) {
-  return client.from('profiles').select(columns).eq('id', user_id).maybeSingle();
+  return client.from('profiles').select(columns).eq('id', user_id).maybeSingle<Record<string, unknown>>();
 }
 
 export async function read_profile(client: profiles_client, user_id: string) {

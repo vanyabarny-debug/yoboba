@@ -14,9 +14,10 @@ import {
   upsert_menu_item,
 } from '@/lib/menu-store';
 import AdminShell from '@/components/admin/admin-shell';
+import { useHydrated } from '@/lib/use-hydrated';
 import menu_image from '@/components/menu-image';
-import { product_photo_button } from '@/components/admin/product-photo-picker';
-import category_multi_pick from '@/components/admin/category-multi-pick';
+import { ProductPhotoButton } from '@/components/admin/product-photo-picker';
+import CategoryMultiPick from '@/components/admin/category-multi-pick';
 import MenuPrepSteps from '@/components/admin/menu-prep-steps';
 import { item_categories, item_in_category } from '@/lib/menu-item-categories';
 import { item_has_toppings, item_has_volumes } from '@/lib/cart-summary';
@@ -72,7 +73,7 @@ function toggle_row({
   );
 }
 
-function editor({
+function Editor({
   item,
   items,
   categories,
@@ -97,14 +98,16 @@ function editor({
     0
   );
 
-  useEffect(() => {
+  const [draft_for, set_draft_for] = useState<menu_item | null>(null);
+  if (draft_for !== item) {
+    set_draft_for(item);
     set_draft({
       ...item,
       composition: get_composition_text(item),
       nutrition: get_item_nutrition_base(item),
       volumes: get_item_volumes(item),
     });
-  }, [item]);
+  }
 
   function toggle_rec(id: string) {
     const next = draft.recommendations.includes(id)
@@ -129,7 +132,7 @@ function editor({
             {createElement(menu_image, { item: draft, className: 'h-full w-full', variant: 'card' })}
           </div>
           <div className="min-w-0 flex-1 space-y-2">
-            {createElement(product_photo_button, {
+            {createElement(ProductPhotoButton, {
               label: 'фото',
               on_save: (url) => set_draft({ ...draft, image_url: url }),
               className: 'w-full',
@@ -161,7 +164,7 @@ function editor({
         </div>
 
         <div className="mt-4">
-          {createElement(category_multi_pick, {
+          {createElement(CategoryMultiPick, {
             item: draft,
             categories,
             on_change: set_draft,
@@ -336,7 +339,7 @@ function editor({
   );
 }
 
-export default function menu_settings() {
+export default function MenuSettings() {
   const [categories, set_categories] = useState<string[]>([]);
   const [items, set_items] = useState<menu_item[]>([]);
   const [category, set_category] = useState<string>('все');
@@ -350,8 +353,16 @@ export default function menu_settings() {
     set_items(store.items);
   }
 
+  const hydrated = useHydrated();
+  const [store_restored, set_store_restored] = useState(false);
+  if (hydrated && !store_restored) {
+    set_store_restored(true);
+    const store = get_menu_store();
+    set_categories(store.categories);
+    set_items(store.items);
+  }
+
   useEffect(() => {
-    reload();
     void fetch('/api/menu', { cache: 'no-store' })
       .then((res) => (res.ok ? res.json() : null))
       .then((body: { store?: ReturnType<typeof get_menu_store> | null } | null) => {
@@ -543,7 +554,7 @@ export default function menu_settings() {
       </div>
 
       {selected &&
-        createElement(editor, {
+        createElement(Editor, {
           item: selected,
           items,
           categories,

@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { create_client } from '@/lib/supabase/client';
 
-export default function online_counter() {
+export default function OnlineCounter() {
   const [count, set_count] = useState(0);
 
   useEffect(() => {

@@ -17,7 +17,7 @@ type props = {
   on_edit_lang?: () => void;
 };
 
-export default function top_bar({
+export default function TopBar({
   edit_mode = false,
   on_edit_link,
   on_add_link,

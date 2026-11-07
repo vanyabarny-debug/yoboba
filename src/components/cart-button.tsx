@@ -9,7 +9,7 @@ type props = {
   user_id: string | null;
 };
 
-export default function cart_button({ user_id }: props) {
+export default function CartButton({ user_id }: props) {
   const [count, set_count] = useState(0);
 
   useEffect(() => {

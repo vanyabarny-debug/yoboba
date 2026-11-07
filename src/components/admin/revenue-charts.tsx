@@ -18,7 +18,7 @@ type day_revenue = {
   revenue: number;
 };
 
-export default function revenue_charts() {
+export default function RevenueCharts() {
   const [avg_check, set_avg_check] = useState(0);
   const [chart_data, set_chart_data] = useState<day_revenue[]>([]);
 

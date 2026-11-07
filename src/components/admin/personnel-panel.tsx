@@ -6,7 +6,7 @@ import InternsManage from '@/components/admin/interns-manage';
 import SellersManage from '@/components/admin/sellers-manage';
 
 /** стажёры / сотрудники / задачи — тот же дизайн, что был на отдельной странице */
-export default function personnel_panel() {
+export default function PersonnelPanel() {
   const [tab, set_tab] = useState<'interns' | 'staff' | 'tasks'>('interns');
 
   return (

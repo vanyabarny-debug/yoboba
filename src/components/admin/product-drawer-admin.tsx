@@ -3,8 +3,8 @@
 import { createElement, useEffect, useMemo, useState } from 'react';
 import type { menu_item } from '@/lib/types';
 import menu_image from '@/components/menu-image';
-import product_photo_picker, {
-  product_photo_button,
+import ProductPhotoPicker, {
+  ProductPhotoButton,
 } from '@/components/admin/product-photo-picker';
 import {
   get_composition,
@@ -14,7 +14,7 @@ import {
 } from '@/lib/product-details';
 import { normalize_menu_badge } from '@/lib/menu-badge';
 import menu_badge, { menu_badge_on_card } from '@/components/menu-badge';
-import category_multi_pick from '@/components/admin/category-multi-pick';
+import CategoryMultiPick from '@/components/admin/category-multi-pick';
 import { get_menu_store } from '@/lib/menu-store';
 import {
   get_category_nutrition,
@@ -26,6 +26,7 @@ import {
   subscribe_site_content_store,
   type category_nutrition,
 } from '@/lib/site-content-store';
+import { useHydrated } from '@/lib/use-hydrated';
 
 type props = {
   item: menu_item | null;
@@ -40,7 +41,7 @@ const volumes = [
   { id: '650', label: '650 мл', ml: 650, add: 50 },
 ] as const;
 
-export default function product_drawer_admin({ item, open, on_close, on_save, on_delete }: props) {
+export default function ProductDrawerAdmin({ item, open, on_close, on_save, on_delete }: props) {
   const [draft, set_draft] = useState<menu_item | null>(null);
   const [description, set_description] = useState('');
   const [composition, set_composition] = useState('');
@@ -57,30 +58,28 @@ export default function product_drawer_admin({ item, open, on_close, on_save, on
   const [badge_enabled, set_badge_enabled] = useState(false);
   const [meta_tick, set_meta_tick] = useState(0);
 
-  useEffect(() => {
-    function reload_meta() {
-      set_meta_tick((t) => t + 1);
-    }
-    reload_meta();
-    return subscribe_site_content_store(reload_meta);
-  }, []);
+  useEffect(() => subscribe_site_content_store(() => set_meta_tick((t) => t + 1)), []);
 
-  useEffect(() => {
+  const hydrated = useHydrated();
+  const draft_key = `${item?.id ?? ''}|${open}`;
+  const [draft_for, set_draft_for] = useState<string | null>(null);
+  if (hydrated && draft_for !== draft_key) {
+    set_draft_for(draft_key);
     if (!item) {
       set_draft(null);
-      return;
+    } else {
+      set_draft({ ...item });
+      set_description(get_description(item));
+      const store = get_site_content_store();
+      set_composition(store.category_compositions[item.category] ?? '');
+      set_topping_price(get_topping_portion_price_value());
+      set_nutrition_base(get_category_nutrition(item.category));
+      set_volume('500');
+      set_topping(0);
+      set_details_open(false);
+      set_badge_enabled(Boolean(item.badge_text?.trim()));
     }
-    set_draft({ ...item });
-    set_description(get_description(item));
-    const store = get_site_content_store();
-    set_composition(store.category_compositions[item.category] ?? '');
-    set_topping_price(get_topping_portion_price_value());
-    set_nutrition_base(get_category_nutrition(item.category));
-    set_volume('500');
-    set_topping(0);
-    set_details_open(false);
-    set_badge_enabled(Boolean(item.badge_text?.trim()));
-  }, [item?.id, open]);
+  }
 
   const volume_ml = volumes.find((v) => v.id === volume)?.ml ?? 500;
   const topping_max = Math.max(4, Math.round(volume_ml / 60));
@@ -163,13 +162,13 @@ export default function product_drawer_admin({ item, open, on_close, on_save, on
                 text: draft.badge_text,
               })}
             <div className="absolute top-4 right-4 z-10">
-              {createElement(product_photo_picker, {
+              {createElement(ProductPhotoPicker, {
                 label: 'загрузить фото',
                 on_save: (url) => set_draft({ ...draft, image_url: url }),
               })}
             </div>
             <div className="absolute bottom-4 left-4 right-4 z-10 flex justify-center">
-              {createElement(product_photo_button, {
+              {createElement(ProductPhotoButton, {
                 label: draft.image_url?.startsWith('data:') ? 'заменить фото' : 'выбрать фото',
                 on_save: (url) => set_draft({ ...draft, image_url: url }),
                 className: 'shadow-lg',
@@ -189,7 +188,7 @@ export default function product_drawer_admin({ item, open, on_close, on_save, on
               </div>
 
               <div className="mt-4">
-                {createElement(category_multi_pick, {
+                {createElement(CategoryMultiPick, {
                   item: draft,
                   categories: get_menu_store().categories,
                   on_change: set_draft,

@@ -320,10 +320,9 @@ export function ingredients_from_steps(
     // 0 г оставляем — только что добавленная позиция в редакторе
     if (!Number.isFinite(q) || q < 0) continue;
     const mat = by_id.get(s.materialId);
+    // нет карточки в переданном списке — грамм всё равно оставляем, иначе шаг есть, а склад его не видит
     if (!mat) {
-      if (is_prep_recipe_id(s.materialId)) {
-        ingredients[s.materialId] = (ingredients[s.materialId] || 0) + q;
-      }
+      ingredients[s.materialId] = (ingredients[s.materialId] || 0) + q;
       continue;
     }
     const cat = stock_category_for(mat);
@@ -348,6 +347,45 @@ export function apply_steps_to_size(
     ingredients,
     packaging: saw_pack ? packaging : { ...size.packaging },
     steps,
+  };
+}
+
+/**
+ * этап говорит «положить N г», а в составе базового размера этой позиции нет.
+ * касса списывает только состав — без дописи стакан уходит со склада без тапиоки и чая.
+ * уже записанные граммы не трогаем.
+ */
+export function backfill_step_ingredients(card: tech_card): tech_card {
+  const steps = card.steps ?? [];
+  if (!steps.length) return card;
+  const base_key = card.sizes['500']
+    ? '500'
+    : Object.keys(card.sizes)
+        .filter((k) => /^\d+$/.test(k))
+        .sort((a, b) => Number(a) - Number(b))[0];
+  const base = base_key ? card.sizes[base_key] : undefined;
+  if (!base_key || !base) return card;
+  const add = new Map<string, number>();
+  for (const step of steps) {
+    if (!step.materialId || !(step.qty > 0)) continue;
+    add.set(step.materialId, (add.get(step.materialId) ?? 0) + step.qty);
+  }
+  if (!add.size) return card;
+  const ingredients = { ...base.ingredients };
+  let changed = false;
+  for (const [id, qty] of add) {
+    if (ingredients[id] == null) {
+      ingredients[id] = Math.round(qty * 10) / 10;
+      changed = true;
+    }
+  }
+  if (!changed) return card;
+  return {
+    ...card,
+    sizes: {
+      ...card.sizes,
+      [base_key]: { ...base, ingredients },
+    },
   };
 }
 

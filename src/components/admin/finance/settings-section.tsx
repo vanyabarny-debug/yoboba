@@ -94,9 +94,31 @@ export default function SettingsSection({ state, set_state, menu }: section_prop
         return;
       }
       const incoming = normalize_finance_state(parsed);
+      const revive = [
+        ...incoming.monthsData.flatMap((m) => (m.transactions ?? []).map((t) => t.id)),
+        ...incoming.stockMovements.map((mv) => mv.id),
+      ];
+      if (revive.length) {
+        const res = await fetch('/api/admin/finance', {
+          method: 'POST',
+          credentials: 'same-origin',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ kind: 'revive', ids: revive }),
+        }).catch(() => null);
+        if (!res?.ok) {
+          set_message('не удалось подготовить импорт — попробуйте ещё раз');
+          return;
+        }
+      }
+      const revived = new Set(revive);
       set_state((prev) => {
         const merged = mode === 'replace' ? incoming : merge_states(prev, incoming);
-        return sync_tech_cards_with_menu(merged, menu);
+        const synced = sync_tech_cards_with_menu(merged, menu);
+        return {
+          ...synced,
+          removedTxIds: (synced.removedTxIds ?? []).filter((id) => !revived.has(id)),
+          removedMovementIds: (synced.removedMovementIds ?? []).filter((id) => !revived.has(id)),
+        };
       });
       set_message(
         `импортировано: ${incoming.materials.length} материалов, ${incoming.techCards.length} техкарт, ${incoming.monthsData.length} месяцев${

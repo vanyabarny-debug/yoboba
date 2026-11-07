@@ -504,17 +504,21 @@ export async function POST(request: Request) {
       unit: student_line_price(c.configured_unit, { category: c.category, menu_id: c.menu_id }, student_verified && !staff),
       qty: c.quantity,
     }));
-    return configured.map((c, i) => ({
+    return configured.map((c, i) => {
+      const price = discounted_unit(lines, i, discount, staff);
+      return {
       menu_id: c.menu_id,
       name: c.name,
-      price: discounted_unit(lines, i, discount, staff),
+      price,
+      ...(price < c.configured_unit ? { list_price: c.configured_unit } : {}),
       quantity: c.quantity,
       ...(c.volume ? { volume: c.volume } : {}),
       ...(c.combo_picks?.length ? { combo_picks: c.combo_picks } : {}),
       ...(c.combo_components?.length ? { combo_components: c.combo_components } : {}),
       ...(c.prep_grams ? { prep_grams: c.prep_grams } : {}),
       kind: staff ? ('staff' as const) : ('sale' as const),
-    }));
+      };
+    });
   })();
 
   const total_price = items.reduce((s, i) => s + i.price * i.quantity, 0);

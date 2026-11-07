@@ -3,7 +3,7 @@
 import type { ReactNode } from 'react';
 import AdminShell from '@/components/admin/admin-shell';
 import { PeriodPicker } from '@/components/admin/finance/ui';
-import { use_finance, type section_props } from '@/components/admin/finance/use-finance';
+import { useFinance, type section_props } from '@/components/admin/finance/use-finance';
 
 export default function FinanceFrame({
   title,
@@ -18,7 +18,7 @@ export default function FinanceFrame({
   show_heading?: boolean;
   children: (p: section_props) => ReactNode;
 }) {
-  const f = use_finance();
+  const f = useFinance();
   const heading = show_heading || show_month;
 
   return (

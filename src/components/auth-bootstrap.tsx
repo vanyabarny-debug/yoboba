@@ -4,7 +4,7 @@ import { useEffect, useRef } from 'react';
 import { create_client } from '@/lib/supabase/client';
 import { is_supabase_configured } from '@/lib/supabase/config';
 
-export default function auth_bootstrap() {
+export default function AuthBootstrap() {
   const started = useRef(false);
 
   useEffect(() => {

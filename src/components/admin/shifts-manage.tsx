@@ -72,7 +72,7 @@ type shift_log_row = {
   at: string;
 };
 
-export default function shifts_manage({ embedded = false }: { embedded?: boolean } = {}) {
+export default function ShiftsManage({ embedded = false }: { embedded?: boolean } = {}) {
   const [shifts, set_shifts] = useState<seller_shift_record[]>([]);
   const [day_txs, set_day_txs] = useState<cash_transaction[]>([]);
   const [day_log, set_day_log] = useState<shift_log_row[]>([]);
@@ -81,8 +81,13 @@ export default function shifts_manage({ embedded = false }: { embedded?: boolean
   const [selected, set_selected] = useState<seller_shift_record | null>(null);
   const [busy, set_busy] = useState(false);
 
-  useEffect(() => {
+  const [busy_for, set_busy_for] = useState<string | null>(null);
+  if (busy_for !== day) {
+    set_busy_for(day);
     set_busy(true);
+  }
+
+  useEffect(() => {
     const qs = new URLSearchParams({ shift_date: day });
     Promise.all([
       fetch(`/api/seller/shifts?${qs}`, { credentials: 'same-origin' }).then((r) => r.json()),

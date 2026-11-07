@@ -40,7 +40,7 @@ export default function TaskGuide({
 }) {
   const blocks = task.blocks.length ? task.blocks : [];
   const [page, set_page] = useState(0);
-  const [now, set_now] = useState(Date.now());
+  const [now, set_now] = useState(() => Date.now());
   const [file, set_file] = useState<File | null>(null);
   const [preview, set_preview] = useState('');
   const [busy, set_busy] = useState(false);

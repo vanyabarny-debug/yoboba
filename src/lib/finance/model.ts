@@ -8,7 +8,7 @@ import { expand_items_for_stock } from '@/lib/combo';
 import { seller_month_pay } from '@/lib/staff-schedule';
 import { get_item_volumes } from '@/lib/product-details';
 
-export const FINANCE_STATE_VERSION = 9;
+export const FINANCE_STATE_VERSION = 10;
 
 export type plan_horizon = 3 | 6 | 12;
 export type plan_strategy_id = 'launch' | 'conservative' | 'balanced' | 'growth' | 'custom';
@@ -235,9 +235,25 @@ export type tech_card = {
   sizes: Record<string, tech_card_size>;
 };
 
-export type opex_category = { id: string; name: string };
+export type opex_category = {
+  id: string;
+  name: string;
+  /** число месяца, когда ждём оплату; без поля — платёж не планируется */
+  payDay?: number;
+  /** YYYY-MM, с какого месяца ждём оплату — старые месяцы не висят долгом */
+  payFrom?: string;
+};
 
-export type equipment = { id: string; name: string; price: number; months: number };
+export type equipment = {
+  id: string;
+  name: string;
+  price: number;
+  months: number;
+  /** YYYY-MM первого месяца амортизации; без поля — амортизируется в каждом месяце модели */
+  from?: string;
+  /** операция покупки в журнале — удаляется вместе с ней */
+  txId?: string;
+};
 
 export type sales_cell = { price: number; qty: number };
 
@@ -267,7 +283,15 @@ export type transaction = {
   createdAt?: string;
   spotId?: string;
   edits?: transaction_edit[];
+  /** YYYY-MM, за какой месяц оплата постоянной статьи; операция лежит в этом месяце, даже если платили в другом */
+  forMonth?: string;
+  /** id строки ФОТ месяца, которую закрывает эта выплата */
+  payrollLine?: string;
+  /** поставка со склада без суммы или даты — ждёт подтверждения в операциях, в кассу ещё не входит */
+  pending?: receipt_gap;
 };
+
+export type receipt_gap = 'sum' | 'date' | 'both';
 
 /** тип выплаты персоналу */
 export type payroll_kind = 'salary' | 'advance' | 'bonus' | 'one_time' | 'other';
@@ -303,7 +327,13 @@ export type payroll_line = {
   kind?: payroll_kind;
   /** комментарий к выплате */
   note?: string;
+  /** выплата подтверждена операцией: сумма — факт, карточка сотрудника её не переписывает */
+  paidTx?: string;
 };
+
+function payroll_paid_of(l: { paidTx?: unknown }) {
+  return typeof l.paidTx === 'string' && l.paidTx ? { paidTx: l.paidTx.slice(0, 80) } : {};
+}
 
 export type month_data = {
   /** YYYY-MM */
@@ -501,6 +531,9 @@ export type finance_state = {
   removedTechCardIds?: string[];
   /** id ингредиентов, которые удалили — дефолты из кода их не возвращают */
   removedMaterialIds?: string[];
+  /** id удалённых операций и движений склада — старая вкладка их не вернёт */
+  removedTxIds?: string[];
+  removedMovementIds?: string[];
   /** журнал «кто / что / когда» — дублируется в supabase.stock_audit */
   stockAudit?: stock_audit_entry[];
   /** станции варки тапиоки / заваривания чая — расход и выход правит кассир */
@@ -547,6 +580,8 @@ export type finance_state = {
   insuranceRate: number;
   /** фикс. взнос на травматизм ₽/мес (на АУСН при наличии сотрудников), иначе 0 */
   injuryMonthly?: number;
+  /** комиссия эквайринга, % от безналичной выручки */
+  acquiringRate?: number;
   /** произвольные налоги/взносы — только для режима custom (другие страны и т.п.) */
   customTaxes?: custom_tax_line[];
   /** цель чистой и стратегия роста (вкладка «план») */
@@ -593,6 +628,8 @@ export type tax_regime_meta = {
   injury_monthly: number;
   /** показывать НДФЛ (РФ) */
   show_ndfl: boolean;
+  /** минимальный налог, % с доходов — для «доходы − расходы» */
+  min_rate?: number;
 };
 
 export const TAX_REGIMES: tax_regime_meta[] = [
@@ -619,11 +656,12 @@ export const TAX_REGIMES: tax_regime_meta[] = [
     show_injury: true,
     injury_monthly: AUSN_INJURY_MONTHLY,
     show_ndfl: true,
+    min_rate: 3,
   },
   {
     id: 'usn_income',
     label: 'усн «доходы»',
-    hint: 'налог 6% с доходов',
+    hint: 'налог 6% с доходов · уменьшается на взносы',
     kind: 'income',
     rate: 6,
     insurance_rate: 30,
@@ -635,7 +673,7 @@ export const TAX_REGIMES: tax_regime_meta[] = [
   {
     id: 'usn_profit',
     label: 'усн «доходы − расходы»',
-    hint: 'налог 15% с прибыли',
+    hint: 'налог 15% с прибыли · мин. 1% с доходов',
     kind: 'profit',
     rate: 15,
     insurance_rate: 30,
@@ -643,6 +681,7 @@ export const TAX_REGIMES: tax_regime_meta[] = [
     show_injury: false,
     injury_monthly: 0,
     show_ndfl: true,
+    min_rate: 1,
   },
   {
     id: 'patent',
@@ -885,6 +924,7 @@ export function resolve_month_payroll(
           withNdfl: Boolean(l.withNdfl),
           kind: parse_payroll_kind(l.kind),
           ...(l.note ? { note: String(l.note).trim().slice(0, 200) } : {}),
+          ...payroll_paid_of(l),
         }))
     : [];
   if (raw.length) {
@@ -919,6 +959,7 @@ export function set_month_payroll(
         ...(String(l.note || '').trim()
           ? { note: String(l.note).trim().slice(0, 200) }
           : {}),
+        ...payroll_paid_of(l),
       })
     )
     .filter((l) => l.name || l.amount > 0 || l.sellerId);
@@ -982,7 +1023,7 @@ export function merge_payroll_with_sellers(
         continue;
       }
       // строка «зп» из карточки следует за карточкой; ноль в карточке не затирает введённое вручную
-      const card_pay = month && p.id === `pay-${seller.id}` ? seller_month_pay(seller, month) : 0;
+      const card_pay = month && p.id === `pay-${seller.id}` && !p.paidTx ? seller_month_pay(seller, month) : 0;
       lines.push({
         ...p,
         id: p.id || new_id('pay'),
@@ -1045,15 +1086,35 @@ export function affordable_payroll(input: {
   };
 }
 
-export function compute_month_tax(state: finance_state, revenue: number, deductible: number) {
+/**
+ * налог с продаж за период.
+ * «доходы − расходы»: не меньше минимального налога с доходов (1% усн, 3% аусн).
+ * усн «доходы»: уменьшается на уплаченные взносы — с работниками не больше чем наполовину.
+ */
+export function compute_month_tax(
+  state: finance_state,
+  revenue: number,
+  deductible: number,
+  opts?: { insurance?: number }
+) {
   const r = tax_regime_of(state);
   if (r.id === 'custom') {
     return custom_business_tax(custom_taxes_of(state), revenue, deductible);
   }
   if (r.kind === 'patent') return Math.max(0, Number(state.taxPatentMonthly) || 0);
   const rate = r.rate / 100;
-  if (r.kind === 'profit') return Math.max(0, (revenue - deductible) * rate);
-  return Math.max(0, revenue * rate);
+  const base_revenue = Math.max(0, revenue);
+  if (r.kind === 'profit') {
+    const by_profit = Math.max(0, (revenue - deductible) * rate);
+    const minimum = base_revenue * ((r.min_rate ?? 0) / 100);
+    return Math.max(by_profit, minimum);
+  }
+  const full = base_revenue * rate;
+  if (r.id === 'usn_income') {
+    const insurance = Math.max(0, Number(opts?.insurance) || 0);
+    if (insurance > 0) return Math.max(full - insurance, full / 2);
+  }
+  return full;
 }
 
 export const unit_labels: Record<material_unit, string> = {
@@ -1606,7 +1667,36 @@ export const default_opex_categories: opex_category[] = [
   { id: 'water', name: 'вода' },
   { id: 'salary', name: 'зарплатный фонд (ФОТ)' },
   { id: 'bank', name: 'банковское обслуживание' },
-  { id: 'unexpected', name: 'непредвиденные расходы и потери' },
+];
+
+/** старая статья «непредвиденные» — это не фикс: такие траты идут операциями «расход» */
+export function is_unexpected_opex(id: string) {
+  return id === 'unexpected';
+}
+
+export type opex_template_row = { id: string; name: string; group: string; hint: string };
+
+/**
+ * типовые постоянные (условно-постоянные) расходы точки общепита.
+ * не зависят от числа проданных стаканов; сырьё, упаковка, эквайринг, налоги и амортизация считаются отдельно.
+ */
+export const OPEX_TEMPLATE: opex_template_row[] = [
+  { id: 'rent', name: 'аренда помещения', group: 'помещение', hint: 'по договору, включая арендные каникулы' },
+  { id: 'utilities', name: 'коммунальные платежи (если не в аренде)', group: 'помещение', hint: 'отопление, эксплуатационные' },
+  { id: 'electricity', name: 'свет', group: 'помещение', hint: 'по счётчику' },
+  { id: 'water', name: 'вода', group: 'помещение', hint: 'вода и водоотведение' },
+  { id: 'waste', name: 'вывоз мусора, дезинсекция', group: 'помещение', hint: 'договор с региональным оператором, СЭС' },
+  { id: 'cleaning', name: 'хозтовары и уборка', group: 'помещение', hint: 'химия, салфетки, перчатки' },
+  { id: 'security', name: 'охрана, тревожная кнопка', group: 'помещение', hint: '' },
+  { id: 'bank', name: 'банковское обслуживание (РКО)', group: 'деньги и касса', hint: 'тариф счёта, без эквайринга' },
+  { id: 'kassa', name: 'онлайн-касса, ОФД, фискальный накопитель', group: 'деньги и касса', hint: 'ФН ~ раз в 15–36 мес — делите на месяцы' },
+  { id: 'software', name: 'программы и подписки', group: 'деньги и касса', hint: 'учёт, Честный знак, ЕГАИС, сервисы' },
+  { id: 'internet', name: 'интернет и связь', group: 'деньги и касса', hint: '' },
+  { id: 'accounting', name: 'бухгалтерия, юрист', group: 'деньги и касса', hint: 'аутсорс, сервисы отчётности' },
+  { id: 'ip_insurance', name: 'фикс. взносы ИП за себя', group: 'налоги вне ФОТ', hint: 'на усн и патенте: годовая сумма / 12; на аусн не платятся' },
+  { id: 'marketing', name: 'маркетинг и реклама', group: 'продвижение', hint: 'таргет, блогеры, печать — регулярный бюджет' },
+  { id: 'repair', name: 'обслуживание и мелкий ремонт оборудования', group: 'оборудование', hint: 'чистка льдогенератора, сервис' },
+  { id: 'med', name: 'медкнижки и обучение персонала', group: 'персонал', hint: 'годовая сумма / 12' },
 ];
 
 export const default_equipments: equipment[] = [
@@ -1857,6 +1947,8 @@ function read_transaction(raw: unknown): transaction {
   const actorId = typeof t.actorId === 'string' ? t.actorId.trim().slice(0, 80) : '';
   const spotId = typeof t.spotId === 'string' ? t.spotId.trim().slice(0, 80) : '';
   const edits = read_transaction_edits(t.edits);
+  const forMonth = typeof t.forMonth === 'string' && /^\d{4}-\d{2}$/.test(t.forMonth) ? t.forMonth : '';
+  const payrollLine = typeof t.payrollLine === 'string' ? t.payrollLine.trim().slice(0, 80) : '';
   return {
     id: String(t.id || new_id('tx')),
     day: Math.min(31, Math.max(1, Math.round(num(t.day, 1)))),
@@ -1873,9 +1965,22 @@ function read_transaction(raw: unknown): transaction {
     ...(createdAt ? { createdAt } : {}),
     ...(spotId ? { spotId } : {}),
     ...(edits ? { edits } : {}),
+    ...(forMonth ? { forMonth } : {}),
+    ...(payrollLine ? { payrollLine } : {}),
+    ...(t.pending === 'sum' || t.pending === 'date' || t.pending === 'both' ? { pending: t.pending } : {}),
   };
 }
 
+function read_opex_category(raw: Partial<opex_category>): opex_category {
+  const day = Math.round(Number(raw.payDay));
+  const from = typeof raw.payFrom === 'string' && /^\d{4}-\d{2}$/.test(raw.payFrom) ? raw.payFrom : '';
+  return {
+    id: String(raw.id),
+    name: String(raw.name || raw.id),
+    ...(day >= 1 && day <= 31 ? { payDay: day } : {}),
+    ...(day >= 1 && day <= 31 && from ? { payFrom: from } : {}),
+  };
+}
 export function is_bubble_manager_backup(value: unknown): value is Partial<finance_state> {
   if (!value || typeof value !== 'object') return false;
   const v = value as Record<string, unknown>;
@@ -1970,6 +2075,12 @@ function normalize_prep_recipes(raw: unknown, material_ids: Set<string>): prep_r
     });
   }
   return out;
+}
+
+function id_list_of<K extends 'removedTxIds' | 'removedMovementIds'>(raw: unknown, key: K): { [P in K]?: string[] } {
+  if (!Array.isArray(raw)) return {};
+  const ids = [...new Set(raw.map((id) => String(id)).filter(Boolean))];
+  return ids.length ? ({ [key]: ids } as { [P in K]?: string[] }) : {};
 }
 
 export function normalize_finance_state(raw: unknown): finance_state {
@@ -2127,9 +2238,11 @@ export function normalize_finance_state(raw: unknown): finance_state {
     });
   }
 
-  const opexCategories: opex_category[] = Array.isArray(v.opexCategories) && v.opexCategories.length
-    ? v.opexCategories.map((c) => ({ id: String(c.id), name: String(c.name || c.id) }))
-    : def.opexCategories;
+  const opexCategories: opex_category[] = (
+    Array.isArray(v.opexCategories) && v.opexCategories.length
+      ? v.opexCategories.map((c) => read_opex_category(c))
+      : def.opexCategories
+  ).filter((c) => !(num(v.version, 0) < 10 && is_unexpected_opex(c.id)));
 
   const raw_cats = (v as { stockCategories?: unknown }).stockCategories;
   const stockCategories: stock_category[] = merge_stock_categories(
@@ -2148,12 +2261,18 @@ export function normalize_finance_state(raw: unknown): finance_state {
   );
 
   const equipments: equipment[] = Array.isArray(v.equipments)
-    ? v.equipments.map((e) => ({
-        id: String(e.id),
-        name: String(e.name || ''),
-        price: num(e.price),
-        months: Math.max(0, Math.round(num(e.months, 24))),
-      }))
+    ? v.equipments.map((e) => {
+        const from = typeof e.from === 'string' && /^\d{4}-\d{2}$/.test(e.from) ? e.from : '';
+        const txId = typeof e.txId === 'string' ? e.txId.trim().slice(0, 80) : '';
+        return {
+          id: String(e.id),
+          name: String(e.name || ''),
+          price: num(e.price),
+          months: Math.max(0, Math.round(num(e.months, 24))),
+          ...(from ? { from } : {}),
+          ...(txId ? { txId } : {}),
+        };
+      })
     : def.equipments;
 
   const monthsData: month_data[] = Array.isArray(v.monthsData) && v.monthsData.length
@@ -2174,13 +2293,18 @@ export function normalize_finance_state(raw: unknown): finance_state {
                   ...(String(l.note || '').trim()
                     ? { note: String(l.note).trim().slice(0, 200) }
                     : {}),
+                  ...payroll_paid_of(l),
                 }))
             : undefined;
           return {
             month: String(m.month),
             sales: (m.sales ?? {}) as month_data['sales'],
             retailSales: (m.retailSales ?? {}) as month_data['retailSales'],
-            opex: (m.opex ?? {}) as Record<string, number>,
+            opex: Object.fromEntries(
+              Object.entries((m.opex ?? {}) as Record<string, number>).filter(
+                ([id]) => !(num(v.version, 0) < 10 && is_unexpected_opex(id))
+              )
+            ),
             ...(payroll?.length ? { payroll } : {}),
             cashFlow: {
               inflowInvestments: num(m.cashFlow?.inflowInvestments),
@@ -2282,7 +2406,7 @@ export function normalize_finance_state(raw: unknown): finance_state {
 
   const stockCountedAt = wipe_warehouse ? null : v.stockCountedAt ? String(v.stockCountedAt) : null;
   const stockBooksRaw = (v as { stockBooksFrom?: unknown }).stockBooksFrom;
-  let stockBooksFrom = wipe_warehouse
+  const stockBooksFrom = wipe_warehouse
     ? null
     : typeof stockBooksRaw === 'string' && stockBooksRaw
       ? stockBooksRaw
@@ -2356,6 +2480,8 @@ export function normalize_finance_state(raw: unknown): finance_state {
     techCards,
     removedTechCardIds,
     removedMaterialIds,
+    ...id_list_of(v.removedTxIds, 'removedTxIds'),
+    ...id_list_of(v.removedMovementIds, 'removedMovementIds'),
     opexCategories,
     stockCategories,
     stockShelvesMigrated: true,
@@ -2386,6 +2512,7 @@ export function normalize_finance_state(raw: unknown): finance_state {
       if (raw == null || raw === '') return meta.injury_monthly;
       return Math.max(0, Math.round(num(raw)));
     })(),
+    acquiringRate: Math.min(10, Math.max(0, num((v as { acquiringRate?: unknown }).acquiringRate))),
     customTaxes: (() => {
       const raw = (v as { customTaxes?: unknown }).customTaxes;
       if (!Array.isArray(raw)) return undefined;
@@ -3037,8 +3164,152 @@ export function tech_card_unpriced(state: finance_state, card: tech_card, size_k
   return false;
 }
 
-export function amortization_per_month(state: finance_state) {
-  return state.equipments.reduce((s, e) => s + (e.months > 0 ? e.price / e.months : 0), 0);
+export function shift_month(month: string, n: number) {
+  const [y, m] = month.split('-').map(Number);
+  const d = new Date(y, (m || 1) - 1 + n, 1);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+}
+
+/** техника амортизируется с месяца покупки ровно `months` месяцев, потом списана полностью */
+export function equipment_active(e: equipment, month?: string) {
+  if (!(e.months > 0) || !(e.price > 0)) return false;
+  if (!e.from || !month) return true;
+  return month >= e.from && month < shift_month(e.from, e.months);
+}
+
+/** линейная амортизация за месяц: стоимость / срок полезного использования */
+export function amortization_per_month(state: Pick<finance_state, 'equipments'>, month?: string) {
+  return state.equipments.reduce((s, e) => s + (equipment_active(e, month) ? e.price / e.months : 0), 0);
+}
+
+export type tx_bucket =
+  | 'material'
+  | 'capex'
+  | 'financing'
+  | 'income'
+  | 'transfer'
+  | 'fixed'
+  | 'salary'
+  | 'expense';
+
+/** куда операция журнала попадает в отчёте о прибыли */
+export function tx_bucket_of(state: Pick<finance_state, 'opexCategories'>, t: transaction): tx_bucket {
+  const cat = (t.category || '').toLowerCase();
+  const desc = (t.description || '').toLowerCase();
+  if (cat === 'material') return 'material';
+  if (cat === 'capex') return 'capex';
+  if (cat === 'collection' || cat === 'encashment' || desc.includes('инкассац')) return 'transfer';
+  if (cat === 'investment') return 'financing';
+  if (cat === 'other_income' || t.type === 'income') return 'income';
+  if (state.opexCategories.some((c) => c.id === t.category)) {
+    return is_salary_opex(t.category) ? 'salary' : 'fixed';
+  }
+  return 'expense';
+}
+
+/** день операции по Москве */
+export function tx_ymd(month: string, t: transaction) {
+  if (t.at) {
+    const d = new Date(t.at);
+    if (Number.isFinite(d.getTime())) return moscow_today(d);
+  }
+  const dim = days_in_month(month);
+  return `${month}-${String(Math.min(dim, Math.max(1, Math.round(t.day) || 1))).padStart(2, '0')}`;
+}
+
+/** сколько реально заплатили по каждой постоянной статье в месяце (без ФОТ) */
+export function month_opex_fact(state: finance_state, month: string): Record<string, number> {
+  const md = state.monthsData.find((m) => m.month === month);
+  const out: Record<string, number> = {};
+  for (const t of md?.transactions ?? []) {
+    if (tx_bucket_of(state, t) !== 'fixed') continue;
+    out[t.category] = (out[t.category] || 0) + (Number(t.amount) || 0);
+  }
+  return out;
+}
+
+/**
+ * постоянные расходы месяца по статьям (без ФОТ).
+ * если по статье в этом месяце есть оплата в операциях — берём факт, иначе сумму из модели.
+ * так аренда, внесённая операцией, не считается второй раз поверх плана.
+ */
+export function effective_month_opex(state: finance_state, month: string) {
+  const plan = resolve_month_opex(state, month);
+  const fact = month_opex_fact(state, month);
+  const rows: { id: string; name: string; plan: number; fact: number; value: number; from_fact: boolean }[] = [];
+  for (const c of state.opexCategories) {
+    if (is_salary_opex(c.id)) continue;
+    const p = Math.max(0, Number(plan[c.id]) || 0);
+    const f = Math.max(0, Number(fact[c.id]) || 0);
+    rows.push({ id: c.id, name: c.name, plan: p, fact: f, value: f > 0 ? f : p, from_fact: f > 0 });
+  }
+  return { rows, total: rows.reduce((s, r) => s + r.value, 0) };
+}
+
+/** постоянные + ФОТ месяца так, как они идут в прибыль */
+function month_opex_with_payroll(state: finance_state, month: string) {
+  const md = state.monthsData.find((m) => m.month === month);
+  const resolved_opex = resolve_month_opex(state, month);
+  const pay = md
+    ? resolve_month_payroll(state, { ...md, opex: resolved_opex })
+    : { lines: [], net: 0, taxable: 0, ndfl: 0, insurance: 0 };
+  const other = effective_month_opex(state, month).total;
+  return { opex: other + pay.net, other, pay };
+}
+
+export type period_expense_row = {
+  id: string;
+  ymd: string;
+  at: string;
+  title: string;
+  amount: number;
+  channel: 'cash' | 'card';
+  actor: string | null;
+};
+
+/** разовые траты вне постоянных статей, закупок сырья, оборудования и инкассации */
+export function period_other_flows(state: finance_state, from: string, to: string) {
+  const a = from <= to ? from : to;
+  const b = from <= to ? to : from;
+  const expenses: period_expense_row[] = [];
+  let other_expense = 0;
+  let other_income = 0;
+  let capex = 0;
+  let investments = 0;
+  for (const md of state.monthsData) {
+    if (md.month < a.slice(0, 7) || md.month > b.slice(0, 7)) continue;
+    for (const t of md.transactions ?? []) {
+      const bucket = tx_bucket_of(state, t);
+      if (bucket !== 'expense' && bucket !== 'income' && bucket !== 'capex' && bucket !== 'financing') continue;
+      const ymd = tx_ymd(md.month, t);
+      if (ymd < a || ymd > b) continue;
+      const amount = Math.max(0, Number(t.amount) || 0);
+      if (bucket === 'capex') {
+        capex += amount;
+        continue;
+      }
+      if (bucket === 'financing') {
+        investments += amount;
+        continue;
+      }
+      if (bucket === 'income') {
+        other_income += amount;
+        continue;
+      }
+      other_expense += amount;
+      expenses.push({
+        id: t.id,
+        ymd,
+        at: t.at || `${ymd}T12:00:00+03:00`,
+        title: (t.description || '').trim() || 'расход',
+        amount,
+        channel: t.channel === 'card' ? 'card' : 'cash',
+        actor: t.actorName || null,
+      });
+    }
+  }
+  expenses.sort((x, y) => (x.at < y.at ? 1 : -1));
+  return { other_expense, other_income, capex, investments, expenses };
 }
 
 export type month_summary = {
@@ -3059,6 +3330,8 @@ export type month_summary = {
   opex: number;
   salary: number;
   amortization: number;
+  /** комиссия банка за безнал */
+  acquiring: number;
   other_income: number;
   other_expense: number;
   capex: number;
@@ -3093,19 +3366,8 @@ export function summarize_month(state: finance_state, m: month_data): month_summ
   }
   const recipe_cogs = sales_fifo_cogs(state, m.sales, m.retailSales);
 
-  const resolved_opex = resolve_month_opex(state, m.month);
-  let opex = 0;
-  for (const val of Object.values(resolved_opex)) {
-    opex += Number(val) || 0;
-  }
-  const pay = resolve_month_payroll(state, { ...m, opex: resolved_opex });
+  const { opex, pay } = month_opex_with_payroll(state, m.month);
   const salary = pay.net;
-  // если payroll задан — opex.salary мог отстать; в итоге opex держим согласованным с ФОТ
-  if (Array.isArray(m.payroll) && m.payroll.length) {
-    const sid = salary_opex_id(state);
-    const prev_sal = Number(resolved_opex[sid]) || 0;
-    opex += salary - prev_sal;
-  }
 
   let cogs_actual = 0;
   let other_income = 0;
@@ -3114,12 +3376,12 @@ export function summarize_month(state: finance_state, m: month_data): month_summ
   let invest_tx = 0;
   for (const t of m.transactions ?? []) {
     const a = Number(t.amount) || 0;
-    if (t.category === 'material') cogs_actual += a;
-    else if (t.category === 'capex') capex_tx += a;
-    else if (t.category === 'investment') invest_tx += a;
-    else if (t.category === 'other_income') other_income += a;
-    else if (t.category === 'other_expense') other_expense += a;
-    else if (state.opexCategories.some((c) => c.id === t.category)) other_expense += a;
+    const bucket = tx_bucket_of(state, t);
+    if (bucket === 'material') cogs_actual += a;
+    else if (bucket === 'capex') capex_tx += a;
+    else if (bucket === 'financing') invest_tx += a;
+    else if (bucket === 'income') other_income += a;
+    else if (bucket === 'expense') other_expense += a;
   }
 
   const from_stock = movement_cogs(state, m.month);
@@ -3130,7 +3392,7 @@ export function summarize_month(state: finance_state, m: month_data): month_summ
   // складские sale-движения — сверка; персонал/списания — отдельно из склада
   const cogs = recipe_cogs > 0 ? recipe_cogs : cogs_sold;
 
-  const amortization = amortization_per_month(state);
+  const amortization = amortization_per_month(state, m.month);
   const ndfl = pay.ndfl;
   const insurance = pay.insurance + injury_monthly_of(state);
 
@@ -3146,6 +3408,7 @@ export function summarize_month(state: finance_state, m: month_data): month_summ
     opex,
     salary,
     amortization,
+    acquiring: 0,
     other_income,
     other_expense,
     capex: (m.cashFlow?.outflowCapex ?? 0) + capex_tx,
@@ -3170,11 +3433,22 @@ export type cashflow_row = month_summary & {
 type month_totals = Omit<month_summary, 'tax' | 'ebitda' | 'net_profit' | 'margin' | 'break_even'>;
 
 function close_month_summary(state: finance_state, s: month_totals): month_summary {
-  const deductible = s.cogs + s.opex + s.other_expense + s.cogs_staff + s.cogs_writeoff;
-  const tax = compute_month_tax(state, s.revenue, deductible);
-  const ebitda = s.revenue - s.cogs - s.opex - s.other_expense - s.cogs_staff - s.cogs_writeoff + s.other_income;
+  const deductible =
+    s.cogs +
+    s.opex +
+    s.other_expense +
+    s.cogs_staff +
+    s.cogs_writeoff +
+    s.acquiring +
+    s.ndfl +
+    s.insurance +
+    s.amortization;
+  const tax = compute_month_tax(state, s.revenue, deductible, { insurance: s.insurance });
+  const ebitda =
+    s.revenue - s.cogs - s.opex - s.other_expense - s.cogs_staff - s.cogs_writeoff - s.acquiring + s.other_income;
   const net_profit = ebitda - s.amortization - tax - s.ndfl - s.insurance;
-  const margin_pct = s.revenue > 0 ? (s.revenue - s.cogs) / s.revenue : 0;
+  const acquiring_pct = s.revenue > 0 ? s.acquiring / s.revenue : 0;
+  const margin_pct = s.revenue > 0 ? (s.revenue - s.cogs) / s.revenue - acquiring_pct : 0;
   const regime = tax_regime_of(state);
   const fixed =
     s.opex +
@@ -3216,9 +3490,23 @@ function close_month_summary(state: finance_state, s: month_totals): month_summa
 }
 
 /** факт выручки из заказов перекрывает план — дашборд и деньги считают одно и то же */
-export function with_fact_revenue(s: month_summary, fact_revenue: number, state: finance_state): month_summary {
+export function with_fact_revenue(
+  s: month_summary,
+  fact_revenue: number,
+  state: finance_state,
+  card_revenue?: number
+): month_summary {
   if (!(fact_revenue > 0)) return s;
-  return close_month_summary(state, { ...s, revenue: fact_revenue });
+  return close_month_summary(state, {
+    ...s,
+    revenue: fact_revenue,
+    acquiring: acquiring_of(state, card_revenue ?? 0),
+  });
+}
+
+export function acquiring_of(state: Pick<finance_state, 'acquiringRate'>, card_revenue: number) {
+  const rate = Math.max(0, Number(state.acquiringRate) || 0) / 100;
+  return Math.max(0, card_revenue) * rate;
 }
 
 /**
@@ -3229,19 +3517,12 @@ export function with_fact_revenue(s: month_summary, fact_revenue: number, state:
 export function break_even_revenue(
   state: finance_state,
   month: string,
-  opts?: { margin_pct?: number; staff_writeoff_monthly?: number }
+  opts?: { margin_pct?: number; staff_writeoff_monthly?: number; acquiring_pct?: number }
 ): number {
   const md = state.monthsData.find((m) => m.month === month);
   if (!md) return 0;
-  const resolved_opex = resolve_month_opex(state, month);
-  const pay = resolve_month_payroll(state, { ...md, opex: resolved_opex });
-  let opex = 0;
-  for (const val of Object.values(resolved_opex)) opex += Number(val) || 0;
-  if (Array.isArray(md.payroll) && md.payroll.length) {
-    const sid = salary_opex_id(state);
-    opex += pay.net - (Number(resolved_opex[sid]) || 0);
-  }
-  const amort = amortization_per_month(state);
+  const { opex, pay } = month_opex_with_payroll(state, month);
+  const amort = amortization_per_month(state, month);
   const regime = tax_regime_of(state);
   const fixed =
     opex +
@@ -3258,7 +3539,7 @@ export function break_even_revenue(
           0
         )
       : 0);
-  const margin_pct = Math.max(0, opts?.margin_pct ?? 0);
+  const margin_pct = Math.max(0, (opts?.margin_pct ?? 0) - Math.max(0, opts?.acquiring_pct ?? 0));
   let contribution = margin_pct;
   if (regime.id === 'custom') {
     let pct_rev = 0;
@@ -3278,27 +3559,21 @@ export function break_even_revenue(
 export function month_fixed_totals(state: finance_state, month: string) {
   const md = state.monthsData.find((m) => m.month === month);
   if (!md) return { opex: 0, salary: 0, other_opex: 0, ndfl: 0, insurance: 0, amort: 0 };
-  const resolved_opex = resolve_month_opex(state, month);
-  const pay = resolve_month_payroll(state, { ...md, opex: resolved_opex });
-  let opex = 0;
-  for (const val of Object.values(resolved_opex)) opex += Number(val) || 0;
-  if (Array.isArray(md.payroll) && md.payroll.length) {
-    const sid = salary_opex_id(state);
-    opex += pay.net - (Number(resolved_opex[sid]) || 0);
-  }
+  const { opex, other, pay } = month_opex_with_payroll(state, month);
   return {
     opex,
     salary: pay.net,
-    other_opex: Math.max(0, opex - pay.net),
+    other_opex: other,
     ndfl: pay.ndfl,
     insurance: pay.insurance + injury_monthly_of(state),
-    amort: amortization_per_month(state),
+    amort: amortization_per_month(state, month),
   };
 }
 
 export function with_fact_cashflow(row: cashflow_row, live: month_summary): cashflow_row {
   const inflow = live.revenue + live.investments + live.other_income;
-  const outflow = row.cogs_cash + live.opex + live.tax + live.ndfl + live.insurance + live.capex + live.other_expense;
+  const outflow =
+    row.cogs_cash + live.opex + live.tax + live.ndfl + live.insurance + live.capex + live.other_expense + live.acquiring;
   const net = inflow - outflow;
   return { ...row, ...live, inflow, outflow, net, opening: row.opening, closing: row.opening + net };
 }
@@ -3415,28 +3690,29 @@ export function prorate_fixed(state: finance_state, from: string, to: string) {
   let salary = 0;
   let ndfl = 0;
   let insurance = 0;
-  const amort_m = amortization_per_month(state);
   let amort = 0;
+  const per_month = new Map<string, { opex: number; salary: number; ndfl: number; insurance: number; amort: number }>();
   for (const d of each_day(from, to)) {
     const month = d.slice(0, 7);
     const dim = Math.max(1, days_in_month(month));
-    const md = state.monthsData.find((m) => m.month === month);
-    if (md) {
-      const resolved_opex = resolve_month_opex(state, month);
-      const pay = resolve_month_payroll(state, { ...md, opex: resolved_opex });
-      salary += pay.net / dim;
-      ndfl += pay.ndfl / dim;
-      insurance += (pay.insurance + injury_monthly_of(state)) / dim;
-      let month_opex = 0;
-      for (const val of Object.values(resolved_opex)) month_opex += Number(val) || 0;
-      if (Array.isArray(md.payroll) && md.payroll.length) {
-        const sid = salary_opex_id(state);
-        const prev_sal = Number(resolved_opex[sid]) || 0;
-        month_opex += pay.net - prev_sal;
-      }
-      opex += month_opex / dim;
+    let m = per_month.get(month);
+    if (!m) {
+      const md = state.monthsData.find((x) => x.month === month);
+      const t = md ? month_opex_with_payroll(state, month) : null;
+      m = {
+        opex: t?.opex ?? 0,
+        salary: t?.pay.net ?? 0,
+        ndfl: t?.pay.ndfl ?? 0,
+        insurance: t ? t.pay.insurance + injury_monthly_of(state) : 0,
+        amort: amortization_per_month(state, month),
+      };
+      per_month.set(month, m);
     }
-    amort += amort_m / dim;
+    opex += m.opex / dim;
+    salary += m.salary / dim;
+    ndfl += m.ndfl / dim;
+    insurance += m.insurance / dim;
+    amort += m.amort / dim;
   }
   return { opex, salary, amort, ndfl, insurance };
 }
@@ -3445,9 +3721,10 @@ export function summarize_period(
   state: finance_state,
   from: string,
   to: string,
-  opts?: { revenue?: number; sales?: Record<string, Record<string, sales_cell>> }
+  opts?: { revenue?: number; card_revenue?: number; sales?: Record<string, Record<string, sales_cell>> }
 ): month_summary {
   const fixed = prorate_fixed(state, from, to);
+  const flows = period_other_flows(state, from, to);
   const from_stock = movement_cogs_range(state, from, to);
   let revenue = opts?.revenue ?? 0;
   let drinks_sold = 0;
@@ -3486,10 +3763,11 @@ export function summarize_period(
     opex: fixed.opex,
     salary: fixed.salary,
     amortization: fixed.amort,
-    other_income: 0,
-    other_expense: 0,
-    capex: 0,
-    investments: 0,
+    acquiring: acquiring_of(state, opts?.card_revenue ?? 0),
+    other_income: flows.other_income,
+    other_expense: flows.other_expense,
+    capex: flows.capex,
+    investments: flows.investments,
     ndfl: fixed.ndfl,
     insurance: fixed.insurance,
     drinks_sold,
@@ -3575,7 +3853,7 @@ export function project_month_net(
     remaining_revenue = daily * remaining_days;
   }
 
-  const cogs_rate = mtd_revenue > 0 ? mtd.cogs / mtd_revenue : 0;
+  const cogs_rate = mtd_revenue > 0 ? (mtd.cogs + mtd.acquiring) / mtd_revenue : 0;
   const remaining_cogs = remaining_revenue * cogs_rate;
   const staff_wo_daily = (mtd.cogs_staff + mtd.cogs_writeoff) / elapsed;
   const remaining_staff_wo = staff_wo_daily * remaining_days;
@@ -3593,7 +3871,8 @@ export function project_month_net(
     remaining_tax = compute_month_tax(
       state,
       remaining_revenue,
-      remaining_cogs + fixed.opex + remaining_staff_wo
+      remaining_cogs + fixed.opex + remaining_staff_wo + fixed.ndfl + fixed.insurance + fixed.amort,
+      { insurance: fixed.insurance }
     );
   }
 
@@ -4260,6 +4539,11 @@ export type receipt_input = {
   actor?: stock_actor | null;
   /** на какую точку легла накладная */
   spotId?: string;
+  /** время операции по Москве (`…+03:00`): по нему месяц и день закупки в журнале */
+  at?: string;
+  channel?: 'cash' | 'card';
+  /** сумма или дата не указаны — закупка ждёт подтверждения в операциях */
+  pending?: receipt_gap;
 };
 
 /** поступление на склад: движение + операция закупки (попадает в ДДС и P&L) */
@@ -4267,8 +4551,9 @@ export function apply_receipt(state: finance_state, input: receipt_input): finan
   const mat = state.materials.find((m) => m.id === input.materialId);
   if (!mat || input.quantity <= 0) return state;
   const date = input.date || new Date().toISOString();
-  const month = date.slice(0, 7);
-  const day = Math.max(1, Math.min(31, Number(date.slice(8, 10)) || 1));
+  const local = input.at || date;
+  const month = local.slice(0, 7);
+  const day = Math.max(1, Math.min(31, Number(local.slice(8, 10)) || 1));
   const tx_id = new_id('tx');
   const spotId = input.spotId ? resolve_stock_spot(input.spotId) : '';
   const movement: stock_movement = {
@@ -4296,6 +4581,10 @@ export function apply_receipt(state: finance_state, input: receipt_input): finan
         quantity: input.quantity,
         amount: input.total,
         description: input.note || `поступление: ${mat.name}`,
+        ...(input.at ? { at: input.at } : {}),
+        ...(input.channel ? { channel: input.channel } : {}),
+        ...(input.at && spotId ? { spotId } : {}),
+        ...(input.pending ? { pending: input.pending } : {}),
         ...(input.actor
           ? {
               actorId: input.actor.role === 'admin' ? `admin:${input.actor.name}` : input.actor.id,
@@ -4870,7 +5159,7 @@ export function apply_order_consumption(
 ): finance_state {
   const kind = opts.kind ?? (opts.items.every((i) => i.kind === 'staff') ? 'staff' : 'sale');
   const date = opts.date || new Date().toISOString();
-  let next = reverse_order_consumption(state, opts.orderId);
+  const next = reverse_order_consumption(state, opts.orderId);
   const walk = walk_order_items(next, opts.items, opts.menu ?? []);
   const cons = walk.raw;
   const added: stock_movement[] = [];

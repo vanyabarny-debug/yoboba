@@ -49,10 +49,13 @@ export function parse_order_items(raw: unknown): { ok: true; items: order_item[]
     const normalized = normalize_order_item_fields({ name, volume });
     const combo = parse_combo_order_fields(rec);
     const prep_grams = parse_prep_grams(rec.prep_grams);
+    const list_raw = Math.round(Number(rec.list_price));
+    const list_price = Number.isFinite(list_raw) && list_raw > price && list_raw <= 100_000 ? list_raw : 0;
     items.push({
       menu_id,
       name: normalized.name,
       price,
+      ...(list_price ? { list_price } : {}),
       quantity,
       ...(normalized.volume ? { volume: normalized.volume } : {}),
       ...(temp ? { temp } : {}),

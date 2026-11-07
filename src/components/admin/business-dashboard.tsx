@@ -4,12 +4,13 @@ import { useEffect, useState } from 'react';
 import OnlineCounter from '@/components/admin/online-counter';
 import LiveCarts from '@/components/admin/live-carts';
 import ShiftsManage from '@/components/admin/shifts-manage';
-import { use_finance, save_label } from '@/components/admin/finance/use-finance';
+import { useFinance, save_label } from '@/components/admin/finance/use-finance';
 import { PeriodPicker, chip_active, chip_idle } from '@/components/admin/finance/ui';
 import PlanSection from '@/components/admin/finance/plan-section';
 import DashboardSection from '@/components/admin/finance/dashboard-section';
 import MoneySection from '@/components/admin/finance/money-section';
-import { use_admin_spot } from '@/components/admin/admin-spot-context';
+import { useAdminSpot } from '@/components/admin/admin-spot-context';
+import { useHydrated } from '@/lib/use-hydrated';
 
 type stats = {
   orders_today: number;
@@ -30,15 +31,18 @@ function pane_from_hash(): pane {
   return 'dash';
 }
 
-export default function business_dashboard() {
+export default function BusinessDashboard() {
   const [pulse, set_pulse] = useState<stats | null>(null);
   const [pane, set_pane] = useState<pane>('dash');
-  const { spot_id } = use_admin_spot();
-  const finance = use_finance();
+  const { spot_id } = useAdminSpot();
+  const finance = useFinance();
 
-  useEffect(() => {
+  const hydrated = useHydrated();
+  const [pane_restored, set_pane_restored] = useState(false);
+  if (hydrated && !pane_restored) {
+    set_pane_restored(true);
     set_pane(pane_from_hash());
-  }, []);
+  }
 
   useEffect(() => {
     const q = spot_id ? `?spot_id=${encodeURIComponent(spot_id)}` : '';

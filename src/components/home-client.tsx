@@ -4,13 +4,13 @@ import { createElement, useCallback, useEffect, useLayoutEffect, useRef, useStat
 import Link from 'next/link';
 import { create_client } from '@/lib/supabase/client';
 import { useRouter, useSearchParams } from 'next/navigation';
-import menu_grid from '@/components/menu-grid';
-import menu_grid_admin from '@/components/admin/menu-grid-admin';
-import product_drawer from '@/components/product-drawer';
-import product_drawer_admin from '@/components/admin/product-drawer-admin';
-import combo_builder from '@/components/combo-builder';
+import MenuGrid from '@/components/menu-grid';
+import MenuGridAdmin from '@/components/admin/menu-grid-admin';
+import ProductDrawer from '@/components/product-drawer';
+import ProductDrawerAdmin from '@/components/admin/product-drawer-admin';
+import ComboBuilder from '@/components/combo-builder';
 import { drink_temp_label, type drink_temp } from '@/components/menu-temp-marks';
-import cart_drawer, {
+import CartDrawer, {
   cart_line_key,
   cart_line_pay_price,
   cart_line_unit_price,
@@ -19,18 +19,18 @@ import cart_drawer, {
 import { build_combo_components, format_combo_picks, is_combo_item } from '@/lib/combo';
 import cart_fab from '@/components/cart-fab';
 import pickup_code_fab from '@/components/pickup-code-fab';
-import pickup_code_sheet from '@/components/pickup-code-sheet';
-import top_bar from '@/components/top-bar';
-import promo_banners from '@/components/promo-banners';
-import promo_story_viewer from '@/components/promo-story-viewer';
-import news_ticker from '@/components/news-ticker';
-import news_ticker_edit_sheet from '@/components/admin/news-ticker-edit-sheet';
-import promo_edit_sheet from '@/components/admin/promo-edit-sheet';
-import category_nav from '@/components/category-nav';
-import category_edit_sheet from '@/components/admin/category-edit-sheet';
-import sidebar_edit_sheet from '@/components/admin/sidebar-edit-sheet';
-import top_bar_edit_sheet from '@/components/admin/top-bar-edit-sheet';
-import brand_edit_sheet from '@/components/admin/brand-edit-sheet';
+import PickupCodeSheet from '@/components/pickup-code-sheet';
+import TopBar from '@/components/top-bar';
+import PromoBanners from '@/components/promo-banners';
+import PromoStoryViewer from '@/components/promo-story-viewer';
+import NewsTicker from '@/components/news-ticker';
+import NewsTickerEditSheet from '@/components/admin/news-ticker-edit-sheet';
+import PromoEditSheet from '@/components/admin/promo-edit-sheet';
+import CategoryNav from '@/components/category-nav';
+import CategoryEditSheet from '@/components/admin/category-edit-sheet';
+import SidebarEditSheet from '@/components/admin/sidebar-edit-sheet';
+import TopBarEditSheet from '@/components/admin/top-bar-edit-sheet';
+import BrandEditSheet from '@/components/admin/brand-edit-sheet';
 import {
   get_news_ticker_settings,
   publish_news_ticker_now,
@@ -41,14 +41,14 @@ import { admin_sheet } from '@/components/admin/admin-sheet';
 import { AdminHeader } from '@/components/admin/admin-shell';
 import { AdminSpotProvider } from '@/components/admin/admin-spot-context';
 import location_modal from '@/components/location-modal';
-import order_gate_modal from '@/components/order-gate-modal';
-import phone_gate_modal from '@/components/phone-gate-modal';
-import pickup_slot_picker from '@/components/pickup-slot-picker';
-import gift_sheet from '@/components/gift-sheet';
+import OrderGateModal from '@/components/order-gate-modal';
+import PhoneGateModal from '@/components/phone-gate-modal';
+import PickupSlotPicker from '@/components/pickup-slot-picker';
+import GiftSheet from '@/components/gift-sheet';
 import gift_inbox_banner from '@/components/gift-inbox-banner';
 import { claim_gift_pickup, fetch_gift_by_id, fetch_my_gifts, type gift_actor } from '@/lib/gifts';
 import { add_to_cart, clear_cart, get_cart_items, upsert_cart_item } from '@/lib/cart';
-import site_header from '@/components/site-header';
+import SiteHeader from '@/components/site-header';
 import {
   delete_promo,
   get_promo_store,
@@ -57,7 +57,7 @@ import {
   upsert_promo,
   default_promos,
 } from '@/lib/promo-store';
-import sidebar_ad from '@/components/sidebar-ad';
+import SidebarAd from '@/components/sidebar-ad';
 import {
   default_sidebar_interval_ms,
   default_sidebar_slides,
@@ -122,6 +122,7 @@ import {
 } from '@/lib/site-content-store';
 import { save_brand_settings } from '@/lib/brand-store';
 import { desktop_category_heading_offset } from '@/components/menu-grid';
+import { useHydrated } from '@/lib/use-hydrated';
 
 const guest_cart_key = 'yoboba_guest_cart';
 const sticky_ad_gap = 10;
@@ -268,7 +269,7 @@ function gift_items_from_lines(lines: cart_line[]): order_item[] {
   });
 }
 
-export default function home_client({
+export default function HomeClient({
   initial_menu,
   initial_categories = default_categories,
   initial_promos = default_promos,
@@ -368,6 +369,7 @@ export default function home_client({
           !user.is_guest
       );
 
+  /* eslint-disable react-hooks/set-state-in-effect -- до первой отрисовки, иначе мигнёт шапка гостя */
   useLayoutEffect(() => {
     const cached = peek_header_user();
     if (!cached) return;
@@ -376,6 +378,7 @@ export default function home_client({
     set_is_anonymous(false);
     set_bonus(cached.bonus_balance);
   }, []);
+  /* eslint-enable react-hooks/set-state-in-effect */
   const student_verified = Boolean(user?.student_verified);
   const cart_count = cart_lines.reduce((s, l) => s + l.quantity, 0);
   const cart_total = cart_lines.reduce(
@@ -384,19 +387,26 @@ export default function home_client({
   );
   const active_promos = promos.filter((p) => p.is_active);
 
-  useEffect(() => {
+  const hydrated = useHydrated();
+  const [params_for, set_params_for] = useState<{
+    search_params: typeof search_params;
+    menu: typeof menu;
+    is_admin_edit: boolean;
+  } | null>(null);
+  if (
+    hydrated &&
+    (params_for?.search_params !== search_params ||
+      params_for.menu !== menu ||
+      params_for.is_admin_edit !== is_admin_edit)
+  ) {
+    set_params_for({ search_params, menu, is_admin_edit });
     const category = search_params.get('category');
     const cart = search_params.get('cart');
     const gift_param = search_params.get('gift');
     const as_gift_param = search_params.get('as_gift');
     const combo_id = search_params.get('combo') || search_params.get('menu');
 
-    if (category) {
-      set_active_category(category);
-      requestAnimationFrame(() => {
-        window.scrollTo({ top: 0, behavior: 'smooth' });
-      });
-    }
+    if (category) set_active_category(category);
 
     if (cart === '1') {
       set_cart_open(true);
@@ -418,6 +428,14 @@ export default function home_client({
         set_drawer_open(true);
       }
     }
+  }
+
+  useEffect(() => {
+    if (!search_params.get('category')) return;
+    const frame = requestAnimationFrame(() => {
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    });
+    return () => cancelAnimationFrame(frame);
   }, [search_params, menu, is_admin_edit]);
 
   function has_profile_phone() {
@@ -741,7 +759,9 @@ export default function home_client({
     };
   }, []);
 
-  useEffect(() => {
+  const [place_restored, set_place_restored] = useState(false);
+  if (hydrated && !place_restored) {
+    set_place_restored(true);
     const loc = get_location();
     const spot = get_selected_spot();
     if (loc) {
@@ -751,7 +771,9 @@ export default function home_client({
       set_city(spot.city);
     }
     set_selected_spot(spot);
+  }
 
+  useEffect(() => {
     function refresh_user() {
       if (!demo_mode) return;
       const u = get_demo_user();
@@ -771,9 +793,12 @@ export default function home_client({
       set_cart_lines(load_guest_cart());
     }
 
-    refresh_user();
+    const frame = requestAnimationFrame(refresh_user);
     window.addEventListener('focus', refresh_user);
-    return () => window.removeEventListener('focus', refresh_user);
+    return () => {
+      cancelAnimationFrame(frame);
+      window.removeEventListener('focus', refresh_user);
+    };
   }, [demo_mode]);
 
   useEffect(() => {
@@ -847,19 +872,38 @@ export default function home_client({
     };
   }, [admin_edit_mode]);
 
+  const lang_live = demo_mode && is_admin_edit;
+  const [lang_for, set_lang_for] = useState(false);
+  if (hydrated && lang_for !== lang_live) {
+    set_lang_for(lang_live);
+    if (lang_live) set_lang_draft(get_site_content_store().lang_link);
+  }
+
   useEffect(() => {
-    if (!demo_mode || !is_admin_edit) return;
-    set_lang_draft(get_site_content_store().lang_link);
+    if (!lang_live) return;
     return subscribe_site_content_store(() => {
       set_lang_draft(get_site_content_store().lang_link);
     });
-  }, [demo_mode, is_admin_edit]);
+  }, [lang_live]);
 
-  useEffect(() => {
-    if (demo_mode) return;
-    set_categories(initial_categories);
-    set_menu(initial_menu.filter((i) => i.is_available !== false && i.archived !== true));
-  }, [demo_mode, initial_menu, initial_categories, admin_edit_mode]);
+  const [menu_props_for, set_menu_props_for] = useState({
+    demo_mode,
+    initial_menu,
+    initial_categories,
+    admin_edit_mode,
+  });
+  if (
+    menu_props_for.demo_mode !== demo_mode ||
+    menu_props_for.initial_menu !== initial_menu ||
+    menu_props_for.initial_categories !== initial_categories ||
+    menu_props_for.admin_edit_mode !== admin_edit_mode
+  ) {
+    set_menu_props_for({ demo_mode, initial_menu, initial_categories, admin_edit_mode });
+    if (!demo_mode) {
+      set_categories(initial_categories);
+      set_menu(initial_menu.filter((i) => i.is_available !== false && i.archived !== true));
+    }
+  }
 
   useEffect(() => {
     save_guest_cart(cart_lines);
@@ -1050,16 +1094,13 @@ export default function home_client({
     };
   }, [demo_mode, user_id, load_prod_cart]);
 
+  const has_gift_actor = !is_admin_edit && gift_actor_from_user() !== null;
+  if (!has_gift_actor && inbox_gifts.length) set_inbox_gifts([]);
+
   useEffect(() => {
-    if (is_admin_edit || !is_logged_in) {
-      set_inbox_gifts([]);
-      return;
-    }
+    if (is_admin_edit || !is_logged_in) return;
     const actor = gift_actor_from_user();
-    if (!actor) {
-      set_inbox_gifts([]);
-      return;
-    }
+    if (!actor) return;
     let cancelled = false;
     void fetch_my_gifts(actor).then(({ inbox }) => {
       if (!cancelled) set_inbox_gifts(inbox.filter((g) => g.status === 'paid' || g.status === 'claimed'));
@@ -1562,7 +1603,7 @@ export default function home_client({
         )}
 
       <div className="hidden min-[1024px]:block bg-page border-b border-surface/70">
-        {createElement(top_bar, is_admin_edit ? {
+        {createElement(TopBar, is_admin_edit ? {
           edit_mode: true,
           on_edit_link: set_editing_link,
           on_add_link: () =>
@@ -1578,7 +1619,7 @@ export default function home_client({
         ref={header_ref}
         className="sticky mobile-sticky-top z-40 bg-page"
       >
-        {createElement(site_header, {
+        {createElement(SiteHeader, {
           city,
           spot_address: selected_spot?.address,
           user_name: is_admin_edit ? 'админ' : user?.role === 'admin' ? null : user?.name,
@@ -1602,7 +1643,7 @@ export default function home_client({
       </div>
 
       {active_category === null &&
-        createElement(promo_banners, is_admin_edit ? {
+        createElement(PromoBanners, is_admin_edit ? {
           promos,
           on_promo_click: () => {},
           edit_mode: true,
@@ -1614,7 +1655,7 @@ export default function home_client({
           on_promo_click: handle_promo_click,
         })}
 
-      {createElement(news_ticker, is_admin_edit ? {
+      {createElement(NewsTicker, is_admin_edit ? {
         edit_mode: true,
         on_edit: () => {
           set_ticker_settings(get_news_ticker_settings());
@@ -1637,7 +1678,7 @@ export default function home_client({
       <section className="menu-sheet">
         <div ref={nav_ref} className="menu-sheet-head">
           <div className="menu-sheet-nav-box">
-            {createElement(category_nav, is_admin_edit ? {
+            {createElement(CategoryNav, is_admin_edit ? {
               categories,
               active: active_category,
               cart_count: 0,
@@ -1669,7 +1710,7 @@ export default function home_client({
             <div className="page-shell min-[1024px]:flex min-[1024px]:gap-6 min-[1024px]:pr-1">
               <div className="min-w-0 min-[1024px]:flex-[4]">
               {is_admin_edit
-                ? createElement(menu_grid_admin, {
+                ? createElement(MenuGridAdmin, {
                     items: menu,
                     categories,
                     active_category: active_category ?? undefined,
@@ -1682,7 +1723,7 @@ export default function home_client({
                     on_add_item: handle_admin_add_item,
                     on_delete_item: handle_admin_delete_item,
                   })
-                : createElement(menu_grid, {
+                : createElement(MenuGrid, {
                     items: menu,
                     categories,
                     active_category: active_category ?? undefined,
@@ -1709,7 +1750,7 @@ export default function home_client({
                 marginTop: active_category === null ? desktop_category_heading_offset : 0,
               }}
             >
-              {createElement(sidebar_ad, is_admin_edit ? {
+              {createElement(SidebarAd, is_admin_edit ? {
                 slides: sidebar_slides,
                 on_slide_click: () => {},
                 edit_mode: true,
@@ -1727,14 +1768,14 @@ export default function home_client({
       </section>
 
       {is_admin_edit
-        ? createElement(product_drawer_admin, {
+        ? createElement(ProductDrawerAdmin, {
             item: selected,
             open: drawer_open,
             on_close: handle_product_close,
             on_save: upsert_menu_item,
             on_delete: handle_admin_delete_item,
           })
-        : createElement(product_drawer, {
+        : createElement(ProductDrawer, {
             item: selected,
             all_items: menu,
             open: drawer_open,
@@ -1753,7 +1794,7 @@ export default function home_client({
           })}
 
       {!is_admin_edit &&
-        createElement(combo_builder, {
+        createElement(ComboBuilder, {
           combo: combo_building,
           all_items: menu,
           open: Boolean(combo_building),
@@ -1783,7 +1824,7 @@ export default function home_client({
           },
         })}
 
-      {!is_admin_edit && createElement(cart_drawer, {
+      {!is_admin_edit && createElement(CartDrawer, {
         open: cart_open,
         lines: cart_lines,
         all_items: menu,
@@ -1823,7 +1864,7 @@ export default function home_client({
         })}
 
       {!is_admin_edit &&
-        createElement(pickup_code_sheet, {
+        createElement(PickupCodeSheet, {
           open: pickup_code_open,
           is_logged_in,
           demo_mode,
@@ -1839,7 +1880,7 @@ export default function home_client({
         })}
 
       {!is_admin_edit && story_index !== null &&
-        createElement(promo_story_viewer, {
+        createElement(PromoStoryViewer, {
           promos: active_promos,
           start_index: story_index,
           open: true,
@@ -1847,7 +1888,7 @@ export default function home_client({
           on_action: perform_promo_action,
         })}
 
-      {is_admin_edit && createElement(news_ticker_edit_sheet, {
+      {is_admin_edit && createElement(NewsTickerEditSheet, {
         open: editing_ticker,
         settings: ticker_settings,
         on_close: () => {
@@ -1860,7 +1901,7 @@ export default function home_client({
         },
       })}
 
-      {is_admin_edit && createElement(promo_edit_sheet, {
+      {is_admin_edit && createElement(PromoEditSheet, {
         promo: editing_promo,
         categories,
         on_close: () => set_editing_promo(null),
@@ -1871,7 +1912,7 @@ export default function home_client({
         on_delete: delete_promo,
       })}
 
-      {is_admin_edit && createElement(sidebar_edit_sheet, {
+      {is_admin_edit && createElement(SidebarEditSheet, {
         slide: editing_slide,
         categories,
         on_close: () => set_editing_slide(null),
@@ -1881,7 +1922,7 @@ export default function home_client({
         on_delete: delete_sidebar_slide,
       })}
 
-      {is_admin_edit && createElement(top_bar_edit_sheet, {
+      {is_admin_edit && createElement(TopBarEditSheet, {
         link: editing_link,
         on_close: () => set_editing_link(null),
         on_save: (link, page) => {
@@ -1891,7 +1932,7 @@ export default function home_client({
         on_delete: delete_top_bar_link,
       })}
 
-      {is_admin_edit && createElement(category_edit_sheet, {
+      {is_admin_edit && createElement(CategoryEditSheet, {
         category: editing_category,
         item_count: editing_category
           ? menu.filter((i) => item_in_category(i, editing_category)).length
@@ -1907,18 +1948,17 @@ export default function home_client({
         },
       })}
 
-      {is_admin_edit && createElement(brand_edit_sheet, {
+      {is_admin_edit && createElement(BrandEditSheet, {
         open: editing_brand !== false,
         focus: editing_brand === false ? 'all' : editing_brand,
         on_close: () => set_editing_brand(false),
         on_save: save_brand_settings,
       })}
 
-      {is_admin_edit && createElement(admin_sheet, {
-        open: editing_lang,
-        title: 'кнопка «язык»',
-        on_close: () => set_editing_lang(false),
-        children: (
+      {is_admin_edit && createElement(
+        admin_sheet,
+        { open: editing_lang, title: 'кнопка «язык»', on_close: () => set_editing_lang(false) },
+        (
           <form
             onSubmit={(e) => {
               e.preventDefault();
@@ -1950,10 +1990,10 @@ export default function home_client({
               </button>
             </div>
           </form>
-        ),
-      })}
+        )
+      )}
 
-      {!is_admin_edit && createElement(order_gate_modal, {
+      {!is_admin_edit && createElement(OrderGateModal, {
         open: order_gate_open,
         store_city: city,
         saved_location,
@@ -1965,7 +2005,7 @@ export default function home_client({
         on_login: handle_order_gate_login,
       })}
 
-      {!is_admin_edit && createElement(gift_sheet, {
+      {!is_admin_edit && createElement(GiftSheet, {
         open: gift_open,
         items: gift_items,
         actor: gift_actor_from_user(),
@@ -1990,13 +2030,13 @@ export default function home_client({
         },
       })}
 
-      {!is_admin_edit && createElement(phone_gate_modal, {
+      {!is_admin_edit && createElement(PhoneGateModal, {
         open: phone_gate_open,
         on_close: () => set_phone_gate_open(false),
         on_saved: handle_phone_saved,
       })}
 
-      {!is_admin_edit && createElement(pickup_slot_picker, {
+      {!is_admin_edit && createElement(PickupSlotPicker, {
         open: pickup_picker_open,
         cart_lines: claiming_gift
           ? claiming_gift.items.map((l) => ({

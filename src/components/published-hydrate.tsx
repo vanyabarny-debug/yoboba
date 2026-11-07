@@ -36,7 +36,7 @@ function is_admin_browser() {
   });
 }
 
-export default function published_hydrate() {
+export default function PublishedHydrate() {
   useEffect(() => {
     const admin = is_admin_browser();
     void Promise.all([

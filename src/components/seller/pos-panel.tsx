@@ -20,7 +20,7 @@ import { configured_unit_price, first_volume_id, resolve_volume_id } from '@/lib
 import { tile_grid, board_tile_grid } from '@/lib/seller-tile-grid';
 import { calc_order_bonus, FREE_DRINK_BONUS_THRESHOLD } from '@/lib/cart-summary';
 import { gift_items_label } from '@/lib/gifts';
-import { use_page_swipe } from '@/lib/use-page-swipe';
+import { usePageSwipe } from '@/lib/use-page-swipe';
 import type { gift, menu_item, order_combo_component, order_item } from '@/lib/types';
 import { STUDENT_DISCOUNT_LABEL, student_line_price } from '@/lib/student-discount';
 import {
@@ -28,13 +28,15 @@ import {
   discount_from_sold,
   discounted_unit,
   discount_label,
+  discount_pool,
+  sold_to_pct,
   type pos_discount,
 } from '@/lib/pos-pricing';
 import { format_combo_picks, is_combo_item } from '@/lib/combo';
 import menu_image from '@/components/menu-image';
-import seller_product_sheet from '@/components/seller/seller-product-sheet';
-import seller_combo_sheet from '@/components/seller/seller-combo-sheet';
-import pos_qr_scanner from '@/components/seller/pos-qr-scanner';
+import SellerProductSheet from '@/components/seller/seller-product-sheet';
+import SellerComboSheet from '@/components/seller/seller-combo-sheet';
+import PosQrScanner from '@/components/seller/pos-qr-scanner';
 import { FLOATING_CLOSE_BTN_CLASS } from '@/lib/drawer-ui';
 
 function e164_to_phone_draft(phone: string | null | undefined): string {
@@ -146,7 +148,11 @@ function combo_key(line: Pick<cart_line, 'combo_components' | 'combo_picks'>) {
   return line.combo_picks?.join('|') ?? '';
 }
 
-function cart_bar({
+function cash_entry_id() {
+  return `cash-${Date.now()}`;
+}
+
+function CartBar({
   count,
   total,
   on_work,
@@ -199,7 +205,7 @@ function warm_menu_image_cache(list: menu_item[]) {
   }
 }
 
-export default function pos_panel({
+export default function PosPanel({
   on_created,
   on_nav_depth,
   on_prep_shortage,
@@ -240,6 +246,7 @@ export default function pos_panel({
   const [discount_open, set_discount_open] = useState(false);
   /** черновик поля «продано за» — пока кассир печатает, скидка считается из него */
   const [sold_draft, set_sold_draft] = useState('');
+  const [pct_draft, set_pct_draft] = useState('');
 
   function open_confirm(_mode: 'order' | 'gift' = 'order') {
     set_confirm_open(true);
@@ -281,6 +288,7 @@ export default function pos_panel({
 
   const lookup_seq = useRef(0);
   const lookup_key = useRef('');
+  const [looked_up_key, set_looked_up_key] = useState('');
   const skip_phone_lookup = useRef(false);
 
   const lookup_guest = useCallback(async (opts: { code?: string | null; phone_e164?: string | null }) => {
@@ -289,6 +297,7 @@ export default function pos_panel({
     const e164 = opts.phone_e164 || null;
     const key = code ? `c:${code}` : e164 ? `p:${e164}` : '';
     lookup_key.current = key;
+    set_looked_up_key(key);
 
     if (!code && !e164) {
       if (seq !== lookup_seq.current) return;
@@ -403,7 +412,7 @@ export default function pos_panel({
   }, [items, category]);
 
   // свайп в товарах всегда возвращает к категориям (не листает категории)
-  const { viewport_ref, page_style, width: board_w, height: board_h } = use_page_swipe({
+  const { viewport_ref, page_style, width: board_w, height: board_h } = usePageSwipe({
     index: 0,
     count: 1,
     enabled: step === 'products' && !sheet_open && !confirm_open,
@@ -602,6 +611,7 @@ export default function pos_panel({
         set_discount(null);
         set_discount_open(false);
         set_sold_draft('');
+        set_pct_draft('');
         set_pay_with_bonus(false);
         set_confirm_student(false);
       }
@@ -614,6 +624,11 @@ export default function pos_panel({
       if (!prev || prev.scope !== 'lines') return prev;
       const has = prev.lines.includes(index);
       const lines = has ? prev.lines.filter((i) => i !== index) : [...prev.lines, index];
+      if (prev.kind === 'pct') {
+        const next = { ...prev, lines };
+        set_sold_draft(String(cart_total_after_discount(priced_lines, next, false)));
+        return next;
+      }
       if (prev.kind === 'rub' && sold_draft !== '') {
         return (
           discount_from_sold(priced_lines, Number(sold_draft) || 0, {
@@ -626,11 +641,24 @@ export default function pos_panel({
     });
   }
 
+  function apply_discount_pct(raw: string) {
+    const clean = raw.replace(',', '.').replace(/[^\d.]/g, '');
+    set_pct_draft(clean);
+    const scope = discount?.scope ?? 'check';
+    const lines = discount?.lines ?? [];
+    const pct = Math.min(100, Math.max(0, Number(clean) || 0));
+    const next: pos_discount = { scope, kind: 'pct', value: pct, lines };
+    set_discount(next);
+    set_sold_draft(clean ? String(cart_total_after_discount(priced_lines, next, false)) : '');
+  }
+
   function apply_sold_amount(raw: string, scope?: pos_discount['scope'], lines?: number[]) {
     const digits = raw.replace(/[^\d]/g, '');
     set_sold_draft(digits);
     const next_scope = scope ?? discount?.scope ?? 'check';
     const next_lines = lines ?? discount?.lines ?? [];
+    const pool = discount_pool(priced_lines, { scope: next_scope, kind: 'rub', value: 0, lines: next_lines });
+    set_pct_draft(digits ? String(sold_to_pct(pool, Number(digits))) : '');
     if (!digits) {
       set_discount({
         scope: next_scope,
@@ -779,7 +807,7 @@ export default function pos_panel({
           headers: { 'content-type': 'application/json' },
           credentials: 'same-origin',
           body: JSON.stringify({
-            id: `cash-${Date.now()}`,
+            id: cash_entry_id(),
             order_id: order.id,
             seller_id,
             seller_name,
@@ -802,7 +830,7 @@ export default function pos_panel({
           headers: { 'content-type': 'application/json' },
           credentials: 'same-origin',
           body: JSON.stringify({
-            id: `cash-${Date.now()}`,
+            id: cash_entry_id(),
             order_id: order.id,
             seller_id,
             seller_name,
@@ -831,6 +859,7 @@ export default function pos_panel({
       set_discount(null);
       set_discount_open(false);
       set_sold_draft('');
+      set_pct_draft('');
       close_confirm();
       set_step('categories');
       set_category('');
@@ -1146,11 +1175,11 @@ export default function pos_panel({
                 : 'ищем гостя с этим телефоном…'
               : code_draft.length === 6 &&
                 !customer &&
-                lookup_key.current === `c:${parse_pickup_code_input(code_draft) || ''}`
+                looked_up_key === `c:${parse_pickup_code_input(code_draft) || ''}`
                 ? error || 'гость по коду не найден — пусть обновит «мой код» в приложении'
                 : phone_input_to_e164(phone_draft) &&
                     !customer &&
-                    lookup_key.current === `p:${phone_input_to_e164(phone_draft)}`
+                    looked_up_key === `p:${phone_input_to_e164(phone_draft)}`
                   ? 'гостя с этим телефоном нет в базе — карточку создадим при оплате'
                   : ''}
           </p>
@@ -1239,6 +1268,7 @@ export default function pos_panel({
                       onChange={(e) => {
                         const on = e.target.checked;
                         set_discount_open(on);
+                        set_pct_draft('');
                         if (on) {
                           set_sold_draft(String(bar_total || ''));
                           set_discount({
@@ -1254,7 +1284,7 @@ export default function pos_panel({
                       }}
                       className="rounded"
                     />
-                    другая сумма
+                    скидка / другая сумма
                   </label>
                   {discount_open ? (
                     <div className="ml-6 space-y-2">
@@ -1275,14 +1305,28 @@ export default function pos_panel({
                           />
                           <span className="text-xs text-neutral-500">₽</span>
                         </label>
+                        <span className="text-neutral-300">·</span>
+                        <label className="flex items-center gap-1.5">
+                          <span className="text-xs text-neutral-500">скидка</span>
+                          <input
+                            type="text"
+                            inputMode="decimal"
+                            placeholder="0"
+                            className="w-14 rounded-lg border border-neutral-200 px-2 py-1 text-sm tabular-nums"
+                            value={pct_draft}
+                            onChange={(e) => apply_discount_pct(e.target.value)}
+                          />
+                          <span className="text-xs text-neutral-500">%</span>
+                        </label>
                       </div>
                       {discount && discount.value > 0 ? (
                         <p className="text-xs text-amber-700">
-                          скидка {(bar_total - total).toLocaleString('ru-RU')} ₽ автоматически
+                          скидка {(bar_total - total).toLocaleString('ru-RU')} ₽
+                          {bar_total > 0 ? ` · ${sold_to_pct(bar_total, total)}% от чека` : ''}
                         </p>
                       ) : (
                         <p className="text-[11px] text-neutral-400">
-                          введите сумму продажи — скидка посчитается сама
+                          введите сумму продажи или процент — второе посчитается само
                         </p>
                       )}
                       <label className="flex items-center gap-1.5 text-xs text-neutral-500">
@@ -1293,7 +1337,11 @@ export default function pos_panel({
                             const on_lines = e.target.checked;
                             const scope = on_lines ? 'lines' : 'check';
                             const lines = on_lines ? discount?.lines ?? [] : [];
-                            if (sold_draft !== '') {
+                            if (discount?.kind === 'pct') {
+                              const next: pos_discount = { ...discount, scope, lines };
+                              set_discount(next);
+                              set_sold_draft(String(cart_total_after_discount(priced_lines, next, false)));
+                            } else if (sold_draft !== '') {
                               apply_sold_amount(sold_draft, scope, lines);
                             } else {
                               set_discount({
@@ -1343,17 +1391,17 @@ export default function pos_panel({
     </div>
   ) : null;
 
-  const scanner_modal = createElement(pos_qr_scanner, {
-    open: scanner_open,
-    on_close: () => set_scanner_open(false),
-    on_scan: (code: string) => {
+  const scanner_modal = <PosQrScanner
+    open={scanner_open}
+    on_close={() => set_scanner_open(false)}
+    on_scan={(code: string) => {
       skip_phone_lookup.current = true;
       set_code_draft(code);
       set_active_pickup_code(code);
       set_error(null);
       void lookup_guest({ code });
-    },
-  });
+    }}
+  />;
 
   const editing_line =
     edit_index != null && cart[edit_index] ? cart[edit_index] : null;
@@ -1382,7 +1430,7 @@ export default function pos_panel({
 
   const combo_selected = selected && is_combo_item(selected);
   const sheet = combo_selected
-    ? createElement(seller_combo_sheet, {
+    ? createElement(SellerComboSheet, {
         combo: selected,
         all_items: items,
         open: sheet_open,
@@ -1405,7 +1453,7 @@ export default function pos_panel({
           });
         },
       })
-    : createElement(seller_product_sheet, {
+    : createElement(SellerProductSheet, {
         item: selected,
         all_items: items,
         open: sheet_open,
@@ -1464,11 +1512,11 @@ export default function pos_panel({
           })}
         </div>
 
-        {createElement(cart_bar, {
-          count,
-          total: bar_total,
-          on_work: () => open_confirm('order'),
-        })}
+        <CartBar
+          count={count}
+          total={bar_total}
+          on_work={() => open_confirm('order')}
+        />
         <button
           type="button"
           onClick={() => open_confirm('gift')}
@@ -1551,11 +1599,11 @@ export default function pos_panel({
         </div>
       </div>
 
-      {createElement(cart_bar, {
-        count,
-        total: bar_total,
-        on_work: () => open_confirm('order'),
-      })}
+      <CartBar
+        count={count}
+        total={bar_total}
+        on_work={() => open_confirm('order')}
+      />
       {confirm_modal}
       {prep_fact_modal}
       {scanner_modal}

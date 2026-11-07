@@ -2,14 +2,14 @@
 
 import { createElement, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import promo_banners from '@/components/promo-banners';
-import promo_story_viewer from '@/components/promo-story-viewer';
-import site_content_page from '@/components/site-content-page';
+import PromoBanners from '@/components/promo-banners';
+import PromoStoryViewer from '@/components/promo-story-viewer';
+import SiteContentPage from '@/components/site-content-page';
 import type { promo_banner } from '@/lib/types';
 import { get_promo_store, subscribe_promo_store } from '@/lib/promo-store';
 import { default_promos } from '@/lib/promo-store';
 
-export default function akcii_page() {
+export default function AkciiPage() {
   const router = useRouter();
   const [promos, set_promos] = useState<promo_banner[]>(default_promos);
   const [story_index, set_story_index] = useState<number | null>(null);
@@ -51,17 +51,17 @@ export default function akcii_page() {
   }
 
   return createElement(
-    site_content_page,
+    SiteContentPage,
     { slug: 'akcii' },
     createElement('div', { className: 'mt-8 -mx-[var(--page-gutter)]' }, [
-      createElement(promo_banners, {
+      createElement(PromoBanners, {
         key: 'promos',
         promos,
         on_promo_click: handle_promo_click,
         layout: 'cards',
       }),
       story_index !== null &&
-        createElement(promo_story_viewer, {
+        createElement(PromoStoryViewer, {
           key: 'story',
           promos: active_promos,
           start_index: story_index,

@@ -1,8 +1,8 @@
 'use client';
 
 import { createElement, useRef, useState, type ReactNode } from 'react';
-import edit_pencil from '@/components/admin/edit-pencil';
-import menu_photo_crop_modal from '@/components/admin/menu-photo-crop-modal';
+import EditPencil from '@/components/admin/edit-pencil';
+import MenuPhotoCropModal from '@/components/admin/menu-photo-crop-modal';
 
 type props = {
   on_save: (data_url: string) => void;
@@ -12,7 +12,7 @@ type props = {
   title?: string;
 };
 
-export default function product_photo_picker({
+export default function ProductPhotoPicker({
   on_save,
   label = 'загрузить фото',
   className = '',
@@ -43,12 +43,12 @@ export default function product_photo_picker({
           e.target.value = '';
         }}
       />
-      {createElement(edit_pencil, {
-        label,
-        onClick: open_file,
-        className: `${size === 'sm' ? 'h-6 w-6' : 'h-9 w-9'} ${className}`,
-      })}
-      {createElement(menu_photo_crop_modal, {
+      <EditPencil
+        label={label}
+        onClick={open_file}
+        className={`${size === 'sm' ? 'h-6 w-6' : 'h-9 w-9'} ${className}`}
+      />
+      {createElement(MenuPhotoCropModal, {
         open: crop_open,
         file: pending_file,
         title,
@@ -66,7 +66,7 @@ export default function product_photo_picker({
   );
 }
 
-export function product_photo_button({
+export function ProductPhotoButton({
   on_save,
   label = 'выбрать фото',
   className = '',
@@ -111,7 +111,7 @@ export function product_photo_button({
       >
         {children ?? label}
       </button>
-      {createElement(menu_photo_crop_modal, {
+      {createElement(MenuPhotoCropModal, {
         open: crop_open,
         file: pending_file,
         title,

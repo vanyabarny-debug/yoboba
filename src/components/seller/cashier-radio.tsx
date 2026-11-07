@@ -63,7 +63,7 @@ function icon_pause() {
   );
 }
 
-function floating_title({ text }: { text: string }) {
+function FloatingTitle({ text }: { text: string }) {
   const box = useRef<HTMLDivElement>(null);
   const [drift, set_drift] = useState(false);
 
@@ -115,7 +115,7 @@ function icon_skip({ dir }: { dir: 'back' | 'forward' }) {
   );
 }
 
-export default function cashier_radio({ hours }: { hours?: spot_hours | null }) {
+export default function CashierRadio({ hours }: { hours?: spot_hours | null }) {
   const audio_ref = useRef<HTMLAudioElement | null>(null);
   const tracks_ref = useRef<radio_track[]>([]);
   const index_ref = useRef(0);
@@ -474,7 +474,7 @@ export default function cashier_radio({ hours }: { hours?: spot_hours | null }) 
         </button>
       </div>
       <div className="shrink-0 px-2.5 pb-2">
-        {createElement(floating_title, { text: title })}
+        {createElement(FloatingTitle, { text: title })}
         {error || hint ? <p className="mb-1 truncate text-left text-[10px] opacity-70">{error || hint}</p> : null}
         <input
           type="range"

@@ -12,11 +12,9 @@ import {
   days_in_month,
   injury_monthly_of,
   menu_price_for_size,
+  month_fixed_totals,
   month_label,
   moscow_today,
-  resolve_month_opex,
-  resolve_month_payroll,
-  salary_opex_id,
   tax_regime_of,
   sales_fifo_cogs,
   tech_card_cost,
@@ -279,18 +277,13 @@ function fixed_costs_for_month(
   const md = state.monthsData.find((m) => m.month === month);
   const share = Math.min(1, Math.max(0, spot_share));
   if (!md) {
-    const amort = amortization_per_month(state) * share;
+    const amort = amortization_per_month(state, month) * share;
     return { opex: 0, ndfl: 0, insurance: injury_monthly_of(state) * share, amort, total: amort };
   }
-  const resolved_opex = resolve_month_opex(state, month);
-  const pay = resolve_month_payroll(state, { ...md, opex: resolved_opex });
-  let opex = 0;
-  for (const val of Object.values(resolved_opex)) opex += Number(val) || 0;
-  if (Array.isArray(md.payroll) && md.payroll.length) {
-    const sid = salary_opex_id(state);
-    opex += pay.net - (Number(resolved_opex[sid]) || 0);
-  }
-  const amort = amortization_per_month(state);
+  const totals = month_fixed_totals(state, month);
+  const opex = totals.opex;
+  const pay = { ndfl: totals.ndfl, insurance: totals.insurance - injury_monthly_of(state) };
+  const amort = totals.amort;
   const regime = tax_regime_of(state);
   const patent = regime.kind === 'patent' ? Number(state.taxPatentMonthly) || 0 : 0;
   const custom_fixed =
@@ -541,8 +534,8 @@ function net_at_revenue(
   cogs: number,
   fixed: { opex: number; ndfl: number; insurance: number; amort: number }
 ): { net: number; tax: number } {
-  const deductible = cogs + fixed.opex;
-  const tax = compute_month_tax(state, revenue, deductible);
+  const deductible = cogs + fixed.opex + fixed.ndfl + fixed.insurance + fixed.amort;
+  const tax = compute_month_tax(state, revenue, deductible, { insurance: fixed.insurance });
   const ebitda = revenue - cogs - fixed.opex;
   const net = ebitda - fixed.amort - tax - fixed.ndfl - fixed.insurance;
   return { net, tax };
@@ -1178,7 +1171,7 @@ export function apply_roadmap_to_state(
 ): finance_state {
   let next = state;
   const apply_reinvest = opts?.apply_reinvest !== false;
-  let marketing_id = opts?.marketing_opex_id ?? 'marketing';
+  const marketing_id = opts?.marketing_opex_id ?? 'marketing';
 
   if (apply_reinvest && !next.opexCategories.some((c) => c.id === marketing_id)) {
     next = {

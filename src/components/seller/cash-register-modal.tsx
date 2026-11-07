@@ -4,7 +4,7 @@ import { createElement, useCallback, useEffect, useMemo, useRef, useState } from
 import { type level_mark } from '@/components/guest-level-mark';
 import { bills_icon, card_icon } from '@/components/pay-marks';
 import found_guest_card from '@/components/seller/found-guest-card';
-import pos_qr_scanner from '@/components/seller/pos-qr-scanner';
+import PosQrScanner from '@/components/seller/pos-qr-scanner';
 import { calc_order_bonus, FREE_DRINK_BONUS_THRESHOLD } from '@/lib/cart-summary';
 import { gift_items_label } from '@/lib/gifts';
 import { format_order_number } from '@/lib/order-number';
@@ -97,7 +97,7 @@ function parse_item_lines(items: order['items']): line_view[] {
   });
 }
 
-export default function cash_register_modal({
+export default function CashRegisterModal({
   order,
   seller_name,
   on_close,
@@ -107,7 +107,7 @@ export default function cash_register_modal({
   const [method, set_method] = useState<payment_method | null>(null);
   const [received, set_received] = useState('');
   const [busy, set_busy] = useState(false);
-  const [phone_draft, set_phone_draft] = useState('');
+  const [phone_draft, set_phone_draft] = useState(() => e164_to_phone_draft(order?.customer_phone));
   const [code_draft, set_code_draft] = useState('');
   const [active_pickup_code, set_active_pickup_code] = useState<string | null>(null);
   const [scanner_open, set_scanner_open] = useState(false);
@@ -125,30 +125,9 @@ export default function cash_register_modal({
   const lookup_key = useRef('');
   const skip_phone_lookup = useRef(false);
 
-  const order_id = order?.id ?? null;
-  const order_phone_ref = useRef(order?.customer_phone);
-  order_phone_ref.current = order?.customer_phone;
+  const [looked_up_key, set_looked_up_key] = useState('');
 
-  useEffect(() => {
-    set_method(null);
-    set_received('');
-    set_busy(false);
-    set_code_draft('');
-    set_active_pickup_code(null);
-    set_scanner_open(false);
-    set_customer(null);
-    set_lookup_gifts([]);
-    set_gift_busy(null);
-    set_lookup_busy(false);
-    set_error(null);
-    set_confirm_student(false);
-    set_staff_drink(false);
-    set_discount(null);
-    set_discount_open(false);
-    set_sold_draft('');
-    lookup_key.current = '';
-    set_phone_draft(e164_to_phone_draft(order_phone_ref.current));
-  }, [order_id]);
+  const order_id = order?.id ?? null;
 
   const lookup_guest = useCallback(async (opts: { code?: string | null; phone_e164?: string | null }) => {
     const seq = ++lookup_seq.current;
@@ -156,6 +135,7 @@ export default function cash_register_modal({
     const e164 = opts.phone_e164 || null;
     const key = code ? `c:${code}` : e164 ? `p:${e164}` : '';
     lookup_key.current = key;
+    set_looked_up_key(key);
 
     if (!code && !e164) {
       if (seq !== lookup_seq.current) return;
@@ -566,11 +546,11 @@ export default function cash_register_modal({
                       : 'ищем гостя с этим телефоном…'
                     : code_draft.length === 6 &&
                       !customer &&
-                      lookup_key.current === `c:${parse_pickup_code_input(code_draft) || ''}`
+                      looked_up_key === `c:${parse_pickup_code_input(code_draft) || ''}`
                       ? error || 'гость по коду не найден — пусть обновит «мой код» в приложении'
                       : phone_input_to_e164(phone_draft) &&
                           !customer &&
-                          lookup_key.current === `p:${phone_input_to_e164(phone_draft)}`
+                          looked_up_key === `p:${phone_input_to_e164(phone_draft)}`
                         ? 'гостя с этим телефоном нет в базе — карточку создадим при оплате'
                         : ''}
                 </p>
@@ -818,17 +798,17 @@ export default function cash_register_modal({
           </div>
         </div>
       </div>
-      {createElement(pos_qr_scanner, {
-        open: scanner_open,
-        on_close: () => set_scanner_open(false),
-        on_scan: (code: string) => {
+      <PosQrScanner
+        open={scanner_open}
+        on_close={() => set_scanner_open(false)}
+        on_scan={(code: string) => {
           skip_phone_lookup.current = true;
           set_code_draft(code);
           set_active_pickup_code(code);
           set_error(null);
           void lookup_guest({ code });
-        },
-      })}
+        }}
+      />
     </>
   );
 }

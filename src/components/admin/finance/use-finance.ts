@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { menu_item } from '@/lib/types';
 import {
   add_month,
@@ -53,25 +53,27 @@ export type finance_bundle = {
 
 const pending_key = 'yoboba-finance-pending';
 
-function stash_pending(state: finance_state) {
+function stash_pending(state: finance_state, base: number | null) {
   try {
-    sessionStorage.setItem(pending_key, JSON.stringify({ at: Date.now(), state }));
+    sessionStorage.setItem(pending_key, JSON.stringify({ at: Date.now(), state, base }));
   } catch {
     /* квота браузера — тогда остаётся обычное сохранение */
   }
 }
 
-function read_pending(): finance_state | null {
+function read_pending(): { state: finance_state; base: number | null } | null {
   try {
     const raw = sessionStorage.getItem(pending_key);
     if (!raw) return null;
-    const parsed = JSON.parse(raw) as { state?: finance_state };
+    const parsed = JSON.parse(raw) as { state?: finance_state; base?: unknown };
     if (!parsed?.state || typeof parsed.state !== 'object') return null;
-    return parsed.state;
+    return { state: parsed.state, base: typeof parsed.base === 'number' ? parsed.base : null };
   } catch {
     return null;
   }
 }
+
+type finance_body = { state?: unknown; menu?: menu_item[]; error?: string; stamp?: number };
 
 function clear_pending() {
   try {
@@ -81,7 +83,7 @@ function clear_pending() {
   }
 }
 
-export function use_finance(): finance_bundle {
+export function useFinance(): finance_bundle {
   const [state, set_state_raw] = useState<finance_state | null>(null);
   const [menu, set_menu] = useState<menu_item[]>([]);
   const [month, set_month] = useState(current_month_id());
@@ -92,7 +94,10 @@ export function use_finance(): finance_bundle {
   const dirty_ref = useRef(false);
   const timer_ref = useRef<ReturnType<typeof setTimeout> | null>(null);
   const latest_ref = useRef<finance_state | null>(null);
+  /** finance_stamp состояния, которое видит вкладка: сервер не затрёт то, что появилось позже */
+  const base_ref = useRef<number | null>(null);
   const persist_ref = useRef<() => Promise<void>>(async () => {});
+  const adopt_ref = useRef<(body: finance_body, repair: boolean) => void>(() => {});
 
   const persist = useCallback(async () => {
     const s = latest_ref.current;
@@ -104,19 +109,31 @@ export function use_finance(): finance_bundle {
         method: 'PUT',
         credentials: 'same-origin',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ state: s }),
+        body: JSON.stringify({ state: s, base: base_ref.current }),
       });
       if (!res.ok) throw new Error('save failed');
+      const out = (await res.json().catch(() => ({}))) as { merged?: number; stamp?: number };
       if (!dirty_ref.current) clear_pending();
       set_save_status(dirty_ref.current ? 'dirty' : 'saved');
+      if ((out.merged ?? 0) > 0) {
+        // в базе были чужие свежие записи — подтягиваем их, чтобы следующее сохранение их видело
+        if (!dirty_ref.current) {
+          const fresh = await fetch('/api/admin/finance', { credentials: 'same-origin' });
+          if (fresh.ok && !dirty_ref.current) adopt_ref.current((await fresh.json()) as finance_body, false);
+        }
+      } else if (typeof out.stamp === 'number' && out.stamp > 0) {
+        base_ref.current = out.stamp;
+      }
     } catch {
       dirty_ref.current = true;
       set_save_status('error');
     }
   }, []);
-  persist_ref.current = persist;
+  useLayoutEffect(() => {
+    persist_ref.current = persist;
+  });
 
-  const adopt = useCallback((body: { state?: unknown; menu?: menu_item[]; error?: string }, repair: boolean) => {
+  const adopt = useCallback((body: finance_body, repair: boolean) => {
     if (body.error) {
       set_error(body.error);
       return;
@@ -136,6 +153,7 @@ export function use_finance(): finance_bundle {
     const s = backfill_opex_months(with_month);
     const opex_changed = JSON.stringify(s.monthsData) !== JSON.stringify(with_month.monthsData);
     latest_ref.current = s;
+    base_ref.current = typeof body.stamp === 'number' && body.stamp > 0 ? body.stamp : null;
     set_state_raw(s);
     set_menu(body.menu ?? []);
     // авто-PUT только для налогов/opex — не перезаписывать рецепты «лечением» ТТК
@@ -146,13 +164,16 @@ export function use_finance(): finance_bundle {
       timer_ref.current = setTimeout(() => void persist_ref.current(), 400);
     }
   }, []);
+  useLayoutEffect(() => {
+    adopt_ref.current = adopt;
+  });
 
   const reload = useCallback(async () => {
     if (timer_ref.current) clearTimeout(timer_ref.current);
     await persist_ref.current();
     if (dirty_ref.current) return;
     const res = await fetch('/api/admin/finance', { credentials: 'same-origin' });
-    const body = (await res.json()) as { state?: unknown; menu?: menu_item[]; error?: string };
+    const body = (await res.json()) as finance_body;
     adopt(body, false);
   }, [adopt]);
 
@@ -165,10 +186,11 @@ export function use_finance(): finance_bundle {
     let cancelled = false;
     fetch('/api/admin/finance', { credentials: 'same-origin' })
       .then((r) => r.json())
-      .then((body: { state?: unknown; menu?: menu_item[]; error?: string }) => {
+      .then((body: finance_body) => {
         if (cancelled) return;
-        const pending = read_pending();
-        if (pending) {
+        const stashed = read_pending();
+        if (stashed) {
+          const pending = stashed.state;
           const cloud_removed = new Set(
             body.state && typeof body.state === 'object' && Array.isArray((body.state as finance_state).removedMaterialIds)
               ? ((body.state as finance_state).removedMaterialIds ?? [])
@@ -181,7 +203,8 @@ export function use_finance(): finance_bundle {
                 materials: (pending.materials ?? []).filter((m) => !cloud_removed.has(m.id)),
               }
             : pending;
-          adopt({ ...body, state: kept }, false);
+          // несохранённая вкладка начиналась со своего состояния — сравнивать надо с ним, а не со свежим
+          adopt({ ...body, state: kept, stamp: stashed.base ?? undefined }, false);
           dirty_ref.current = true;
           set_save_status('dirty');
           void persist_ref.current();
@@ -219,7 +242,7 @@ export function use_finance(): finance_bundle {
     const on_hide = () => {
       const current = latest_ref.current;
       if (!current || !dirty_ref.current) return;
-      stash_pending(current);
+      stash_pending(current, base_ref.current);
       void persist();
     };
     window.addEventListener('pagehide', on_hide);

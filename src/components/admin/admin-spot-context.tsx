@@ -15,6 +15,7 @@ import {
   spot_display,
   subscribe_spot_store,
 } from '@/lib/spot-store';
+import { useHydrated } from '@/lib/use-hydrated';
 
 const storage_key = 'yoboba_admin_spot_id';
 
@@ -30,17 +31,20 @@ type admin_spot_ctx = {
 const Ctx = createContext<admin_spot_ctx | null>(null);
 
 export function AdminSpotProvider({ children }: { children: ReactNode }) {
-  const [spot_id, set_spot_id_raw] = useState('');
+  const [picked_spot_id, set_spot_id_raw] = useState('');
   const [spots_tick, set_spots_tick] = useState(0);
 
-  useEffect(() => {
+  const hydrated = useHydrated();
+  const [restored, set_restored] = useState(false);
+  if (hydrated && !restored) {
+    set_restored(true);
     try {
       const saved = sessionStorage.getItem(storage_key);
       if (saved != null) set_spot_id_raw(saved);
     } catch {
       /* ignore */
     }
-  }, []);
+  }
 
   useEffect(() => subscribe_spot_store(() => set_spots_tick((n) => n + 1)), []);
 
@@ -58,11 +62,7 @@ export function AdminSpotProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
-  useEffect(() => {
-    if (spot_id && !spots.some((s) => s.id === spot_id)) {
-      set_spot_id('');
-    }
-  }, [spots, spot_id, set_spot_id]);
+  const spot_id = picked_spot_id && spots.some((s) => s.id === picked_spot_id) ? picked_spot_id : '';
 
   const spot_options = useMemo(
     () =>
@@ -88,15 +88,15 @@ export function AdminSpotProvider({ children }: { children: ReactNode }) {
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }
 
-export function use_admin_spot() {
+export function useAdminSpot() {
   const ctx = useContext(Ctx);
   if (!ctx) {
-    throw new Error('use_admin_spot вне AdminSpotProvider');
+    throw new Error('useAdminSpot вне AdminSpotProvider');
   }
   return ctx;
 }
 
 /** для страниц вне провайдера — безопасный фолбэк */
-export function use_admin_spot_optional(): admin_spot_ctx | null {
+export function useAdminSpotOptional(): admin_spot_ctx | null {
   return useContext(Ctx);
 }

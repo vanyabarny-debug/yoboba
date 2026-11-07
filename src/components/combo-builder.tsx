@@ -9,7 +9,7 @@ import {
   SHEET_ANIM_MS,
   SHEET_OPEN_DELAY_MS,
 } from '@/lib/drawer-ui';
-import { use_sheet_swipe } from '@/lib/use-sheet-swipe';
+import { useSheetSwipe } from '@/lib/use-sheet-swipe';
 import {
   combo_selectable_drinks,
   format_combo_picks,
@@ -27,7 +27,7 @@ type props = {
   student_verified?: boolean;
 };
 
-export default function combo_builder({
+export default function ComboBuilder({
   combo,
   all_items,
   open,
@@ -42,13 +42,13 @@ export default function combo_builder({
   const drinks = useMemo(() => combo_selectable_drinks(all_items, combo), [all_items, combo]);
   const includes = useMemo(() => {
     const by_id = new Map(all_items.map((m) => [m.id, m]));
-    return (cfg?.includes ?? [])
+    return (get_combo_config(combo)?.includes ?? [])
       .map((row) => {
         const item = by_id.get(row.menu_id);
         return item ? { item, qty: row.qty } : null;
       })
       .filter(Boolean) as { item: menu_item; qty: number }[];
-  }, [all_items, cfg?.includes]);
+  }, [all_items, combo]);
   const combo_full =
     all_items.find((m) => m.id === combo?.id)?.price ?? combo?.price ?? 0;
   const combo_price = student_line_price(
@@ -60,19 +60,38 @@ export default function combo_builder({
   const [sheet_visible, set_sheet_visible] = useState(false);
   const [sheet_open, set_sheet_open] = useState(false);
 
-  useEffect(() => {
-    if (!open || !combo) {
+  const shown = open && !!combo;
+  const combo_id = combo?.id;
+  const [sheet_for, set_sheet_for] = useState<{
+    shown: boolean;
+    combo_id: string | undefined;
+    slots: number;
+    initial_picks: typeof initial_picks;
+  } | null>(null);
+  if (
+    !sheet_for ||
+    sheet_for.shown !== shown ||
+    sheet_for.combo_id !== combo_id ||
+    sheet_for.slots !== slots ||
+    sheet_for.initial_picks !== initial_picks
+  ) {
+    set_sheet_for({ shown, combo_id, slots, initial_picks });
+    if (shown) {
+      set_sheet_visible(true);
+      set_picks(initial_picks?.slice(0, slots) ?? []);
+    } else {
       set_sheet_open(false);
-      const t = window.setTimeout(() => set_sheet_visible(false), SHEET_ANIM_MS);
-      return () => window.clearTimeout(t);
     }
-    set_sheet_visible(true);
-    set_picks(initial_picks?.slice(0, slots) ?? []);
-    const t = window.setTimeout(() => set_sheet_open(true), SHEET_OPEN_DELAY_MS);
-    return () => window.clearTimeout(t);
-  }, [open, combo?.id, slots, initial_picks]);
+  }
 
-  const { sheet_props, backdrop_style } = use_sheet_swipe({
+  useEffect(() => {
+    const t = shown
+      ? window.setTimeout(() => set_sheet_open(true), SHEET_OPEN_DELAY_MS)
+      : window.setTimeout(() => set_sheet_visible(false), SHEET_ANIM_MS);
+    return () => window.clearTimeout(t);
+  }, [shown, combo_id, slots, initial_picks]);
+
+  const { sheet_props, backdrop_style } = useSheetSwipe({
     active: sheet_open,
     on_dismiss: on_close,
     vertical_only: true,

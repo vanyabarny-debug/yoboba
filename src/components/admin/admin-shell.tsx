@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { useEffect, useRef, useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import { clear_session } from '@/lib/demo-auth';
-import { AdminSpotProvider, use_admin_spot } from '@/components/admin/admin-spot-context';
+import { AdminSpotProvider, useAdminSpot } from '@/components/admin/admin-spot-context';
 
 export const admin_tabs = [
   {
@@ -59,7 +59,7 @@ const settings_links = [
 ] as const;
 
 function AdminSpotSwitch() {
-  const { spot_id, set_spot_id, spot_options, current_label } = use_admin_spot();
+  const { spot_id, set_spot_id, spot_options, current_label } = useAdminSpot();
   const pathname = usePathname();
   const warehouse = pathname.startsWith('/admin/sklad');
   const [open, set_open] = useState(false);
@@ -306,13 +306,6 @@ export function AdminHeader({ actions, wide = false }: { actions?: React.ReactNo
                 ? 'text-accent'
                 : 'text-neutral-500 hover:text-neutral-800'
             }`;
-            if (tab.href === '/admin/designer') {
-              return (
-                <a key={tab.href} href={tab.href} className={class_name}>
-                  {tab.label}
-                </a>
-              );
-            }
             return (
               <Link key={tab.href} href={tab.href} className={class_name}>
                 {tab.label}
@@ -330,7 +323,7 @@ export default function AdminShell({
   actions,
   wide = false,
 }: {
-  children: React.ReactNode;
+  children?: React.ReactNode;
   actions?: React.ReactNode;
   wide?: boolean;
 }) {

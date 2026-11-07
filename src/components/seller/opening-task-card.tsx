@@ -18,7 +18,7 @@ const opening_color = {
   border: '#A5D6A7',
 } as const;
 
-function circle_wrap({ children, under }: { children: React.ReactNode; under?: string | null }) {
+function circle_wrap({ children, under }: { children?: React.ReactNode; under?: string | null }) {
   return (
     <div className="flex min-h-0 flex-1 flex-col items-center justify-center px-2 pb-2 pt-3">
       <div className="aspect-square w-[min(100%,68cqh)] shrink-0">{children}</div>
@@ -82,9 +82,10 @@ export default function opening_task_card({ task, on_open, missed = false }: pro
         on_toggle: on_open,
         color: opening_color.fg,
       })}
-      {createElement(circle_wrap, {
-        under: missed ? 'не пробил' : is_complete ? 'открытие ✓' : 'открытие',
-        children: createElement(circular_timer, {
+      {createElement(
+        circle_wrap,
+        { under: missed ? 'не пробил' : is_complete ? 'открытие ✓' : 'открытие' },
+        createElement(circular_timer, {
           progress: progress / 100,
           label: missed ? '—' : is_complete ? '✓' : `${progress}%`,
           sublabel: is_complete ? undefined : 'выполнено',
@@ -93,8 +94,8 @@ export default function opening_task_card({ task, on_open, missed = false }: pro
           fill: true,
           disabled: is_complete,
           on_click: on_open,
-        }),
-      })}
+        })
+      )}
     </article>
   );
 }

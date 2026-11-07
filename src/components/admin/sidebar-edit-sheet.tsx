@@ -1,9 +1,9 @@
 'use client';
 
-import { createElement, useEffect, useState } from 'react';
+import { createElement, useState } from 'react';
 import type { sidebar_ad_slide } from '@/lib/types';
 import { admin_sheet } from '@/components/admin/admin-sheet';
-import { image_upload_button } from '@/components/admin/image-file-picker';
+import { ImageUploadButton } from '@/components/admin/image-file-picker';
 
 type props = {
   slide: sidebar_ad_slide | null;
@@ -13,20 +13,21 @@ type props = {
   on_delete?: (id: string) => void;
 };
 
-export default function sidebar_edit_sheet({ slide, categories, on_close, on_save, on_delete }: props) {
+export default function SidebarEditSheet({ slide, categories, on_close, on_save, on_delete }: props) {
   const [draft, set_draft] = useState<sidebar_ad_slide | null>(slide);
 
-  useEffect(() => {
+  const [draft_for, set_draft_for] = useState(slide);
+  if (draft_for !== slide) {
+    set_draft_for(slide);
     set_draft(slide);
-  }, [slide]);
+  }
 
   if (!draft) return null;
 
-  return createElement(admin_sheet, {
-    open: true,
-    title: draft.id ? 'редактировать баннер' : 'новый баннер',
-    on_close,
-    children: (
+  return createElement(
+    admin_sheet,
+    { open: true, title: draft.id ? 'редактировать баннер' : 'новый баннер', on_close },
+    (
       <form
         onSubmit={(e) => {
           e.preventDefault();
@@ -49,7 +50,7 @@ export default function sidebar_edit_sheet({ slide, categories, on_close, on_sav
             фото не выбрано
           </div>
         )}
-        {createElement(image_upload_button, {
+        {createElement(ImageUploadButton, {
           on_pick: (url) => set_draft({ ...draft, image_url: url }),
           label: draft.image_url ? 'заменить фото' : 'выбрать фото',
           className: 'w-full',
@@ -117,6 +118,6 @@ export default function sidebar_edit_sheet({ slide, categories, on_close, on_sav
           </button>
         </div>
       </form>
-    ),
-  });
+    )
+  );
 }

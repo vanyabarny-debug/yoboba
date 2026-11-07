@@ -1,6 +1,6 @@
 'use client';
 
-import { createElement, useEffect, useState } from 'react';
+import { createElement, useState } from 'react';
 import { admin_sheet } from '@/components/admin/admin-sheet';
 import {
   NEWS_TICKER_BG_PRESETS,
@@ -65,7 +65,7 @@ function color_row({
   );
 }
 
-export default function news_ticker_edit_sheet({
+export default function NewsTickerEditSheet({
   open,
   settings,
   on_close,
@@ -73,18 +73,18 @@ export default function news_ticker_edit_sheet({
 }: props) {
   const [draft, set_draft] = useState<news_ticker_settings>(default_news_ticker);
 
-  useEffect(() => {
-    if (!open) return;
-    set_draft(normalize_news_ticker(settings));
-  }, [open, settings]);
+  const [draft_for, set_draft_for] = useState({ open: false, settings });
+  if (draft_for.open !== open || draft_for.settings !== settings) {
+    set_draft_for({ open, settings });
+    if (open) set_draft(normalize_news_ticker(settings));
+  }
 
   if (!open) return null;
 
-  return createElement(admin_sheet, {
-    open: true,
-    title: 'бегущая строка',
-    on_close,
-    children: (
+  return createElement(
+    admin_sheet,
+    { open: true, title: 'бегущая строка', on_close },
+    (
       <form
         onSubmit={(e) => {
           e.preventDefault();
@@ -142,6 +142,6 @@ export default function news_ticker_edit_sheet({
           </button>
         </div>
       </form>
-    ),
-  });
+    )
+  );
 }

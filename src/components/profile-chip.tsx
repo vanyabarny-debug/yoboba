@@ -46,7 +46,7 @@ function login_button(on_login?: () => void) {
   );
 }
 
-export default function profile_chip({
+export default function ProfileChip({
   is_logged_in,
   bonus = 0,
   user_name,
@@ -59,9 +59,11 @@ export default function profile_chip({
   const router = useRouter();
   const [cached, set_cached] = useState<ReturnType<typeof peek_header_user>>(null);
 
+  /* eslint-disable react-hooks/set-state-in-effect -- до первой отрисовки, иначе мигнёт аватар */
   useLayoutEffect(() => {
     set_cached(peek_header_user());
   }, [is_logged_in, user_id, user_name, avatar_url, avatar_emoji]);
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   const shown =
     is_logged_in

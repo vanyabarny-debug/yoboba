@@ -11,7 +11,7 @@ export function admin_sheet({
   open: boolean;
   title: string;
   on_close: () => void;
-  children: ReactNode;
+  children?: ReactNode;
 }) {
   if (!open) return null;
 

@@ -55,9 +55,15 @@ export default function SalesSection({ state, set_state, month, menu, spot_id = 
   const [error, set_error] = useState('');
   const menu_by_id = useMemo(() => new Map(menu.map((m) => [m.id, m])), [menu]);
 
+  const fact_key = `${month}|${spot_id}`;
+  const [fact_for, set_fact_for] = useState<string | null>(null);
+  if (fact_for !== fact_key) {
+    set_fact_for(fact_key);
+    set_loading(true);
+  }
+
   useEffect(() => {
     let cancelled = false;
-    set_loading(true);
     const spot_q = spot_id ? `&spot_id=${encodeURIComponent(spot_id)}` : '';
     fetch(`/api/admin/finance/sales?month=${month}${spot_q}`, { credentials: 'same-origin' })
       .then((r) => r.json())

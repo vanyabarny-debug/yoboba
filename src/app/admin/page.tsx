@@ -2,11 +2,12 @@
 
 import { createElement } from 'react';
 import AdminShell from '@/components/admin/admin-shell';
-import business_dashboard from '@/components/admin/business-dashboard';
+import BusinessDashboard from '@/components/admin/business-dashboard';
 
 export default function admin_dashboard() {
-  return createElement(AdminShell, {
-    wide: true,
-    children: createElement(business_dashboard),
-  });
+  return createElement(
+    AdminShell,
+    { wide: true },
+    createElement(BusinessDashboard)
+  );
 }

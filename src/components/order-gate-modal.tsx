@@ -2,8 +2,8 @@
 
 import { BRAND_NAME } from '@/lib/brand';
 
-import { createElement, useEffect, useState } from 'react';
-import location_picker from '@/components/location-picker';
+import { createElement, useState } from 'react';
+import LocationPicker from '@/components/location-picker';
 import { is_city_served, store_cities, type user_location } from '@/lib/location';
 
 type gate_step = 'confirm' | 'prompt' | 'location' | 'pickup';
@@ -17,7 +17,7 @@ type props = {
   on_login: () => void;
 };
 
-export default function order_gate_modal({
+export default function OrderGateModal({
   open,
   store_city,
   saved_location,
@@ -29,12 +29,14 @@ export default function order_gate_modal({
   const [step, set_step] = useState<gate_step>('prompt');
   const [error, set_error] = useState('');
 
-  useEffect(() => {
+  const [step_for, set_step_for] = useState({ open: false, has_saved_city });
+  if (step_for.open !== open || step_for.has_saved_city !== has_saved_city) {
+    set_step_for({ open, has_saved_city });
     if (open) {
       set_step(has_saved_city ? 'confirm' : 'prompt');
       set_error('');
     }
-  }, [open, has_saved_city]);
+  }
 
   if (!open) return null;
 
@@ -191,7 +193,7 @@ export default function order_gate_modal({
               определим автоматически или выберите вручную — так мы поймём, сможете ли забрать заказ
             </p>
             <div className="mt-5">
-              {createElement(location_picker, {
+              {createElement(LocationPicker, {
                 on_confirm: confirm_location,
               })}
             </div>

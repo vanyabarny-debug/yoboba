@@ -6,7 +6,7 @@ import {
   type tech_card_size,
   type material,
 } from '@/lib/finance/model';
-import { ingredients_from_steps } from '@/lib/finance/prep-steps';
+import { backfill_step_ingredients, ingredients_from_steps } from '@/lib/finance/prep-steps';
 import { type ttk_fill, type ttk_nutrition_row } from '@/lib/finance/ttk-document';
 
 /** ½ ст.л. ≈ 7,5 мл ≈ 7,5 г */
@@ -954,6 +954,8 @@ export function hydrate_ttk_finance(state: finance_state, force = false): financ
     if (do_force && key_aliases(card).includes('taro') && !is_archived_taro(card)) {
       next = { ...next, cold: true, hot: true };
     }
+    const filled = backfill_step_ingredients(next);
+    if (filled !== next) next = filled;
     if (next !== card) changed = true;
     return next;
   });

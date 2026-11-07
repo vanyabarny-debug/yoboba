@@ -13,7 +13,7 @@ type props = {
   on_confirm: (pickup_at: string, label: string) => void;
 };
 
-export default function pickup_slot_picker({ open, cart_lines, on_close, on_confirm }: props) {
+export default function PickupSlotPicker({ open, cart_lines, on_close, on_confirm }: props) {
   const [slots, set_slots] = useState<pickup_slot[]>([]);
   const [loading, set_loading] = useState(false);
   const [error, set_error] = useState('');
@@ -21,17 +21,17 @@ export default function pickup_slot_picker({ open, cart_lines, on_close, on_conf
   const [sheet_visible, set_sheet_visible] = useState(false);
   const [sheet_open, set_sheet_open] = useState(false);
 
-  useEffect(() => {
-    if (!open) return;
-    set_sheet_visible(true);
+  const [was_open, set_was_open] = useState(false);
+  if (was_open !== open) {
+    set_was_open(open);
     set_sheet_open(false);
-    const timer = window.setTimeout(() => set_sheet_open(true), SHEET_OPEN_DELAY_MS);
-    return () => window.clearTimeout(timer);
-  }, [open]);
+    if (open) set_sheet_visible(true);
+  }
 
   useEffect(() => {
-    if (open) return;
-    set_sheet_open(false);
+    if (!open) return;
+    const timer = window.setTimeout(() => set_sheet_open(true), SHEET_OPEN_DELAY_MS);
+    return () => window.clearTimeout(timer);
   }, [open]);
 
   useEffect(() => {
@@ -40,10 +40,17 @@ export default function pickup_slot_picker({ open, cart_lines, on_close, on_conf
     return () => window.clearTimeout(timer);
   }, [open, sheet_visible]);
 
+  const [slots_for, set_slots_for] = useState<{ open: boolean; cart_lines: typeof cart_lines } | null>(null);
+  if (slots_for?.open !== open || slots_for.cart_lines !== cart_lines) {
+    set_slots_for({ open, cart_lines });
+    if (open && cart_lines.length > 0) {
+      set_loading(true);
+      set_error('');
+    }
+  }
+
   useEffect(() => {
     if (!open || cart_lines.length === 0) return;
-    set_loading(true);
-    set_error('');
     fetch('/api/kitchen/slots', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },

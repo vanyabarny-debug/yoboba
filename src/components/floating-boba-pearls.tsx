@@ -14,7 +14,7 @@ type pearl = {
 const PEARL_COUNT = 14;
 
 /** плавающие шарики тапиоки в полости баннера — уезжают от курсора */
-export default function floating_boba_pearls({
+export default function FloatingBobaPearls({
   className = '',
 }: {
   className?: string;

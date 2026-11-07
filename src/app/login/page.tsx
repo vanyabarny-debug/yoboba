@@ -1,5 +1,5 @@
 import { Suspense, createElement } from 'react';
-import login_client from './login-client';
+import LoginClient from './login-client';
 
 export default function login_page() {
   return (
@@ -10,7 +10,7 @@ export default function login_page() {
         </main>
       }
     >
-      {createElement(login_client)}
+      {createElement(LoginClient)}
     </Suspense>
   );
 }

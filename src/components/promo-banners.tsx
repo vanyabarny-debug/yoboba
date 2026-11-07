@@ -19,7 +19,7 @@ type props = {
 // пауза между автолистаниями (по одной карточке)
 const AUTOPLAY_DELAY = 3500;
 
-export default function promo_banners({
+export default function PromoBanners({
   promos,
   on_promo_click,
   edit_mode = false,

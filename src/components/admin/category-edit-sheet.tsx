@@ -1,6 +1,6 @@
 'use client';
 
-import { createElement, useEffect, useState } from 'react';
+import { createElement, useState } from 'react';
 import { admin_sheet } from '@/components/admin/admin-sheet';
 import type { heading_style } from '@/lib/heading-style';
 import { get_category_heading_style, set_category_heading_style } from '@/lib/menu-store';
@@ -13,7 +13,7 @@ type props = {
   on_delete: (name: string) => void;
 };
 
-export default function category_edit_sheet({
+export default function CategoryEditSheet({
   category,
   item_count,
   on_close,
@@ -22,17 +22,18 @@ export default function category_edit_sheet({
 }: props) {
   const [heading_style, set_heading_style] = useState<heading_style>('soft');
 
-  useEffect(() => {
-    if (category) set_heading_style(get_category_heading_style(category));
-  }, [category]);
+  const [style_for, set_style_for] = useState<string | null>(null);
+  if (category && style_for !== category) {
+    set_style_for(category);
+    set_heading_style(get_category_heading_style(category));
+  }
 
   if (!category) return null;
 
-  return createElement(admin_sheet, {
-    open: true,
-    title: 'категория меню',
-    on_close,
-    children: (
+  return createElement(
+    admin_sheet,
+    { open: true, title: 'категория меню', on_close },
+    (
       <form
         onSubmit={(e) => {
           e.preventDefault();
@@ -113,6 +114,6 @@ export default function category_edit_sheet({
           </button>
         </div>
       </form>
-    ),
-  });
+    )
+  );
 }

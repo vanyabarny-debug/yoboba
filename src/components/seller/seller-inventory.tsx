@@ -156,29 +156,37 @@ export default function SellerInventory({
     [spot_id]
   );
 
-  const load = useCallback(async () => {
-    const res = await fetch(stock_path, { credentials: 'same-origin' });
-    const body = (await res.json().catch(() => null)) as {
-      error?: string;
-      must_count?: boolean;
-      categories?: public_cat[];
-      rows?: public_row[];
-      money?: stock_money | null;
-      lost?: number;
-      writeoffs_sum?: number;
-      writeoffs_count?: number;
-      prep_stations?: prep_station_view[];
-    } | null;
-    if (!res.ok) {
-      throw new Error(body?.error || 'не удалось загрузить склад');
-    }
-    apply_payload(body ?? {}, setters);
-    set_error('');
-  }, [setters, stock_path]);
+  const load = useCallback(
+    () =>
+      fetch(stock_path, { credentials: 'same-origin' }).then(async (res) => {
+        const body = (await res.json().catch(() => null)) as {
+          error?: string;
+          must_count?: boolean;
+          categories?: public_cat[];
+          rows?: public_row[];
+          money?: stock_money | null;
+          lost?: number;
+          writeoffs_sum?: number;
+          writeoffs_count?: number;
+          prep_stations?: prep_station_view[];
+        } | null;
+        if (!res.ok) {
+          throw new Error(body?.error || 'не удалось загрузить склад');
+        }
+        apply_payload(body ?? {}, setters);
+        set_error('');
+      }),
+    [setters, stock_path]
+  );
+
+  const [loading_for, set_loading_for] = useState<string | null>(null);
+  if (loading_for !== stock_path) {
+    set_loading_for(stock_path);
+    set_loading(true);
+  }
 
   useEffect(() => {
     let cancelled = false;
-    set_loading(true);
     load()
       .catch((e) => {
         if (!cancelled) set_error(e instanceof Error ? e.message : 'ошибка склада');
@@ -191,9 +199,12 @@ export default function SellerInventory({
     };
   }, [load]);
 
-  useEffect(() => {
-    if (active && must_count) set_count_open(true);
-  }, [must_count, active]);
+  const count_needed = Boolean(active && must_count);
+  const [count_needed_seen, set_count_needed_seen] = useState(false);
+  if (count_needed_seen !== count_needed) {
+    set_count_needed_seen(count_needed);
+    if (count_needed) set_count_open(true);
+  }
 
   useEffect(() => {
     on_nav_depth?.(

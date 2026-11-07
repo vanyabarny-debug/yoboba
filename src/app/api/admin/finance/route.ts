@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 import { session_cookie } from '@/lib/session';
-import { read_finance_state, write_finance_state } from '@/lib/finance/finance-server';
+import { finance_stamp, read_finance_state, revive_finance_ids, write_finance_state } from '@/lib/finance/finance-server';
 import {
   delete_writeoff_audits,
   merge_stock_audit,
@@ -56,7 +56,7 @@ export async function GET() {
     }
   }
   return NextResponse.json(
-    { state: with_audit, menu },
+    { state: with_audit, menu, stamp: finance_stamp(synced) },
     { headers: { 'cache-control': 'private, no-store, max-age=0' } }
   );
 }
@@ -90,15 +90,16 @@ export async function PUT(request: Request) {
     prepUsage: cloud.prepUsage,
     stockAudit: filter_stock_audit(merge_stock_audit(table_audit, [...(cloud.stockAudit ?? []), ...(incoming.stockAudit ?? [])])),
   };
+  const base = Number((body as { base?: unknown })?.base);
   try {
-    await write_finance_state(state);
+    const wrote = await write_finance_state(state, Number.isFinite(base) && base > 0 ? { base } : {});
+    return NextResponse.json({ ok: true, merged: wrote.merged, stamp: wrote.stamp });
   } catch (e) {
     return NextResponse.json({ error: e instanceof Error ? e.message : 'ошибка записи' }, { status: 500 });
   }
-  return NextResponse.json({ ok: true });
 }
 
-/** служебные действия: обнулить тестовые списания */
+/** служебные действия: обнулить тестовые списания, вернуть удалённое при импорте бэкапа */
 export async function POST(request: Request) {
   if (!(await is_admin())) {
     return NextResponse.json({ error: 'доступ запрещён' }, { status: 403 });
@@ -110,6 +111,15 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'некорректный json' }, { status: 400 });
   }
   const kind = (body as { kind?: string })?.kind;
+  if (kind === 'revive') {
+    const raw = (body as { ids?: unknown }).ids;
+    const ids = Array.isArray(raw) ? raw.filter((id): id is string => typeof id === 'string' && id.length <= 80) : [];
+    try {
+      return NextResponse.json({ ok: true, revived: await revive_finance_ids(ids.slice(0, 50_000)) });
+    } catch (e) {
+      return NextResponse.json({ error: e instanceof Error ? e.message : 'ошибка записи' }, { status: 500 });
+    }
+  }
   if (kind !== 'purge_writeoffs') {
     return NextResponse.json({ error: 'неизвестное действие' }, { status: 400 });
   }

@@ -1,6 +1,7 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState, createElement, type ReactNode } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, createElement, type ReactNode } from 'react';
+import { useHydrated } from '@/lib/use-hydrated';
 import { create_client } from '@/lib/supabase/client';
 import { is_supabase_configured } from '@/lib/supabase/config';
 import { get_demo_user, clear_session, create_demo_user } from '@/lib/demo-auth';
@@ -17,7 +18,7 @@ import {
   play_timer_alarm,
 } from '@/lib/order-chime';
 import { get_active_spots, get_spots } from '@/lib/spot-store';
-import { use_page_swipe } from '@/lib/use-page-swipe';
+import { usePageSwipe } from '@/lib/use-page-swipe';
 import type {
   cash_transaction,
   order,
@@ -25,29 +26,29 @@ import type {
   seller_shift_record,
   store_spot,
 } from '@/lib/types';
-import cash_register_modal, { type cash_checkout } from '@/components/seller/cash-register-modal';
-import barista_analytics_panel from '@/components/seller/barista-analytics';
-import barista_login_sheet from '@/components/seller/barista-login-sheet';
-import pos_panel from '@/components/seller/pos-panel';
+import CashRegisterModal, { type cash_checkout } from '@/components/seller/cash-register-modal';
+import BaristaAnalyticsPanel from '@/components/seller/barista-analytics';
+import BaristaLoginSheet from '@/components/seller/barista-login-sheet';
+import PosPanel from '@/components/seller/pos-panel';
 import prep_pots_hud from '@/components/seller/prep-pots-hud';
 import prep_station_card from '@/components/seller/prep-station-card';
 import prep_batches_card, { PrepBatchesSheet, usePrepBatches } from '@/components/seller/prep-batches';
 import seller_inventory from '@/components/seller/seller-inventory';
 import type { prep_station_view } from '@/lib/finance/prep-stations';
-import drink_cook_guide from '@/components/seller/drink-cook-guide';
-import task_guide from '@/components/seller/task-guide';
-import shift_task_card from '@/components/seller/shift-task-card';
+import DrinkCookGuide from '@/components/seller/drink-cook-guide';
+import TaskGuide from '@/components/seller/task-guide';
+import ShiftTaskCard from '@/components/seller/shift-task-card';
 import opening_task_card from '@/components/seller/opening-task-card';
-import opening_task_guide from '@/components/seller/opening-task-guide';
+import OpeningTaskGuide from '@/components/seller/opening-task-guide';
 import closing_task_card from '@/components/seller/closing-task-card';
-import closing_task_guide from '@/components/seller/closing-task-guide';
+import ClosingTaskGuide from '@/components/seller/closing-task-guide';
 import { type opening_task } from '@/lib/opening-checklist';
 import { type closing_task } from '@/lib/closing-checklist';
-import order_prep_card, {
+import OrderPrepCard, {
   type drink_row,
   type prep_state,
 } from '@/components/seller/order-prep-card';
-import order_revise_sheet from '@/components/seller/order-revise-sheet';
+import OrderReviseSheet from '@/components/seller/order-revise-sheet';
 import type { day_task_template } from '@/lib/day-task-templates';
 import {
   apply_day_templates,
@@ -68,10 +69,10 @@ import {
   type board_card,
   type placement,
 } from '@/lib/management-board';
-import drink_craft from '@/components/seller/drink-craft';
-import business_pulse from '@/components/seller/business-pulse';
-import cashier_radio from '@/components/seller/cashier-radio';
-import push_broadcast from '@/components/push-broadcast';
+import DrinkCraft from '@/components/seller/drink-craft';
+import BusinessPulse from '@/components/seller/business-pulse';
+import CashierRadio from '@/components/seller/cashier-radio';
+import PushBroadcast from '@/components/push-broadcast';
 
 const seller_panes = [
   { id: 'work', label: 'в работе', right: 'work' },
@@ -338,7 +339,7 @@ function shift_picker({
   );
 }
 
-export default function seller_board() {
+export default function SellerBoard() {
   const router = useRouter();
   const [tab, set_tab] = useState<tab>('work');
   const [rights, set_rights] = useState<seller_access>(default_seller_access);
@@ -394,8 +395,10 @@ export default function seller_board() {
   const handed_day_ref = useRef(moscow_today_iso());
   const sales_sync_ref = useRef('');
   const sales_seller_ref = useRef('');
-  shift_date_ref.current = shift?.shift_date;
-  seller_id_ref.current = seller_id;
+  useLayoutEffect(() => {
+    shift_date_ref.current = shift?.shift_date;
+    seller_id_ref.current = seller_id;
+  });
 
   useEffect(() => {
     if (sales_seller_ref.current === seller_id) return;
@@ -405,7 +408,7 @@ export default function seller_board() {
   const panes = seller_panes.filter((pane) => rights[pane.right]);
   const tab_index = panes.findIndex((pane) => pane.id === tab);
 
-  const { viewport_ref, page_style, width: board_w, height: board_h } = use_page_swipe({
+  const { viewport_ref, page_style, width: board_w, height: board_h } = usePageSwipe({
     index: Math.max(0, tab_index),
     count: Math.max(1, panes.length),
     enabled: !paying && !cook && !revising && !task_guide_id && !need_shift && !need_barista && !switch_barista_open && !prep_open_id && !preps_open && !(tab === 'pos' && pos_depth) && !(tab === 'stock' && stock_depth),
@@ -425,20 +428,22 @@ export default function seller_board() {
     };
   }, []);
 
-  useEffect(() => {
-    const open = seller_panes.filter((pane) => rights[pane.right]);
-    if (open.some((pane) => pane.id === tab)) return;
-    if (open[0]) set_tab(open[0].id);
-  }, [rights, tab]);
+  const allowed_panes = seller_panes.filter((pane) => rights[pane.right]);
+  if (allowed_panes[0] && !allowed_panes.some((pane) => pane.id === tab)) {
+    set_tab(allowed_panes[0].id);
+  }
 
   useEffect(() => {
     tab_ref.current = tab;
   }, [tab]);
 
-  useEffect(() => {
+  const [depth_tab, set_depth_tab] = useState(tab);
+  if (depth_tab !== tab) {
+    set_depth_tab(tab);
+    if (tab === 'work') set_unread_new(0);
     if (tab !== 'pos') set_pos_depth(false);
     if (tab !== 'stock') set_stock_depth(false);
-  }, [tab]);
+  }
 
   function stop_order_alarm() {
     if (alarm_timer.current != null) {
@@ -506,6 +511,7 @@ export default function seller_board() {
     []
   );
 
+  const load_again = useRef<() => Promise<void>>(async () => {});
   const load = useCallback(async () => {
     if (load_inflight.current) {
       load_queued.current = true;
@@ -663,18 +669,32 @@ export default function seller_board() {
       if (load_inflight.current === task) load_inflight.current = null;
       if (load_queued.current) {
         load_queued.current = false;
-        void load();
+        void load_again.current();
       }
     });
     load_inflight.current = task;
     await task;
   }, [hydrate_prep]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
+    load_again.current = load;
+  });
+
+  const hydrated = useHydrated();
+  const [restored, set_restored] = useState(false);
+  if (hydrated && !restored) {
+    set_restored(true);
     set_prep_map(load_prep_map());
     set_order_starts(load_order_starts());
     set_handed(load_handed(board_day()));
+    const user = get_demo_user();
+    if (user && user.id && user.id !== 'pos-terminal') {
+      set_seller_id(user.id);
+      set_seller_name(user.name);
+    }
+  }
 
+  useEffect(() => {
     function apply_spots(allowed_ids: string[]) {
       const all = get_active_spots();
       const available =
@@ -709,8 +729,6 @@ export default function seller_board() {
 
     const user = get_demo_user();
     if (user && user.id && user.id !== 'pos-terminal') {
-      set_seller_id(user.id);
-      set_seller_name(user.name);
       seller_ref.current = { id: user.id, name: user.name };
     }
 
@@ -796,16 +814,17 @@ export default function seller_board() {
   useEffect(() => {
     if (tab !== 'work') return;
     stop_order_alarm();
-    set_unread_new(0);
 
     const ids = [...pending_blink_ref.current];
     if (!ids.length) return;
     pending_blink_ref.current.clear();
 
-    set_fresh_ids((prev) => {
-      const next = new Set(prev);
-      for (const id of ids) next.add(id);
-      return next;
+    const frame = window.requestAnimationFrame(() => {
+      set_fresh_ids((prev) => {
+        const next = new Set(prev);
+        for (const id of ids) next.add(id);
+        return next;
+      });
     });
     const t = window.setTimeout(() => {
       set_fresh_ids((prev) => {
@@ -814,7 +833,10 @@ export default function seller_board() {
         return next;
       });
     }, NEW_ORDER_BLINK_MS);
-    return () => window.clearTimeout(t);
+    return () => {
+      window.cancelAnimationFrame(frame);
+      window.clearTimeout(t);
+    };
   }, [tab]);
 
   useEffect(() => {
@@ -943,11 +965,10 @@ export default function seller_board() {
     };
   }, []);
 
+  if (!shift?.spot_id && day_tasks.length) set_day_tasks([]);
+
   useEffect(() => {
-    if (!shift?.spot_id) {
-      set_day_tasks([]);
-      return;
-    }
+    if (!shift?.spot_id) return;
     if (!task_templates || !board || !seller_id) return;
     const spot = shift.spot_id;
     const templates = task_templates;
@@ -975,9 +996,12 @@ export default function seller_board() {
       }
     }
     handed_day_ref.current = moscow_today_iso();
-    sync();
+    const first = window.setTimeout(sync, 0);
     const id = window.setInterval(sync, 30_000);
-    return () => window.clearInterval(id);
+    return () => {
+      window.clearTimeout(first);
+      window.clearInterval(id);
+    };
   }, [shift?.spot_id, task_templates, board, seller_id, rights, load]);
 
   useEffect(() => {
@@ -997,7 +1021,8 @@ export default function seller_board() {
     if (!ended_day) return;
     const spot_id = shift.spot_id;
     const tasks = miss_due_tasks(spot_id, ended_day, now);
-    if (ended_day === today_iso) set_day_tasks(tasks);
+    const frame =
+      ended_day === today_iso ? window.requestAnimationFrame(() => set_day_tasks(tasks)) : null;
     const same_day = ended_day === today_iso;
     void fetch('/api/seller/shift-log', {
       method: 'POST',
@@ -1056,6 +1081,9 @@ export default function seller_board() {
           : [],
       }),
     });
+    return () => {
+      if (frame != null) window.cancelAnimationFrame(frame);
+    };
   }, [clock, shift?.spot_id, shift?.address, shift?.city, seller_name, opening_task_state, closing_task_state, handed, orders]);
 
   function press_task(task_id: string) {
@@ -1675,7 +1703,7 @@ export default function seller_board() {
               },
             })
           : null}
-        {createElement(cashier_radio, {
+        {createElement(CashierRadio, {
           key: 'cashier-radio',
           hours: shift_spots.find((spot) => spot.id === shift?.spot_id)?.hours ?? null,
         })}
@@ -1694,7 +1722,7 @@ export default function seller_board() {
             })
           : null}
         {open_tasks.map((t) =>
-          createElement(shift_task_card, {
+          createElement(ShiftTaskCard, {
             key: `task-${t.id}`,
             task: t,
             mode: 'work',
@@ -1702,24 +1730,24 @@ export default function seller_board() {
           })
         )}
         {in_work.map((o) =>
-          createElement(order_prep_card, {
-            key: `work-${o.id}`,
-            order: o,
-            drinks: drinks_for(o),
-            prep: prep_map[o.id] || {},
-            is_new: fresh_ids.has(o.id),
-            mode: card_mode_for_work(o),
-            on_start_drink: start_drink,
-            on_mark_drink_done: mark_drink_done,
-            on_final_action,
-            on_open_cook: (drink) => set_cook({ order: o, drink_key: drink.key }),
-            on_edit: (order) => {
+          <OrderPrepCard
+            key={`work-${o.id}`}
+            order={o}
+            drinks={drinks_for(o)}
+            prep={prep_map[o.id] || {}}
+            is_new={fresh_ids.has(o.id)}
+            mode={card_mode_for_work(o)}
+            on_start_drink={start_drink}
+            on_mark_drink_done={mark_drink_done}
+            on_final_action={on_final_action}
+            on_open_cook={(drink) => set_cook({ order: o, drink_key: drink.key })}
+            on_edit={(order) => {
               set_revise_error('');
               set_revising(order);
-            },
-            on_delete: (order) => void delete_order_card(order),
-            guide_open: cook?.order.id === o.id,
-          })
+            }}
+            on_delete={(order) => void delete_order_card(order)}
+            guide_open={cook?.order.id === o.id}
+          />
         )}
       </>
     );
@@ -1754,7 +1782,7 @@ export default function seller_board() {
             })
           : null}
         {done_tasks.map((t) =>
-          createElement(shift_task_card, {
+          createElement(ShiftTaskCard, {
             key: `task-done-${t.id}`,
             task: t,
             mode: 'done',
@@ -1762,27 +1790,26 @@ export default function seller_board() {
           })
         )}
         {handed_out.map((o) =>
-          createElement(order_prep_card, {
-            key: `handed-${o.id}`,
-            order: o,
-            drinks: drinks_for(o),
-            prep:
-              prep_map[o.id] ||
+          <OrderPrepCard
+            key={`handed-${o.id}`}
+            order={o}
+            drinks={drinks_for(o)}
+            prep={prep_map[o.id] ||
               Object.fromEntries(
                 drinks_for(o).map((d) => [d.key, { started_at: null, done: true }])
-              ),
-            mode: 'done',
-            on_start_drink: start_drink,
-            on_mark_drink_done: mark_drink_done,
-            on_final_action: () => {},
-            on_open_cook: (drink) => set_cook({ order: o, drink_key: drink.key }),
-            on_edit: (order) => {
+              )}
+            mode="done"
+            on_start_drink={start_drink}
+            on_mark_drink_done={mark_drink_done}
+            on_final_action={() => {}}
+            on_open_cook={(drink) => set_cook({ order: o, drink_key: drink.key })}
+            on_edit={(order) => {
               set_revise_error('');
               set_revising(order);
-            },
-            on_delete: (order) => void delete_order_card(order),
-            guide_open: cook?.order.id === o.id,
-          })
+            }}
+            on_delete={(order) => void delete_order_card(order)}
+            guide_open={cook?.order.id === o.id}
+          />
         )}
       </>
     );
@@ -1888,15 +1915,15 @@ export default function seller_board() {
   return (
     <div className="flex h-[calc(100dvh-var(--safe-top)-var(--safe-bottom))] min-h-0 flex-col bg-[#f0f1f4]">
       {(need_barista || switch_barista_open) &&
-        createElement(barista_login_sheet, {
-          title: switch_barista_open ? 'сменить бариста' : 'кто на смене',
-          subtitle: switch_barista_open
+        <BaristaLoginSheet
+          title={switch_barista_open ? 'сменить бариста' : 'кто на смене'}
+          subtitle={switch_barista_open
             ? 'войдите логином следующего бариста'
-            : 'общий вход в кассу уже есть · теперь ваш логин',
-          busy: barista_busy,
-          error: barista_error,
-          allow_cancel: switch_barista_open,
-          on_cancel: () => {
+            : 'общий вход в кассу уже есть · теперь ваш логин'}
+          busy={barista_busy}
+          error={barista_error}
+          allow_cancel={switch_barista_open}
+          on_cancel={() => {
             set_switch_barista_open(false);
             set_barista_error('');
             if (!need_barista && seller_id && !load_shift()) {
@@ -1912,9 +1939,9 @@ export default function seller_board() {
                 })()
               );
             }
-          },
-          on_submit: submit_barista_login,
-        })}
+          }}
+          on_submit={submit_barista_login}
+        />}
 
       {need_shift &&
         !need_barista &&
@@ -2079,23 +2106,22 @@ export default function seller_board() {
             {pane.id === 'work' ? render_work_list() : null}
             {pane.id === 'ready' ? render_handed_list() : null}
             {pane.id === 'pos'
-              ? createElement(pos_panel, {
-                  on_created: () => {
+              ? <PosPanel
+                  on_created={() => {
                     set_tab(rights.work ? 'work' : pane.id);
                     void load();
-                  },
-                  on_nav_depth: set_pos_depth,
-                  on_prep_shortage: (stationId) => {
+                  }}
+                  on_nav_depth={set_pos_depth}
+                  on_prep_shortage={(stationId) => {
                     set_prep_open_id(stationId);
-                  },
-                  seller_id,
-                  seller_name,
-                  shift_id:
-                    shift?.id && !shift.id.startsWith('spot-') ? shift.id : null,
-                  shift_date: board_day(),
-                  spot_id: shift?.spot_id || null,
-                  spot_address: shift?.address || null,
-                })
+                  }}
+                  seller_id={seller_id}
+                  seller_name={seller_name}
+                  shift_id={shift?.id && !shift.id.startsWith('spot-') ? shift.id : null}
+                  shift_date={board_day()}
+                  spot_id={shift?.spot_id || null}
+                  spot_address={shift?.address || null}
+                />
               : null}
             {pane.id === 'stock'
               ? createElement(seller_inventory, {
@@ -2105,9 +2131,9 @@ export default function seller_board() {
                   spot_label: shift?.address || '',
                 })
               : null}
-            {pane.id === 'craft' ? createElement(drink_craft) : null}
+            {pane.id === 'craft' ? createElement(DrinkCraft) : null}
             {pane.id === 'analytics'
-              ? createElement(barista_analytics_panel, {
+              ? createElement(BaristaAnalyticsPanel, {
                   seller_id,
                   seller_name,
                   spot_id: shift?.spot_id,
@@ -2115,8 +2141,8 @@ export default function seller_board() {
                   shift_date: board_day(),
                 })
               : null}
-            {pane.id === 'business' ? createElement(business_pulse) : null}
-            {pane.id === 'push' ? createElement(push_broadcast) : null}
+            {pane.id === 'business' ? createElement(BusinessPulse) : null}
+            {pane.id === 'push' ? createElement(PushBroadcast) : null}
           </div>
         ))}
       </main>
@@ -2137,30 +2163,31 @@ export default function seller_board() {
           on_preps={prep_batches.set_preps}
         />
       ) : null}
-      {createElement(cash_register_modal, {
-        order: paying,
-        seller_name,
-        on_close: () => set_paying(null),
-        on_complete: complete_payment,
-        on_gift_redeemed: () => {
+      <CashRegisterModal
+        key={paying?.id ?? 'none'}
+        order={paying}
+        seller_name={seller_name}
+        on_close={() => set_paying(null)}
+        on_complete={complete_payment}
+        on_gift_redeemed={() => {
           set_paying(null);
           void load();
-        },
-      })}
+        }}
+      />
       {cook
-        ? createElement(drink_cook_guide, {
-            drinks: drinks_for(cook.order).map((d) => ({
+        ? <DrinkCookGuide
+            drinks={drinks_for(cook.order).map((d) => ({
               ...d,
               done: Boolean(prep_map[cook.order.id]?.[d.key]?.done),
               started: Boolean(prep_map[cook.order.id]?.[d.key]?.started_at),
-            })),
-            start_key: cook.drink_key,
-            on_start_drink: (drink) => {
+            }))}
+            start_key={cook.drink_key}
+            on_start_drink={(drink) => {
               const st = prep_map[cook.order.id]?.[drink.key];
               if (st?.done || st?.started_at) return;
               start_drink(cook.order.id, drink);
-            },
-            on_mark_drink_done: (drink) => {
+            }}
+            on_mark_drink_done={(drink) => {
               if (prep_map[cook.order.id]?.[drink.key]?.done) return;
               const started =
                 prep_map[cook.order.id]?.[drink.key]?.started_at || Date.now();
@@ -2169,12 +2196,12 @@ export default function seller_board() {
                 expected_ms: drink.prep_minutes * 60_000,
                 started_at: started,
               });
-            },
-            on_close: () => set_cook(null),
-          })
+            }}
+            on_close={() => set_cook(null)}
+          />
         : null}
       {revising
-        ? createElement(order_revise_sheet, {
+        ? createElement(OrderReviseSheet, {
             key: revising.id,
             order: revising,
             busy: revise_busy,
@@ -2187,49 +2214,49 @@ export default function seller_board() {
           })
         : null}
       {guided_task
-        ? createElement(task_guide, {
-            task: guided_task,
-            spot_id: shift?.spot_id || '',
-            on_press: () => press_task(guided_task.id),
-            on_close: () => set_task_guide_id(null),
-          })
+        ? <TaskGuide
+            task={guided_task}
+            spot_id={shift?.spot_id || ''}
+            on_press={() => press_task(guided_task.id)}
+            on_close={() => set_task_guide_id(null)}
+          />
         : null}
       {opening_guide_open && opening_task_state
-        ? createElement(opening_task_guide, {
-            task: opening_task_state,
-            seller_id: seller_id || seller_ref.current.id || 'seller',
-            seller_name: seller_name || seller_ref.current.name || 'бариста',
-            spot_city: shift?.city,
-            on_close: () => set_opening_guide_open(false),
-            on_update: (updated) => {
+        ? <OpeningTaskGuide
+            task={opening_task_state}
+            seller_id={seller_id || 'seller'}
+            seller_name={seller_name || 'бариста'}
+            spot_city={shift?.city}
+            on_close={() => set_opening_guide_open(false)}
+            on_update={(updated) => {
               set_opening_task_state(updated);
               if (updated.completed_at) {
                 setTimeout(() => set_opening_guide_open(false), 1500);
               }
-            },
-            on_shift: (server) => sync_from_server_shift(server),
-          })
+            }}
+            on_shift={(server) => sync_from_server_shift(server)}
+          />
         : null}
       {closing_guide_open && closing_task_state
-        ? createElement(closing_task_guide, {
-            task: closing_task_state,
-            seller_id: seller_id || seller_ref.current.id || 'seller',
-            seller_name: seller_name || seller_ref.current.name || 'бариста',
-            on_close: () => set_closing_guide_open(false),
-            on_update: (updated) => {
+        ? <ClosingTaskGuide
+            task={closing_task_state}
+            seller_id={seller_id || 'seller'}
+            seller_name={seller_name || 'бариста'}
+            on_close={() => set_closing_guide_open(false)}
+            on_update={(updated) => {
               set_closing_task_state(updated);
               if (updated.completed_at) {
                 setTimeout(() => set_closing_guide_open(false), 1500);
               }
-            },
-            on_shift: (server) => {
+            }}
+            on_shift={(server) => {
               sync_from_server_shift(server);
               if (server.closed_at) {
                 // после закрытия — снять точку, без переоткрытия в этот день
                 window.setTimeout(() => leave_spot_assignment(), 1600);
               }
-            },
-          })
+            }}
+          />
         : null}
     </div>
   );

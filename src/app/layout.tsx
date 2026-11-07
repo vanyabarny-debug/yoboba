@@ -4,11 +4,11 @@ import { BRAND_COLOR_ACCENT, BRAND_NAME } from '@/lib/brand';
 import { default_brand_fonts_stylesheet_href } from '@/lib/brand-font-catalog';
 import { core_font_variable_classes } from '@/lib/brand-fonts-core';
 import './globals.css';
-import auth_bootstrap from '@/components/auth-bootstrap';
-import brand_theme from '@/components/brand-theme';
-import pwa_register from '@/components/pwa-register';
-import app_splash from '@/components/app-splash';
-import published_hydrate from '@/components/published-hydrate';
+import AuthBootstrap from '@/components/auth-bootstrap';
+import BrandTheme from '@/components/brand-theme';
+import PwaRegister from '@/components/pwa-register';
+import AppSplash from '@/components/app-splash';
+import PublishedHydrate from '@/components/published-hydrate';
 import active_order_widget from '@/components/active-order-widget';
 import notify_permission_gate from '@/components/notify-permission-gate';
 
@@ -51,11 +51,11 @@ export default function root_layout({
         ) : null}
       </head>
       <body className="min-h-full bg-page text-foreground font-sans">
-        {createElement(pwa_register)}
-        {createElement(brand_theme)}
-        {createElement(published_hydrate)}
-        {createElement(auth_bootstrap)}
-        {createElement(app_splash)}
+        {createElement(PwaRegister)}
+        {createElement(BrandTheme)}
+        {createElement(PublishedHydrate)}
+        {createElement(AuthBootstrap)}
+        {createElement(AppSplash)}
         {children}
         {createElement(active_order_widget)}
         {createElement(notify_permission_gate)}

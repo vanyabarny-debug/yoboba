@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { agent_log } from '@/lib/agent-log';
@@ -13,19 +13,28 @@ function is_standalone_pwa() {
   return mq || ios;
 }
 
-export default function admin_login_page() {
+function subscribe_display_mode(on_change: () => void) {
+  const mq = window.matchMedia('(display-mode: standalone)');
+  mq.addEventListener('change', on_change);
+  return () => mq.removeEventListener('change', on_change);
+}
+
+export default function AdminLoginPage() {
   const router = useRouter();
   const [login, set_login] = useState('');
   const [password, set_password] = useState('');
   const [loading, set_loading] = useState(false);
   const [error, set_error] = useState('');
-  const [in_pwa, set_in_pwa] = useState(false);
-  const mount_id = useRef(`login-${Date.now()}`);
+  const in_pwa = useSyncExternalStore(subscribe_display_mode, is_standalone_pwa, () => false);
+  const mount_id = useRef('');
   const render_count = useRef(0);
-  render_count.current += 1;
 
   useEffect(() => {
-    set_in_pwa(is_standalone_pwa());
+    render_count.current += 1;
+  });
+
+  useEffect(() => {
+    mount_id.current = `login-${Date.now()}`;
     // #region agent log
     agent_log({ location: 'admin/login/page.tsx:mount', message: 'login page mounted', data: { mountId: mount_id.current }, hypothesisId: 'H1' });
     // #endregion
@@ -37,13 +46,15 @@ export default function admin_login_page() {
     function on_page_show(e: PageTransitionEvent) {
       if (e.persisted) unlock();
     }
-    window.addEventListener('pageshow', on_page_show);
-    document.addEventListener('visibilitychange', () => {
+    function on_visibility() {
       if (document.visibilityState === 'visible') unlock();
-    });
+    }
+    window.addEventListener('pageshow', on_page_show);
+    document.addEventListener('visibilitychange', on_visibility);
 
     return () => {
       window.removeEventListener('pageshow', on_page_show);
+      document.removeEventListener('visibilitychange', on_visibility);
       // #region agent log
       agent_log({ location: 'admin/login/page.tsx:unmount', message: 'login page unmounted', data: { mountId: mount_id.current, renderCount: render_count.current }, hypothesisId: 'H1' });
       // #endregion

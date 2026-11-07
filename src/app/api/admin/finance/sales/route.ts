@@ -242,9 +242,9 @@ export async function GET(request: Request) {
   let orders: tagged_order[] = [];
   if (is_supabase_configured()) {
     const supabase = create_service_client();
-    let query = supabase
+    const query = supabase
       .from('orders')
-      .select('id, items, status, created_at, total_price, spot_id')
+      .select('id, items, status, created_at, total_price, spot_id, payment_type, is_paid, user_id, customer_phone')
       .gte('created_at', start.toISOString())
       .lt('created_at', end.toISOString())
       .neq('status', 'cancelled');
@@ -254,7 +254,7 @@ export async function GET(request: Request) {
       if (/spot_id/i.test(error.message)) {
         const retry = await supabase
           .from('orders')
-          .select('id, items, status, created_at, total_price')
+          .select('id, items, status, created_at, total_price, payment_type, is_paid, user_id, customer_phone')
           .gte('created_at', start.toISOString())
           .lt('created_at', end.toISOString())
           .neq('status', 'cancelled');
@@ -297,11 +297,63 @@ export async function GET(request: Request) {
   let orders_count = 0;
   let revenue_total = 0;
   let cups_total = 0;
+  const money = {
+    cash: 0,
+    card: 0,
+    online: 0,
+    bonus_orders: 0,
+    /** сколько недобрали к цене меню: скидки кассира, студенческая, «продано за» */
+    discount: 0,
+    /** напитки себе: сколько стоили бы по меню и сколько заплатили */
+    staff_list: 0,
+    staff_paid: 0,
+    unpaid: 0,
+    unpaid_orders: 0,
+    paid_orders: 0,
+    identified_orders: 0,
+  };
+  const need_phone = scoped
+    .filter((o) => !normalize_phone((o as identity_order).customer_phone) && (o as identity_order).user_id)
+    .map((o) => (o as identity_order).user_id as string);
+  const phone_by_user = await profile_phones(need_phone).catch(() => new Map<string, string>());
 
   for (const o of scoped) {
     orders_count += 1;
     const rev = Number(o.total_price) || 0;
     revenue_total += rev;
+    const pay = o.payment_type;
+    if (pay === 'bonus') money.bonus_orders += 1;
+    else if (pay === 'card') money.card += rev;
+    else if (pay === 'online') money.online += rev;
+    else money.cash += rev;
+    if (o.is_paid === false) {
+      money.unpaid += rev;
+      money.unpaid_orders += 1;
+    } else if (rev > 0) {
+      money.paid_orders += 1;
+    }
+    const io = o as identity_order;
+    if (normalize_phone(io.customer_phone) || (io.user_id && phone_by_user.has(io.user_id))) {
+      money.identified_orders += 1;
+    }
+    for (const raw of (o.items as order_item[]) ?? []) {
+      const qty = Math.max(0, Number(raw.quantity) || 0);
+      if (!qty) continue;
+      const paid = Math.max(0, Number(raw.price) || 0);
+      const item = menu_by_id.get(raw.menu_id);
+      const list =
+        Number(raw.list_price) > 0
+          ? Number(raw.list_price)
+          : item
+            ? configured_unit_price(item, raw.volume || /(\d{3})\s*мл/i.exec(raw.name)?.[1] || null, 0)
+            : paid;
+      if (raw.kind === 'staff') {
+        money.staff_list += list * qty;
+        money.staff_paid += paid * qty;
+      } else if (pay !== 'bonus') {
+        money.discount += Math.max(0, list - paid) * qty;
+      }
+    }
     const cups = count_order_cups((o.items as order_item[]) ?? [], menu);
     cups_total += cups;
     const ymd = moscow_ymd(new Date(o.created_at));
@@ -513,6 +565,7 @@ export async function GET(request: Request) {
       by_day,
       rhythm,
       returns,
+      money: Object.fromEntries(Object.entries(money).map(([k, v]) => [k, Math.round(v)])),
       unmatched: [...unmatched.values()].sort((a, b) => b.qty - a.qty),
     },
     { headers: { 'cache-control': 'private, no-store, max-age=0' } }

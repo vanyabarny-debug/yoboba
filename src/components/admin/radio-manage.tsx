@@ -17,6 +17,12 @@ function new_upload_id() {
   return `track-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
+async function fetch_radio() {
+  const res = await fetch('/api/admin/radio', { credentials: 'same-origin' });
+  const data = (await res.json().catch(() => ({}))) as { tracks?: radio_track[]; error?: string };
+  return { ok: res.ok, data };
+}
+
 export default function RadioManage() {
   const [tracks, set_tracks] = useState<radio_track[]>([]);
   const [url, set_url] = useState('');
@@ -27,26 +33,18 @@ export default function RadioManage() {
   const [note, set_note] = useState('');
   const file_input = useRef<HTMLInputElement>(null);
 
-  async function reload() {
-    set_loading(true);
-    try {
-      const res = await fetch('/api/admin/radio', { credentials: 'same-origin' });
-      const data = (await res.json().catch(() => ({}))) as { tracks?: radio_track[]; error?: string };
-      if (!res.ok) {
-        set_error(data.error || 'нет доступа');
-        return;
-      }
-      set_tracks(data.tracks || []);
-      set_error('');
-    } catch {
-      set_error('ошибка сети');
-    } finally {
-      set_loading(false);
-    }
-  }
-
   useEffect(() => {
-    void reload();
+    fetch_radio()
+      .then(({ ok, data }) => {
+        if (!ok) {
+          set_error(data.error || 'нет доступа');
+          return;
+        }
+        set_tracks(data.tracks || []);
+        set_error('');
+      })
+      .catch(() => set_error('ошибка сети'))
+      .finally(() => set_loading(false));
   }, []);
 
   async function add_link(e: React.FormEvent) {

@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import {
   scale_prep_steps,
   unit_label_for_material,
@@ -76,10 +76,7 @@ export default function PrepStepsEditor({
     else set_inner_ml(ml);
   }
 
-  useEffect(() => {
-    if (controlled) return;
-    if (!volumes.includes(inner_ml)) set_inner_ml(volumes[0] ?? base_ml);
-  }, [volumes, inner_ml, base_ml, controlled]);
+  if (!controlled && !volumes.includes(inner_ml)) set_inner_ml(volumes[0] ?? base_ml);
 
   const shown = useMemo(
     () => scale_prep_steps(steps, base_ml, view_ml, materials),

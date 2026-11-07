@@ -4,7 +4,7 @@ import { useSearchParams } from 'next/navigation';
 import FinanceFrame from '@/components/admin/finance/finance-frame';
 import TechcardsSection from '@/components/admin/finance/techcards-section';
 
-export default function admin_menu_page() {
+export default function AdminMenuPage() {
   const craft = useSearchParams().get('craft') === '1';
   return (
     <FinanceFrame title="меню" show_heading={false}>

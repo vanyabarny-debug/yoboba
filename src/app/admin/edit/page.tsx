@@ -1,5 +1,5 @@
 import { createElement, Suspense } from 'react';
-import home_client from '@/components/home-client';
+import HomeClient from '@/components/home-client';
 import { default_categories, apply_menu_item_badges, default_menu_items } from '@/lib/menu-store';
 import { default_promos } from '@/lib/promo-store';
 import {
@@ -12,7 +12,7 @@ export default function admin_edit_page() {
   return createElement(
     Suspense,
     { fallback: <div className="min-h-screen bg-page" /> },
-    createElement(home_client, {
+    createElement(HomeClient, {
       initial_menu: apply_menu_item_badges(default_menu_items),
       initial_categories: default_categories,
       initial_promos: default_promos,

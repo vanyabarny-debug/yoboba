@@ -33,7 +33,7 @@ function skeleton({ className = '', fill = false }: { className?: string; fill?:
   );
 }
 
-function menu_image_inner({
+function MenuImageInner({
   item,
   className = '',
   variant = 'card',
@@ -54,12 +54,14 @@ function menu_image_inner({
   const fill = variant === 'fill';
   const object_fit = fit === 'contain' ? 'object-contain' : 'object-cover';
 
-  useEffect(() => {
+  const [src_for, set_src_for] = useState({ primary, fallback });
+  if (src_for.primary !== primary || src_for.fallback !== fallback) {
+    set_src_for({ primary, fallback });
     const next = is_unusable_src(primary) ? fallback : primary;
     set_src(next);
     set_failed(is_unusable_src(next));
     set_loaded(false);
-  }, [primary, fallback]);
+  }
 
   // из кэша браузера load может прийти до onLoad — проверяем complete
   useEffect(() => {
@@ -112,7 +114,7 @@ function menu_image_inner({
   );
 }
 
-export default memo(menu_image_inner, (prev, next) => {
+export default memo(MenuImageInner, (prev, next) => {
   return (
     prev.item.id === next.item.id &&
     prev.item.name === next.item.name &&

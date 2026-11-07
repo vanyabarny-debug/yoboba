@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import AdminShell from '@/components/admin/admin-shell';
 import {
   empty_management_store,
@@ -658,8 +658,10 @@ export default function ManagementBoard() {
   const unplace_ref = useRef<(id: string) => void>(() => {});
   const open_ref = useRef<(id: string) => void>(() => {});
 
-  store_ref.current = store;
-  cards_ref.current = cards;
+  useLayoutEffect(() => {
+    store_ref.current = store;
+    cards_ref.current = cards;
+  });
 
   useEffect(() => {
     function reload() {
@@ -866,8 +868,10 @@ export default function ManagementBoard() {
     });
   }
 
-  place_ref.current = place;
-  unplace_ref.current = unplace;
+  useLayoutEffect(() => {
+    place_ref.current = place;
+    unplace_ref.current = unplace;
+  });
 
   function open_card(id: string) {
     const card = cards_ref.current.find((item) => item.id === id);
@@ -892,7 +896,9 @@ export default function ManagementBoard() {
     });
   }
 
-  open_ref.current = open_card;
+  useLayoutEffect(() => {
+    open_ref.current = open_card;
+  });
 
   function open_new() {
     set_draft({

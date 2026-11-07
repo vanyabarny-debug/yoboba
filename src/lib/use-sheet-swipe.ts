@@ -3,6 +3,7 @@
 import {
   useCallback,
   useEffect,
+  useLayoutEffect,
   useRef,
   useState,
   type CSSProperties,
@@ -24,7 +25,7 @@ type sheet_swipe_options = {
   get_scroll_top?: () => number;
 };
 
-export function use_sheet_swipe({
+export function useSheetSwipe({
   active,
   on_dismiss,
   on_back,
@@ -46,11 +47,13 @@ export function use_sheet_swipe({
   const get_scroll_top_ref = useRef(get_scroll_top);
   const vertical_only_ref = useRef(vertical_only);
 
-  can_back_ref.current = can_back;
-  on_back_ref.current = on_back;
-  on_dismiss_ref.current = on_dismiss;
-  get_scroll_top_ref.current = get_scroll_top;
-  vertical_only_ref.current = vertical_only;
+  useLayoutEffect(() => {
+    can_back_ref.current = can_back;
+    on_back_ref.current = on_back;
+    on_dismiss_ref.current = on_dismiss;
+    get_scroll_top_ref.current = get_scroll_top;
+    vertical_only_ref.current = vertical_only;
+  });
 
   useEffect(() => {
     const mq = window.matchMedia('(max-width: 1023px)');
@@ -72,9 +75,21 @@ export function use_sheet_swipe({
     write_offset({ x: 0, y: 0 });
   }, [write_offset]);
 
+  const [prev_active, set_prev_active] = useState(active);
+  if (prev_active !== active) {
+    set_prev_active(active);
+    if (active) {
+      set_snapping(false);
+      set_offset({ x: 0, y: 0 });
+    }
+  }
+
   useEffect(() => {
-    if (active) clear_gesture();
-  }, [active, clear_gesture]);
+    if (!active) return;
+    start_ref.current = null;
+    mode_ref.current = 'none';
+    offset_ref.current = { x: 0, y: 0 };
+  }, [active]);
 
   const on_touch_start_native = useCallback(
     (e: globalThis.TouchEvent) => {

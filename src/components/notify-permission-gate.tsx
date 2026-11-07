@@ -117,11 +117,10 @@ function NotifyPermissionInner() {
   const [busy, set_busy] = useState(false);
   const [mode, set_mode] = useState<sheet_mode>('ask');
 
+  if (open && staff_path(pathname)) set_open(false);
+
   useEffect(() => {
-    if (staff_path(pathname)) {
-      set_open(false);
-      return;
-    }
+    if (staff_path(pathname)) return;
 
     let cancelled = false;
 

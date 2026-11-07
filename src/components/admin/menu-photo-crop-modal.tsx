@@ -17,7 +17,7 @@ type props = {
   on_save: (data_url: string) => void;
 };
 
-export default function menu_photo_crop_modal({
+export default function MenuPhotoCropModal({
   open,
   file,
   title = 'фото товара',
@@ -32,12 +32,18 @@ export default function menu_photo_crop_modal({
   const [viewport_px, set_viewport_px] = useState(320);
   const [saving, set_saving] = useState(false);
 
-  useEffect(() => {
-    if (!open || !file) {
+  const shown_file = open ? file : null;
+  const [file_for, set_file_for] = useState(shown_file);
+  if (file_for !== shown_file) {
+    set_file_for(shown_file);
+    if (!shown_file) {
       set_img(null);
       set_crop(default_menu_photo_crop);
-      return;
     }
+  }
+
+  useEffect(() => {
+    if (!open || !file) return;
     let cancelled = false;
     load_image_from_file(file)
       .then((loaded) => {

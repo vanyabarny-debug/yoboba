@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import {
   format_phone_display,
   format_phone_input,
@@ -26,7 +26,7 @@ type props = {
   on_need_login: () => void;
 };
 
-export default function gift_sheet({
+export default function GiftSheet({
   open,
   items,
   actor,
@@ -43,15 +43,18 @@ export default function gift_sheet({
 
   const total = items.reduce((s, i) => s + i.price * i.quantity, 0);
 
-  useEffect(() => {
-    if (!open) return;
-    set_draft('');
-    set_message('');
-    set_step('form');
-    set_busy(false);
-    set_error('');
-    set_gift(null);
-  }, [open]);
+  const [was_open, set_was_open] = useState(false);
+  if (was_open !== open) {
+    set_was_open(open);
+    if (open) {
+      set_draft('');
+      set_message('');
+      set_step('form');
+      set_busy(false);
+      set_error('');
+      set_gift(null);
+    }
+  }
 
   if (!open) return null;
 

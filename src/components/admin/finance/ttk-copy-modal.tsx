@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import type { material, tech_card } from '@/lib/finance/model';
 import {
   build_ttk_bundle,
@@ -61,9 +61,11 @@ export default function TtkCopyModal({
   const [fill, set_fill] = useState<ttk_fill>(() => fill_from_card(card, vols));
   const [busy, set_busy] = useState(false);
 
-  useEffect(() => {
+  const [fill_for, set_fill_for] = useState({ open, vols, card });
+  if (fill_for.open !== open || fill_for.vols !== vols || fill_for.card !== card) {
+    set_fill_for({ open, vols, card });
     if (open) set_fill(fill_from_card(card, vols));
-  }, [open, vols, card]);
+  }
 
   if (!open) return null;
 

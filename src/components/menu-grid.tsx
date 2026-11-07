@@ -45,7 +45,7 @@ function pad_row(list: menu_item[]): (menu_item | null)[] {
   return out;
 }
 
-function dish_card({
+function DishCard({
   item,
   on_item_click,
   on_quick_add,
@@ -164,7 +164,7 @@ function empty_cell(key: string) {
   );
 }
 
-export default function menu_grid({
+export default function MenuGrid({
   items,
   categories,
   on_item_click,
@@ -229,7 +229,7 @@ export default function menu_grid({
               <div className="grid grid-cols-2 min-[1024px]:grid-cols-4 gap-2 gap-y-5 overflow-visible">
                 {cat_items.map((item) => (
                   <div key={item.id} className="min-w-0 min-[1024px]:h-full overflow-visible">
-                    {createElement(dish_card, { item, on_item_click, on_quick_add, student_verified })}
+                    {createElement(DishCard, { item, on_item_click, on_quick_add, student_verified })}
                   </div>
                 ))}
                 {desktop_cells.slice(cat_items.length).map((_, idx) => (

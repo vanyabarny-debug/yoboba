@@ -3,7 +3,7 @@
 import { createElement } from 'react';
 import type { promo_banner } from '@/lib/types';
 import { resolve_promo_title_layout } from '@/lib/promo-title-layout';
-import promo_title_on_image from '@/components/promo-title-on-image';
+import PromoTitleOnImage from '@/components/promo-title-on-image';
 import promo_image_vignette_layer from '@/components/promo-image-vignette';
 import type { promo_title_layout } from '@/lib/promo-title-layout';
 import type { promo_image_vignette } from '@/lib/promo-image-vignette';
@@ -34,7 +34,7 @@ export default function promo_image_with_title({
       />
       {createElement(promo_image_vignette_layer, { vignette: promo.image_vignette })}
       {!promo.title_in_image &&
-        createElement(promo_title_on_image, {
+        createElement(PromoTitleOnImage, {
           title: promo.title,
           layout,
           interactive,

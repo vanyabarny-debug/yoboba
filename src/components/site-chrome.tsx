@@ -3,9 +3,9 @@
 import { createElement, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import location_modal from '@/components/location-modal';
-import site_header from '@/components/site-header';
-import top_bar from '@/components/top-bar';
-import news_ticker from '@/components/news-ticker';
+import SiteHeader from '@/components/site-header';
+import TopBar from '@/components/top-bar';
+import NewsTicker from '@/components/news-ticker';
 import cart_mark from '@/components/cart-mark';
 import { get_auth_state, sign_out } from '@/lib/auth';
 import { clear_session, get_demo_user, type demo_user } from '@/lib/demo-auth';
@@ -21,7 +21,7 @@ type props = {
   children: React.ReactNode;
 };
 
-export default function site_chrome({ children }: props) {
+export default function SiteChrome({ children }: props) {
   const router = useRouter();
   const pathname = usePathname();
   const search_params = useSearchParams();
@@ -42,12 +42,14 @@ export default function site_chrome({ children }: props) {
 
   const is_logged_in = Boolean(user && user.role === 'user' && !user.is_guest);
 
+  /* eslint-disable react-hooks/set-state-in-effect -- до первой отрисовки, иначе мигнёт шапка гостя */
   useLayoutEffect(() => {
     const cached = peek_header_user();
     if (!cached) return;
     set_user(cached);
     set_bonus(cached.bonus_balance);
   }, []);
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   useEffect(() => {
     function reload_spot() {
@@ -185,14 +187,14 @@ export default function site_chrome({ children }: props) {
       style={{ '--site-header-h': `${header_h}px` } as React.CSSProperties}
     >
       <div className="bg-page border-b border-surface/70">
-        {createElement(top_bar)}
+        {createElement(TopBar)}
       </div>
 
       <div
         ref={header_ref}
         className="sticky mobile-sticky-top z-40 bg-page"
       >
-        {createElement(site_header, {
+        {createElement(SiteHeader, {
           city,
           spot_address: selected_spot?.address,
           user_name: user?.name,
@@ -212,7 +214,7 @@ export default function site_chrome({ children }: props) {
         })}
       </div>
 
-      {pathname !== '/profile' && createElement(news_ticker)}
+      {pathname !== '/profile' && createElement(NewsTicker)}
 
       <section className="menu-sheet">
         <div className="menu-sheet-head">

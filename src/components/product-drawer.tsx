@@ -18,7 +18,7 @@ import {
 } from '@/lib/product-details';
 import { subscribe_site_content_store } from '@/lib/site-content-store';
 import { DRAWER_CLOSE_BTN_CLASS, DRAWER_INLINE_CLOSE_BTN_CLASS } from '@/lib/drawer-ui';
-import { use_sheet_swipe } from '@/lib/use-sheet-swipe';
+import { useSheetSwipe } from '@/lib/use-sheet-swipe';
 import { item_has_toppings, item_has_volumes } from '@/lib/cart-summary';
 import { STUDENT_DISCOUNT_LABEL, student_line_price } from '@/lib/student-discount';
 import menu_temp_marks, { drink_temps, menu_temp_choice, type drink_temp } from '@/components/menu-temp-marks';
@@ -79,7 +79,7 @@ function SectionTitle({ children }: { children: ReactNode }) {
 const SHEET_ANIM_MS = 400;
 const SHEET_OPEN_DELAY_MS = 24;
 
-export default function product_drawer({
+export default function ProductDrawer({
   item,
   all_items,
   open,
@@ -103,7 +103,6 @@ export default function product_drawer({
   const [temp, set_temp] = useState<drink_temp | undefined>(undefined);
   const [nav_item, set_nav_item] = useState<menu_item | null>(null);
   const [history, set_history] = useState<history_entry[]>([]);
-  const [recommendations, set_recommendations] = useState<menu_item[]>([]);
   const [meta_tick, set_meta_tick] = useState(0);
   const [sheet_visible, set_sheet_visible] = useState(false);
   const [sheet_open, set_sheet_open] = useState(false);
@@ -136,23 +135,28 @@ export default function product_drawer({
     return { qty, volume, topping, temp };
   }
 
-  useEffect(() => {
+  const [item_seen, set_item_seen] = useState<menu_item | null | undefined>(undefined);
+  if (item_seen !== item) {
+    set_item_seen(item);
     if (item) set_last_item(item);
-  }, [item]);
+  }
+
+  const sheet_key = open && item ? item.id : null;
+  const [sheet_key_seen, set_sheet_key_seen] = useState<string | null>(null);
+  if (sheet_key_seen !== sheet_key) {
+    set_sheet_key_seen(sheet_key);
+    if (sheet_key !== null) {
+      set_sheet_visible(true);
+      set_sheet_open(false);
+    }
+  }
+  if (!open && sheet_open) set_sheet_open(false);
 
   useEffect(() => {
     if (!open || !item) return;
-
-    set_sheet_visible(true);
-    set_sheet_open(false);
     const timer = window.setTimeout(() => set_sheet_open(true), SHEET_OPEN_DELAY_MS);
     return () => window.clearTimeout(timer);
   }, [open, item?.id]);
-
-  useEffect(() => {
-    if (open) return;
-    set_sheet_open(false);
-  }, [open]);
 
   useEffect(() => {
     if (open || !sheet_visible) return;
@@ -160,13 +164,17 @@ export default function product_drawer({
     return () => window.clearTimeout(timer);
   }, [open, sheet_visible]);
 
-  useEffect(() => {
-    if (sheet_visible || open) return;
-    set_last_item(null);
-    set_nav_item(null);
-    set_history([]);
-    apply_card_state(default_card_state());
-  }, [sheet_visible, open]);
+  const closed = !sheet_visible && !open;
+  const [was_closed, set_was_closed] = useState(false);
+  if (was_closed !== closed) {
+    set_was_closed(closed);
+    if (closed) {
+      set_last_item(null);
+      set_nav_item(null);
+      set_history([]);
+      apply_card_state(default_card_state());
+    }
+  }
 
   useEffect(() => {
     if (!sheet_visible && !open) return;
@@ -177,15 +185,29 @@ export default function product_drawer({
     };
   }, [sheet_visible, open]);
 
-  useEffect(() => {
-    function reload_meta() {
-      set_meta_tick((t) => t + 1);
-    }
-    reload_meta();
-    return subscribe_site_content_store(reload_meta);
-  }, []);
+  useEffect(() => subscribe_site_content_store(() => set_meta_tick((t) => t + 1)), []);
 
-  useEffect(() => {
+  const card_src = {
+    item_id: item?.id,
+    edit_mode,
+    return_to_cart,
+    initial_qty,
+    initial_volume,
+    initial_topping,
+    initial_temp,
+  };
+  const [card_for, set_card_for] = useState<typeof card_src | null>(null);
+  if (
+    !card_for ||
+    card_for.item_id !== card_src.item_id ||
+    card_for.edit_mode !== edit_mode ||
+    card_for.return_to_cart !== return_to_cart ||
+    card_for.initial_qty !== initial_qty ||
+    card_for.initial_volume !== initial_volume ||
+    card_for.initial_topping !== initial_topping ||
+    card_for.initial_temp !== initial_temp
+  ) {
+    set_card_for(card_src);
     set_nav_item(null);
     set_history([]);
     if (edit_mode || return_to_cart) {
@@ -200,39 +222,28 @@ export default function product_drawer({
     } else {
       apply_card_state(default_card_state(item));
     }
-  }, [item?.id, edit_mode, return_to_cart, initial_qty, initial_volume, initial_topping, initial_temp]);
+  }
 
-  useEffect(() => {
-    const current = active_item;
-    if (!current || !show_recommendations) {
-      set_recommendations([]);
-      return;
-    }
+  const recommendations = useMemo(() => {
+    if (!active_item || !show_recommendations) return [];
+    const excluded = new Set<string>();
+    if (item) excluded.add(item.id);
+    history.forEach((entry) => excluded.add(entry.item.id));
 
-    function load_recs(active: menu_item) {
-      const excluded = new Set<string>();
-      if (item) excluded.add(item.id);
-      history.forEach((entry) => excluded.add(entry.item.id));
+    const same_section = all_items.filter(
+      (m) =>
+        m.is_available &&
+        m.category === active_item.category &&
+        m.id !== active_item.id &&
+        !excluded.has(m.id)
+    );
+    if (same_section.length === 0) return [];
 
-      const same_section = all_items.filter(
-        (m) =>
-          m.is_available &&
-          m.category === active.category &&
-          m.id !== active.id &&
-          !excluded.has(m.id)
-      );
-      if (same_section.length === 0) {
-        set_recommendations([]);
-        return;
-      }
-
-      const preferred_ids = new Set(active.recommendations ?? []);
-      const preferred = same_section.filter((m) => preferred_ids.has(m.id));
-      const rest = same_section.filter((m) => !preferred_ids.has(m.id));
-      set_recommendations([...preferred, ...rest].slice(0, 4));
-    }
-    load_recs(current);
-  }, [active_item?.id, all_items, item, show_recommendations, history]);
+    const preferred_ids = new Set(active_item.recommendations ?? []);
+    const preferred = same_section.filter((m) => preferred_ids.has(m.id));
+    const rest = same_section.filter((m) => !preferred_ids.has(m.id));
+    return [...preferred, ...rest].slice(0, 4);
+  }, [active_item, all_items, item, show_recommendations, history]);
 
   const volume_options = active_item ? get_item_volumes(active_item) : [];
   const volume_ml = volume_options.find((v) => String(v.ml) === volume)?.ml ?? volume_options[0]?.ml ?? 500;
@@ -290,7 +301,7 @@ export default function product_drawer({
     finish_view();
   }
 
-  const { sheet_props, backdrop_style } = use_sheet_swipe({
+  const { sheet_props, backdrop_style } = useSheetSwipe({
     active: sheet_open,
     on_dismiss: finish_view,
     on_back: handle_back,

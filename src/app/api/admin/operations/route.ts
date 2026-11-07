@@ -7,6 +7,7 @@ import {
   list_ledger,
   list_operations,
   save_ledger_entry,
+  save_payment_schedule,
   type operations_sort,
 } from '@/lib/admin-operations-server';
 import { list_order_audit } from '@/lib/order-audit-server';
@@ -144,10 +145,17 @@ export async function PATCH(request: Request) {
     payment_type?: string;
     anchor?: { cash?: number; card?: number };
     ledger?: unknown;
+    schedule?: unknown;
   } | null;
 
   if (body?.ledger) {
     const result = await save_ledger_entry(body.ledger, actor);
+    if (!result.ok) return NextResponse.json({ error: result.error }, { status: result.status });
+    return NextResponse.json({ ok: true });
+  }
+
+  if (body?.schedule) {
+    const result = await save_payment_schedule(body.schedule);
     if (!result.ok) return NextResponse.json({ error: result.error }, { status: result.status });
     return NextResponse.json({ ok: true });
   }

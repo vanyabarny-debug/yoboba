@@ -1,6 +1,6 @@
 'use client';
 
-import { createElement, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { createElement, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import {
   cooked_from_dry,
   cups_from_grams,
@@ -34,7 +34,7 @@ function fill_of(s: prep_station_view) {
   return pot_fill_ratio(s, s.cookedQty);
 }
 
-export default function prep_stations_board({
+export default function PrepStationsBoard({
   open_id: open_id_controlled,
   on_open_change,
   on_stations,
@@ -54,7 +54,9 @@ export default function prep_stations_board({
 
   const open_id = open_id_controlled !== undefined ? open_id_controlled : open_local;
   const on_stations_ref = useRef(on_stations);
-  on_stations_ref.current = on_stations;
+  useLayoutEffect(() => {
+    on_stations_ref.current = on_stations;
+  });
   const alert_prev = useRef<Map<string, prep_alert_level>>(new Map());
   const last_remind_at = useRef(0);
 
@@ -66,22 +68,23 @@ export default function prep_stations_board({
     [on_open_change, open_id_controlled]
   );
 
-  const load = useCallback(async () => {
-    try {
-      const q = spot_id ? `?spot_id=${encodeURIComponent(spot_id)}` : '';
-      const res = await fetch(`/api/seller/prep${q}`, { credentials: 'same-origin' });
-      if (!res.ok) return;
-      const body = (await res.json()) as {
-        stations?: prep_station_view[];
-        tapioca?: { id: string; name: string; qty: number }[];
-      };
-      const next = body.stations ?? [];
-      set_stations(next);
-      set_tapioca(body.tapioca ?? []);
-      on_stations_ref.current?.(next);
-    } catch {
-      /* ignore */
-    }
+  const load = useCallback(() => {
+    const q = spot_id ? `?spot_id=${encodeURIComponent(spot_id)}` : '';
+    return fetch(`/api/seller/prep${q}`, { credentials: 'same-origin' })
+      .then(async (res) => {
+        if (!res.ok) return;
+        const body = (await res.json()) as {
+          stations?: prep_station_view[];
+          tapioca?: { id: string; name: string; qty: number }[];
+        };
+        const next = body.stations ?? [];
+        set_stations(next);
+        set_tapioca(body.tapioca ?? []);
+        on_stations_ref.current?.(next);
+      })
+      .catch(() => {
+        /* ignore */
+      });
   }, [spot_id]);
 
   useEffect(() => {
@@ -114,15 +117,22 @@ export default function prep_stations_board({
 
   const active = stations.find((s) => s.id === open_id) ?? null;
 
+  const form_key = active?.id ?? null;
+  const [form_for, set_form_for] = useState<string | null>(null);
+  if (form_for !== form_key) {
+    set_form_for(form_key);
+    if (active) {
+      set_dry_g('');
+      set_still_g('');
+      set_lines([{ key: '1', materialId: active.dryMaterialId, grams: '' }]);
+      set_error('');
+      set_notice('');
+    }
+  }
+
   useEffect(() => {
-    if (!active) return;
-    set_dry_g('');
-    set_still_g('');
-    line_seq.current = 1;
-    set_lines([{ key: '1', materialId: active.dryMaterialId, grams: '' }]);
-    set_error('');
-    set_notice('');
-  }, [active?.id]);
+    if (form_key) line_seq.current = 1;
+  }, [form_key]);
 
   const choices = useMemo(() => {
     if (!active || active.kind !== 'pot') return [];

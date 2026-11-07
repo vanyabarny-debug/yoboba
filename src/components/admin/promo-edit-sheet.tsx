@@ -1,13 +1,14 @@
 'use client';
 
-import { createElement, useEffect, useMemo, useState } from 'react';
+import { createElement, useMemo, useState } from 'react';
 import type { promo_banner } from '@/lib/types';
 import { admin_sheet } from '@/components/admin/admin-sheet';
-import { image_upload_button } from '@/components/admin/image-file-picker';
+import { ImageUploadButton } from '@/components/admin/image-file-picker';
 import { classify_promo_link, allowed_platform_labels } from '@/lib/promo-link';
 import { PROMO_SIZE_HINT } from '@/lib/promo-format';
 import { get_page_by_slug, type site_page } from '@/lib/site-content-store';
-import promo_title_layout_editor from '@/components/admin/promo-title-layout-editor';
+import { useHydrated } from '@/lib/use-hydrated';
+import PromoTitleLayoutEditor from '@/components/admin/promo-title-layout-editor';
 import { default_promo_title_layout } from '@/lib/promo-title-layout';
 import { default_promo_image_vignette } from '@/lib/promo-image-vignette';
 
@@ -31,17 +32,20 @@ function initial_kind(promo: promo_banner | null): target_kind {
   return 'section';
 }
 
-export default function promo_edit_sheet({ promo, categories, on_close, on_save, on_delete }: props) {
+export default function PromoEditSheet({ promo, categories, on_close, on_save, on_delete }: props) {
   const [draft, set_draft] = useState<promo_banner | null>(promo);
   const [kind, set_kind] = useState<target_kind>(initial_kind(promo));
   const [draft_page, set_draft_page] = useState<site_page | null>(null);
 
-  useEffect(() => {
+  const hydrated = useHydrated();
+  const [promo_for, set_promo_for] = useState<promo_banner | null | undefined>(undefined);
+  if (hydrated && promo_for !== promo) {
+    set_promo_for(promo);
     set_draft(promo);
     set_kind(initial_kind(promo));
     const slug = promo?.link_url ? slug_from_href(promo.link_url) : '';
     set_draft_page(slug ? get_page_by_slug(slug) ?? null : null);
-  }, [promo]);
+  }
 
   const link_check = useMemo(
     () => classify_promo_link(draft?.link_url),
@@ -51,11 +55,10 @@ export default function promo_edit_sheet({ promo, categories, on_close, on_save,
 
   if (!draft) return null;
 
-  return createElement(admin_sheet, {
-    open: true,
-    title: draft.id ? 'редактировать акцию' : 'новая акция',
-    on_close,
-    children: (
+  return createElement(
+    admin_sheet,
+    { open: true, title: draft.id ? 'редактировать акцию' : 'новая акция', on_close },
+    (
       <form
         onSubmit={(e) => {
           e.preventDefault();
@@ -108,7 +111,7 @@ export default function promo_edit_sheet({ promo, categories, on_close, on_save,
         className="space-y-3"
       >
         {draft.image_url ? (
-          createElement(promo_title_layout_editor, {
+          createElement(PromoTitleLayoutEditor, {
             title: draft.title,
             image_url: draft.image_url,
             title_in_image: draft.title_in_image === true,
@@ -123,7 +126,7 @@ export default function promo_edit_sheet({ promo, categories, on_close, on_save,
             фото
           </div>
         )}
-        {createElement(image_upload_button, {
+        {createElement(ImageUploadButton, {
           on_pick: (url) => set_draft({ ...draft, image_url: url }),
           label: draft.image_url ? 'заменить фото' : 'выбрать фото',
           className: 'w-full',
@@ -323,6 +326,6 @@ export default function promo_edit_sheet({ promo, categories, on_close, on_save,
           </button>
         </div>
       </form>
-    ),
-  });
+    )
+  );
 }

@@ -6,12 +6,19 @@ import { persist_stock_audit } from '@/lib/finance/stock-audit';
 import { ensure_finance_cloud_once } from '@/lib/finance/ensure-cloud';
 import { note_table_error, table_is_missing } from '@/lib/supabase/schema-cache';
 import {
+  day_key,
   default_finance_state,
   FINANCE_STATE_VERSION,
   normalize_finance_state,
   prune_stock_retention,
+  resolve_month_payroll,
+  set_month_payroll,
+  stock_keep_since_day,
   stock_retention_changed,
+  update_month,
   type finance_state,
+  type opex_category,
+  type transaction,
 } from '@/lib/finance/model';
 import { ensure_prep_materials } from '@/lib/finance/prep-stations';
 import { hydrate_ttk_finance } from '@/lib/finance/ttk-presets';
@@ -211,13 +218,73 @@ function seal_deletions(prev: finance_state | null, next: finance_state): financ
   ];
   const mats = new Set(removedMaterialIds);
   const cards = new Set(removedTechCardIds);
+
+  const tx_ids_of = (s: finance_state) => s.monthsData.flatMap((m) => (m.transactions ?? []).map((t) => t.id));
+  const next_tx = new Set(tx_ids_of(next));
+  const next_mv = new Set(next.stockMovements.map((mv) => mv.id));
+  const keep_day = stock_keep_since_day();
+  const dropped_tx = tx_ids_of(prev).filter((id) => !next_tx.has(id));
+  const dropped_mv = prev.stockMovements
+    .filter((mv) => !next_mv.has(mv.id) && !service_movement(mv.id) && day_key(mv.date) >= keep_day)
+    .map((mv) => mv.id);
+  const removedTxIds = tombstones(prev.removedTxIds, next.removedTxIds, mass_drop(dropped_tx) ? [] : dropped_tx);
+  const removedMovementIds = tombstones(
+    prev.removedMovementIds,
+    next.removedMovementIds,
+    mass_drop(dropped_mv) ? [] : dropped_mv
+  );
+  const gone_tx = new Set(removedTxIds);
+  const gone_mv = new Set(removedMovementIds);
+  const live_tx = new Set([...next_tx].filter((id) => !gone_tx.has(id)));
+
   return {
     ...next,
     removedMaterialIds,
     removedTechCardIds,
+    removedTxIds,
+    removedMovementIds,
     materials: next.materials.filter((m) => !mats.has(m.id)),
     techCards: next.techCards.filter((c) => !cards.has(c.id)),
+    monthsData: next.monthsData.map((m) => ({
+      ...m,
+      transactions: (m.transactions ?? []).filter((t) => !gone_tx.has(t.id)),
+      ...(m.payroll
+        ? {
+            payroll: m.payroll.map((l) => {
+              if (!l.paidTx || live_tx.has(l.paidTx)) return l;
+              const open = { ...l };
+              delete open.paidTx;
+              return open;
+            }),
+          }
+        : {}),
+    })),
+    stockMovements: next.stockMovements.filter((mv) => !gone_mv.has(mv.id)),
+    equipments: next.equipments.filter((e) => !e.txId || !gone_tx.has(e.txId)),
   };
+}
+
+const TOMBSTONE_CAP = 5000;
+
+/** сколько уже удалённого прислала вкладка — ей надо перечитать состояние */
+function sealed_away(before: finance_state, after: finance_state) {
+  const txs = (s: finance_state) => s.monthsData.reduce((n, m) => n + (m.transactions?.length ?? 0), 0);
+  return txs(before) - txs(after) + before.stockMovements.length - after.stockMovements.length;
+}
+
+/** сотни пропаж за одно сохранение — это сброс или импорт, а не удаление руками: навсегда не запираем */
+function mass_drop(ids: string[]) {
+  return ids.length > 300;
+}
+
+/** срезы и обнуление минуса пересоздаются с тем же id — их пропажа не удаление */
+function service_movement(id: string) {
+  return id.startsWith('mv_snap_') || id.startsWith('mv_clear_');
+}
+
+function tombstones(prev: string[] | undefined, next: string[] | undefined, dropped: string[]) {
+  const all = [...new Set([...(prev ?? []), ...(next ?? []), ...dropped])];
+  return all.length > TOMBSTONE_CAP ? all.slice(-TOMBSTONE_CAP) : all;
 }
 
 async function write_finance_cas(
@@ -276,23 +343,212 @@ export async function mutate_finance_state<T>(
   });
 }
 
-export async function write_finance_state(state: finance_state): Promise<void> {
-  return enqueue_finance(() => write_finance_state_unlocked(state));
+/** импорт бэкапа: снять отметку «удалено» с операций и движений из файла, чтобы сохранение их не отбросило */
+export async function revive_finance_ids(ids: string[]): Promise<number> {
+  const wanted = new Set(ids);
+  return enqueue_finance(async () => {
+    for (let attempt = 0; attempt < 5; attempt++) {
+      const cloud = await read_cloud_pair();
+      const state = cloud?.state ?? (await read_finance_state());
+      const stamp = cloud?.updatedAt ?? null;
+      const tx = (state.removedTxIds ?? []).filter((id) => !wanted.has(id));
+      const mv = (state.removedMovementIds ?? []).filter((id) => !wanted.has(id));
+      const revived = (state.removedTxIds?.length ?? 0) - tx.length + (state.removedMovementIds?.length ?? 0) - mv.length;
+      if (!revived) return 0;
+      const next = { ...state, removedTxIds: tx, removedMovementIds: mv };
+      const wrote = await write_finance_cas(next, stamp, next);
+      if (wrote === 'ok') return revived;
+      if (wrote === 'fail') throw new Error('не удалось записать склад');
+    }
+    throw new Error('склад только что изменился, повторите');
+  });
 }
 
-async function write_finance_state_unlocked(state: finance_state): Promise<void> {
-  const prepared = prune_stock_retention(finalize_finance(state));
+/** когда создан объект: new_id кладёт Date.now() в base36 вторым куском (`tx_<время>_<хвост>`) */
+function id_time(id: string) {
+  const m = /^[a-z]+_([0-9a-z]{6,10})_/.exec(id || '');
+  if (!m) return 0;
+  const t = parseInt(m[1], 36);
+  return t > 1.5e12 && t < 4e12 ? t : 0;
+}
+
+/**
+ * самое свежее время создания среди операций, движений и позиций.
+ * вкладка админки получает его вместе с состоянием: всё, что создано позже, она не видела.
+ */
+export function finance_stamp(state: finance_state) {
+  let max = 0;
+  const see = (id: string) => {
+    const t = id_time(id);
+    if (t > max) max = t;
+  };
+  for (const month of state.monthsData) for (const t of month.transactions ?? []) see(t.id);
+  for (const mv of state.stockMovements) see(mv.id);
+  for (const m of state.materials) see(m.id);
+  for (const e of state.equipments) see(e.id);
+  for (const c of state.opexCategories) see(c.id);
+  return max;
+}
+
+/**
+ * старая вкладка присылает состояние целиком. то, что появилось в базе после её загрузки
+ * (операции из ленты, приходы, продажи с кассы), она не видела — возвращаем, а не затираем.
+ */
+function keep_unseen(cloud: finance_state, incoming: finance_state, base: number) {
+  const fresh = (id: string) => id_time(id) > base;
+  let next = incoming;
+  let merged = 0;
+
+  const tx_ids = new Set(incoming.monthsData.flatMap((m) => (m.transactions ?? []).map((t) => t.id)));
+  for (const month of cloud.monthsData) {
+    const missing = (month.transactions ?? []).filter((t) => fresh(t.id) && !tx_ids.has(t.id));
+    if (!missing.length) continue;
+    merged += missing.length;
+    next = update_month(next, month.month, (row) => ({ ...row, transactions: [...(row.transactions ?? []), ...missing] }));
+  }
+
+  const pick = <T extends { id: string }>(from: T[], into: T[], skip?: Set<string>) => {
+    const have = new Set(into.map((row) => row.id));
+    const add = from.filter((row) => fresh(row.id) && !have.has(row.id) && !skip?.has(row.id));
+    merged += add.length;
+    return add.length ? [...into, ...add] : into;
+  };
+  const removed = new Set([...(cloud.removedMaterialIds ?? []), ...(next.removedMaterialIds ?? [])]);
+  next = {
+    ...next,
+    stockMovements: pick(cloud.stockMovements, next.stockMovements),
+    materials: pick(cloud.materials, next.materials, removed),
+    equipments: pick(cloud.equipments, next.equipments),
+    opexCategories: pick(cloud.opexCategories, next.opexCategories),
+  };
+  const kept = keep_unseen_edits(cloud, next);
+  return { state: kept.state, merged: merged + kept.merged };
+}
+
+const last_edit_at = (t: transaction) => t.edits?.[t.edits.length - 1]?.at ?? '';
+
+/**
+ * правки из ленты операций, которых старая вкладка не видела: подтверждённая поставка,
+ * поправленная операция, отметка «выплачено» в ФОТ, число платежа статьи.
+ */
+function keep_unseen_edits(cloud: finance_state, incoming: finance_state) {
+  let next = incoming;
+  let merged = 0;
+
+  const incoming_tx = new Map(incoming.monthsData.flatMap((m) => (m.transactions ?? []).map((t) => [t.id, t] as const)));
+  const newer: { month: string; tx: transaction }[] = [];
+  for (const month of cloud.monthsData) {
+    for (const t of month.transactions ?? []) {
+      const seen = incoming_tx.get(t.id);
+      if (!seen) continue;
+      const cloud_at = last_edit_at(t);
+      if (cloud_at && cloud_at > last_edit_at(seen)) newer.push({ month: month.month, tx: t });
+    }
+  }
+  if (newer.length) {
+    const ids = new Set(newer.map((row) => row.tx.id));
+    next = {
+      ...next,
+      monthsData: next.monthsData.map((m) => ({
+        ...m,
+        transactions: (m.transactions ?? []).filter((t) => !ids.has(t.id)),
+      })),
+    };
+    for (const row of newer) {
+      next = update_month(next, row.month, (m) => ({ ...m, transactions: [...(m.transactions ?? []), row.tx] }));
+    }
+    const cloud_mv = new Map(
+      cloud.stockMovements.filter((mv) => mv.transactionId && ids.has(mv.transactionId)).map((mv) => [mv.id, mv])
+    );
+    next = {
+      ...next,
+      stockMovements: next.stockMovements.map((mv) => {
+        const fresh = cloud_mv.get(mv.id);
+        return fresh ? { ...mv, total: fresh.total, date: fresh.date } : mv;
+      }),
+    };
+    merged += newer.length;
+  }
+
+  const tx_ids = new Set(next.monthsData.flatMap((m) => (m.transactions ?? []).map((t) => t.id)));
+  for (const month of cloud.monthsData) {
+    const paid = new Map(
+      (month.payroll ?? []).filter((l) => l.paidTx && tx_ids.has(l.paidTx)).map((l) => [l.id, l])
+    );
+    if (!paid.size) continue;
+    const md = next.monthsData.find((m) => m.month === month.month);
+    if (!md) continue;
+    const lines = resolve_month_payroll(next, md).lines;
+    const lost = lines.filter((l) => !l.paidTx && paid.has(l.id));
+    if (!lost.length) continue;
+    merged += lost.length;
+    next = set_month_payroll(
+      next,
+      month.month,
+      lines.map((l) => {
+        const cloud_line = !l.paidTx ? paid.get(l.id) : undefined;
+        return cloud_line ? { ...l, amount: cloud_line.amount, paidTx: cloud_line.paidTx } : l;
+      })
+    );
+  }
+
+  const cloud_cat = new Map(cloud.opexCategories.map((c) => [c.id, c]));
+  let cats_changed = false;
+  const cats = next.opexCategories.map((c) => {
+    const from = cloud_cat.get(c.id);
+    if (!from || (from.payDay === c.payDay && from.payFrom === c.payFrom)) return c;
+    cats_changed = true;
+    const out: opex_category = { id: c.id, name: c.name };
+    if (from.payDay) out.payDay = from.payDay;
+    if (from.payFrom) out.payFrom = from.payFrom;
+    return out;
+  });
+  if (cats_changed) {
+    next = { ...next, opexCategories: cats };
+    merged += 1;
+  }
+
+  return { state: next, merged };
+}
+
+export type finance_write = { merged: number; stamp: number };
+
+/** base — finance_stamp состояния, с которого вкладка начинала; без него пишем как есть */
+export async function write_finance_state(state: finance_state, opts: { base?: number } = {}): Promise<finance_write> {
+  return enqueue_finance(() => write_finance_state_unlocked(state, opts.base));
+}
+
+async function write_finance_state_unlocked(state: finance_state, base?: number): Promise<finance_write> {
+  let prepared = prune_stock_retention(finalize_finance(state));
   forget_finance_memo();
   await sync_tech_card_temps(prepared);
+  const can_merge = typeof base === 'number' && Number.isFinite(base) && base > 0;
   if (!is_supabase_configured()) {
+    let merged = 0;
+    const stored = await read_fallback();
+    if (can_merge) {
+      const kept = keep_unseen(stored, prepared, base);
+      prepared = kept.state;
+      merged = kept.merged;
+    }
+    const sealed = seal_deletions(stored, prepared);
+    merged += sealed_away(prepared, sealed);
+    prepared = sealed;
     await write_json_store(store_key, prepared);
-    return;
+    return { merged, stamp: finance_stamp(prepared) };
   }
   const admin = create_service_client();
   const prev =
     (await read_row(admin, table, row_id)) ||
     (await read_row(admin, 'menu_catalog', catalog_row_id));
+  let merged = 0;
+  if (prev && can_merge) {
+    const kept = keep_unseen(prev, prepared, base);
+    prepared = kept.state;
+    merged = kept.merged;
+  }
   const durable = seal_deletions(prev, prepared);
+  merged += sealed_away(prepared, durable);
   const local = write_json_store(store_key, durable).catch(() => {});
   const prev_ids = new Set((prev?.stockAudit ?? []).map((e) => e.id));
   const writes: Promise<boolean>[] = [write_row(admin, 'menu_catalog', catalog_row_id, durable)];
@@ -310,4 +566,5 @@ async function write_finance_state_unlocked(state: finance_state): Promise<void>
     );
   }
   await local;
+  return { merged, stamp: finance_stamp(durable) };
 }

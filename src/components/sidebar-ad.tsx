@@ -13,7 +13,7 @@ type props = {
   on_add_slide?: () => void;
 };
 
-export default function sidebar_ad({
+export default function SidebarAd({
   slides,
   interval_ms = 5000,
   on_slide_click,
@@ -24,9 +24,11 @@ export default function sidebar_ad({
   const active = edit_mode ? slides : slides.filter((s) => s.is_active);
   const [idx, set_idx] = useState(0);
 
-  useEffect(() => {
+  const [idx_for, set_idx_for] = useState(active.length);
+  if (idx_for !== active.length) {
+    set_idx_for(active.length);
     set_idx(0);
-  }, [active.length]);
+  }
 
   useEffect(() => {
     if (edit_mode || active.length <= 1) return;

@@ -21,6 +21,7 @@ export default function MenuPrepSteps({ menu_item_id }: { menu_item_id: string }
   const [error, set_error] = useState('');
   const [status, set_status] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
   const latest = useRef<finance_state | null>(null);
+  const base = useRef<number | null>(null);
   const timer = useRef<number | null>(null);
 
   useEffect(() => {
@@ -31,12 +32,13 @@ export default function MenuPrepSteps({ menu_item_id }: { menu_item_id: string }
     let cancelled = false;
     fetch('/api/admin/finance', { credentials: 'same-origin' })
       .then((r) => r.json())
-      .then((body: { state?: unknown; error?: string }) => {
+      .then((body: { state?: unknown; error?: string; stamp?: number }) => {
         if (cancelled) return;
         if (body.error) {
           set_error(body.error);
           return;
         }
+        base.current = typeof body.stamp === 'number' ? body.stamp : null;
         set_state(normalize_finance_state(body.state));
       })
       .catch(() => set_error('не удалось загрузить этапы'));
@@ -62,7 +64,7 @@ export default function MenuPrepSteps({ menu_item_id }: { menu_item_id: string }
         method: 'PUT',
         credentials: 'same-origin',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ state: s }),
+        body: JSON.stringify({ state: s, base: base.current }),
       })
         .then((res) => {
           if (!res.ok) throw new Error('save');

@@ -13,6 +13,7 @@ import {
   type seller_access,
 } from '@/lib/seller-access';
 import PosAccountCard from '@/components/admin/pos-account-card';
+import { useHydrated } from '@/lib/use-hydrated';
 
 function new_seller_id() {
   return `seller-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
@@ -43,7 +44,14 @@ function empty_form() {
   };
 }
 
-export default function sellers_manage({ bare = false }: { bare?: boolean } = {}) {
+async function fetch_sellers() {
+  const res = await fetch('/api/sellers');
+  if (!res.ok) throw new Error('нет доступа — войдите как админ');
+  const data = (await res.json()) as { sellers: seller[] };
+  return data.sellers;
+}
+
+export default function SellersManage({ bare = false }: { bare?: boolean } = {}) {
   const [sellers, set_sellers] = useState<seller[]>([]);
   const [spots, set_spots] = useState<store_spot[]>([]);
   const [editing, set_editing] = useState<seller | null>(null);
@@ -57,10 +65,7 @@ export default function sellers_manage({ bare = false }: { bare?: boolean } = {}
   async function reload() {
     set_loading(true);
     try {
-      const res = await fetch('/api/sellers');
-      if (!res.ok) throw new Error('нет доступа — войдите как админ');
-      const data = (await res.json()) as { sellers: seller[] };
-      set_sellers(data.sellers);
+      set_sellers(await fetch_sellers());
     } catch (err) {
       set_error(err instanceof Error ? err.message : 'ошибка загрузки');
     } finally {
@@ -69,22 +74,33 @@ export default function sellers_manage({ bare = false }: { bare?: boolean } = {}
   }
 
   useEffect(() => {
-    reload();
-    function reload_spots() {
-      set_spots(get_spots());
-    }
-    reload_spots();
-    return subscribe_spot_store(reload_spots);
+    fetch_sellers()
+      .then(set_sellers)
+      .catch((err) => set_error(err instanceof Error ? err.message : 'ошибка загрузки'))
+      .finally(() => set_loading(false));
   }, []);
 
+  const hydrated = useHydrated();
+  const [spots_restored, set_spots_restored] = useState(false);
+  if (hydrated && !spots_restored) {
+    set_spots_restored(true);
+    set_spots(get_spots());
+  }
+
+  useEffect(() => subscribe_spot_store(() => set_spots(get_spots())), []);
+
+  const stats_id = editing?.id && sellers.some((s) => s.id === editing.id) ? editing.id : null;
+  const [stats_for, set_stats_for] = useState<{ id: string | null; sellers: seller[] } | null>(null);
+  if (stats_for?.id !== stats_id || stats_for?.sellers !== sellers) {
+    set_stats_for({ id: stats_id, sellers });
+    if (stats_id) set_stats_loading(true);
+    else set_stats(null);
+  }
+
   useEffect(() => {
-    if (!editing?.id || !sellers.some((s) => s.id === editing.id)) {
-      set_stats(null);
-      return;
-    }
+    if (!stats_id) return;
     let cancelled = false;
-    set_stats_loading(true);
-    fetch(`/api/cash?seller_id=${encodeURIComponent(editing.id)}`, { credentials: 'same-origin' })
+    fetch(`/api/cash?seller_id=${encodeURIComponent(stats_id)}`, { credentials: 'same-origin' })
       .then((r) => r.json())
       .then((body: { transactions?: cash_transaction[] }) => {
         if (cancelled) return;
@@ -107,7 +123,7 @@ export default function sellers_manage({ bare = false }: { bare?: boolean } = {}
     return () => {
       cancelled = true;
     };
-  }, [editing?.id, sellers]);
+  }, [stats_id, sellers]);
 
   function open_create() {
     set_editing({

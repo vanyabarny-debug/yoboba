@@ -85,13 +85,21 @@ export default function PlanSection(props: section_props) {
   const [applied_msg, set_applied_msg] = useState('');
   const [selected_roadmap_month, set_selected_roadmap_month] = useState(month);
 
-  useEffect(() => {
+  const [roadmap_for, set_roadmap_for] = useState(month);
+  if (roadmap_for !== month) {
+    set_roadmap_for(month);
     set_selected_roadmap_month(month);
-  }, [month]);
+  }
+
+  const fact_key = `${month}|${spot_id}`;
+  const [fact_for, set_fact_for] = useState<string | null>(null);
+  if (fact_for !== fact_key) {
+    set_fact_for(fact_key);
+    set_loading(true);
+  }
 
   useEffect(() => {
     let cancelled = false;
-    set_loading(true);
     const spot_q = spot_id ? `&spot_id=${encodeURIComponent(spot_id)}` : '';
     const prev = prev_month_id(month);
     Promise.all([

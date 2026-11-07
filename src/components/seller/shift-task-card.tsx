@@ -76,7 +76,7 @@ function task_ring_shell({
   progress = 1,
   on_click,
 }: {
-  children: ReactNode;
+  children?: ReactNode;
   fill: string;
   ring: string;
   track: string;
@@ -130,7 +130,7 @@ function circle_wrap({
   children,
   under,
 }: {
-  children: ReactNode;
+  children?: ReactNode;
   under?: string | null;
 }) {
   return (
@@ -147,8 +147,8 @@ function circle_wrap({
   );
 }
 
-export default function shift_task_card({ task, mode, on_open_guide }: props) {
-  const [now, set_now] = useState(Date.now());
+export default function ShiftTaskCard({ task, mode, on_open_guide }: props) {
+  const [now, set_now] = useState(() => Date.now());
   const color = day_task_color;
   const timed = task.expected_minutes > 0;
   const elapsed = live_elapsed_ms(task, now);
@@ -185,9 +185,10 @@ export default function shift_task_card({ task, mode, on_open_guide }: props) {
           on_toggle: on_open_guide,
           color: color.fg,
         })}
-        {createElement(circle_wrap, {
-          under: task.outcome === 'missed' ? `${task.title} · не пробил` : task.title,
-          children: createElement(circular_timer, {
+        {createElement(
+          circle_wrap,
+          { under: task.outcome === 'missed' ? `${task.title} · не пробил` : task.title },
+          createElement(circular_timer, {
             progress: 1,
             label: task.outcome === 'missed' ? '—' : '✓',
             tone: 'handout',
@@ -195,8 +196,8 @@ export default function shift_task_card({ task, mode, on_open_guide }: props) {
             fill: true,
             disabled: true,
             on_click: on_open_guide,
-          }),
-        })}
+          })
+        )}
       </article>
     );
   }
@@ -213,17 +214,20 @@ export default function shift_task_card({ task, mode, on_open_guide }: props) {
         hero: true,
         on_click: on_open_guide,
       })
-    : createElement(task_ring_shell, {
-        fill: circle_fill,
-        ring: color.fg,
-        track: color.border,
-        progress: 1,
-        on_click: on_open_guide,
-        children: createElement(task_icon, {
+    : createElement(
+        task_ring_shell,
+        {
+          fill: circle_fill,
+          ring: color.fg,
+          track: color.border,
+          progress: 1,
+          on_click: on_open_guide,
+        },
+        createElement(task_icon, {
           className: 'h-[42%] w-[42%]',
           color: color.fg,
-        }),
-      });
+        })
+      );
 
   return (
     <article
@@ -241,7 +245,7 @@ export default function shift_task_card({ task, mode, on_open_guide }: props) {
         on_toggle: on_open_guide,
         color: color.fg,
       })}
-      {createElement(circle_wrap, { under: task.title, children: circle })}
+      {createElement(circle_wrap, { under: task.title }, circle)}
     </article>
   );
 }

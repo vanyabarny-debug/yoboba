@@ -34,7 +34,7 @@ function is_study_path(path: string | null) {
   return Boolean(path?.startsWith('/study'));
 }
 
-export default function app_splash() {
+export default function AppSplash() {
   const pathname = usePathname();
   const is_squad = is_squad_path(pathname);
   const is_study = is_study_path(pathname);
@@ -51,6 +51,7 @@ export default function app_splash() {
     phase_ref.current = phase;
   }, [phase]);
 
+  /* eslint-disable react-hooks/set-state-in-effect -- до первой отрисовки, иначе у вернувшегося гостя мигнёт сплэш */
   useLayoutEffect(() => {
     if (typeof window === 'undefined') return;
     try {
@@ -66,19 +67,11 @@ export default function app_splash() {
       /* private mode */
     }
   }, [seen_key]);
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
     if (skip_ref.current) return;
-
-    try {
-      if (sessionStorage.getItem(seen_key) === '1') {
-        set_removed(true);
-        return;
-      }
-    } catch {
-      /* private mode */
-    }
 
     const t_exit = setTimeout(() => set_phase('exit'), EXIT_AT);
     const t_remove = setTimeout(() => {

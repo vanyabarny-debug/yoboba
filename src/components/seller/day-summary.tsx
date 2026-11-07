@@ -54,7 +54,7 @@ type props = {
   reload_key?: number;
 };
 
-export default function day_summary_panel({
+export default function DaySummaryPanel({
   spot_id,
   shift_id,
   seller_id,
@@ -65,9 +65,11 @@ export default function day_summary_panel({
   const [transactions, set_transactions] = useState<cash_transaction[]>([]);
   const [summary, set_summary] = useState<day_summary | null>(null);
 
-  useEffect(() => {
+  const [default_seen, set_default_seen] = useState(default_date);
+  if (default_seen !== default_date) {
+    set_default_seen(default_date);
     if (default_date) set_shift_date(default_date);
-  }, [default_date]);
+  }
 
   useEffect(() => {
     const qs = new URLSearchParams();

@@ -19,7 +19,7 @@ function countdown_label(pickup_time: string) {
   return `${mins}:${secs.toString().padStart(2, '0')}`;
 }
 
-function order_card({
+function OrderCard({
   order: o,
   on_status,
 }: {
@@ -78,18 +78,20 @@ function order_card({
   );
 }
 
-export default function barista_board() {
+async function fetch_board_orders() {
+  const supabase = create_client();
+  const { data } = await supabase
+    .from('orders')
+    .select('*')
+    .in('status', ['new', 'preparing', 'ready'])
+    .order('pickup_time', { ascending: true });
+  return (data as order[]) || [];
+}
+
+export default function BaristaBoard() {
   const [orders, set_orders] = useState<order[]>([]);
 
-  const load = useCallback(async () => {
-    const supabase = create_client();
-    const { data } = await supabase
-      .from('orders')
-      .select('*')
-      .in('status', ['new', 'preparing', 'ready'])
-      .order('pickup_time', { ascending: true });
-    set_orders((data as order[]) || []);
-  }, []);
+  const load = useCallback(() => fetch_board_orders().then(set_orders), []);
 
   useEffect(() => {
     load();
@@ -132,7 +134,7 @@ export default function barista_board() {
               {orders
                 .filter((o) => o.status === col.key)
                 .map((o) =>
-                  createElement(order_card, {
+                  createElement(OrderCard, {
                     key: o.id,
                     order: o,
                     on_status: update_status,

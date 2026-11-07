@@ -17,7 +17,7 @@ type pulse = {
   detail: string;
 };
 
-export default function business_pulse() {
+export default function BusinessPulse() {
   const [data, set_data] = useState<pulse | null>(null);
   const [error, set_error] = useState('');
 

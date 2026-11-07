@@ -4,7 +4,7 @@ import { is_supabase_configured } from '@/lib/supabase/config';
 import { moscow_today_iso } from '@/lib/order-number';
 import { shift_closed_message, shift_is_open } from '@/lib/shift-window';
 import { mark_shift_row } from '@/lib/shift-log-server';
-import { is_closing_complete, type closing_task } from '@/lib/closing-checklist';
+import { is_closing_complete, type closing_checklist_item, type closing_task } from '@/lib/closing-checklist';
 import {
   checklist_items_for_new_task,
   enrich_checklist_items,
@@ -116,7 +116,7 @@ export async function GET(request: NextRequest) {
     .eq('closing_task_id', task_id)
     .order('item_order');
 
-  const base_items = (items_data || []).map((item: any) => ({
+  const base_items = (items_data || []).map((item: closing_checklist_item) => ({
     id: item.id,
     item_order: item.item_order,
     item_text: item.item_text,
@@ -198,7 +198,7 @@ export async function PATCH(request: NextRequest) {
     }
   }
 
-  const update_data: any = {
+  const update_data: Partial<Pick<closing_checklist_item, 'is_checked' | 'checked_at' | 'checked_by'>> = {
     is_checked: body.is_checked,
   };
 
@@ -228,7 +228,7 @@ export async function PATCH(request: NextRequest) {
     .eq('closing_task_id', body.task_id)
     .order('item_order');
 
-  const base_items = (items_data || []).map((item: any) => ({
+  const base_items = (items_data || []).map((item: closing_checklist_item) => ({
     id: item.id,
     item_order: item.item_order,
     item_text: item.item_text,
@@ -304,7 +304,7 @@ export async function PATCH(request: NextRequest) {
 
     // Создать уведомления для админов
     if (admins && admins.length > 0) {
-      const notifications = admins.map((admin: any) => ({
+      const notifications = admins.map((admin: { id: string }) => ({
         closing_task_id: body.task_id,
         admin_id: admin.id,
         is_read: false,

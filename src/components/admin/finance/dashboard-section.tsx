@@ -24,6 +24,7 @@ import {
   format_rub,
   month_fixed_totals,
   moscow_today,
+  period_other_flows,
   merge_payroll_with_sellers,
   new_id,
   PAYROLL_KINDS,
@@ -39,6 +40,7 @@ import {
   custom_taxes_of,
   tax_label,
   tax_regime_of,
+  type month_summary,
   type payroll_kind,
   type payroll_line,
   type sales_cell,
@@ -50,6 +52,7 @@ import type { store_rhythm } from '@/lib/customer-analytics';
 import type { retention_report } from '@/lib/guest-rank';
 import type { seller, store_spot } from '@/lib/types';
 import { seller_month_pay } from '@/lib/staff-schedule';
+import { useHydrated } from '@/lib/use-hydrated';
 import {
   get_spots,
   seller_spot_labels,
@@ -89,6 +92,19 @@ type fact_response = {
   avg_revenue_per_spot?: number;
   avg_orders_per_spot?: number;
   by_spot?: { spot_id: string | null; label: string; revenue: number; orders: number }[];
+  money?: {
+    cash: number;
+    card: number;
+    online: number;
+    bonus_orders: number;
+    discount: number;
+    staff_list: number;
+    staff_paid: number;
+    unpaid: number;
+    unpaid_orders: number;
+    paid_orders: number;
+    identified_orders: number;
+  };
 };
 
 function sales_qs(params: Record<string, string | undefined>) {
@@ -122,6 +138,10 @@ const month_title = [
   'декабрь',
 ];
 
+function useMoscowToday() {
+  return moscow_today();
+}
+
 function day_word(n: number) {
   const mod10 = n % 10;
   const mod100 = n % 100;
@@ -132,21 +152,6 @@ function day_word(n: number) {
 }
 
 /** пока выручка ниже месячной безубыточности — не показываем «плюс» от доли фиксов */
-function net_vs_month_break_even(input: {
-  revenue: number;
-  cogs: number;
-  break_even: number;
-  accounting_net: number;
-}): number {
-  const be = Math.max(0, Number(input.break_even) || 0);
-  const rev = Math.max(0, Number(input.revenue) || 0);
-  const accounting = Math.round(Number(input.accounting_net) || 0);
-  if (!(be > 0) || rev >= be) return accounting;
-  const cm = rev > 0 ? (rev - Math.max(0, Number(input.cogs) || 0)) / rev : 0;
-  if (cm > 0.02) return Math.round((rev - be) * cm);
-  return Math.round(rev - be);
-}
-
 function break_even_gap_label(revenue: number, break_even: number): string | undefined {
   const be = Math.round(Number(break_even) || 0);
   if (!(be > 0)) return undefined;
@@ -453,6 +458,169 @@ function ReturnRateCard({ stats }: { stats: retention_report | null | undefined 
   );
 }
 
+/** отчёт о прибыли периода: от выручки к чистой, каждая строка — сколько ушло */
+function NetBreakdown({ s, period }: { s: month_summary; period: string }) {
+  const rows: { k: string; v: number; hint?: string; strong?: boolean }[] = [
+    { k: 'выручка', v: s.revenue, strong: true },
+    { k: 'сырьё проданных напитков', v: -s.cogs, hint: 'по техкартам' },
+    { k: 'напитки себе и списания', v: -(s.cogs_staff + s.cogs_writeoff) },
+    { k: 'эквайринг', v: -s.acquiring, hint: 'комиссия с безнала' },
+    { k: 'валовая прибыль', v: s.revenue - s.cogs - s.cogs_staff - s.cogs_writeoff - s.acquiring, strong: true },
+    { k: 'фот на руки', v: -s.salary },
+    { k: 'постоянные расходы', v: -(s.opex - s.salary), hint: 'аренда, свет, связь… — доля периода' },
+    { k: 'непредвиденные', v: -s.other_expense },
+    { k: 'прочие доходы', v: s.other_income },
+    { k: 'операционная прибыль (EBITDA)', v: s.ebitda, strong: true },
+    { k: 'амортизация', v: -s.amortization, hint: 'износ оборудования' },
+    { k: 'ндфл', v: -s.ndfl },
+    { k: 'страховые взносы', v: -s.insurance },
+    { k: 'налог', v: -s.tax },
+    { k: 'чистая прибыль', v: s.net_profit, strong: true },
+  ];
+  return (
+    <div className="space-y-1">
+      <p className="text-[11px] text-neutral-400">{period} · постоянные расходы и ФОТ — доля дней периода</p>
+      <ul className="divide-y divide-neutral-100">
+        {rows
+          .filter((r) => r.strong || Math.round(r.v) !== 0)
+          .map((r) => (
+            <li key={r.k} className="flex items-baseline justify-between gap-3 py-1.5 text-sm">
+              <span className={`min-w-0 ${r.strong ? 'font-semibold text-neutral-900' : 'text-neutral-700'}`}>
+                {r.k}
+                {r.hint ? <span className="ml-1 text-[11px] text-neutral-400">{r.hint}</span> : null}
+              </span>
+              <span
+                className={`shrink-0 tabular-nums ${r.strong ? 'font-semibold' : ''} ${
+                  r.v < 0 ? 'text-red-500' : 'text-neutral-900'
+                }`}
+              >
+                {format_rub(Math.round(r.v))}
+              </span>
+            </li>
+          ))}
+      </ul>
+    </div>
+  );
+}
+
+type key_metric = { k: string; v: string; sub?: string; tone?: 'good' | 'bad' };
+
+/** контрольные доли кофейни: что съедает выручку и насколько далеко до нуля */
+function KeyMetricsCard({
+  s,
+  money,
+  orders,
+  cups,
+  days,
+  break_even,
+  month_days,
+  equipment_total,
+}: {
+  s: month_summary;
+  money: fact_response['money'] | undefined;
+  orders: number;
+  cups: number;
+  days: number;
+  break_even: number;
+  month_days: number;
+  equipment_total: number;
+}) {
+  const share = (x: number) => (s.revenue > 0 ? `${Math.round((x / s.revenue) * 1000) / 10}%` : '—');
+  const food = s.cogs + s.cogs_staff + s.cogs_writeoff;
+  const labor = s.salary + s.ndfl + s.insurance;
+  const paid_orders = money?.paid_orders ?? orders;
+  const avg_check = paid_orders > 0 ? s.revenue / paid_orders : 0;
+  const be_day = break_even > 0 ? break_even / Math.max(1, month_days) : 0;
+  const rev_day = s.revenue / Math.max(1, days);
+  const cup_price = cups > 0 ? s.revenue / cups : 0;
+  const be_cups_day = be_day > 0 && cup_price > 0 ? be_day / cup_price : 0;
+  const safety = break_even > 0 && rev_day > 0 ? (rev_day - be_day) / rev_day : null;
+  const monthly_net = ((s.net_profit + s.amortization) / Math.max(1, days)) * month_days;
+  const payback = equipment_total > 0 && monthly_net > 0 ? equipment_total / monthly_net : null;
+  const list_total = s.revenue + (money?.discount ?? 0);
+  const rows: key_metric[] = [
+    { k: 'средний чек', v: format_rub(Math.round(avg_check)), sub: `${paid_orders} оплаченных чеков` },
+    {
+      k: 'фудкост',
+      v: share(food),
+      sub: 'сырьё + себе + списания · норма 25–35%',
+      tone: s.revenue > 0 ? (food / s.revenue <= 0.35 ? 'good' : 'bad') : undefined,
+    },
+    {
+      k: 'доля фот',
+      v: share(labor),
+      sub: 'зп + ндфл + взносы · норма до 30%',
+      tone: s.revenue > 0 ? (labor / s.revenue <= 0.3 ? 'good' : 'bad') : undefined,
+    },
+    {
+      k: 'prime cost',
+      v: share(food + labor),
+      sub: 'фудкост + фот · норма до 60–65%',
+      tone: s.revenue > 0 ? ((food + labor) / s.revenue <= 0.65 ? 'good' : 'bad') : undefined,
+    },
+    { k: 'аренда и пост.', v: share(s.opex - s.salary), sub: 'доля постоянных расходов' },
+    {
+      k: 'скидки',
+      v: format_rub(money?.discount ?? 0),
+      sub: list_total > 0 ? `${Math.round(((money?.discount ?? 0) / list_total) * 1000) / 10}% от цены меню` : undefined,
+    },
+    {
+      k: 'безнал',
+      v: s.revenue > 0 ? `${Math.round((((money?.card ?? 0) + (money?.online ?? 0)) / s.revenue) * 100)}%` : '—',
+      sub: s.acquiring > 0 ? `эквайринг ${format_rub(Math.round(s.acquiring))}` : 'укажите % эквайринга в пост. расходах',
+    },
+    {
+      k: 'безубыточность в день',
+      v: be_day > 0 ? format_rub(Math.round(be_day)) : '—',
+      sub: be_cups_day > 0 ? `≈ ${Math.ceil(be_cups_day)} стаканов · сейчас ${format_rub(Math.round(rev_day))}/день` : undefined,
+    },
+    {
+      k: 'запас прочности',
+      v: safety == null ? '—' : `${Math.round(safety * 100)}%`,
+      sub: 'насколько выручка выше точки безубыточности',
+      tone: safety == null ? undefined : safety >= 0 ? 'good' : 'bad',
+    },
+    {
+      k: 'гости с номером',
+      v: orders > 0 && money ? `${Math.round((money.identified_orders / orders) * 100)}%` : '—',
+      sub: 'чеков, привязанных к гостю',
+    },
+    {
+      k: 'окупаемость техники',
+      v: payback == null ? '—' : `${Math.round(payback * 10) / 10} мес`,
+      sub: equipment_total > 0 ? `${format_rub(equipment_total)} вложено · по текущему темпу` : 'оборудование не внесено',
+    },
+    {
+      k: 'не оплачено',
+      v: format_rub(money?.unpaid ?? 0),
+      sub: money?.unpaid_orders ? `${money.unpaid_orders} чеков в долг` : 'долгов нет',
+      tone: money?.unpaid ? 'bad' : undefined,
+    },
+  ];
+  return (
+    <Card
+      title="ключевые метрики"
+      hint="доли от выручки периода · ориентиры для кофейни у дома"
+    >
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-4">
+        {rows.map((r) => (
+          <div key={r.k} className="rounded-2xl bg-neutral-50 px-3 py-2.5">
+            <p className="text-[11px] font-medium text-neutral-500">{r.k}</p>
+            <p
+              className={`mt-0.5 font-heading-soft text-lg tabular-nums ${
+                r.tone === 'good' ? 'text-emerald-700' : r.tone === 'bad' ? 'text-red-500' : 'text-neutral-900'
+              }`}
+            >
+              {r.v}
+            </p>
+            {r.sub ? <p className="mt-0.5 text-[11px] leading-snug text-neutral-400">{r.sub}</p> : null}
+          </div>
+        ))}
+      </div>
+    </Card>
+  );
+}
+
 function Kpi({
   label,
   value,
@@ -702,6 +870,8 @@ export default function DashboardSection({
   const [drinks_open, set_drinks_open] = useState(false);
   const [fot_open, set_fot_open] = useState(false);
   const [opex_open, set_opex_open] = useState(false);
+  const [unexpected_open, set_unexpected_open] = useState(false);
+  const [net_open, set_net_open] = useState(false);
   const [mix_with_cogs, set_mix_with_cogs] = useState(false);
   const [fact, set_fact] = useState<fact_response | null>(null);
   const [mtd_fact, set_mtd_fact] = useState<fact_response | null>(null);
@@ -710,9 +880,9 @@ export default function DashboardSection({
   const [sellers_error, set_sellers_error] = useState('');
   const [sellers_tick, set_sellers_tick] = useState(0);
   const [spots, set_spots] = useState<store_spot[]>([]);
-  const today = moscow_today();
+  const today = useMoscowToday();
   /** месяц плашек / фота — по выбранному периоду (конец диапазона) */
-  const month_id = to.slice(0, 7);
+  const month_id = useMemo(() => to.slice(0, 7), [to]);
   const month_from = `${month_id}-01`;
   const dim = days_in_month(month_id);
   const month_end = `${month_id}-${String(dim).padStart(2, '0')}`;
@@ -722,14 +892,24 @@ export default function DashboardSection({
   const period_exact = !month_is_open || to < today;
   const should_project = !period_exact && from.slice(0, 7) === month_id;
 
-  useEffect(() => {
+  const hydrated = useHydrated();
+  const [spots_restored, set_spots_restored] = useState(false);
+  if (hydrated && !spots_restored) {
+    set_spots_restored(true);
     set_spots(get_spots());
-    return subscribe_spot_store(() => set_spots(get_spots()));
-  }, []);
+  }
+
+  useEffect(() => subscribe_spot_store(() => set_spots(get_spots())), []);
+
+  const fact_key = `${from}|${to}|${spot_id}`;
+  const [fact_for, set_fact_for] = useState(fact_key);
+  if (fact_for !== fact_key) {
+    set_fact_for(fact_key);
+    set_fact(null);
+  }
 
   useEffect(() => {
     let cancelled = false;
-    set_fact(null);
     fetch(
       `/api/admin/finance/sales${sales_qs({ from, to, spot_id: spot_id || undefined })}`,
       { credentials: 'same-origin' }
@@ -747,8 +927,6 @@ export default function DashboardSection({
 
   useEffect(() => {
     let cancelled = false;
-    set_sellers_loading(true);
-    set_sellers_error('');
     fetch('/api/sellers', { credentials: 'same-origin' })
       .then(async (r) => {
         const body = (await r.json()) as { sellers?: seller[]; error?: string };
@@ -778,17 +956,17 @@ export default function DashboardSection({
     };
   }, [sellers_tick]);
 
-  useEffect(() => {
-    if (!should_project) {
-      set_mtd_fact(null);
-      return;
-    }
-    if (from === month_from && to === today) {
-      set_mtd_fact(null);
-      return;
-    }
-    let cancelled = false;
+  const mtd_needed = should_project && !(from === month_from && to === today);
+  const mtd_key = `${should_project}|${month_from}|${today}|${from}|${to}|${spot_id}`;
+  const [mtd_for, set_mtd_for] = useState(mtd_key);
+  if (mtd_for !== mtd_key) {
+    set_mtd_for(mtd_key);
     set_mtd_fact(null);
+  }
+
+  useEffect(() => {
+    if (!mtd_needed) return;
+    let cancelled = false;
     fetch(
       `/api/admin/finance/sales${sales_qs({ from: month_from, to: today, spot_id: spot_id || undefined })}`,
       { credentials: 'same-origin' }
@@ -802,22 +980,25 @@ export default function DashboardSection({
     return () => {
       cancelled = true;
     };
-  }, [should_project, month_from, today, from, to, spot_id]);
+  }, [mtd_needed, month_from, today, from, to, spot_id]);
 
   const live = useMemo(
     () =>
       summarize_period(state, from, to, {
         revenue: fact?.revenue ?? 0,
+        card_revenue: (fact?.money?.card ?? 0) + (fact?.money?.online ?? 0),
         sales: fact?.sales,
       }),
     [state, from, to, fact]
   );
+  const unexpected = useMemo(() => period_other_flows(state, from, to), [state, from, to]);
 
   const mtd_live = useMemo(() => {
     if (!should_project) return live;
     if (from === month_from && to === today) return live;
     return summarize_period(state, month_from, today, {
       revenue: mtd_fact?.revenue ?? 0,
+      card_revenue: (mtd_fact?.money?.card ?? 0) + (mtd_fact?.money?.online ?? 0),
       sales: mtd_fact?.sales,
     });
   }, [should_project, from, month_from, to, today, live, state, mtd_fact]);
@@ -927,6 +1108,7 @@ export default function DashboardSection({
   const break_even = break_even_revenue(state, month_id, {
     margin_pct,
     staff_writeoff_monthly: staff_wo_monthly,
+    acquiring_pct: live.revenue > 0 ? live.acquiring / live.revenue : 0,
   });
   /** в статусе — ориентир чистой к концу месяца (экстраполяция), не недобор до BE */
   const plaque_net = period_exact
@@ -935,13 +1117,6 @@ export default function DashboardSection({
   const plaque_revenue = period_exact
     ? live.revenue
     : (month_proj?.projected_revenue ?? live.revenue);
-  /** маленькая плашка «чистая» — с учётом безубыточности месяца */
-  const kpi_net = net_vs_month_break_even({
-    revenue: live.revenue,
-    cogs: live.cogs,
-    break_even,
-    accounting_net: live.net_profit,
-  });
   /** рентабельность только от ориентира/факта чистой — никогда от «до безубыточности» */
   const plaque_rent = period_exact
     ? live.revenue > 0
@@ -1057,12 +1232,17 @@ export default function DashboardSection({
   const n_days = Math.max(1, days.length);
   const regime = tax_regime_of(state);
   const patent_day = regime.kind === 'patent' ? live.tax / n_days : 0;
-  const fixed_day = (live.opex + live.ndfl + live.insurance + live.amortization) / n_days + patent_day;
-  const cogs_rate = live.revenue > 0 ? live.cogs / live.revenue : 0;
+  const fixed_day =
+    (live.opex + live.ndfl + live.insurance + live.amortization + live.other_expense - live.other_income) / n_days +
+    patent_day;
+  const cogs_rate = live.revenue > 0 ? (live.cogs + live.acquiring) / live.revenue : 0;
   const chart = days.map((d) => {
     const revenue = d.revenue;
     const cogs = revenue * cogs_rate;
-    const tax = regime.kind === 'patent' ? 0 : compute_month_tax(state, revenue, cogs + live.opex / n_days);
+    const tax =
+      regime.kind === 'patent'
+        ? 0
+        : compute_month_tax(state, revenue, cogs + fixed_day, { insurance: live.insurance / n_days });
     const same_month = from.slice(0, 7) === to.slice(0, 7);
     return {
       name: same_month ? String(Number(d.day.slice(8))) : `${d.day.slice(8)}.${d.day.slice(5, 7)}`,
@@ -1151,7 +1331,11 @@ export default function DashboardSection({
               pay_month={pay_month}
               sellers_loading={sellers_loading}
               sellers_error={sellers_error}
-              on_retry_sellers={() => set_sellers_tick((n) => n + 1)}
+              on_retry_sellers={() => {
+                set_sellers_loading(true);
+                set_sellers_error('');
+                set_sellers_tick((n) => n + 1);
+              }}
               spot_labels={seller_spot_label_map}
               on_change={set_payroll_lines}
             />
@@ -1183,6 +1367,43 @@ export default function DashboardSection({
             />
           }
         />
+        <Kpi
+          label="непредвиденные"
+          value={format_rub(-live.other_expense)}
+          sub={unexpected.expenses.length ? `${unexpected.expenses.length} трат вне пост. статей` : 'всё в пост. статьях'}
+          bar="#B45309"
+          on_click={() => set_unexpected_open((v) => !v)}
+          open={unexpected_open}
+          expand={
+            unexpected.expenses.length ? (
+              <ul className="divide-y divide-neutral-100">
+                {unexpected.expenses.map((row) => (
+                  <li key={row.id} className="flex items-baseline justify-between gap-3 py-2 text-sm">
+                    <span className="min-w-0">
+                      <span className="block truncate text-neutral-800">{row.title}</span>
+                      <span className="text-[11px] text-neutral-400">
+                        {ru_day(row.ymd)} · {row.channel === 'card' ? 'безнал' : 'нал'}
+                        {row.actor ? ` · ${row.actor}` : ''}
+                      </span>
+                    </span>
+                    <span className="shrink-0 tabular-nums text-neutral-900">{format_rub(-row.amount)}</span>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="text-sm text-neutral-400">
+                за период нет трат вне постоянных статей. сюда падают все «расходы» из операций, кроме закупок
+                сырья, оборудования, инкассации и платежей по постоянным статьям
+              </p>
+            )
+          }
+        />
+        <Kpi
+          label="амортизация"
+          value={format_rub(-live.amortization)}
+          sub={`${format_rub(month_tot.amort)} в месяц · износ техники`}
+          bar="#64748B"
+        />
         <Kpi label={tax_label(state)} value={format_rub(-live.tax)} bar="#2A9D8F" />
         <Kpi
           label={
@@ -1195,7 +1416,15 @@ export default function DashboardSection({
           value={format_rub(-(fot_ndfl_month + month_tot.insurance))}
           bar="#7C6FF7"
         />
-        <Kpi label="чистая" value={format_rub(kpi_net)} bar="#20181B" />
+        <Kpi
+          label="чистая"
+          value={format_rub(live.net_profit)}
+          sub={live.revenue > 0 ? `${Math.round((live.net_profit / live.revenue) * 100)}% от выручки` : undefined}
+          bar="#20181B"
+          on_click={() => set_net_open((v) => !v)}
+          open={net_open}
+          expand={<NetBreakdown s={live} period={period} />}
+        />
         <Kpi
           label="закупки"
           value={format_rub(live.cogs_actual > 0 ? live.cogs_actual : warehouse.spent)}
@@ -1224,6 +1453,17 @@ export default function DashboardSection({
           bar="#0f766e"
         />
       </div>
+
+      <KeyMetricsCard
+        s={live}
+        money={fact?.money}
+        orders={fact?.orders ?? 0}
+        cups={fact?.cups ?? 0}
+        days={period_days}
+        break_even={break_even}
+        month_days={dim}
+        equipment_total={state.equipments.reduce((sum, e) => sum + (Number(e.price) || 0), 0)}
+      />
 
       <p className="text-[11px] text-neutral-400">
         возврат, частота и база — срез на {ru_day(to)}. 30 суток от покупки, не длина периода

@@ -1,8 +1,8 @@
 'use client';
 
-import { createElement, useRef } from 'react';
+import { useRef } from 'react';
 import { read_image_file } from '@/lib/image-upload';
-import edit_pencil from '@/components/admin/edit-pencil';
+import EditPencil from '@/components/admin/edit-pencil';
 
 type props = {
   on_pick: (data_url: string) => void | Promise<void>;
@@ -11,7 +11,7 @@ type props = {
   size?: 'sm' | 'md';
 };
 
-export default function image_file_picker({
+export default function ImageFilePicker({
   on_pick,
   label = 'загрузить фото',
   className = '',
@@ -41,16 +41,16 @@ export default function image_file_picker({
           e.target.value = '';
         }}
       />
-      {createElement(edit_pencil, {
-        label,
-        onClick: () => ref.current?.click(),
-        className: `${size === 'sm' ? 'h-6 w-6' : 'h-9 w-9'} ${className}`,
-      })}
+      <EditPencil
+        label={label}
+        onClick={() => ref.current?.click()}
+        className={`${size === 'sm' ? 'h-6 w-6' : 'h-9 w-9'} ${className}`}
+      />
     </>
   );
 }
 
-export function image_upload_button({
+export function ImageUploadButton({
   on_pick,
   label = 'выбрать фото с компьютера',
   className = '',

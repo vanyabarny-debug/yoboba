@@ -7,6 +7,7 @@ import { course, type Block, type Card } from '@/lib/study/course'
 import { format_intern_when, intern_phone, intern_phone_tel, load_apply } from '@/lib/study/apply'
 import { mood_faces, type intern_quiz_block } from '@/lib/study/interns'
 import { load_student, type Student } from '@/lib/study/student'
+import { useHydrated } from '@/lib/use-hydrated'
 
 const progress_key = 'yostudy-progress'
 const results_key = 'yostudy-results'
@@ -753,10 +754,13 @@ function Finish({
   const [when, set_when] = useState('')
   const [open, set_open] = useState<string | null>(null)
 
-  useEffect(() => {
+  const hydrated = useHydrated()
+  const [restored, set_restored] = useState(false)
+  if (hydrated && !restored) {
+    set_restored(true)
     const a = load_apply()
     if (a) set_when(format_intern_when(a.intern_date, a.intern_time))
-  }, [])
+  }
 
   return (
     <div className="shell">

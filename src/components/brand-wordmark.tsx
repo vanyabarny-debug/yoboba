@@ -8,7 +8,7 @@ type props = {
   className?: string;
 };
 
-export default function brand_wordmark({ className = '' }: props) {
+export default function BrandWordmark({ className = '' }: props) {
   const [brand, set_brand] = useState(() => get_default_brand_settings());
 
   useEffect(() => {

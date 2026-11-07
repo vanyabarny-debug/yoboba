@@ -145,6 +145,8 @@ export type order_item = {
   menu_id: string;
   name: string;
   price: number;
+  /** цена по меню за штуку, если продали со скидкой */
+  list_price?: number;
   quantity: number;
   /** объём в мл — чтобы склад списал нужный размер техкарты */
   volume?: string;

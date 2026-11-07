@@ -3,8 +3,8 @@
 import { createElement, useEffect, useState } from 'react';
 import type { store_spot } from '@/lib/types';
 import AdminShell from '@/components/admin/admin-shell';
-import personnel_panel from '@/components/admin/personnel-panel';
-import spot_edit_sheet from '@/components/admin/spot-edit-sheet';
+import PersonnelPanel from '@/components/admin/personnel-panel';
+import SpotEditSheet from '@/components/admin/spot-edit-sheet';
 import {
   delete_spot,
   get_spots,
@@ -13,7 +13,7 @@ import {
   upsert_spot,
 } from '@/lib/spot-store';
 
-export default function spots_manage() {
+export default function SpotsManage() {
   const [spots, set_spots] = useState<store_spot[]>([]);
   const [editing, set_editing] = useState<store_spot | null>(null);
   const [personnel_open, set_personnel_open] = useState(false);
@@ -113,12 +113,12 @@ export default function spots_manage() {
               />
             </svg>
           </button>
-          {personnel_open ? createElement(personnel_panel) : null}
+          {personnel_open ? createElement(PersonnelPanel) : null}
         </div>
       </div>
 
       {editing &&
-        createElement(spot_edit_sheet, {
+        createElement(SpotEditSheet, {
           spot: editing,
           on_close: () => set_editing(null),
           on_save: upsert_spot,

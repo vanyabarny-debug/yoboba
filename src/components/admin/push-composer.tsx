@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { subscribe_menu_store } from '@/lib/menu-store';
 import { subscribe_promo_store } from '@/lib/promo-store';
 import { subscribe_site_content_store } from '@/lib/site-content-store';
+import { useHydrated } from '@/lib/use-hydrated';
 import {
   group_guest_site_links,
   list_guest_site_links,
@@ -62,7 +63,7 @@ function pick_url(links: site_link[], preferred: string) {
 }
 
 /** форма рассылки — без оболочки админки, для встраивания в раздел клиентов */
-export default function push_composer() {
+export default function PushComposer() {
   const [data, set_data] = useState<payload | null>(null);
   const [error, set_error] = useState('');
   const [query, set_query] = useState('');
@@ -77,11 +78,17 @@ export default function push_composer() {
   const [result, set_result] = useState('');
   const [links, set_links] = useState<site_link[]>(() => list_guest_site_links());
 
+  const hydrated = useHydrated();
+  const [links_restored, set_links_restored] = useState(false);
+  if (hydrated && !links_restored) {
+    set_links_restored(true);
+    set_links(list_guest_site_links());
+  }
+
   useEffect(() => {
     function reload() {
       set_links(list_guest_site_links());
     }
-    reload();
     const unsub_content = subscribe_site_content_store(reload);
     const unsub_promo = subscribe_promo_store(reload);
     const unsub_menu = subscribe_menu_store(reload);
@@ -94,9 +101,11 @@ export default function push_composer() {
 
   const grouped_links = useMemo(() => group_guest_site_links(links), [links]);
 
-  useEffect(() => {
+  const [url_links, set_url_links] = useState<site_link[] | null>(null);
+  if (url_links !== links) {
+    set_url_links(links);
     set_url((current) => pick_url(links, current));
-  }, [links]);
+  }
 
   useEffect(() => {
     fetch('/api/push/subscribers', { credentials: 'same-origin' })

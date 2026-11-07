@@ -2,7 +2,7 @@
 
 import { createElement, useEffect, useState } from 'react';
 import BrandWordmark from '@/components/brand-wordmark';
-import profile_chip from '@/components/profile-chip';
+import ProfileChip from '@/components/profile-chip';
 import spot_rating from '@/components/spot-rating';
 import edit_pencil from '@/components/admin/edit-pencil';
 import type { store_spot } from '@/lib/types';
@@ -12,8 +12,6 @@ import {
   get_default_brand_settings,
   subscribe_brand_settings,
 } from '@/lib/brand-store';
-import { spot_has_yandex } from '@/lib/yandex-spot';
-
 type props = {
   city: string;
   spot?: store_spot | null;
@@ -36,7 +34,7 @@ type props = {
   on_admin?: () => void;
 };
 
-export default function site_header({
+export default function SiteHeader({
   city,
   spot,
   spot_address,
@@ -89,7 +87,7 @@ export default function site_header({
             {edit_mode ? (
               <span className="text-[10px] text-neutral-400">режим правки</span>
             ) : (
-              createElement(profile_chip, {
+              createElement(ProfileChip, {
                 is_logged_in,
                 bonus,
                 user_name,
@@ -103,11 +101,6 @@ export default function site_header({
             )}
           </div>
         </div>
-        {spot_has_yandex(spot) ? (
-          <div className="mt-2">
-            {createElement(spot_rating, { spot })}
-          </div>
-        ) : null}
       </div>
 
       {/* Desktop header */}
@@ -173,7 +166,7 @@ export default function site_header({
               меню
             </button>
           )}
-          {createElement(profile_chip, {
+          {createElement(ProfileChip, {
             is_logged_in,
             bonus,
             user_name,

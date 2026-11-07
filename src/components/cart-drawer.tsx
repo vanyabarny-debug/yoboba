@@ -9,7 +9,7 @@ import {
   SHEET_ANIM_MS,
   SHEET_OPEN_DELAY_MS,
 } from '@/lib/drawer-ui';
-import { use_sheet_swipe } from '@/lib/use-sheet-swipe';
+import { useSheetSwipe } from '@/lib/use-sheet-swipe';
 import {
   BOBY_PER_DRINK,
   calc_order_bonus,
@@ -99,7 +99,7 @@ function boby_info() {
   );
 }
 
-export default function cart_drawer({
+export default function CartDrawer({
   open,
   lines,
   all_items,
@@ -125,24 +125,25 @@ export default function cart_drawer({
   const [clearing, set_clearing] = useState(false);
   const body_ref = useRef<HTMLDivElement>(null);
 
-  const { sheet_props, backdrop_style } = use_sheet_swipe({
+  const { sheet_props, backdrop_style } = useSheetSwipe({
     active: sheet_open,
     on_dismiss: on_close,
     vertical_only: true,
     get_scroll_top: () => body_ref.current?.scrollTop ?? 0,
   });
 
-  useEffect(() => {
-    if (!open) return;
-    set_sheet_visible(true);
+  const [was_open, set_was_open] = useState(false);
+  if (was_open !== open) {
+    set_was_open(open);
     set_sheet_open(false);
-    const timer = window.setTimeout(() => set_sheet_open(true), SHEET_OPEN_DELAY_MS);
-    return () => window.clearTimeout(timer);
-  }, [open]);
+    if (open) set_sheet_visible(true);
+    else set_clearing(false);
+  }
 
   useEffect(() => {
-    if (open) return;
-    set_sheet_open(false);
+    if (!open) return;
+    const timer = window.setTimeout(() => set_sheet_open(true), SHEET_OPEN_DELAY_MS);
+    return () => window.clearTimeout(timer);
   }, [open]);
 
   useEffect(() => {
@@ -159,10 +160,6 @@ export default function cart_drawer({
       document.body.style.overflow = prev_overflow;
     };
   }, [sheet_visible, open]);
-
-  useEffect(() => {
-    if (!open) set_clearing(false);
-  }, [open]);
 
   async function handle_clear_click() {
     if (!on_clear || clearing) return;

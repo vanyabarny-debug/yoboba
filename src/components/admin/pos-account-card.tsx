@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 
-export default function pos_account_card() {
+export default function PosAccountCard() {
   const [login, set_login] = useState('');
   const [current_password, set_current_password] = useState('');
   const [new_password, set_new_password] = useState('');

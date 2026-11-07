@@ -39,7 +39,7 @@ function make_supabase(request: NextRequest, cookie_response: NextResponse) {
 
 /** смена эмоджи и/или цвета фона (бесплатно) */
 export async function POST(request: NextRequest) {
-  let cookie_response = NextResponse.next();
+  const cookie_response = NextResponse.next();
   const body = (await request.json().catch(() => ({}))) as {
     emoji?: string;
     bg?: string | null;

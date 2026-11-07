@@ -42,6 +42,7 @@ import {
   type finance_state,
   type material,
   type material_unit,
+  type receipt_gap,
   type stock_actor,
   type stock_audit_action,
   type stock_audit_entry,
@@ -72,7 +73,7 @@ import {
   th_num_class,
 } from '@/components/admin/finance/ui';
 import { save_label, type section_props } from '@/components/admin/finance/use-finance';
-import { use_admin_spot } from '@/components/admin/admin-spot-context';
+import { useAdminSpot } from '@/components/admin/admin-spot-context';
 
 const movement_labels: Record<stock_movement['type'], string> = {
   in: 'поставка',
@@ -852,7 +853,7 @@ function RemainderInvoiceModal({
 }
 
 export default function InventorySection({ state: full, set_state: set_full, save_status = 'idle' }: section_props) {
-  const admin = use_admin_spot();
+  const admin = useAdminSpot();
   const spot_id = admin.spot_id || admin.spot_options[0]?.id || LEGACY_SPOT_ID;
   const spot_label = admin.spot_options.find((s) => s.id === spot_id)?.label || 'эта точка';
   const state = useMemo(() => bind_spot(full, spot_id), [full, spot_id]);
@@ -885,7 +886,7 @@ export default function InventorySection({ state: full, set_state: set_full, sav
   const [adding_cat_for, set_adding_cat_for] = useState<'mv' | 'stock' | null>(null);
   const [new_cat_name, set_new_cat_name] = useState('');
   const [cat_pick, set_cat_pick] = useState<{ x: number; y: number; materialId: string | 'new' } | null>(null);
-  const [focus_mat, set_focus_mat] = useState<string | null>(null);
+  const focus_mat = useRef<string | null>(null);
   const [open_prep, set_open_prep] = useState<string | null>(null);
   const [dates_open, set_dates_open] = useState(false);
   const [mv_sort, set_mv_sort] = useState<mv_sort_id>('date_desc');
@@ -894,9 +895,11 @@ export default function InventorySection({ state: full, set_state: set_full, sav
   const restored_defaults = useRef(false);
   const must_count = needs_stock_count(state);
 
-  useEffect(() => {
+  const [was_must_count, set_was_must_count] = useState(false);
+  if (must_count !== was_must_count) {
+    set_was_must_count(must_count);
     if (must_count) set_count_open(true);
-  }, [must_count]);
+  }
 
   useEffect(() => {
     if (!cat_menu && !cat_pick && !dates_open) return;
@@ -1016,9 +1019,15 @@ export default function InventorySection({ state: full, set_state: set_full, sav
   const books_day = stock_books_day(state) || '2024-01-01';
   const [earned_revenue, set_earned_revenue] = useState<number | null>(null);
 
+  const earned_key = `${books_day}|${range_to}`;
+  const [earned_for, set_earned_for] = useState(earned_key);
+  if (earned_for !== earned_key) {
+    set_earned_for(earned_key);
+    set_earned_revenue(null);
+  }
+
   useEffect(() => {
     let cancelled = false;
-    set_earned_revenue(null);
     fetch(`/api/admin/finance/sales?from=${books_day}&to=${range_to}`, { credentials: 'same-origin' })
       .then((r) => r.json())
       .then((body: { revenue?: number; error?: string }) => {
@@ -1252,11 +1261,11 @@ export default function InventorySection({ state: full, set_state: set_full, sav
   }, [visible, state.prepRecipes, stock_category, stock_query, stock_sort, cats]);
 
   useEffect(() => {
-    if (!focus_mat) return;
-    const el = document.querySelector(`[data-mat-name="${focus_mat}"]`) as HTMLInputElement | null;
+    if (!focus_mat.current) return;
+    const el = document.querySelector(`[data-mat-name="${focus_mat.current}"]`) as HTMLInputElement | null;
     el?.focus();
-    set_focus_mat(null);
-  }, [focus_mat]);
+    focus_mat.current = null;
+  });
 
   function update_material(id: string, patch: Partial<material>) {
     set_state((prev) => ({ ...prev, materials: prev.materials.map((m) => (m.id === id ? { ...m, ...patch } : m)) }));
@@ -1269,7 +1278,7 @@ export default function InventorySection({ state: full, set_state: set_full, sav
       materials: [...prev.materials, { id, name: '', category: cat_id, unit: 'kg', costPerUnit: 0 }],
     }));
     if (stock_category !== 'все' && stock_category !== cat_id) set_stock_category(cat_id);
-    set_focus_mat(id);
+    focus_mat.current = id;
     set_cat_pick(null);
   }
 
@@ -1480,8 +1489,9 @@ export default function InventorySection({ state: full, set_state: set_full, sav
                   total: r.total,
                   date: r.date,
                   note: r.note,
-                  update_price: true,
+                  update_price: r.total > 0,
                   actor: ADMIN_ACTOR,
+                  pending: r.pending,
                 });
               }, prev),
             );
@@ -2471,7 +2481,14 @@ type receipt_submit = {
   total: number;
   date: string;
   note?: string;
+  /** без суммы или даты — подтвердят в операциях */
+  pending?: receipt_gap;
 };
+
+function receipt_gap_of(has_sum: boolean, has_date: boolean): receipt_gap | undefined {
+  if (has_sum && has_date) return undefined;
+  return has_sum ? 'date' : has_date ? 'sum' : 'both';
+}
 
 function rub2(n: number) {
   return Math.round((Number(n) || 0) * 100) / 100;
@@ -2659,7 +2676,7 @@ function ReceiptForm({
     const per_piece = pieces > 0 && row.total > 0 ? row.total / pieces : 0;
     const per_stored = purchase > 0 && row.total > 0 ? row.total / purchase : 0;
     const named = row.creating ? row.newName.trim() : Boolean(row.materialId);
-    const ready = Boolean(named) && row.packs > 0 && row.packSize > 0 && row.total > 0 && purchase > 0;
+    const ready = Boolean(named) && row.packs > 0 && row.packSize > 0 && purchase > 0;
     return { mat, stored, grams, pieces, purchase, mismatch, per_gram, per_piece, per_stored, ready };
   }
 
@@ -2678,10 +2695,10 @@ function ReceiptForm({
     if (row.creating && !row.newName.trim()) return 'напишите название';
     if (!(row.packs > 0)) return 'укажите число упаковок';
     if (!(row.packSize > 0)) return 'укажите вес одной упаковки';
-    if (!(row.total > 0)) return 'укажите сумму накладной';
     return '';
   })();
   const total_sum = ready_rows.reduce((s, r) => s + (r.total || 0), 0);
+  const waits = ready_rows.length > 0 && (!date || ready_rows.some((r) => !(r.total > 0)));
 
   return (
     <Card
@@ -2693,6 +2710,7 @@ function ReceiptForm({
         <label className="text-xs text-neutral-500">
           дата
           <input type="date" max={today_iso()} className={`${field_class} mt-1`} value={date} onChange={(e) => set_date(e.target.value)} />
+          {!date ? <span className="mt-1 block text-[11px] text-amber-700">без даты — подтвердят в операциях</span> : null}
         </label>
         <label className="text-xs text-neutral-500 sm:col-span-2">
           поставщик / комментарий
@@ -2896,6 +2914,11 @@ function ReceiptForm({
           <span className="text-sm text-neutral-500">
             итого <span className="font-semibold text-neutral-900">{format_rub(total_sum)}</span>
             {hold_reason ? <span className="mt-0.5 block text-right text-[11px] text-amber-700">{hold_reason}</span> : null}
+            {!hold_reason && waits ? (
+              <span className="mt-0.5 block text-right text-[11px] text-amber-700">
+                без суммы или даты — поставка будет ждать подтверждения в операциях
+              </span>
+            ) : null}
           </span>
           <button type="button" className={btn_secondary} onClick={on_close}>
             отмена
@@ -2918,6 +2941,7 @@ function ReceiptForm({
                     total: r.total,
                     date: receipt_stamp(date),
                     note: [note.trim(), pack].filter(Boolean).join(' · ') || undefined,
+                    pending: receipt_gap_of(r.total > 0, Boolean(date)),
                   };
                 }),
               )

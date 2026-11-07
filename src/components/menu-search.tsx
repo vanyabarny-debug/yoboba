@@ -26,7 +26,7 @@ type search_ctx = {
 
 const SearchContext = createContext<search_ctx | null>(null);
 
-function use_search_ctx() {
+function useSearchCtx() {
   const ctx = useContext(SearchContext);
   if (!ctx) throw new Error('menu_search components must be inside MenuSearchRoot');
   return ctx;
@@ -36,7 +36,7 @@ type root_props = {
   items: menu_item[];
   on_item_click: (item: menu_item) => void;
   on_open_change?: (open: boolean) => void;
-  children: ReactNode;
+  children?: ReactNode;
 };
 
 function SearchIcon({ size = 21 }: { size?: number }) {
@@ -63,7 +63,7 @@ function highlighted_text(text: string, query: string) {
   );
 }
 
-export function menu_search_root({ items, on_item_click, on_open_change, children }: root_props) {
+export function MenuSearchRoot({ items, on_item_click, on_open_change, children }: root_props) {
   const [open, set_open] = useState(false);
   const [query, set_query] = useState('');
   const [meta_tick, set_meta_tick] = useState(0);
@@ -127,8 +127,8 @@ export function menu_search_root({ items, on_item_click, on_open_change, childre
   );
 }
 
-export function menu_search_field() {
-  const { open, query, set_query, open_search, close } = use_search_ctx();
+export function MenuSearchField() {
+  const { open, query, set_query, open_search, close } = useSearchCtx();
   const input_ref = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -195,8 +195,8 @@ export function menu_search_field() {
   );
 }
 
-export function menu_search_results() {
-  const { open, query, results, pick } = use_search_ctx();
+export function MenuSearchResults() {
+  const { open, query, results, pick } = useSearchCtx();
 
   if (!open || !query.trim()) return null;
 
@@ -239,12 +239,12 @@ export function menu_search_results() {
   );
 }
 
-/** @deprecated use menu_search_root + menu_search_field + menu_search_results */
+/** @deprecated use MenuSearchRoot + MenuSearchField + MenuSearchResults */
 export default function menu_search(props: root_props) {
   return createElement(
-    menu_search_root,
+    MenuSearchRoot,
     props,
-    createElement(menu_search_field),
-    createElement(menu_search_results)
+    createElement(MenuSearchField),
+    createElement(MenuSearchResults)
   );
 }

@@ -21,29 +21,25 @@ const proof_options = [
   { id: 'any', label: 'фото или видео' },
 ] as const;
 
-export default function shift_checklists_manage() {
+async function fetch_bundle() {
+  const res = await fetch('/api/admin/shift-checklists', { credentials: 'same-origin' });
+  const data = (await res.json()) as { error?: string; bundle?: shift_checklist_bundle };
+  if (!res.ok || !data.bundle) throw new Error(data.error || 'не удалось загрузить');
+  return data.bundle;
+}
+
+export default function ShiftChecklistsManage() {
   const [bundle, set_bundle] = useState<shift_checklist_bundle | null>(null);
   const [tab, set_tab] = useState<'opening' | 'closing'>('opening');
   const [error, set_error] = useState('');
   const [loading, set_loading] = useState(true);
   const [saving, set_saving] = useState(false);
 
-  async function reload() {
-    set_loading(true);
-    try {
-      const res = await fetch('/api/admin/shift-checklists', { credentials: 'same-origin' });
-      const data = (await res.json()) as { error?: string; bundle?: shift_checklist_bundle };
-      if (!res.ok || !data.bundle) throw new Error(data.error || 'не удалось загрузить');
-      set_bundle(data.bundle);
-    } catch (err) {
-      set_error(err instanceof Error ? err.message : 'не удалось загрузить');
-    } finally {
-      set_loading(false);
-    }
-  }
-
   useEffect(() => {
-    void reload();
+    fetch_bundle()
+      .then(set_bundle)
+      .catch((err) => set_error(err instanceof Error ? err.message : 'не удалось загрузить'))
+      .finally(() => set_loading(false));
   }, []);
 
   function patch_section(kind: 'opening' | 'closing', patch: Partial<shift_checklist_section>) {

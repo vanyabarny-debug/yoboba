@@ -20,7 +20,7 @@ type props = {
   on_need_login: () => void;
 };
 
-export default function pickup_code_sheet({
+export default function PickupCodeSheet({
   open,
   is_logged_in,
   demo_mode = false,
@@ -38,17 +38,24 @@ export default function pickup_code_sheet({
   const [busy, set_busy] = useState(false);
   const [error, set_error] = useState('');
 
+  const code_key = `${open}|${is_logged_in}|${demo_mode}|${user_id}|${user_name}|${user_phone}|${bonus}`;
+  const [code_for, set_code_for] = useState<string | null>(null);
+  if (code_for !== code_key) {
+    set_code_for(code_key);
+    if (open && is_logged_in) {
+      set_balance(bonus);
+      set_busy(true);
+      set_error('');
+    }
+  }
+
   useEffect(() => {
     if (!open || !is_logged_in) return;
-    set_balance(bonus);
 
     let cancelled = false;
     let refresh_timer: number | null = null;
 
-    async function load_code() {
-      set_busy(true);
-      set_error('');
-
+    function load_code() {
       const params = new URLSearchParams();
       if (demo_mode && user_id) {
         params.set('demo_user_id', user_id);
@@ -58,50 +65,54 @@ export default function pickup_code_sheet({
       }
 
       const qs = params.toString();
-      try {
-        const r = await fetch(`/api/me/pickup-code${qs ? `?${qs}` : ''}`, {
-          credentials: 'same-origin',
-          cache: 'no-store',
-        });
-        const body = await read_json_response<{
-          code?: string;
-          expires_at?: string;
-          bonus_balance?: number;
-          error?: string;
-        }>(r);
-        if (!r.ok) throw new Error(body.error || 'не удалось получить код');
-        if (cancelled) return;
-        if (!body.code) throw new Error('пустой код');
-        set_code(body.code);
-        set_expires_at(body.expires_at || null);
-        if (typeof body.bonus_balance === 'number') set_balance(body.bonus_balance);
-        const data_url = await QRCode.toDataURL(pickup_qr_payload(body.code), {
-          margin: 1,
-          width: 240,
-          color: { dark: '#002d7a', light: '#ffffff' },
-        });
-        if (!cancelled) set_qr_url(data_url);
+      fetch(`/api/me/pickup-code${qs ? `?${qs}` : ''}`, {
+        credentials: 'same-origin',
+        cache: 'no-store',
+      })
+        .then(async (r) => {
+          const body = await read_json_response<{
+            code?: string;
+            expires_at?: string;
+            bonus_balance?: number;
+            error?: string;
+          }>(r);
+          if (!r.ok) throw new Error(body.error || 'не удалось получить код');
+          if (cancelled) return;
+          if (!body.code) throw new Error('пустой код');
+          set_code(body.code);
+          set_expires_at(body.expires_at || null);
+          if (typeof body.bonus_balance === 'number') set_balance(body.bonus_balance);
+          const data_url = await QRCode.toDataURL(pickup_qr_payload(body.code), {
+            margin: 1,
+            width: 240,
+            color: { dark: '#002d7a', light: '#ffffff' },
+          });
+          if (!cancelled) set_qr_url(data_url);
 
-        if (body.expires_at && !cancelled) {
-          const ms = new Date(body.expires_at).getTime() - Date.now() - 5_000;
-          if (ms > 0) {
-            refresh_timer = window.setTimeout(() => {
-              void load_code();
-            }, ms);
+          if (body.expires_at && !cancelled) {
+            const ms = new Date(body.expires_at).getTime() - Date.now() - 5_000;
+            if (ms > 0) {
+              refresh_timer = window.setTimeout(() => {
+                set_busy(true);
+                set_error('');
+                load_code();
+              }, ms);
+            }
           }
-        }
-      } catch (e) {
-        if (!cancelled) {
-          set_error(e instanceof Error ? e.message : 'ошибка');
-          set_code(null);
-          set_qr_url(null);
-        }
-      } finally {
-        if (!cancelled) set_busy(false);
-      }
+        })
+        .catch((e) => {
+          if (!cancelled) {
+            set_error(e instanceof Error ? e.message : 'ошибка');
+            set_code(null);
+            set_qr_url(null);
+          }
+        })
+        .finally(() => {
+          if (!cancelled) set_busy(false);
+        });
     }
 
-    void load_code();
+    load_code();
 
     return () => {
       cancelled = true;

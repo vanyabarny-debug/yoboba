@@ -1,11 +1,12 @@
 'use client';
 
-import { createElement, useEffect, useState } from 'react';
+import { createElement, useState } from 'react';
 import {
   get_page_by_slug,
   type site_page,
   type top_bar_link,
 } from '@/lib/site-content-store';
+import { useHydrated } from '@/lib/use-hydrated';
 import { admin_sheet } from '@/components/admin/admin-sheet';
 
 type props = {
@@ -19,27 +20,25 @@ function slug_from_href(href: string) {
   return href.replace(/^\//, '').split('?')[0] || '';
 }
 
-export default function top_bar_edit_sheet({ link, on_close, on_save, on_delete }: props) {
+export default function TopBarEditSheet({ link, on_close, on_save, on_delete }: props) {
   const [draft_link, set_draft_link] = useState<top_bar_link | null>(link);
   const [draft_page, set_draft_page] = useState<site_page | null>(null);
 
-  useEffect(() => {
+  const hydrated = useHydrated();
+  const [link_for, set_link_for] = useState<top_bar_link | null | undefined>(undefined);
+  if (hydrated && link_for !== link) {
+    set_link_for(link);
     set_draft_link(link);
-    if (!link) {
-      set_draft_page(null);
-      return;
-    }
-    const slug = slug_from_href(link.href);
+    const slug = link ? slug_from_href(link.href) : '';
     set_draft_page(slug ? get_page_by_slug(slug) ?? null : null);
-  }, [link]);
+  }
 
   if (!draft_link) return null;
 
-  return createElement(admin_sheet, {
-    open: true,
-    title: 'раздел верхней плашки',
-    on_close,
-    children: (
+  return createElement(
+    admin_sheet,
+    { open: true, title: 'раздел верхней плашки', on_close },
+    (
       <form
         onSubmit={(e) => {
           e.preventDefault();
@@ -132,6 +131,6 @@ export default function top_bar_edit_sheet({ link, on_close, on_save, on_delete 
           </button>
         </div>
       </form>
-    ),
-  });
+    )
+  );
 }

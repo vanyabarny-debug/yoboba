@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import {
   demo_cities,
   detect_location,
@@ -9,24 +9,28 @@ import {
   set_location,
   type user_location,
 } from '@/lib/location';
+import { useHydrated } from '@/lib/use-hydrated';
 
 type props = {
   on_confirm: (location: user_location) => void;
 };
 
-export default function location_picker({ on_confirm }: props) {
+export default function LocationPicker({ on_confirm }: props) {
   const [city, set_city] = useState('');
   const [loading, set_loading] = useState(false);
   const [error, set_error] = useState('');
   const [detected, set_detected] = useState(false);
 
-  useEffect(() => {
+  const hydrated = useHydrated();
+  const [restored, set_restored] = useState(false);
+  if (hydrated && !restored) {
+    set_restored(true);
     const saved = get_location();
     if (saved) {
       set_city(saved.city);
       set_detected(true);
     }
-  }, []);
+  }
 
   async function handle_detect() {
     set_loading(true);

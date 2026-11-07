@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 
-export default function barista_login_sheet({
+export default function BaristaLoginSheet({
   title = 'кто на смене',
   subtitle = 'войдите своим логином и паролем',
   busy,

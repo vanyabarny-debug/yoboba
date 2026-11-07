@@ -13,7 +13,7 @@ import {
   default_sidebar_interval_ms,
   default_sidebar_slides,
 } from '@/lib/sidebar-ad-store';
-import home_client from '@/components/home-client';
+import HomeClient from '@/components/home-client';
 import type { story } from '@/lib/types';
 
 export const dynamic = 'force-dynamic';
@@ -35,7 +35,7 @@ export default async function home_page() {
     return createElement(
       Suspense,
       { fallback: <div className="min-h-screen bg-page" /> },
-      createElement(home_client, {
+      createElement(HomeClient, {
         initial_menu: live.items,
         initial_categories: live.categories,
         initial_promos: default_promos,
@@ -63,7 +63,7 @@ export default async function home_page() {
   return createElement(
     Suspense,
     { fallback: <div className="min-h-screen bg-page" /> },
-    createElement(home_client, {
+    createElement(HomeClient, {
       initial_menu: live.items.length ? live.items : apply_menu_item_badges(default_menu_items),
       initial_categories: live.categories,
       initial_stories: stories,

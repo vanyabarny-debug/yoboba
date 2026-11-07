@@ -3,7 +3,7 @@
 import { createElement, useEffect, useState } from 'react';
 import type { barista_analytics } from '@/lib/types';
 import { moscow_today_iso } from '@/lib/order-number';
-import day_summary_panel from '@/components/seller/day-summary';
+import DaySummaryPanel from '@/components/seller/day-summary';
 
 type props = {
   seller_id: string;
@@ -22,7 +22,7 @@ function format_duration(ms: number | null | undefined) {
   return `${m} мин ${s.toString().padStart(2, '0')} с`;
 }
 
-export default function barista_analytics_panel({
+export default function BaristaAnalyticsPanel({
   seller_id,
   seller_name,
   spot_id,
@@ -34,9 +34,11 @@ export default function barista_analytics_panel({
   const [error, set_error] = useState('');
   const [reload_key, set_reload_key] = useState(0);
 
-  useEffect(() => {
+  const [date_prop_seen, set_date_prop_seen] = useState(shift_date_prop);
+  if (date_prop_seen !== shift_date_prop) {
+    set_date_prop_seen(shift_date_prop);
     if (shift_date_prop) set_shift_date(shift_date_prop);
-  }, [shift_date_prop]);
+  }
 
   useEffect(() => {
     let stop = false;
@@ -226,7 +228,7 @@ export default function barista_analytics_panel({
 
       <div>
         <h3 className="text-base font-bold text-neutral-900 mb-3">касса</h3>
-        {createElement(day_summary_panel, {
+        {createElement(DaySummaryPanel, {
           spot_id,
           seller_id,
           default_date: shift_date,

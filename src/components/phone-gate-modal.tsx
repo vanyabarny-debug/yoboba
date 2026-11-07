@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { format_phone_input, phone_input_to_e164 } from '@/lib/phone';
 import { update_profile } from '@/lib/auth';
 
@@ -10,18 +10,20 @@ type props = {
   on_saved: (phone: string) => void;
 };
 
-export default function phone_gate_modal({ open, on_close, on_saved }: props) {
+export default function PhoneGateModal({ open, on_close, on_saved }: props) {
   const [draft, set_draft] = useState('');
   const [saving, set_saving] = useState(false);
   const [error, set_error] = useState('');
 
-  useEffect(() => {
+  const [was_open, set_was_open] = useState(false);
+  if (was_open !== open) {
+    set_was_open(open);
     if (open) {
       set_draft('');
       set_error('');
       set_saving(false);
     }
-  }, [open]);
+  }
 
   if (!open) return null;
 

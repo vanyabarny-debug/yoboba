@@ -3,9 +3,9 @@
 import { useCallback, useLayoutEffect, useRef, useState, createElement } from 'react';
 import edit_pencil from '@/components/admin/edit-pencil';
 import {
-  menu_search_field,
-  menu_search_results,
-  menu_search_root,
+  MenuSearchField,
+  MenuSearchResults,
+  MenuSearchRoot,
 } from '@/components/menu-search';
 import cart_mark from '@/components/cart-mark';
 import type { menu_item } from '@/lib/types';
@@ -27,7 +27,7 @@ type props = {
 
 const EDGE_PAD = 56;
 
-export default function category_nav({
+export default function CategoryNav({
   categories,
   active,
   cart_count,
@@ -322,7 +322,7 @@ export default function category_nav({
 
         {!edit_mode && on_item_click && items.length > 0 && (
           <div className="mr-2.5 sm:mr-4 shrink-0">
-            {createElement(menu_search_field)}
+            {createElement(MenuSearchField)}
           </div>
         )}
 
@@ -345,19 +345,18 @@ export default function category_nav({
           </span>
         )}
       </div>
-      {show_search && createElement(menu_search_results)}
+      {show_search && createElement(MenuSearchResults)}
     </>
   );
 
   return (
     <nav>
       {show_search
-        ? createElement(menu_search_root, {
-            items,
-            on_item_click: on_item_click!,
-            on_open_change: set_search_open,
-            children: nav_body,
-          })
+        ? createElement(
+            MenuSearchRoot,
+            { items, on_item_click: on_item_click!, on_open_change: set_search_open },
+            nav_body
+          )
         : nav_body}
     </nav>
   );

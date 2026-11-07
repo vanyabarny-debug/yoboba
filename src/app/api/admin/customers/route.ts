@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 import { session_cookie } from '@/lib/session';
-import { adjust_bonus_balance } from '@/lib/bonus-server';
+import { adjust_bonus_balance, is_service_account_email } from '@/lib/bonus-server';
 import { is_supabase_configured } from '@/lib/supabase/config';
 import { create_service_client } from '@/lib/supabase/service';
 import { get_demo_orders } from '@/lib/demo-orders-server';
@@ -40,6 +40,7 @@ type customer_order = {
     name: string;
     quantity: number;
     price: number;
+    list_price?: number;
     volume?: string;
     kind?: 'sale' | 'staff';
   }[];
@@ -71,6 +72,8 @@ type customer_row = {
 
 type auth_info = {
   is_vk: boolean;
+  /** общий аккаунт кассы / гостевой сессии — не конкретный человек */
+  service: boolean;
   phone: string | null;
   avatar_url: string | null;
   name: string | null;
@@ -133,6 +136,7 @@ function to_customer_order(o: order): customer_order {
         name: normalized.name,
         quantity: Number(item.quantity) || 0,
         price: Number(item.price) || 0,
+        ...(item.list_price ? { list_price: Number(item.list_price) } : {}),
         ...(normalized.volume ? { volume: normalized.volume } : {}),
         ...(item.kind ? { kind: item.kind } : {}),
       };
@@ -256,6 +260,7 @@ async function fetch_auth_info() {
       const vk_id = vk_id_from_auth(meta, email);
       map.set(user.id, {
         is_vk: is_vk || Boolean(vk_id),
+        service: is_service_account_email(email),
         phone,
         avatar_url: avatar_from_meta(meta),
         name: name_from_meta(meta),
@@ -400,7 +405,7 @@ export async function GET() {
     try {
       const rows = await fetch_all_rows<order>(
         'orders',
-        'id, user_id, items, total_price, status, payment_type, created_at'
+        'id, user_id, items, total_price, status, payment_type, created_at, customer_phone, customer_name'
       );
       for (const o of rows) {
         if (!o?.id || seen.has(o.id)) continue;
@@ -424,8 +429,9 @@ export async function GET() {
 
   for (const o of orders) {
     const phone = normalize_phone(o.customer_phone);
+    const owner = o.user_id && !auth_by_id.get(o.user_id)?.service ? o.user_id : null;
     const existing =
-      (o.user_id && by_id.get(o.user_id)) || (phone ? by_phone.get(phone) : undefined);
+      (owner && by_id.get(owner)) || (phone ? by_phone.get(phone) : undefined);
 
     if (existing) {
       attach_order(existing, o);
@@ -435,7 +441,7 @@ export async function GET() {
     if (!phone) continue;
 
     const guest = empty_customer({
-      id: o.user_id || `guest:${phone}`,
+      id: owner || `guest:${phone}`,
       name: o.customer_name,
       phone,
       role: 'user',

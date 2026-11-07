@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { apply_receipt, format_rub, month_label, new_id, resolve_stock_spot, update_month, type transaction } from '@/lib/finance/model';
-import { use_admin_spot } from '@/components/admin/admin-spot-context';
+import { useAdminSpot } from '@/components/admin/admin-spot-context';
 import type { section_props } from '@/components/admin/finance/use-finance';
 import {
   Card,
@@ -28,7 +28,7 @@ const fixed_categories: { id: string; label: string; kind: 'expense' | 'income' 
 ];
 
 export default function TransactionsSection({ state, set_state, month, compact }: section_props) {
-  const admin = use_admin_spot();
+  const admin = useAdminSpot();
   const receipt_spot = resolve_stock_spot(admin.spot_id || admin.spot_options[0]?.id);
   const md = state.monthsData.find((m) => m.month === month);
   const [category, set_category] = useState('material');

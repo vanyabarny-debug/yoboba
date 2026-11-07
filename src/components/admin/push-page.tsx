@@ -4,7 +4,7 @@ import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 
 /** старый маршрут — пуши живут в разделе клиентов */
-export default function push_page() {
+export default function PushPage() {
   const router = useRouter();
   useEffect(() => {
     router.replace('/admin/customers');

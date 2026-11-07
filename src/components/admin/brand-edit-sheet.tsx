@@ -1,6 +1,6 @@
 'use client';
 
-import { createElement, useEffect, useRef, useState } from 'react';
+import { createElement, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { admin_sheet } from '@/components/admin/admin-sheet';
 import {
   apply_brand_theme,
@@ -57,18 +57,23 @@ function color_field({
   );
 }
 
-export default function brand_edit_sheet({ open, focus = 'all', on_close, on_save }: props) {
+export default function BrandEditSheet({ open, focus = 'all', on_close, on_save }: props) {
   const [draft, set_draft] = useState<brand_settings>(() => get_brand_settings());
   const [snapshot, set_snapshot] = useState<brand_settings | null>(null);
   const draft_ref = useRef(draft);
-  draft_ref.current = draft;
+  useLayoutEffect(() => {
+    draft_ref.current = draft;
+  });
 
-  useEffect(() => {
-    if (!open) return;
-    const current = get_brand_settings();
-    set_draft(current);
-    set_snapshot(current);
-  }, [open]);
+  const [was_open, set_was_open] = useState(false);
+  if (open !== was_open) {
+    set_was_open(open);
+    if (open) {
+      const current = get_brand_settings();
+      set_draft(current);
+      set_snapshot(current);
+    }
+  }
 
   useEffect(() => {
     if (!open) return;
@@ -119,16 +124,19 @@ export default function brand_edit_sheet({ open, focus = 'all', on_close, on_sav
   const weight_options = brand_font_weight_options(draft.font_display);
   const logo_weight_options = brand_font_weight_options(draft.font_logo);
 
-  return createElement(admin_sheet, {
-    open: true,
-    title:
+  return createElement(
+    admin_sheet,
+    {
+      open: true,
+      title:
       focus === 'logo'
         ? 'логотип'
         : focus === 'tagline'
           ? 'слоган'
           : 'бренд и оформление',
-    on_close: handle_cancel,
-    children: (
+      on_close: handle_cancel,
+    },
+    (
       <form onSubmit={handle_save} className="space-y-4">
         {show_logo && (
           <div className="space-y-2">
@@ -416,6 +424,6 @@ export default function brand_edit_sheet({ open, focus = 'all', on_close, on_sav
           </button>
         </div>
       </form>
-    ),
-  });
+    )
+  );
 }

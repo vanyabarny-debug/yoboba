@@ -4,7 +4,7 @@ import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 
 /** смены переехали в дашборд аналитики */
-export default function admin_shifts_redirect() {
+export default function AdminShiftsRedirect() {
   const router = useRouter();
   useEffect(() => {
     router.replace('/admin');

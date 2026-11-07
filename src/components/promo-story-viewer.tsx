@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState, createElement } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, createElement } from 'react';
 import type { promo_banner } from '@/lib/types';
 import promo_image_with_title from '@/components/promo-image-with-title';
 
@@ -20,7 +20,7 @@ export function promo_has_target(promo: promo_banner): boolean {
   return Boolean(promo.menu_id || promo.category || (promo.link_url && promo.link_url !== '/'));
 }
 
-export default function promo_story_viewer({
+export default function PromoStoryViewer({
   promos,
   start_index,
   open,
@@ -37,7 +37,9 @@ export default function promo_story_viewer({
   const elapsed_ref = useRef<number>(0);
   const pointer_ts_ref = useRef<number>(0);
   const on_view_ref = useRef(on_view);
-  on_view_ref.current = on_view;
+  useLayoutEffect(() => {
+    on_view_ref.current = on_view;
+  });
 
   const count = promos.length;
   const current = promos[index];
@@ -47,12 +49,17 @@ export default function promo_story_viewer({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, index]);
 
-  useEffect(() => {
+  const [index_for, set_index_for] = useState({ open: false, start_index });
+  if (index_for.open !== open || index_for.start_index !== start_index) {
+    set_index_for({ open, start_index });
     if (open) {
       set_index(start_index);
       set_progress(0);
-      elapsed_ref.current = 0;
     }
+  }
+
+  useEffect(() => {
+    if (open) elapsed_ref.current = 0;
   }, [open, start_index]);
 
   const go_to = useCallback((next: number) => {

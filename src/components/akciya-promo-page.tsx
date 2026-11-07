@@ -2,7 +2,7 @@
 
 import { createElement, Suspense, useEffect, useState, type ReactNode } from 'react';
 import Link from 'next/link';
-import site_chrome from '@/components/site-chrome';
+import SiteChrome from '@/components/site-chrome';
 import {
   get_default_page_by_slug,
   get_page_by_slug,
@@ -90,7 +90,7 @@ function linkify(text: string) {
   });
 }
 
-export default function akciya_promo_page({
+export default function AkciyaPromoPage({
   slug,
   hero_src,
   eyebrow = 'акция',
@@ -116,7 +116,7 @@ export default function akciya_promo_page({
       Suspense,
       { fallback: <div className="min-h-screen bg-page" /> },
       createElement(
-        site_chrome,
+        SiteChrome,
         null,
         <div className="page-shell py-12">
           <p className="text-neutral-500">страница не найдена</p>
@@ -132,7 +132,7 @@ export default function akciya_promo_page({
     Suspense,
     { fallback: <div className="min-h-screen bg-page" /> },
     createElement(
-      site_chrome,
+      SiteChrome,
       null,
       <div className="page-shell py-8 sm:py-10 pb-16">
         <div

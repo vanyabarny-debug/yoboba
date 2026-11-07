@@ -11,7 +11,7 @@ type row = {
 };
 
 /** рассылка по категориям: числа есть, имён и телефонов нет */
-export default function push_broadcast() {
+export default function PushBroadcast() {
   const [rows, set_rows] = useState<row[]>([]);
   const [picked, set_picked] = useState<string[]>([]);
   const [people, set_people] = useState(0);

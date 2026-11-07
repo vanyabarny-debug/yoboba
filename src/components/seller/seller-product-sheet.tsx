@@ -45,7 +45,7 @@ type props = {
 };
 
 /** упрощённая карточка товара для кассира — без покупательского UI */
-export default function seller_product_sheet({
+export default function SellerProductSheet({
   item,
   all_items,
   open,
@@ -64,48 +64,65 @@ export default function seller_product_sheet({
   const [details_open, set_details_open] = useState(false);
   const [recs, set_recs] = useState<menu_item[]>([]);
 
-  useEffect(() => {
-    if (!open || !item) return;
-    set_active(item);
-    set_qty(Math.max(1, initial?.qty ?? 1));
-    set_volume(resolve_volume_id(item, initial?.volume) ?? first_volume_id(item));
-    set_topping(Math.max(0, initial?.topping ?? 0));
-    const temps = drink_temps(item);
-    set_temp(initial?.temp && temps.includes(initial.temp) ? initial.temp : temps[0]);
-    set_details_open(false);
-  }, [open, item, initial?.qty, initial?.volume, initial?.topping, initial?.temp]);
+  const sheet_src = {
+    open,
+    item,
+    qty: initial?.qty,
+    volume: initial?.volume,
+    topping: initial?.topping,
+    temp: initial?.temp,
+  };
+  const [sheet_for, set_sheet_for] = useState<typeof sheet_src | null>(null);
+  if (
+    !sheet_for ||
+    sheet_for.open !== open ||
+    sheet_for.item !== item ||
+    sheet_for.qty !== sheet_src.qty ||
+    sheet_for.volume !== sheet_src.volume ||
+    sheet_for.topping !== sheet_src.topping ||
+    sheet_for.temp !== sheet_src.temp
+  ) {
+    set_sheet_for(sheet_src);
+    if (open && item) {
+      set_active(item);
+      set_qty(Math.max(1, initial?.qty ?? 1));
+      set_volume(resolve_volume_id(item, initial?.volume) ?? first_volume_id(item));
+      set_topping(Math.max(0, initial?.topping ?? 0));
+      const temps = drink_temps(item);
+      set_temp(initial?.temp && temps.includes(initial.temp) ? initial.temp : temps[0]);
+      set_details_open(false);
+    }
+  }
+
+  if ((!open || !active) && recs.length) set_recs([]);
 
   useEffect(() => {
-    if (!open || !active) {
-      set_recs([]);
-      return;
-    }
+    if (!open || !active) return;
     let cancelled = false;
-    async function load() {
-      const fallback = all_items
-        .filter((i) => i.is_available && i.id !== active!.id)
-        .filter((i) => i.category === active!.category || i.category.includes('закуск'))
-        .slice(0, 3);
-
-      if (!is_supabase_configured()) {
-        if (!cancelled) set_recs(fallback);
-        return;
-      }
-      try {
-        const supabase = create_client();
-        const { data } = await supabase
-          .from('menu')
-          .select('*')
-          .eq('is_available', true)
-          .neq('id', active!.id)
-          .limit(6);
-        const rows = (data as menu_item[]) || [];
-        if (!cancelled) set_recs(rows.length ? rows.slice(0, 3) : fallback);
-      } catch {
-        if (!cancelled) set_recs(fallback);
-      }
-    }
-    void load();
+    const current = active;
+    const fallback = all_items
+      .filter((i) => i.is_available && i.id !== current.id)
+      .filter((i) => i.category === current.category || i.category.includes('закуск'))
+      .slice(0, 3);
+    const pick: Promise<menu_item[]> = is_supabase_configured()
+      ? Promise.resolve()
+          .then(() =>
+            create_client()
+              .from('menu')
+              .select('*')
+              .eq('is_available', true)
+              .neq('id', current.id)
+              .limit(6)
+          )
+          .then(({ data }) => {
+            const rows = (data as menu_item[]) || [];
+            return rows.length ? rows.slice(0, 3) : fallback;
+          })
+          .catch(() => fallback)
+      : Promise.resolve(fallback);
+    void pick.then((next) => {
+      if (!cancelled) set_recs(next);
+    });
     return () => {
       cancelled = true;
     };
@@ -132,10 +149,7 @@ export default function seller_product_sheet({
     () => (active ? get_composition(active) : []),
     [active]
   );
-  const nutrition = useMemo(
-    () => (active ? get_nutrition(active, volume_ml, topping_used) : null),
-    [active, volume_ml, topping_used]
-  );
+  const nutrition = active ? get_nutrition(active, volume_ml, topping_used) : null;
 
   if (!open || !active) return null;
 

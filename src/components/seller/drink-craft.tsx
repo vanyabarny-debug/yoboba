@@ -49,7 +49,7 @@ function fresh_board(): board {
   return { id: new_key(), caption: '', drops: [] };
 }
 
-export default function drink_craft({
+export default function DrinkCraft({
   on_close,
   on_saved,
 }: {

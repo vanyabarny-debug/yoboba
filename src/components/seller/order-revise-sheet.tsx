@@ -35,7 +35,7 @@ function catalog_for(item: menu_item | undefined, volume?: string) {
   return Math.max(0, Math.round(configured_unit_price(item, volume || null, 0)));
 }
 
-export default function order_revise_sheet({ order, busy, error, on_close, on_save }: props) {
+export default function OrderReviseSheet({ order, busy, error, on_close, on_save }: props) {
   const [menu, set_menu] = useState<menu_item[]>([]);
   const [lines, set_lines] = useState<line[]>(() =>
     (order?.items || []).map((item) => ({
@@ -73,8 +73,9 @@ export default function order_revise_sheet({ order, busy, error, on_close, on_sa
 
   const menu_by_id = useMemo(() => new Map(menu.map((m) => [m.id, m])), [menu]);
 
-  useEffect(() => {
-    if (!menu.length) return;
+  const [priced_menu, set_priced_menu] = useState<typeof menu | null>(null);
+  if (menu.length && priced_menu !== menu) {
+    set_priced_menu(menu);
     set_lines((prev) =>
       prev.map((row) => {
         const item = row.menu_id ? menu_by_id.get(row.menu_id) : undefined;
@@ -82,7 +83,7 @@ export default function order_revise_sheet({ order, busy, error, on_close, on_sa
         return { ...row, catalog_price };
       })
     );
-  }, [menu, menu_by_id]);
+  }
 
   if (!order) return null;
 
