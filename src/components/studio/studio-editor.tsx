@@ -4,6 +4,9 @@ import { useEffect, useRef, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import QRCode from 'qrcode';
 import { download_png, file_to_image } from '@/lib/studio/export';
+import { download_menu_png } from '@/lib/studio/menu-export';
+import type { menu_paint } from '@/lib/studio/menu-layout';
+import MenuBoard from '@/components/studio/menu-board';
 import {
   FORMAT_GROUPS,
   FORMATS,
@@ -48,6 +51,7 @@ export default function StudioEditor() {
   const file_ref = useRef<HTMLInputElement>(null);
   const file_cb = useRef<((src: string) => void) | null>(null);
   const past = useRef<studio_doc[]>([]);
+  const menu_paint = useRef<menu_paint | null>(null);
   const booted = useRef(false);
 
   doc_ref.current = doc;
@@ -92,15 +96,46 @@ export default function StudioEditor() {
     const el = stage_ref.current;
     if (!el || !doc) return;
     const measure = () => {
-      const pad = narrow ? 64 : 36;
-      const next = Math.min((el.clientWidth - pad) / format.w, (el.clientHeight - pad) / format.h);
-      set_fit(Math.max(0.05, next));
+      const pad = narrow ? 28 : 32;
+      const next = (el.clientWidth - pad) / format.w;
+      set_fit(Math.min(1.15, Math.max(0.12, next)));
     };
     measure();
     const observer = new ResizeObserver(measure);
     observer.observe(el);
     return () => observer.disconnect();
   }, [doc, format.w, format.h, narrow]);
+
+  useEffect(() => {
+    stage_ref.current?.scrollTo(0, 0);
+  }, [format.id]);
+
+  function begin_pan(event: React.PointerEvent) {
+    if (event.pointerType !== 'mouse' || event.button !== 0) return;
+    const target = event.target as HTMLElement;
+    if (target.closest('[data-layer], button, input, textarea, a')) return;
+    const stage = stage_ref.current;
+    if (!stage) return;
+    const start_x = event.clientX;
+    const start_y = event.clientY;
+    const left = stage.scrollLeft;
+    const top = stage.scrollTop;
+    let moved = false;
+    function move(e: PointerEvent) {
+      const dx = e.clientX - start_x;
+      const dy = e.clientY - start_y;
+      if (!moved && Math.hypot(dx, dy) < 4) return;
+      moved = true;
+      stage!.scrollLeft = left - dx;
+      stage!.scrollTop = top - dy;
+    }
+    function up() {
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', up);
+    }
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
+  }
 
   useEffect(() => {
     function on_key(e: KeyboardEvent) {
@@ -375,7 +410,13 @@ export default function StudioEditor() {
     if (!doc || busy) return;
     set_busy('сохраняю…');
     try {
-      await download_png(doc, format);
+      if (format.group === 'меню') {
+        const paint = menu_paint.current;
+        if (!paint || (!paint.left.length && !paint.right.length)) throw new Error('меню ещё не собралось');
+        await download_menu_png(format, paint);
+      } else {
+        await download_png(doc, format);
+      }
     } catch (err) {
       set_note(err instanceof Error ? err.message : 'не удалось скачать');
     } finally {
@@ -465,6 +506,7 @@ export default function StudioEditor() {
   const selected_layer = doc?.layers.find((layer) => layer.id === selected) ?? null;
   const menu_layer = doc?.layers.find((layer) => layer.id === menu?.layer_id) ?? null;
   const banner = format.group === 'баннер';
+  const menu_sheet = format.group === 'меню';
 
   if (!doc) {
     return <div className="h-dvh bg-[#eceae8]" />;
@@ -508,7 +550,8 @@ export default function StudioEditor() {
         </div>
         <div className="flex gap-1 overflow-x-auto pb-2">
           {FORMAT_GROUPS.map((group) => {
-            const active = group.id === 'banner' ? banner : format.id === group.format;
+            const active =
+              group.id === 'banner' ? banner : group.id === 'menu' ? menu_sheet : format.id === group.format;
             return (
               <button
                 key={group.id}
@@ -526,6 +569,22 @@ export default function StudioEditor() {
             );
           })}
         </div>
+        {menu_sheet ? (
+          <div className="flex gap-1 overflow-x-auto pb-2">
+            {FORMATS.filter((item) => item.group === 'меню').map((item) => (
+              <button
+                key={item.id}
+                type="button"
+                onClick={() => switch_format(item.id)}
+                className={`shrink-0 px-3 py-1.5 text-sm ${
+                  format.id === item.id ? 'bg-accent text-white' : 'bg-neutral-100 text-neutral-600'
+                }`}
+              >
+                {item.label}
+              </button>
+            ))}
+          </div>
+        ) : null}
         {banner ? (
           <div className="flex gap-1 overflow-x-auto pb-2">
             {BANNER_FORMATS.map((item, index) => (
@@ -547,14 +606,20 @@ export default function StudioEditor() {
           {narrow ? ' на телефоне удерживай палец.' : ''}
           {format.panels ? ' левая карточка буклета повторяется на три панели.' : ''}
           {banner ? ' баннер один, размера четыре.' : ''}
+          {menu_sheet ? ' позиции сами вписываются в лист. лист можно листать и тащить.' : ' холст можно листать и тащить.'}
         </p>
         {note ? <p className="pb-2 text-[11px] text-[#c24141]">{note}</p> : null}
       </header>
 
       <div
         ref={stage_ref}
-        className="relative min-h-0 flex-1 overflow-hidden"
+        className={`relative min-h-0 flex-1 overflow-auto ${menu_sheet ? 'cursor-grab' : ''}`}
+        onPointerDown={begin_pan}
         onContextMenu={(event) => {
+          if (menu_sheet) {
+            event.preventDefault();
+            return;
+          }
           if ((event.target as HTMLElement).closest('[data-layer]')) return;
           event.preventDefault();
           set_selected(null);
@@ -562,9 +627,10 @@ export default function StudioEditor() {
         }}
       >
         <div
-          className="absolute left-1/2 top-1/2"
-          style={{ width: format.w * fit, height: format.h * fit, transform: 'translate(-50%, -50%)' }}
+          className="flex p-4"
+          style={{ minWidth: '100%', minHeight: '100%', alignItems: 'safe center', justifyContent: 'safe center' }}
         >
+        <div className="relative shrink-0" style={{ width: format.w * fit, height: format.h * fit }}>
           <div
             data-board
             className="relative"
@@ -613,7 +679,10 @@ export default function StudioEditor() {
                 style={{ top: guides.h * format.h }}
               />
             ) : null}
-            {painted.map((item) => (
+            {menu_sheet ? <MenuBoard format={format} paint_ref={menu_paint} /> : null}
+            {menu_sheet
+              ? null
+              : painted.map((item) => (
               <LayerView
                 key={item.key}
                 layer={item.layer}
@@ -655,6 +724,7 @@ export default function StudioEditor() {
             ))}
           </div>
         </div>
+        </div>
         {busy ? (
           <div className="absolute inset-0 z-30 flex items-center justify-center bg-white/50 text-sm">
             {busy}
@@ -662,7 +732,7 @@ export default function StudioEditor() {
         ) : null}
       </div>
 
-      {narrow ? (
+      {narrow && !menu_sheet ? (
         <footer className="shrink-0 border-t border-black/10 bg-white px-2 pt-2 pb-[max(0.5rem,env(safe-area-inset-bottom))]">
           <div className="flex gap-1 overflow-x-auto">
             <BarButton label="текст" onClick={() => add_layer({ kind: 'text', text: 'текст', name: 'текст', w: 0.7, h: 0.1, fontSize: 56 })} />

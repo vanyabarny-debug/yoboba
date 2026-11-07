@@ -1678,8 +1678,8 @@ function PaymentsPanel({
         <div className="min-w-0">
           <p className="text-sm font-semibold text-neutral-900">платежи</p>
           <p className="text-[11px] leading-snug text-neutral-400">
-            в число платежа в ленте появится «к оплате». подтвердите сумму — она уйдёт в аналитику месяца. не
-            подтвердили — карточка висит каждый день
+            без числа неоплаченные висят с 1-го. с числом карточка появляется в этот день и висит, пока не
+            подтвердите сумму — она заменит план месяца
           </p>
         </div>
         <button type="button" onClick={on_close} className="shrink-0 text-xs font-medium text-neutral-500">

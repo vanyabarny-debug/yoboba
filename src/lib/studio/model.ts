@@ -69,6 +69,8 @@ export const FORMATS: studio_format[] = [
   { id: 'poster', group: 'постер', label: 'постер', w: 1240, h: 1754 },
   { id: 'flyer', group: 'флаер', label: 'флаер', w: 1080, h: 1520 },
   { id: 'card', group: 'карточка', label: 'карточка', w: 1080, h: 1350 },
+  { id: 'menu', group: 'меню', label: 'вертикальное', w: 1684, h: 2384 },
+  { id: 'menu-wide', group: 'меню', label: 'горизонтальное', w: 2384, h: 1684 },
   { id: 'banner-story', group: 'баннер', label: 'сторис', w: 1080, h: 1920 },
   { id: 'banner-square', group: 'баннер', label: 'квадрат', w: 1080, h: 1080 },
   { id: 'banner-wide', group: 'баннер', label: 'широкий', w: 1920, h: 1080 },
@@ -82,6 +84,7 @@ export const FORMAT_GROUPS = [
   { id: 'poster', label: 'постер', format: 'poster' },
   { id: 'flyer', label: 'флаер', format: 'flyer' },
   { id: 'card', label: 'карточка', format: 'card' },
+  { id: 'menu', label: 'меню', format: 'menu' },
   { id: 'banner', label: 'баннер', format: 'banner-story' },
 ] as const;
 
@@ -145,8 +148,13 @@ function text_layer(
   return make_layer({ kind: 'text', font: 'heading', weight: 800, color: '#FFFFFF', ...partial });
 }
 
+function menu_doc(format_id: string): studio_doc {
+  return { formatId: format_id, bg: '#FFFFFF', bg2: '#FFFFFF', layers: [] };
+}
+
 export function preset(format_id: string): studio_doc {
   const format = format_by_id(format_id);
+  if (format.group === 'меню') return menu_doc(format.id);
   if (format.id === 'combo') return combo_doc();
   if (format.id === 'booklet') return booklet_doc();
   if (format.id === 'poster') return poster_doc();

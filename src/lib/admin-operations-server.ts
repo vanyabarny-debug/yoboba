@@ -857,7 +857,7 @@ export async function list_ledger(input: { spot_id?: string } = {}) {
   };
 }
 
-/** постоянный платёж, который пора подтвердить: висит с дня срока, пока по статье за месяц нет оплаты */
+/** постоянный платёж, который пора подтвердить: с числа платежа, а без числа — с 1-го, пока по статье за месяц нет оплаты */
 export type ledger_due = {
   category_id: string;
   /** строка ФОТ — выплата сотруднику */
@@ -898,11 +898,11 @@ function due_payments(state: finance_state): ledger_due[] {
   const current = today.slice(0, 7);
   const out: ledger_due[] = [];
   for (const cat of state.opexCategories) {
-    if (!cat.payDay) continue;
     const salary = is_salary_opex(cat.id);
+    if (salary && !cat.payDay) continue;
     let month = cat.payFrom && cat.payFrom <= current ? cat.payFrom : current;
     for (let guard = 0; month <= current && guard < 36; guard++, month = next_month(month)) {
-      const due = due_day(month, cat.payDay);
+      const due = cat.payDay ? due_day(month, cat.payDay) : `${month}-01`;
       if (due > today) continue;
       if (salary) {
         const md = state.monthsData.find((row) => row.month === month);
@@ -922,6 +922,8 @@ function due_payments(state: finance_state): ledger_due[] {
         continue;
       }
       if ((month_opex_fact(state, month)[cat.id] ?? 0) > 0) continue;
+      const plan = Math.round(Number(resolve_month_opex(state, month)[cat.id]) || 0);
+      if (!(plan > 0)) continue;
       out.push({
         category_id: cat.id,
         line_id: null,
@@ -929,7 +931,7 @@ function due_payments(state: finance_state): ledger_due[] {
         name: cat.name,
         month,
         due,
-        plan: Math.round(Number(resolve_month_opex(state, month)[cat.id]) || 0),
+        plan,
       });
     }
   }
