@@ -111,6 +111,26 @@ async function load_order(id: string): Promise<order | null> {
   return data as order;
 }
 
+/** заново списать заказ по текущим техкартам — после правки рецепта кассиром */
+export async function resync_order_stock(
+  id: string
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  if (!order_id_ok(id)) return { ok: false, error: 'заказ не найден' };
+  const existing = await load_order(id);
+  if (!existing) return { ok: false, error: 'заказ не найден' };
+  if (existing.status === 'cancelled') return { ok: true };
+  const stock_items = existing.items.filter((item) => item.menu_id);
+  const result = await replace_order_stock({
+    orderId: id,
+    items: stock_items,
+    keep: stock_items.length > 0,
+    date: existing.created_at,
+    kind: stock_items.every((item) => item.kind === 'staff') ? 'staff' : 'sale',
+    spotId: existing.spot_id,
+  });
+  return result.ok ? { ok: true } : { ok: false, error: result.error };
+}
+
 async function sync_stock(
   id: string,
   items: order_item[],

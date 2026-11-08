@@ -35,19 +35,28 @@ function PrepHowTo({ make }: { make: NonNullable<cook_step_view['make']> }) {
   );
 }
 
+type recipe_material = { id: string; name: string };
+type draft_line = { key: string; materialId: string; title: string; qty: string };
+
 function RecipePane({
   drink,
   recipes,
+  materials,
+  order_id,
   error,
   compact,
+  on_recipes,
   on_start_drink,
   on_mark_drink_done,
   on_finished,
 }: {
   drink: drink_row;
   recipes: public_recipe[] | null;
+  materials: recipe_material[];
+  order_id?: string;
   error: string;
   compact: boolean;
+  on_recipes: (recipes: public_recipe[]) => void;
   on_start_drink: (drink: drink_row) => void;
   on_mark_drink_done: (drink: drink_row) => void;
   on_finished: () => void;
@@ -55,6 +64,12 @@ function RecipePane({
   const recipe = recipes?.find((r) => r.menu_id === drink.menu_id);
   const size = pick_recipe_size(recipe, drink.volume);
   const steps = (size?.steps ?? []).filter((s) => !drink.temp || !s.when || s.when === drink.temp);
+  const [editing, set_editing] = useState(false);
+  const [draft, set_draft] = useState<draft_line[]>([]);
+  const [query, set_query] = useState('');
+  const [saving, set_saving] = useState(false);
+  const [save_error, set_save_error] = useState('');
+  const [warning, set_warning] = useState('');
   const [phase, set_phase] = useState<phase>('intro');
   const [step_i, set_step_i] = useState(0);
 
@@ -81,6 +96,78 @@ function RecipePane({
   const title_cls = compact
     ? 'text-xl font-semibold leading-tight tracking-tight sm:text-2xl'
     : 'text-3xl font-semibold leading-tight tracking-tight sm:text-4xl';
+
+  function open_editor() {
+    const lines = (size?.steps ?? []).filter((s) => s.materialId && !s.locked);
+    set_draft(
+      lines.map((s) => ({
+        key: s.id,
+        materialId: s.materialId || '',
+        title: s.title,
+        qty: s.qty && s.qty > 0 ? String(s.qty) : '',
+      }))
+    );
+    set_query('');
+    set_save_error('');
+    set_warning('');
+    set_editing(true);
+  }
+
+  async function save_recipe() {
+    if (!recipe || !size || saving) return;
+    const lines = draft
+      .map((line) => ({
+        materialId: line.materialId,
+        qty: Number(String(line.qty).replace(',', '.')),
+      }))
+      .filter((line) => line.materialId && line.qty > 0);
+    if (!lines.length) {
+      set_save_error('оставьте хотя бы один ингредиент');
+      return;
+    }
+    set_saving(true);
+    set_save_error('');
+    set_warning('');
+    try {
+      const res = await fetch('/api/seller/recipes', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        credentials: 'same-origin',
+        body: JSON.stringify({
+          menu_id: recipe.menu_id,
+          size: size.key || drink.volume || '500',
+          lines,
+          ...(order_id ? { order_id } : {}),
+        }),
+      });
+      const body = (await res.json()) as {
+        recipes?: public_recipe[];
+        error?: string;
+        warning?: string;
+      };
+      if (!res.ok) {
+        set_save_error(body.error || 'не удалось сохранить');
+        return;
+      }
+      if (body.recipes) on_recipes(body.recipes);
+      set_warning(body.warning || '');
+      set_editing(false);
+    } catch {
+      set_save_error('сеть недоступна');
+    } finally {
+      set_saving(false);
+    }
+  }
+
+  const taken = new Set(draft.map((line) => line.materialId));
+  const found = query.trim()
+    ? materials
+        .filter(
+          (mat) =>
+            !taken.has(mat.id) && mat.name.toLowerCase().includes(query.trim().toLowerCase())
+        )
+        .slice(0, 6)
+    : [];
 
   function start_timer() {
     if (drink.done || drink.started) return;
@@ -167,43 +254,139 @@ function RecipePane({
                     .join(' · ')}
                 </p>
               ) : null}
-              <ul className={`divide-y divide-neutral-100 ${compact ? 'mt-4' : 'mt-8'}`}>
-                {steps.map((s) => (
-                  <li
-                    key={s.id}
-                    className={`flex items-baseline justify-between gap-3 ${compact ? 'py-2' : 'py-3'}`}
-                  >
-                    <div className="min-w-0">
-                      <p className="text-[11px] font-medium uppercase tracking-[0.14em] text-accent">{s.hint}</p>
-                      <p className={`mt-0.5 font-medium leading-snug ${compact ? 'text-base' : 'text-lg'}`}>
-                        {s.title}
-                      </p>
-                      {s.make?.length ? <PrepHowTo make={s.make} /> : null}
-                    </div>
-                    {s.qty_label ? (
-                      <p className={`shrink-0 tabular-nums text-neutral-900 ${compact ? 'text-base' : 'text-lg'}`}>
-                        {s.qty_label}
-                      </p>
-                    ) : null}
-                  </li>
-                ))}
-              </ul>
+              {editing ? (
+                <div className={compact ? 'mt-4' : 'mt-6'}>
+                  <p className="text-center text-sm text-neutral-500">
+                    со склада спишется по этим граммам. если на этот стакан уже поставили меньше — эта отметка
+                    останется. большой стакан пересчитается сам, пока его не правили отдельно
+                  </p>
+                  <ul className="mt-3 space-y-2">
+                    {draft.map((line) => (
+                      <li key={line.key} className="flex items-center gap-2">
+                        <p className="min-w-0 flex-1 truncate text-base font-medium">{line.title}</p>
+                        <input
+                          inputMode="decimal"
+                          value={line.qty}
+                          aria-label={`${line.title}, граммы`}
+                          onChange={(e) =>
+                            set_draft((prev) =>
+                              prev.map((row) => (row.key === line.key ? { ...row, qty: e.target.value } : row))
+                            )
+                          }
+                          className="w-20 shrink-0 rounded-2xl border border-neutral-200 bg-neutral-50 px-2 py-2.5 text-center text-base font-bold tabular-nums outline-none focus:border-accent"
+                        />
+                        <button
+                          type="button"
+                          aria-label="убрать"
+                          onClick={() => set_draft((prev) => prev.filter((row) => row.key !== line.key))}
+                          className="w-8 shrink-0 text-lg text-neutral-400"
+                        >
+                          ×
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                  <input
+                    value={query}
+                    onChange={(e) => set_query(e.target.value)}
+                    placeholder="добавить со склада"
+                    aria-label="добавить ингредиент"
+                    className="mt-3 w-full rounded-2xl border border-neutral-200 bg-neutral-50 px-3 py-2.5 text-sm outline-none focus:border-accent"
+                  />
+                  {found.length ? (
+                    <ul className="mt-1">
+                      {found.map((mat) => (
+                        <li key={mat.id}>
+                          <button
+                            type="button"
+                            className="w-full rounded-xl px-2 py-2 text-left text-sm hover:bg-neutral-50"
+                            onClick={() => {
+                              set_draft((prev) => [
+                                ...prev,
+                                { key: `${mat.id}-${prev.length}`, materialId: mat.id, title: mat.name, qty: '' },
+                              ]);
+                              set_query('');
+                            }}
+                          >
+                            {mat.name}
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : null}
+                </div>
+              ) : (
+                <ul className={`divide-y divide-neutral-100 ${compact ? 'mt-4' : 'mt-8'}`}>
+                  {steps.map((s) => (
+                    <li
+                      key={s.id}
+                      className={`flex items-baseline justify-between gap-3 ${compact ? 'py-2' : 'py-3'}`}
+                    >
+                      <div className="min-w-0">
+                        <p className="text-[11px] font-medium uppercase tracking-[0.14em] text-accent">{s.hint}</p>
+                        <p className={`mt-0.5 font-medium leading-snug ${compact ? 'text-base' : 'text-lg'}`}>
+                          {s.title}
+                        </p>
+                        {s.make?.length ? <PrepHowTo make={s.make} /> : null}
+                      </div>
+                      {s.qty_label ? (
+                        <p className={`shrink-0 tabular-nums text-neutral-900 ${compact ? 'text-base' : 'text-lg'}`}>
+                          {s.qty_label}
+                        </p>
+                      ) : null}
+                    </li>
+                  ))}
+                </ul>
+              )}
+              {save_error ? <p className="mt-3 text-center text-sm text-red-600">{save_error}</p> : null}
+              {warning ? <p className="mt-3 text-center text-sm text-amber-700">{warning}</p> : null}
             </div>
             <div className="shrink-0 pt-4">
-              <button
-                type="button"
-                className="w-full rounded-pill bg-neutral-900 py-3.5 text-base text-white"
-                onClick={view_recipe}
-              >
-                посмотреть рецепт
-              </button>
-              <button
-                type="button"
-                className="mt-2 w-full py-2 text-base text-neutral-400 hover:text-neutral-700"
-                onClick={skip_recipe}
-              >
-                пропустить рецепт
-              </button>
+              {editing ? (
+                <>
+                  <button
+                    type="button"
+                    disabled={saving}
+                    className="w-full rounded-pill bg-neutral-900 py-3.5 text-base text-white disabled:opacity-50"
+                    onClick={() => void save_recipe()}
+                  >
+                    {saving ? 'сохраняю…' : 'сохранить рецепт'}
+                  </button>
+                  <button
+                    type="button"
+                    className="mt-2 w-full py-2 text-base text-neutral-400 hover:text-neutral-700"
+                    onClick={() => set_editing(false)}
+                  >
+                    отмена
+                  </button>
+                </>
+              ) : (
+                <>
+                  <button
+                    type="button"
+                    className="w-full rounded-pill bg-neutral-900 py-3.5 text-base text-white"
+                    onClick={view_recipe}
+                  >
+                    посмотреть рецепт
+                  </button>
+                  {recipe ? (
+                    <button
+                      type="button"
+                      className="mt-2 w-full py-2 text-base text-neutral-500 hover:text-neutral-800"
+                      onClick={open_editor}
+                    >
+                      изменить рецепт
+                    </button>
+                  ) : null}
+                  <button
+                    type="button"
+                    className="mt-1 w-full py-2 text-base text-neutral-400 hover:text-neutral-700"
+                    onClick={skip_recipe}
+                  >
+                    пропустить рецепт
+                  </button>
+                </>
+              )}
             </div>
           </div>
         ) : phase === 'step' && current ? (
@@ -249,12 +432,14 @@ function RecipePane({
 export default function DrinkCookGuide({
   drinks,
   start_key,
+  order_id,
   on_start_drink,
   on_mark_drink_done,
   on_close,
 }: {
   drinks: drink_row[];
   start_key?: string;
+  order_id?: string;
   on_start_drink: (drink: drink_row) => void;
   on_mark_drink_done: (drink: drink_row) => void;
   on_close: () => void;
@@ -270,6 +455,7 @@ export default function DrinkCookGuide({
     finished_ref.current = finished;
   });
   const [recipes, set_recipes] = useState<public_recipe[] | null>(null);
+  const [materials, set_materials] = useState<recipe_material[]>([]);
   const [error, set_error] = useState('');
 
   const pair_count = Math.max(1, Math.ceil(drinks.length / 2));
@@ -281,7 +467,7 @@ export default function DrinkCookGuide({
     let cancelled = false;
     fetch('/api/seller/recipes', { credentials: 'same-origin' })
       .then((r) => r.json())
-      .then((body: { recipes?: public_recipe[]; error?: string }) => {
+      .then((body: { recipes?: public_recipe[]; materials?: recipe_material[]; error?: string }) => {
         if (cancelled) return;
         if (body.error) {
           set_error(body.error);
@@ -289,6 +475,7 @@ export default function DrinkCookGuide({
           return;
         }
         set_recipes(body.recipes ?? []);
+        set_materials(body.materials ?? []);
       })
       .catch(() => {
         if (!cancelled) {
@@ -344,8 +531,11 @@ export default function DrinkCookGuide({
               <RecipePane
                 drink={drink}
                 recipes={recipes}
+                materials={materials}
+                order_id={order_id}
                 error={error}
                 compact={split}
+                on_recipes={set_recipes}
                 on_start_drink={on_start_drink}
                 on_mark_drink_done={on_mark_drink_done}
                 on_finished={() => pane_finished(drink.key)}

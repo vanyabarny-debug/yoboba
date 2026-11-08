@@ -6,6 +6,7 @@ import {
   cups_from_grams,
   cups_label,
   pot_fill_ratio,
+  prep_hold_label,
   prep_station_alert,
   type prep_alert_level,
   type prep_station_view,
@@ -302,6 +303,12 @@ export default function PrepStationsBoard({
                   >
                     {minus ? `минус ${format_g(-active.cookedQty)}` : empty ? 'пусто' : format_g(active.cookedQty)}
                   </p>
+                  {active.expiresAt && active.cookedQty > 0.5 ? (
+                    <p className="text-sm font-semibold text-neutral-500">
+                      {prep_hold_label(active.kind, active.expiresAt)}
+                      {active.kind === 'teapot' ? ' · не дольше 6 часов' : ' · утром спишется'}
+                    </p>
+                  ) : null}
                 </div>
               </div>
 
@@ -436,7 +443,8 @@ export default function PrepStationsBoard({
                           : cook_label}
                     </button>
                     <p className="text-center text-[11px] text-neutral-400">
-                      в кастрюлю ложится расчётный навар. факт — только если в конце не сошлось
+                      сухая спишется со склада сразу. в кастрюле остаётся варёная — её забирают
+                      напитки по рецепту. утром остаток спишется сам
                     </p>
                   </div>
                 ) : (
@@ -465,6 +473,9 @@ export default function PrepStationsBoard({
                             : cook_label}
                       </button>
                     </div>
+                    <p className="text-center text-[11px] text-neutral-400">
+                      сухой лист спишется со склада. заварка хранится 6 часов, потом списывается сама
+                    </p>
                     <p className="text-center text-sm tabular-nums text-neutral-600">
                       вода{' '}
                       <span className="font-semibold text-neutral-900">

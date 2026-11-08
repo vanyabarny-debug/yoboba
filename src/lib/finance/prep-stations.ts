@@ -8,6 +8,7 @@ import {
   actor_on_movement,
   base_unit,
   base_unit_label,
+  add_days,
   day_key,
   fifo_consume_cost,
   moscow_today,
@@ -67,6 +68,12 @@ export type prep_station = {
   marinade: prep_marinade | null;
   /** сварили, маринад ещё не залили */
   marinadePending: boolean;
+  /**
+   * когда началась текущая партия готового.
+   * чай живёт 6 часов от этого момента, долив срок не продлевает.
+   * тапиока живёт до следующего утра по Москве.
+   */
+  brewedAt: string | null;
   enabled: boolean;
 };
 
@@ -94,6 +101,10 @@ export type prep_station_view = prep_station & {
   marinadeHint: string | null;
   dryCostPerKg: number;
   cookedCostPerKg: number;
+  /** когда партия тухнет. пусто — кастрюля пустая */
+  expiresAt: string | null;
+  /** «ещё 4 ч 12 мин», «до утра», «срок вышел» */
+  holdLabel: string;
 };
 
 /** сухие позиции для закупки; готовые — уже в техкартах */
@@ -180,6 +191,7 @@ export const DEFAULT_PREP_STATIONS: prep_station[] = [
     waterMl: 0,
     marinade: DEFAULT_TAPIOCA_MARINADE,
     marinadePending: false,
+    brewedAt: null,
     enabled: true,
   },
   {
@@ -198,6 +210,7 @@ export const DEFAULT_PREP_STATIONS: prep_station[] = [
     waterMl: TEA_NORM.waterMl,
     marinade: null,
     marinadePending: false,
+    brewedAt: null,
     enabled: true,
   },
   {
@@ -216,6 +229,7 @@ export const DEFAULT_PREP_STATIONS: prep_station[] = [
     waterMl: TEA_NORM.waterMl,
     marinade: null,
     marinadePending: false,
+    brewedAt: null,
     enabled: true,
   },
 ];
@@ -277,6 +291,12 @@ function normalize_samples(raw: unknown): prep_yield_sample[] {
   return out.slice(-12);
 }
 
+function normalize_brewed_at(raw: unknown): string | null {
+  if (typeof raw !== 'string' || !raw.trim()) return null;
+  const t = Date.parse(raw);
+  return Number.isFinite(t) ? new Date(t).toISOString() : null;
+}
+
 function normalize_open_batch(raw: unknown): prep_open_batch | null {
   if (!raw || typeof raw !== 'object') return null;
   const r = raw as Partial<prep_open_batch>;
@@ -311,6 +331,7 @@ function blank_station(id: string, kind: prep_station_kind): prep_station {
     waterMl: 0,
     marinade: null,
     marinadePending: false,
+    brewedAt: null,
     enabled: true,
   };
 }
@@ -358,6 +379,7 @@ export function normalize_prep_stations(raw: unknown): prep_station[] {
         waterMl: r.waterMl != null ? Math.max(0, Math.round(Number(r.waterMl) || 0)) : base.waterMl,
         marinade,
         marinadePending: Boolean(r.marinadePending) && Boolean(marinade?.enabled),
+        brewedAt: normalize_brewed_at(r.brewedAt),
         enabled: r.enabled === false ? false : true,
       });
     }
@@ -551,6 +573,127 @@ function marinade_hint(station: prep_station, materials: Map<string, material>):
   return parts.join(' + ');
 }
 
+/** чайная заварка: не дольше 6 часов с первой заварки этой партии */
+export const TEA_HOLD_MS = 6 * 60 * 60 * 1000;
+
+/** когда партия должна уйти со склада. тапиока — в полночь по Москве, чай — через 6 часов */
+export function prep_expires_at(kind: prep_station_kind, brewedAt: string): string | null {
+  const t = Date.parse(brewedAt);
+  if (!Number.isFinite(t)) return null;
+  if (kind === 'teapot') return new Date(t + TEA_HOLD_MS).toISOString();
+  const morning = new Date(`${add_days(moscow_today(new Date(t)), 1)}T00:00:00+03:00`);
+  return Number.isFinite(morning.getTime()) ? morning.toISOString() : null;
+}
+
+export function prep_hold_label(kind: prep_station_kind, expiresAt: string, now = Date.now()): string {
+  const left = Date.parse(expiresAt) - now;
+  if (!Number.isFinite(left)) return '';
+  if (left <= 0) return 'срок вышел';
+  if (kind === 'pot') return 'до утра';
+  const mins = Math.max(1, Math.ceil(left / 60_000));
+  if (mins < 60) return `ещё ${mins} мин`;
+  const h = Math.floor(mins / 60);
+  const m = mins % 60;
+  return m ? `ещё ${h} ч ${m} мин` : `ещё ${h} ч`;
+}
+
+/** время варки текущей партии: из записи станции или из последнего прихода готового */
+function inferred_brewed_at(state: finance_state, materialId: string): string | null {
+  const ins = state.stockMovements.filter((mv) => mv.materialId === materialId && mv.type === 'in' && mv.qty > 0);
+  if (!ins.length) return null;
+  const cooks = ins.filter((mv) => {
+    const note = (mv.note || '').trim();
+    return /^(варка|заваривание)\b/i.test(note) && !/навар|маринад/i.test(note);
+  });
+  const pool = cooks.length ? cooks : ins;
+  return pool.reduce((max, mv) => (mv.date > max ? mv.date : max), pool[0].date);
+}
+
+const PREP_CLOCK_ACTOR: stock_actor = { id: 'prep-clock', name: 'срок годности', role: 'admin' };
+
+/**
+ * чай старше 6 часов и тапиока со вчера списываются сами.
+ * пустая кастрюля забывает таймер, чтобы следующая варка начала новый.
+ */
+export function expire_stale_prep(state: finance_state, now = new Date()): finance_state {
+  const stations = normalize_prep_stations(state.prepStations);
+  const qty = stock_qty_map(state);
+  const movements: stock_movement[] = [];
+  const audits: Parameters<typeof push_stock_audit>[1] = [];
+  let changed = false;
+  const date = now.toISOString();
+  const next_stations = stations.map((s) => {
+    const cooked = qty.get(s.cookedMaterialId) ?? 0;
+    if (cooked <= 0.5) {
+      if (!s.brewedAt) return s;
+      changed = true;
+      return { ...s, brewedAt: null };
+    }
+    const brewed = s.brewedAt || inferred_brewed_at(state, s.cookedMaterialId);
+    if (!brewed) return s;
+    const expires = prep_expires_at(s.kind, brewed);
+    if (!expires) return s;
+    if (Date.parse(expires) > now.getTime()) {
+      if (s.brewedAt) return s;
+      changed = true;
+      return { ...s, brewedAt: brewed };
+    }
+    changed = true;
+    const note =
+      s.kind === 'teapot'
+        ? `срок годности: ${s.label} · 6 часов`
+        : `утро: ${s.label}`;
+    const movement: stock_movement = {
+      id: new_id('mv'),
+      date,
+      type: 'writeoff',
+      materialId: s.cookedMaterialId,
+      qty: cooked,
+      total: fifo_consume_cost(state, s.cookedMaterialId, cooked),
+      note,
+      ...actor_on_movement(PREP_CLOCK_ACTOR),
+    };
+    movements.push(movement);
+    const mat = state.materials.find((m) => m.id === s.cookedMaterialId);
+    audits.push({
+      id: new_id('aud'),
+      at: date,
+      ...audit_actor(PREP_CLOCK_ACTOR),
+      action: 'writeoff',
+      materialId: s.cookedMaterialId,
+      materialName: mat?.name || s.label,
+      qtyBefore: cooked,
+      qtyAfter: 0,
+      note,
+      movementId: movement.id,
+    });
+    return { ...s, brewedAt: null, openBatch: null, marinadePending: false };
+  });
+  if (!changed) return state;
+  return push_stock_audit(
+    {
+      ...state,
+      prepStations: next_stations,
+      stockMovements: movements.length ? [...state.stockMovements, ...movements] : state.stockMovements,
+    },
+    audits
+  );
+}
+
+/** после ручного списания готового до нуля таймер партии гаснет */
+export function clear_station_clock(state: finance_state, materialId: string): finance_state {
+  const left = stock_qty_map(state).get(materialId) ?? 0;
+  if (left > 0.5) return state;
+  const stations = normalize_prep_stations(state.prepStations);
+  let changed = false;
+  const next = stations.map((s) => {
+    if (s.cookedMaterialId !== materialId || !s.brewedAt) return s;
+    changed = true;
+    return { ...s, brewedAt: null, openBatch: null, marinadePending: false };
+  });
+  return changed ? { ...state, prepStations: next } : state;
+}
+
 function moscow_day(iso: string) {
   const t = new Date(iso);
   if (!Number.isFinite(t.getTime())) return day_key(iso);
@@ -582,8 +725,11 @@ export function prep_station_views(state: finance_state): prep_station_view[] {
       const bounds = portion_bounds(healed, s.cookedMaterialId, s.portionG);
       const cups = cups_from_grams(cookedQty, bounds);
       const ratio = yield_ratio(s);
+      const brewedAt = cookedQty > 0.5 ? s.brewedAt || inferred_brewed_at(healed, s.cookedMaterialId) : null;
+      const expiresAt = brewedAt ? prep_expires_at(s.kind, brewedAt) : null;
       return {
         ...s,
+        brewedAt,
         dryName: dry?.name || s.dryMaterialId,
         cookedName: cooked?.name || s.cookedMaterialId,
         dryQty,
@@ -599,6 +745,8 @@ export function prep_station_views(state: finance_state): prep_station_view[] {
         marinadeHint: marinade_hint(s, mats),
         dryCostPerKg: cost_per_kg(healed, dry),
         cookedCostPerKg: cost_per_kg(healed, cooked),
+        expiresAt,
+        holdLabel: expiresAt ? prep_hold_label(s.kind, expiresAt) : '',
       };
     });
 }
@@ -748,7 +896,7 @@ export function heal_prep_cooked_holes(state: finance_state): finance_state {
       note: movement.note,
       movementId: movement.id,
     });
-    return { ...s, batchFullG: 0, openBatch: null, marinadePending: false };
+    return { ...s, batchFullG: 0, openBatch: null, marinadePending: false, brewedAt: null };
   });
   if (!changed) return state;
   return push_stock_audit(
@@ -782,6 +930,7 @@ export function apply_prep_cook(
     date?: string;
   }
 ): { ok: true; state: finance_state; message: string } | { ok: false; error: string } {
+  state = expire_stale_prep(state, input.date ? new Date(input.date) : new Date());
   const stations = normalize_prep_stations(state.prepStations);
   const station = stations.find((s) => s.id === input.stationId);
   if (!station || !station.enabled) {
@@ -896,10 +1045,12 @@ export function apply_prep_cook(
   const next_stations = stations.map((s) => {
     if (s.id !== station.id) return s;
     const prev = actualG == null ? s.openBatch : null;
+    const fresh = cooked_scale <= 0.5;
     return {
       ...s,
       batchFullG: cooked_scale + cookedG,
       marinadePending: Boolean(s.marinade?.enabled),
+      brewedAt: fresh ? date : s.brewedAt || date,
       openBatch: {
         dryG: (prev?.dryG ?? 0) + dryG,
         predictedG: (prev?.predictedG ?? 0) + cookedG,
@@ -992,7 +1143,7 @@ export function apply_prep_discard(
   };
 
   const next_stations = stations.map((s) =>
-    s.id === station.id ? { ...s, marinadePending: false, openBatch: null } : s
+    s.id === station.id ? { ...s, marinadePending: false, openBatch: null, brewedAt: null } : s
   );
 
   let next: finance_state = {
@@ -1291,7 +1442,13 @@ export function apply_prep_reconcile(
   const next_stations = stations.map((s) => {
     if (s.id !== station.id) return s;
     const full = actual > 0 ? Math.max(s.batchFullG, actual) : 0;
-    return { ...s, yieldSamples: samples, openBatch, batchFullG: full };
+    return {
+      ...s,
+      yieldSamples: samples,
+      openBatch,
+      batchFullG: full,
+      ...(actual <= 0 ? { brewedAt: null, marinadePending: false } : {}),
+    };
   });
 
   if (!movements.length && !learned && openBatch === station.openBatch) {

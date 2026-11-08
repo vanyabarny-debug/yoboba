@@ -84,6 +84,7 @@ const widget_card: Record<string, { bg: string; fg: string; border: string; kind
   tea_black: { bg: '#F3E8DC', fg: '#6B3A14', border: '#E0C4A8', kind: 'teapot' },
   tea_jasmine: { bg: '#F0F7E8', fg: '#4F7A22', border: '#D4E8B8', kind: 'teapot' },
   preps: { bg: '#FFF8E6', fg: '#8A5A12', border: '#F2DDB0', kind: 'pot' },
+  writeoff: { bg: '#FDECEC', fg: '#B42318', border: '#F5C2C2', kind: 'pot' },
 };
 
 const proof_options: { id: day_task_proof; label: string }[] = [
@@ -326,7 +327,15 @@ function CashierTile({
       {widget ? (
         <div className="flex min-h-0 flex-1 flex-col items-center justify-center px-2 pb-2 pt-3">
           <div className="aspect-square w-[min(100%,64cqh)] max-w-[9.5rem] shrink-0">
-            <PrepVessel kind={widget.kind} fill={0.62} size="fill" tone={liquid_tone_for(card.ref)} />
+            {card.ref === 'writeoff' ? (
+              <div className="flex h-full items-center justify-center">
+                <span className="flex h-[62%] w-[62%] items-center justify-center rounded-full border-[6px] border-current text-5xl font-bold leading-none">
+                  −
+                </span>
+              </div>
+            ) : (
+              <PrepVessel kind={widget.kind} fill={0.62} size="fill" tone={liquid_tone_for(card.ref)} />
+            )}
           </div>
           <p className="mt-1 max-w-[92%] truncate text-center text-[clamp(0.7rem,3cqw,0.95rem)] font-bold leading-snug">
             {card.title}

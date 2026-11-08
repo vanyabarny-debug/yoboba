@@ -1772,6 +1772,7 @@ function fresh_prep_stations(stations: finance_state['prepStations']): finance_s
     batchFullG: 0,
     openBatch: null,
     marinadePending: false,
+    brewedAt: null,
     yieldSamples: [],
   }));
 }

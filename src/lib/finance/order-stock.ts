@@ -14,6 +14,7 @@ import {
   type stock_shortage,
 } from '@/lib/finance/model';
 import {
+  expire_stale_prep,
   marinade_order_block,
   normalize_prep_stations,
   prep_station_id_for_material,
@@ -31,6 +32,21 @@ function enrich_shortages(
     ...s,
     stationId: prep_station_id_for_material(state, s.materialId),
   }));
+}
+
+/** протухший чай и вчерашняя тапиока уходят со склада до проверки заказа */
+export async function commit_prep_expiry(spotId?: string | null) {
+  const spot = resolve_stock_spot(spotId);
+  try {
+    await mutate_finance_state((full) => {
+      const view = bind_spot(full, spot);
+      const next = expire_stale_prep(view);
+      if (next === view) return { state: null, value: null };
+      return { state: commit_spot(full, spot, next), value: null };
+    });
+  } catch (e) {
+    console.error('commit_prep_expiry', e instanceof Error ? e.message : e);
+  }
 }
 
 async function load_menu(): Promise<menu_item[]> {
@@ -74,6 +90,7 @@ export async function assert_order_stock(opts: {
 }): Promise<{ ok: true } | { ok: false; error: string; shortages: stock_shortage_row[] }> {
   if (!opts.items.length) return { ok: true };
   try {
+    await commit_prep_expiry(opts.spotId);
     const [full, menu] = await Promise.all([read_finance_state(), load_menu()]);
     const state = bind_spot(full, opts.spotId);
     const blocked = marinade_stop(state, opts.items, menu);
@@ -101,6 +118,7 @@ export async function record_order_stock(opts: {
 }): Promise<{ ok: true } | { ok: false; error: string }> {
   if (!opts.orderId || !opts.items.length) return { ok: true };
   try {
+    await commit_prep_expiry(opts.spotId);
     const menu = await load_menu();
     const spot = resolve_stock_spot(opts.spotId);
     return await mutate_finance_state<{ ok: true } | { ok: false; error: string }>((full) => {
@@ -162,6 +180,7 @@ export async function replace_order_stock(opts: {
 }): Promise<{ ok: true } | { ok: false; error: string }> {
   if (!opts.orderId) return { ok: true };
   try {
+    await commit_prep_expiry(opts.spotId);
     const menu = opts.keep ? await load_menu() : [];
     const spot = resolve_stock_spot(opts.spotId);
     return await mutate_finance_state<{ ok: true } | { ok: false; error: string }>((state) => {

@@ -29,6 +29,12 @@ export type cook_step_view = {
   title: string;
   hint: string;
   qty_label: string;
+  /** складская позиция, если шаг что-то списывает */
+  materialId?: string;
+  /** граммы или штуки, которые уйдут со склада */
+  qty?: number;
+  /** упаковка: в рецепте видна, кассир её здесь не меняет */
+  locked?: boolean;
   when?: 'cold' | 'hot';
   /** как собрать заготовку этого шага. пусто, пока бариста сам не раскроет */
   make?: { id: string; title: string; hint: string; qty_label: string }[];
@@ -211,17 +217,26 @@ export function resolved_prep_steps_for_volume(
   const volume = size?.volume || Number(size_key) || card_steps_base_ml(card);
   // ручной 650: граммы из sizes['650'], а не слепой ×1.3 от шагов 500
   if (size?.manual && size.ingredients && Object.keys(size.ingredients).length > 0) {
-    if (saved?.length) {
-      return decorate_steps(
-        saved.map((s) => {
-          if (!s.materialId) return s;
-          const q = size.ingredients[s.materialId];
-          return q != null && q > 0 ? { ...s, qty: q } : s;
-        }),
-        materials
-      );
+    const overlaid = saved?.length
+      ? decorate_steps(
+          saved.flatMap((s) => {
+            if (!s.materialId) return [s];
+            const q = size.ingredients[s.materialId];
+            if (!(q > 0)) return [];
+            return [{ ...s, qty: q }];
+          }),
+          materials
+        )
+      : steps_from_size_ingredients(size, materials);
+    const have = new Set(overlaid.map((s) => s.materialId).filter((id): id is string => Boolean(id)));
+    const extra: prep_step[] = [];
+    for (const [id, qty] of Object.entries(size.ingredients)) {
+      if (!(qty > 0) || have.has(id)) continue;
+      const mat = materials.find((m) => m.id === id);
+      if (!mat || stock_category_for(mat) === 'packaging') continue;
+      extra.push(step_from_material(mat, qty));
     }
-    return steps_from_size_ingredients(size, materials);
+    return extra.length ? [...overlaid, ...extra] : overlaid;
   }
   if (saved?.length) {
     return scale_prep_steps(saved, card_steps_base_ml(card), volume, materials);
@@ -301,6 +316,8 @@ export function cook_steps_view(steps: prep_step[], materials: material[]): cook
       title: s.title,
       hint: s.hint || 'добавить',
       qty_label: s.qty_label || (mat && s.qty > 0 ? format_base_qty(mat, s.qty) : plain),
+      ...(s.materialId ? { materialId: s.materialId, qty: s.qty } : {}),
+      ...(mat && stock_category_for(mat) === 'packaging' ? { locked: true } : {}),
       ...(s.when ? { when: s.when } : {}),
     };
   });
@@ -565,12 +582,55 @@ export type public_recipe = {
   sizes: Record<
     string,
     {
+      key: string;
       volume: number;
       label: string;
       steps: cook_step_view[];
     }
   >;
 };
+
+/**
+ * кассир поправил граммы размера.
+ * базовый размер переписывает этапы — с него считается авто-650.
+ * отдельный размер помечается ручным и списывается как есть.
+ */
+export function save_cashier_recipe(
+  card: tech_card,
+  sizeKey: string,
+  lines: { materialId: string; qty: number }[],
+  materials: material[]
+): tech_card {
+  const by_id = new Map(materials.map((m) => [m.id, m]));
+  const ingredients: Record<string, number> = {};
+  for (const line of lines) {
+    const id = String(line.materialId || '').trim();
+    const qty = Math.round((Number(line.qty) || 0) * 10) / 10;
+    const mat = by_id.get(id);
+    if (!id || !(qty > 0) || (mat && stock_category_for(mat) === 'packaging')) continue;
+    ingredients[id] = Math.round(((ingredients[id] || 0) + qty) * 10) / 10;
+  }
+  const base_key = card.sizes['500']
+    ? '500'
+    : Object.keys(card.sizes).sort((a, b) => (Number(a) || 0) - (Number(b) || 0))[0];
+  if (!base_key || sizeKey === base_key || !/^\d+$/.test(sizeKey)) {
+    return apply_ingredients_to_card(card, ingredients, materials);
+  }
+  const existing = card.sizes[sizeKey];
+  const volume = existing?.volume || Number(sizeKey) || 0;
+  return {
+    ...card,
+    sizes: {
+      ...card.sizes,
+      [sizeKey]: {
+        volume,
+        ingredients,
+        packaging: { ...(existing?.packaging || {}) },
+        manual: true,
+      },
+    },
+  };
+}
 
 export function pick_recipe_size(recipe: public_recipe | undefined, volume?: string) {
   if (!recipe) return null;

@@ -1,8 +1,9 @@
 'use client';
 
-import { createElement } from 'react';
+import { createElement, useEffect, useState } from 'react';
 import {
   pot_fill_ratio,
+  prep_hold_label,
   prep_station_alert,
   type prep_station_view,
 } from '@/lib/finance/prep-stations';
@@ -73,11 +74,25 @@ function format_g(n: number) {
   return `${Math.round(n)} г`;
 }
 
+function use_clock() {
+  const [now, set_now] = useState(() => Date.now());
+  useEffect(() => {
+    const t = window.setInterval(() => set_now(Date.now()), 30_000);
+    return () => window.clearInterval(t);
+  }, []);
+  return now;
+}
+
 export default function prep_station_card({ station, on_open }: props) {
+  const now = use_clock();
   const tone = liquid_tone_for(station.id);
   const tint = TONE_CARD[tone] ?? color_for_id(station.id);
   const fill = pot_fill_ratio(station, station.cookedQty);
   const alert = prep_station_alert(station);
+  const hold =
+    station.expiresAt && station.cookedQty > 0.5
+      ? prep_hold_label(station.kind, station.expiresAt, now)
+      : '';
   const minus = station.cookedQty < -0.5;
   const under = minus
     ? `минус ${format_g(-station.cookedQty)}`
@@ -135,6 +150,15 @@ export default function prep_station_card({ station, on_open }: props) {
           <p className="mt-0.5 max-w-[92%] truncate text-center text-[clamp(0.6rem,2.6cqw,0.78rem)] font-semibold tabular-nums opacity-90">
             {under}
           </p>
+          {hold ? (
+            <p
+              className={`mt-0.5 max-w-[92%] truncate text-center text-[clamp(0.55rem,2.3cqw,0.72rem)] font-bold tabular-nums ${
+                hold === 'срок вышел' ? 'text-red-700' : ''
+              }`}
+            >
+              {hold}
+            </p>
+          ) : null}
         </button>
       </article>
     </>

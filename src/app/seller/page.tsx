@@ -72,6 +72,7 @@ import {
 import DrinkCraft from '@/components/seller/drink-craft';
 import BusinessPulse from '@/components/seller/business-pulse';
 import CashierRadio from '@/components/seller/cashier-radio';
+import { stock_writeoff_card, StockWriteoffSheet } from '@/components/seller/stock-writeoff';
 import PushBroadcast from '@/components/push-broadcast';
 
 const seller_panes = [
@@ -379,6 +380,7 @@ export default function SellerBoard() {
   const [prep_stations, set_prep_stations] = useState<prep_station_view[]>([]);
   const [prep_open_id, set_prep_open_id] = useState<string | null>(null);
   const [preps_open, set_preps_open] = useState(false);
+  const [writeoff_open, set_writeoff_open] = useState(false);
   const prep_batches = usePrepBatches(shift?.spot_id || '');
   const known_ids = useRef<Set<string> | null>(null);
   const pending_blink_ref = useRef<Set<string>>(new Set());
@@ -411,7 +413,7 @@ export default function SellerBoard() {
   const { viewport_ref, page_style, width: board_w, height: board_h } = usePageSwipe({
     index: Math.max(0, tab_index),
     count: Math.max(1, panes.length),
-    enabled: !paying && !cook && !revising && !task_guide_id && !need_shift && !need_barista && !switch_barista_open && !prep_open_id && !preps_open && !(tab === 'pos' && pos_depth) && !(tab === 'stock' && stock_depth),
+    enabled: !paying && !cook && !revising && !task_guide_id && !need_shift && !need_barista && !switch_barista_open && !prep_open_id && !preps_open && !writeoff_open && !(tab === 'pos' && pos_depth) && !(tab === 'stock' && stock_depth),
     on_index: (next) => set_tab(panes[next]?.id ?? panes[0]?.id ?? 'work'),
   });
 
@@ -1645,12 +1647,15 @@ export default function SellerBoard() {
   const preps_placed = Boolean(board?.placements.some((row) => row.card_id === 'widget:preps'));
   const show_preps =
     prep_batches.preps.length > 0 && (!widget_refs || !preps_placed || widget_refs.includes('preps'));
+  const writeoff_placed = Boolean(board?.placements.some((row) => row.card_id === 'widget:writeoff'));
+  const show_writeoff = !widget_refs || !writeoff_placed || widget_refs.includes('writeoff');
 
   const work_board_count =
     in_work.length +
     open_tasks.length +
     stations.length +
     (show_preps ? 1 : 0) +
+    (show_writeoff ? 1 : 0) +
     (show_opening ? 1 : 0) +
     (show_closing ? 1 : 0);
   const ready_board_count =
@@ -1693,6 +1698,12 @@ export default function SellerBoard() {
             on_open: () => set_prep_open_id(s.id),
           })
         )}
+        {show_writeoff
+          ? createElement(stock_writeoff_card, {
+              key: 'stock-writeoff',
+              on_open: () => set_writeoff_open(true),
+            })
+          : null}
         {show_preps
           ? createElement(prep_batches_card, {
               key: 'prep-batches',
@@ -2154,6 +2165,9 @@ export default function SellerBoard() {
         on_stations: set_prep_stations,
         spot_id: shift?.spot_id || '',
       })}
+      {writeoff_open ? (
+        <StockWriteoffSheet spot_id={shift?.spot_id || ''} on_close={() => set_writeoff_open(false)} />
+      ) : null}
       {preps_open ? (
         <PrepBatchesSheet
           preps={prep_batches.preps}
@@ -2176,6 +2190,7 @@ export default function SellerBoard() {
       />
       {cook
         ? <DrinkCookGuide
+            order_id={cook.order.id}
             drinks={drinks_for(cook.order).map((d) => ({
               ...d,
               done: Boolean(prep_map[cook.order.id]?.[d.key]?.done),
