@@ -283,6 +283,16 @@ body::-webkit-scrollbar {
   opacity: 1;
 }
 
+.inbox-sheet {
+  transform: translate3d(0, 100%, 0);
+  transition: transform 0.4s cubic-bezier(0.33, 1, 0.38, 1);
+  will-change: transform;
+}
+
+.inbox-sheet.is-visible {
+  transform: translate3d(0, 0, 0);
+}
+
 .product-panel-sheet {
   transform: translate3d(0, 100%, 0);
   transition: transform 0.4s cubic-bezier(0.33, 1, 0.38, 1);
