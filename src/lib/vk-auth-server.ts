@@ -1,4 +1,5 @@
 import { randomBytes } from 'node:crypto';
+import { claim_phone_for_user } from '@/lib/bonus-server';
 import { createClient } from '@supabase/supabase-js';
 import {
   vk_auth_email,
@@ -370,7 +371,6 @@ export async function upsert_vk_supabase_user(input: {
   const profile_row: {
     id: string;
     name: string;
-    phone?: string | null;
     avatar_emoji?: string;
     updated_at: string;
   } = {
@@ -378,18 +378,34 @@ export async function upsert_vk_supabase_user(input: {
     name,
     updated_at: new Date().toISOString(),
   };
-  if (phone) profile_row.phone = phone;
   if (!existing_profile?.avatar_emoji) {
     profile_row.avatar_emoji = random_avatar_emoji();
   }
 
+  // телефон пишем через claim: если номер уже был у кассового гостя,
+  // забираем его баллы и прошлые покупки, а не упираемся в unique
   await admin.from('profiles').upsert(profile_row, { onConflict: 'id' });
 
-  if (phone) {
-    await admin
+  let phone_to_claim = phone;
+  if (!phone_to_claim && input.anonymous_user_id && input.anonymous_user_id !== user_id) {
+    const { data: guest_row } = await admin
       .from('profiles')
-      .update({ phone, updated_at: new Date().toISOString() })
-      .eq('id', user_id);
+      .select('phone')
+      .eq('id', input.anonymous_user_id)
+      .maybeSingle();
+    phone_to_claim = normalize_phone(
+      (guest_row as { phone?: string | null } | null)?.phone
+    );
+  }
+  if (phone_to_claim) {
+    const claimed = await claim_phone_for_user({
+      user_id,
+      phone: phone_to_claim,
+      actor: 'vk_login',
+    });
+    if (!claimed.ok) {
+      console.warn('[vk-auth] phone claim failed', claimed.error);
+    }
   }
 
   if (input.anonymous_user_id && input.anonymous_user_id !== user_id) {
@@ -407,7 +423,6 @@ export async function upsert_vk_supabase_user(input: {
       {
         id: user_id,
         name,
-        phone: phone || null,
         avatar_emoji: random_avatar_emoji(),
         updated_at: new Date().toISOString(),
       },

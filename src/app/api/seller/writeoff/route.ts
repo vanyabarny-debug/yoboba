@@ -2,8 +2,10 @@ import { NextResponse } from 'next/server';
 import { is_supabase_configured } from '@/lib/supabase/config';
 import { staff_actor } from '@/lib/staff-actor';
 import { mutate_finance_state, read_finance_state } from '@/lib/finance/finance-server';
+import { format_ml } from '@/lib/finance/weigh';
 import {
   apply_writeoff,
+  base_unit,
   bind_spot,
   commit_spot,
   format_base_qty,
@@ -33,6 +35,7 @@ function rows_of(state: ReturnType<typeof bind_spot>) {
       name: m.name,
       category: stock_category_for(m),
       qty: qty.get(m.id) ?? 0,
+      unit: base_unit(m.unit),
       qtyLabel: format_base_qty(m, qty.get(m.id) ?? 0),
     }))
     .sort((a, b) => a.name.localeCompare(b.name, 'ru'));
@@ -88,9 +91,11 @@ export async function POST(request: Request) {
         return { state: null, value: { ok: false, error: 'на складе пусто' } };
       }
       if (qty > on_hand + 0.5) {
+        const left =
+          base_unit(mat.unit) === 'ml' ? format_ml(on_hand) : format_base_qty(mat, on_hand);
         return {
           state: null,
-          value: { ok: false, error: `нельзя списать больше остатка (${Math.round(on_hand)})` },
+          value: { ok: false, error: `нельзя списать больше остатка (${left})` },
         };
       }
       const written = clear_station_clock(

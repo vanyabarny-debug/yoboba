@@ -45,27 +45,58 @@ export async function GET(request: NextRequest) {
     return res;
   }
 
-  const { data: profile } = await read_profile(supabase, user.id);
+  let { data: profile } = await read_profile(supabase, user.id);
   const meta_phone = normalize_phone(
     (user.user_metadata as { phone?: string } | undefined)?.phone
   );
   let resolved_profile = profile;
 
-  if (profile && !profile.phone && meta_phone) {
-    resolved_profile = { ...profile, phone: meta_phone };
-    if (process.env.SUPABASE_SERVICE_ROLE_KEY) {
-      // номер мог уже копить баллы как «гость точки» с кассы — забираем их себе
-      const claimed = await claim_phone_for_user({
-        user_id: user.id,
+  if (!profile && meta_phone && process.env.SUPABASE_SERVICE_ROLE_KEY) {
+    const admin = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.SUPABASE_SERVICE_ROLE_KEY
+    );
+    await admin.from('profiles').upsert(
+      {
+        id: user.id,
+        name: 'гость',
+        bonus_balance: 0,
+        role: 'user',
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: 'id' }
+    );
+    const claimed = await claim_phone_for_user({
+      user_id: user.id,
+      phone: meta_phone,
+      actor: 'profile_sync',
+    });
+    profile = (await read_profile(supabase, user.id)).data;
+    resolved_profile = profile;
+    if (claimed.ok && profile) {
+      resolved_profile = {
+        ...profile,
         phone: meta_phone,
-        actor: 'profile_sync',
-      });
-      if (claimed.ok && typeof claimed.bonus_balance === 'number') {
-        resolved_profile = { ...resolved_profile, bonus_balance: claimed.bonus_balance };
-      } else if (!claimed.ok) {
-        // номер у другого настоящего аккаунта — не показываем его как свой
-        resolved_profile = profile;
-      }
+        bonus_balance:
+          typeof claimed.bonus_balance === 'number' ? claimed.bonus_balance : profile.bonus_balance,
+      };
+    }
+  }
+
+  if (profile && !profile.phone && meta_phone && process.env.SUPABASE_SERVICE_ROLE_KEY) {
+    // номер мог уже копить баллы как «гость точки» с кассы — забираем их себе
+    const claimed = await claim_phone_for_user({
+      user_id: user.id,
+      phone: meta_phone,
+      actor: 'profile_sync',
+    });
+    if (claimed.ok) {
+      resolved_profile = {
+        ...profile,
+        phone: meta_phone,
+        bonus_balance:
+          typeof claimed.bonus_balance === 'number' ? claimed.bonus_balance : profile.bonus_balance,
+      };
     }
   }
 
@@ -211,6 +242,7 @@ export async function PATCH(request: NextRequest) {
   }
 
   let merged_bonus: number | null = null;
+  let linked_purchases = false;
   if (updates.phone && process.env.SUPABASE_SERVICE_ROLE_KEY) {
     // если номер уже копил баллы на кассе как «гость точки» — переносим их сюда
     const claimed = await claim_phone_for_user({
@@ -224,6 +256,9 @@ export async function PATCH(request: NextRequest) {
       return res;
     }
     merged_bonus = claimed.merged_from ? claimed.bonus_balance : null;
+    if (claimed.linked_purchases) {
+      linked_purchases = true;
+    }
   }
 
   const { data: profile, error } = await update_profile_row(
@@ -284,7 +319,7 @@ export async function PATCH(request: NextRequest) {
     };
   }
 
-  const res = NextResponse.json({ profile: resolved });
+  const res = NextResponse.json({ profile: resolved, linked_purchases });
   merge_cookies(cookie_response, res);
   return res;
 }

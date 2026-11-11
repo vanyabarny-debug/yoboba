@@ -152,14 +152,37 @@ const POS_WALKIN_EMAIL = 'walkin@yoboba.internal';
 const WALKIN_STORE = 'pos-walkin-user';
 let walkin_user: Promise<string> | null = null;
 
+async function find_auth_user_by_email(
+  admin: ReturnType<typeof create_service_client>,
+  email: string
+) {
+  const target = email.toLowerCase();
+  for (let page = 1; page <= 30; page += 1) {
+    const { data, error } = await admin.auth.admin.listUsers({ page, perPage: 1000 });
+    if (error) return null;
+    const hit = (data.users || []).find((u) => (u.email || '').toLowerCase() === target);
+    if (hit) return hit.id;
+    if ((data.users || []).length < 1000) break;
+  }
+  return null;
+}
+
 async function pos_guest_user_id(): Promise<string> {
   if (!walkin_user) {
     walkin_user = (async () => {
       const { read_json_store, write_json_store } = await import('@/lib/data-store');
-      const stored = await read_json_store<string | null>(WALKIN_STORE, null);
-      if (stored) return stored;
-
       const admin = create_service_client();
+      const stored = await read_json_store<string | null>(WALKIN_STORE, null);
+      if (stored) {
+        try {
+          const { data: known } = await admin.auth.admin.getUserById(stored);
+          const known_email = (known?.user?.email || '').toLowerCase();
+          if (known_email === POS_WALKIN_EMAIL) return stored;
+        } catch {
+          /* сохранённый id битый — ищем аккаунт кассы по почте */
+        }
+      }
+
       const created = await admin.auth.admin.createUser({
         email: POS_WALKIN_EMAIL,
         email_confirm: true,
@@ -167,27 +190,20 @@ async function pos_guest_user_id(): Promise<string> {
       });
       let uid = created.data?.user?.id || '';
       if (!uid && /already|registered|exists|duplicate/i.test(created.error?.message || '')) {
-        const { data: existing } = await admin
-          .from('profiles')
-          .select('id')
-          .eq('name', 'гость')
-          .is('phone', null)
-          .limit(1)
-          .maybeSingle();
-        uid = existing?.id || '';
+        uid = (await find_auth_user_by_email(admin, POS_WALKIN_EMAIL)) || '';
       }
       if (!uid) throw new Error(created.error?.message || 'не удалось создать гостя точки');
-      await admin.from('profiles').upsert(
-        {
+      const { data: profile } = await admin.from('profiles').select('id').eq('id', uid).maybeSingle();
+      if (!profile) {
+        await admin.from('profiles').insert({
           id: uid,
           name: 'гость',
           phone: null,
           bonus_balance: 0,
           role: 'user',
           updated_at: new Date().toISOString(),
-        },
-        { onConflict: 'id' }
-      );
+        });
+      }
       await write_json_store(WALKIN_STORE, uid).catch(() => {});
       return uid;
     })().catch((e) => {

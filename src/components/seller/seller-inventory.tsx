@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import InventoryCount from '@/components/admin/finance/inventory-count';
 import {
+  base_unit,
   format_base_qty,
   format_rub,
   type material,
@@ -10,7 +11,15 @@ import {
   type stock_category,
   type stock_row,
 } from '@/lib/finance/model';
-import { entered_from_base, parse_qty, to_base_qty, weigh_kind_of, weigh_unit } from '@/lib/finance/weigh';
+import {
+  entered_from_base,
+  format_ml,
+  parse_ml,
+  parse_qty,
+  to_base_qty,
+  weigh_kind_of,
+  weigh_unit,
+} from '@/lib/finance/weigh';
 import type { prep_station_view } from '@/lib/finance/prep-stations';
 
 type stock_money = {
@@ -231,9 +240,10 @@ export default function SellerInventory({
 
   const writeoff_preview = useMemo(() => {
     if (!writeoff) return null;
-    const entered = parse_qty(writeoff_draft);
+    const liquid = base_unit(writeoff.unit) === 'ml';
+    const entered = liquid ? parse_ml(writeoff_draft) : parse_qty(writeoff_draft);
     if (entered == null || entered <= 0) return null;
-    const base = to_base_qty(as_material(writeoff), entered);
+    const base = liquid ? entered : to_base_qty(as_material(writeoff), entered);
     const cost = Math.round(base * (writeoff.costPerBase ?? 0));
     return { base, cost, entered };
   }, [writeoff, writeoff_draft]);
@@ -261,7 +271,7 @@ export default function SellerInventory({
   }
 
   async function save_writeoff(row: public_row, entered: number) {
-    const qty = to_base_qty(as_material(row), entered);
+    const qty = base_unit(row.unit) === 'ml' ? Math.round(entered) : to_base_qty(as_material(row), entered);
     const res = await fetch('/api/seller/stock', {
       method: 'POST',
       credentials: 'same-origin',
@@ -606,7 +616,8 @@ export default function SellerInventory({
             onClick={(e) => e.stopPropagation()}
             onSubmit={(e) => {
               e.preventDefault();
-              const n = parse_qty(writeoff_draft);
+              const liquid = base_unit(writeoff.unit) === 'ml';
+              const n = liquid ? parse_ml(writeoff_draft) : parse_qty(writeoff_draft);
               if (n == null || n <= 0 || writeoff_busy) return;
               set_writeoff_busy(true);
               save_writeoff(writeoff, n)
@@ -618,7 +629,10 @@ export default function SellerInventory({
             <p className="text-xs uppercase tracking-[0.14em] text-red-500">списание</p>
             <h3 className="mt-1 text-lg font-semibold text-neutral-900">{writeoff.name}</h3>
             <p className="mt-1 text-sm text-neutral-400">
-              на складе {format_base_qty(as_material(writeoff), writeoff.qty)}
+              на складе{' '}
+              {base_unit(writeoff.unit) === 'ml'
+                ? format_ml(writeoff.qty)
+                : format_base_qty(as_material(writeoff), writeoff.qty)}
               {writeoff.needsPrice
                 ? ' · нет поставки, рубли не посчитаны'
                 : writeoff.costPerBase
@@ -630,22 +644,50 @@ export default function SellerInventory({
             <label className="relative mt-4 block">
               <input
                 autoFocus
-                inputMode="decimal"
+                inputMode={base_unit(writeoff.unit) === 'ml' ? 'numeric' : 'decimal'}
                 value={writeoff_draft}
                 onChange={(e) => set_writeoff_draft(e.target.value)}
-                placeholder="0"
-                className="w-full border-0 border-b border-neutral-200 bg-transparent py-2 pr-10 text-3xl tabular-nums outline-none focus:border-red-500"
+                placeholder={base_unit(writeoff.unit) === 'ml' ? '1280' : '0'}
+                className="w-full border-0 border-b border-neutral-200 bg-transparent py-2 pr-12 text-3xl tabular-nums outline-none focus:border-red-500"
               />
               <span className="pointer-events-none absolute right-0 top-1/2 -translate-y-1/2 text-neutral-400">
-                {weigh_unit(weigh_kind_of(as_material(writeoff)))}
+                {base_unit(writeoff.unit) === 'ml'
+                  ? 'мл'
+                  : weigh_unit(weigh_kind_of(as_material(writeoff)))}
               </span>
             </label>
+            {base_unit(writeoff.unit) === 'ml' ? (
+              <div className="mt-3 flex flex-wrap gap-1.5">
+                {[
+                  { add: 100, label: '+100 мл' },
+                  { add: 250, label: '+250 мл' },
+                  { add: 500, label: '+500 мл' },
+                  { add: 1000, label: '+1 л' },
+                ].map((chip) => (
+                  <button
+                    key={chip.add}
+                    type="button"
+                    onClick={() => {
+                      const current = parse_ml(writeoff_draft) ?? 0;
+                      set_writeoff_draft(String(current + chip.add));
+                    }}
+                    className="rounded-full bg-neutral-100 px-2.5 py-1 text-xs font-semibold text-neutral-700"
+                  >
+                    {chip.label}
+                  </button>
+                ))}
+              </div>
+            ) : null}
             <p className="mt-3 text-center text-sm text-neutral-600">
-              {writeoff_preview ? (
+              {base_unit(writeoff.unit) === 'ml' && /[.,]/.test(writeoff_draft) ? (
+                <span className="text-red-600">пишите миллилитры целиком: 1 л 280 мл — это 1280</span>
+              ) : writeoff_preview ? (
                 <>
                   спишется{' '}
                   <span className="font-semibold tabular-nums">
-                    {format_base_qty(as_material(writeoff), writeoff_preview.base)}
+                    {base_unit(writeoff.unit) === 'ml'
+                      ? format_ml(writeoff_preview.base)
+                      : format_base_qty(as_material(writeoff), writeoff_preview.base)}
                   </span>
                   {' · '}
                   <span className="font-semibold tabular-nums text-red-600">

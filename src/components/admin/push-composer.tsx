@@ -208,8 +208,8 @@ export default function PushComposer() {
   return (
     <div className="space-y-4">
       <p className="text-sm text-neutral-500">
-        уведомление упадёт в шторку телефона, если гость разрешил пуши и добавил приложение на
-        экран
+        уведомление упадёт в шторку телефона и в колокольчик в приложении, если гость разрешил
+        пуши и добавил приложение на экран
       </p>
 
       {error ? <p className="text-sm text-red-500">{error}</p> : null}

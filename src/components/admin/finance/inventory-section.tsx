@@ -52,7 +52,7 @@ import {
 } from '@/lib/finance/model';
 import InventoryCount from '@/components/admin/finance/inventory-count';
 import PrepRecipeCard from '@/components/admin/finance/prep-recipes-section';
-import { weigh_kind_of, weigh_unit } from '@/lib/finance/weigh';
+import { format_ml, weigh_kind_of, weigh_unit } from '@/lib/finance/weigh';
 import { material_is_prep_dry, normalize_prep_stations } from '@/lib/finance/prep-stations';
 import { materials_in_drinks, swap_material_for_prep } from '@/lib/finance/prep-batches';
 import {
@@ -2963,6 +2963,10 @@ function format_qty_short(n: number) {
   return n.toLocaleString('ru-RU', { maximumFractionDigits: 3 });
 }
 
+function shown_qty(mat: material, qty: number) {
+  return base_unit(mat.unit) === 'ml' ? format_ml(qty) : format_base_qty(mat, qty);
+}
+
 function WriteoffForm({
   materials,
   qty_of,
@@ -3038,10 +3042,10 @@ function WriteoffForm({
       {mat ? (
         <p className={`mt-3 text-xs ${too_much ? 'text-red-600' : 'text-neutral-500'}`}>
           {too_much
-            ? `на складе ${format_base_qty(mat, on_hand)}, больше списать нельзя`
+            ? `на складе ${shown_qty(mat, on_hand)}, больше списать нельзя`
             : qty > 0
-              ? `спишется ${format_base_qty(mat, qty)} · останется ${format_base_qty(mat, Math.max(0, on_hand - qty))}`
-              : `сейчас на складе ${format_base_qty(mat, on_hand)}`}
+              ? `спишется ${shown_qty(mat, qty)} · останется ${shown_qty(mat, Math.max(0, on_hand - qty))}`
+              : `сейчас на складе ${shown_qty(mat, on_hand)}`}
         </p>
       ) : null}
       <div className="mt-3 flex flex-wrap items-center justify-end gap-2">
@@ -3093,7 +3097,7 @@ function QtyDialog({
       <div className="w-full max-w-md rounded-2xl bg-white p-5 shadow-xl" onClick={(e) => e.stopPropagation()}>
         <h3 className="text-sm font-semibold text-neutral-900">{title}</h3>
         <p className="mt-0.5 text-xs text-neutral-500">
-          {material.name} · сейчас {format_base_qty(material, current)}
+          {material.name} · сейчас {shown_qty(material, current)}
         </p>
         <div className="mt-4 grid gap-3">
           <label className="text-xs text-neutral-500">

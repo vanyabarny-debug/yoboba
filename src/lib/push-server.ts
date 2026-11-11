@@ -11,6 +11,7 @@ import { PUSH_CATEGORIES, parse_push_categories, type push_category_id } from '@
 import { seller_id_cookie } from '@/lib/session';
 import { get_sellers } from '@/lib/sellers-server';
 import { parse_seller_access } from '@/lib/seller-access';
+import { record_inbox } from '@/lib/inbox-server';
 
 const store_key = 'push-subscriptions';
 
@@ -183,9 +184,6 @@ export async function send_web_push(input: {
   audience: 'all' | 'selected';
   keys?: string[];
 }): Promise<{ sent: number; failed: number; total: number }> {
-  const vapid = await get_vapid_keys();
-  webpush.setVapidDetails(vapid.subject, vapid.publicKey, vapid.privateKey);
-
   const subs = await load_all_subscriptions();
   const selected = new Set(input.keys || []);
   const picked =
@@ -195,6 +193,22 @@ export async function send_web_push(input: {
           const user_key = s.user_id || `device:${s.id}`;
           return selected.has(user_key) || selected.has(s.id);
         });
+
+  const user_ids = [
+    ...new Set(picked.map((sub) => sub.user_id).filter((id): id is string => Boolean(id))),
+  ];
+  if (user_ids.length) {
+    await record_inbox({
+      title: input.payload.title,
+      body: input.payload.body,
+      href: input.payload.url || '/',
+      source: 'push',
+      user_ids,
+    }).catch(() => {});
+  }
+
+  const vapid = await get_vapid_keys();
+  webpush.setVapidDetails(vapid.subject, vapid.publicKey, vapid.privateKey);
 
   const json = JSON.stringify({
     title: input.payload.title,
@@ -227,6 +241,20 @@ export async function send_web_push(input: {
 }
 
 export async function send_push_to_user_id(user_id: string, payload: Record<string, unknown>) {
+  const title = typeof payload.title === 'string' ? payload.title : '';
+  const text = typeof payload.body === 'string' ? payload.body : '';
+  const data = payload.data as { url?: unknown } | undefined;
+  const href = typeof data?.url === 'string' ? data.url : null;
+  if (title && text) {
+    await record_inbox({
+      title,
+      body: text,
+      href,
+      source: 'push',
+      user_ids: [user_id],
+    }).catch(() => {});
+  }
+
   const vapid = await get_vapid_keys();
   webpush.setVapidDetails(vapid.subject, vapid.publicKey, vapid.privateKey);
   const subs = (await load_all_subscriptions()).filter((s) => s.user_id === user_id);

@@ -41,22 +41,31 @@ function title_of(items: order_item[]) {
   );
 }
 
-/** id аккаунтов, за которыми не стоит конкретный человек: касса, гостевые сессии */
+/** касса пробивает без гостя с этим именем — даже если заказ сел на чужой профиль */
+function is_pos_placeholder(name: string | null | undefined) {
+  return (name || '').trim().toLowerCase() === 'гость точки';
+}
+
+/** id аккаунтов, за которыми не стоит конкретный человек: касса, гостевые сессии.
+ * телефон на профиле не делает кассовый аккаунт «настоящим»: продажи без номера всё равно ничьи. */
 async function service_users(ids: string[]) {
   const admin = create_service_client();
   const out = new Set<string>();
-  const profiles = new Map<string, string | null>();
-  if (ids.length) {
-    const { data } = await admin.from('profiles').select('id, phone').in('id', ids);
-    for (const p of (data as { id: string; phone: string | null }[] | null) ?? []) profiles.set(p.id, p.phone);
+  const unique = [...new Set(ids)];
+  let cursor = 0;
+  async function worker() {
+    while (cursor < unique.length) {
+      const id = unique[cursor++];
+      try {
+        const { data } = await admin.auth.admin.getUserById(id);
+        if (!data?.user || is_service_account_email(data.user.email)) out.add(id);
+      } catch {
+        /* один сбой auth не должен прятать весь список */
+      }
+    }
   }
-  await Promise.all(
-    ids.map(async (id) => {
-      if (normalize_phone(profiles.get(id) ?? null)) return;
-      const { data } = await admin.auth.admin.getUserById(id);
-      if (!data?.user || is_service_account_email(data.user.email)) out.add(id);
-    })
-  );
+  const workers = Math.min(8, unique.length);
+  await Promise.all(Array.from({ length: workers }, () => worker()));
   return out;
 }
 
@@ -79,7 +88,7 @@ export async function list_loose_orders(days = 30): Promise<loose_order[]> {
   const user_ids = [...new Set(rows.map((o) => o.user_id).filter((id): id is string => Boolean(id)))];
   const service = await service_users(user_ids);
   return rows
-    .filter((o) => !o.user_id || service.has(o.user_id))
+    .filter((o) => !o.user_id || service.has(o.user_id) || is_pos_placeholder(o.customer_name))
     .map((o) => ({
       id: o.id,
       created_at: o.created_at,
@@ -124,7 +133,9 @@ export async function assign_order_to_customer(input: {
   if (normalize_phone(o.customer_phone)) {
     return { ok: false, error: 'у этой покупки уже есть гость', status: 409 };
   }
-  if (o.user_id && !(await service_users([o.user_id])).has(o.user_id)) {
+  const on_cashier =
+    !o.user_id || (await service_users([o.user_id])).has(o.user_id) || is_pos_placeholder(o.customer_name);
+  if (!on_cashier) {
     return { ok: false, error: 'у этой покупки уже есть гость', status: 409 };
   }
 

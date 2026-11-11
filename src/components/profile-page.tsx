@@ -232,6 +232,7 @@ export default function ProfilePage() {
   const [phone_draft, set_phone_draft] = useState('');
   const [saving_phone, set_saving_phone] = useState(false);
   const [phone_error, set_phone_error] = useState('');
+  const [phone_note, set_phone_note] = useState('');
   const [name_draft, set_name_draft] = useState('');
   const [saving_name, set_saving_name] = useState(false);
   const [name_error, set_name_error] = useState('');
@@ -387,7 +388,7 @@ export default function ProfilePage() {
     set_saving_phone(true);
     set_phone_error('');
 
-    const { profile: next, error } = await update_profile({ phone });
+    const { profile: next, error, linked_purchases } = await update_profile({ phone });
     set_saving_phone(false);
 
     if (error || !next) {
@@ -397,6 +398,26 @@ export default function ProfilePage() {
 
     set_profile(next);
     set_editing_phone(false);
+    set_phone_note(
+      linked_purchases ? 'подтянули прошлые покупки и бобаллы с этим номером' : ''
+    );
+    if (linked_purchases) {
+      const { data } = await fetch_my_orders();
+      set_orders(data);
+      remember_header_user({
+        id: next.id,
+        phone: next.phone || '',
+        name: next.name || '',
+        bonus_balance: next.bonus_balance,
+        avatar_emoji: next.avatar_emoji || '',
+        avatar_bg: next.avatar_bg,
+        avatar_url: next.avatar_url ?? null,
+        is_guest: false,
+        role: 'user',
+        student_claimed: next.student_claimed === true,
+        student_verified: next.student_verified === true,
+      });
+    }
   }
 
   async function handle_save_name() {
@@ -964,8 +985,9 @@ export default function ProfilePage() {
               <p className={field_box}>{format_phone_display(profile.phone)}</p>
             )}
             <p className="mt-2 text-[13px] font-normal text-neutral-400">
-              нужен для заказа — спросим перед оформлением, если не указан
+              если этот номер называли на кассе, подтянем прошлые покупки и бобаллы. при входе через vk номер берётся оттуда сам
             </p>
+            {phone_note ? <p className="mt-1 text-[13px] text-emerald-700">{phone_note}</p> : null}
           </div>
 
           <div>

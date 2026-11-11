@@ -2,13 +2,22 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { FLOATING_CLOSE_BTN_CLASS } from '@/lib/drawer-ui';
+import { format_ml, parse_ml } from '@/lib/finance/weigh';
 
 type row = {
   id: string;
   name: string;
   qty: number;
+  unit: 'g' | 'ml' | 'pcs';
   qtyLabel: string;
 };
+
+const ML_CHIPS = [
+  { add: 100, label: '+100' },
+  { add: 250, label: '+250' },
+  { add: 500, label: '+500' },
+  { add: 1000, label: '+1 л' },
+];
 
 const TINT = { bg: '#FDECEC', fg: '#B42318', border: '#F5C2C2' };
 
@@ -81,8 +90,16 @@ export function StockWriteoffSheet({ spot_id, on_close }: { spot_id: string; on_
     return filtered.slice(0, 40);
   }, [rows, query]);
 
-  const amount = Math.round(Number(grams));
-  const can_save = !!picked && Number.isFinite(amount) && amount > 0 && amount <= picked.qty + 0.5;
+  const liquid = picked?.unit === 'ml';
+  const typed_ml = liquid ? parse_ml(grams) : null;
+  const amount = liquid ? typed_ml ?? 0 : Math.round(Number(grams.replace(',', '.')));
+  const ml_decimal = Boolean(liquid && /[.,]/.test(grams));
+  const can_save =
+    !!picked &&
+    !ml_decimal &&
+    Number.isFinite(amount) &&
+    amount > 0 &&
+    amount <= picked.qty + 0.5;
 
   async function commit() {
     if (!picked || !can_save || busy) return;
@@ -106,7 +123,8 @@ export function StockWriteoffSheet({ spot_id, on_close }: { spot_id: string; on_
         return;
       }
       set_rows(body.rows ?? []);
-      set_notice(`списано ${amount} · ${picked.name}`);
+      const shown = picked.unit === 'ml' ? format_ml(amount) : String(amount);
+      set_notice(`списано ${shown} · ${picked.name}`);
       set_grams('');
       const fresh = (body.rows ?? []).find((row) => row.id === picked.id) ?? null;
       set_picked(fresh && fresh.qty > 0.5 ? fresh : null);
@@ -178,23 +196,60 @@ export function StockWriteoffSheet({ spot_id, on_close }: { spot_id: string; on_
               </ul>
             )}
             {picked ? (
-              <div className="flex gap-2">
-                <input
-                  inputMode="numeric"
-                  value={grams}
-                  onChange={(e) => set_grams(e.target.value)}
-                  placeholder="сколько"
-                  aria-label="сколько списать"
-                  className="w-28 shrink-0 rounded-2xl border border-neutral-200 bg-neutral-50 px-3 py-3 text-center text-base font-bold tabular-nums outline-none focus:border-accent"
-                />
-                <button
-                  type="button"
-                  disabled={busy || !can_save}
-                  onClick={() => void commit()}
-                  className="min-w-0 flex-1 rounded-2xl bg-red-600 py-3 text-sm font-bold text-white disabled:opacity-50"
-                >
-                  {busy ? '…' : `списать ${picked.name}`}
-                </button>
+              <div className="space-y-2">
+                <div className="flex gap-2">
+                  <label className="relative w-36 shrink-0">
+                    <input
+                      inputMode="numeric"
+                      value={grams}
+                      onChange={(e) => {
+                        set_grams(e.target.value);
+                        set_error('');
+                      }}
+                      placeholder={liquid ? '1280' : 'сколько'}
+                      aria-label={liquid ? 'сколько миллилитров списать' : 'сколько списать'}
+                      className="w-full rounded-2xl border border-neutral-200 bg-neutral-50 px-3 py-3 pr-10 text-center text-base font-bold tabular-nums outline-none focus:border-accent"
+                    />
+                    <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-sm text-neutral-400">
+                      {picked.unit === 'pcs' ? 'шт' : liquid ? 'мл' : 'г'}
+                    </span>
+                  </label>
+                  <button
+                    type="button"
+                    disabled={busy || !can_save}
+                    onClick={() => void commit()}
+                    className="min-w-0 flex-1 rounded-2xl bg-red-600 py-3 text-sm font-bold text-white disabled:opacity-50"
+                  >
+                    {busy ? '…' : `списать ${picked.name}`}
+                  </button>
+                </div>
+                {liquid ? (
+                  <>
+                    <div className="flex flex-wrap gap-1.5">
+                      {ML_CHIPS.map((chip) => (
+                        <button
+                          key={chip.add}
+                          type="button"
+                          onClick={() => {
+                            const current = parse_ml(grams) ?? 0;
+                            set_grams(String(current + chip.add));
+                            set_error('');
+                          }}
+                          className="rounded-full bg-neutral-100 px-2.5 py-1 text-xs font-semibold text-neutral-700"
+                        >
+                          {chip.label}
+                        </button>
+                      ))}
+                    </div>
+                    <p className={`text-center text-sm ${ml_decimal ? 'text-red-600' : 'text-neutral-500'}`}>
+                      {ml_decimal
+                        ? 'пишите миллилитры целиком: 1 л 280 мл — это 1280'
+                        : typed_ml
+                          ? `спишется ${format_ml(typed_ml)}`
+                          : 'в миллилитрах, например 1280'}
+                    </p>
+                  </>
+                ) : null}
               </div>
             ) : null}
             {notice ? <p className="text-center text-sm text-emerald-700">{notice}</p> : null}

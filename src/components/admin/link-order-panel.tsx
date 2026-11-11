@@ -110,10 +110,17 @@ export default function LinkOrderPanel({
 
   return (
     <div data-stop-collapse className="space-y-2 rounded-xl border border-neutral-200 bg-white p-2.5">
-      <div className="flex items-center justify-between gap-2">
+      <div className="sticky top-0 z-10 flex items-center justify-between gap-2 bg-white">
         <p className="text-xs font-semibold text-neutral-800">продажи без гостя</p>
-        <button type="button" onClick={() => set_open(false)} className="text-xs font-medium text-neutral-500">
-          закрыть
+        <button
+          type="button"
+          aria-label="закрыть"
+          onClick={() => set_open(false)}
+          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-neutral-500 hover:bg-neutral-100 hover:text-neutral-900"
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+            <path d="M6 6l12 12M18 6L6 18" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" />
+          </svg>
         </button>
       </div>
       <div className="flex flex-wrap items-center gap-1.5">

@@ -123,12 +123,6 @@ export async function GET(request: NextRequest) {
       email: vk_user.email,
       phone: vk_user.phone,
     });
-    
-    const account = await upsert_vk_supabase_user({
-      vk_user,
-      anonymous_user_id: null,
-    });
-    console.log('[vk/callback] upsert ok', { user_id: account.user_id, email: account.email });
 
     const cookie_bag: {
       name: string;
@@ -153,6 +147,19 @@ export async function GET(request: NextRequest) {
         },
       }
     );
+
+    const { data: prior } = await supabase.auth.getUser();
+    const prior_email = (prior.user?.email || '').toLowerCase();
+    const prior_guest =
+      prior.user?.is_anonymous === true ||
+      prior.user?.user_metadata?.is_guest === true ||
+      prior_email.endsWith('@guest.yoboba.auth');
+
+    const account = await upsert_vk_supabase_user({
+      vk_user,
+      anonymous_user_id: prior_guest ? prior.user?.id || null : null,
+    });
+    console.log('[vk/callback] upsert ok', { user_id: account.user_id, email: account.email });
 
     console.log('[vk/callback] mint session');
     const password = await issue_vk_one_time_password(account.user_id);

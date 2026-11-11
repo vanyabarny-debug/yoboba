@@ -235,7 +235,23 @@ export async function get_auth_state(): Promise<auth_state> {
   const { data: { user: browser_user } } = await supabase.auth.getUser();
 
   if (browser_user && !browser_user.is_anonymous && !is_guest_user(browser_user)) {
-    const row = await get_profile();
+    let row = await get_profile();
+    const meta_phone =
+      typeof browser_user.user_metadata?.phone === 'string'
+        ? browser_user.user_metadata.phone.trim()
+        : '';
+    // vk кладёт номер в metadata. пока его нет в профиле — сервер склеит кассового гостя
+    if ((!row || !row.phone) && meta_phone) {
+      try {
+        const res = await fetch('/api/auth/profile', { credentials: 'same-origin' });
+        if (res.ok) {
+          const body = (await res.json()) as { profile: profile | null };
+          if (body.profile) row = body.profile;
+        }
+      } catch {
+        /* остаётся профиль с клиента */
+      }
+    }
     return {
       user_id: browser_user.id,
       is_anonymous: false,
@@ -434,12 +450,21 @@ export async function update_profile(input: {
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify(input),
   });
-  const body = (await res.json()) as { profile?: profile; error?: string };
+  const body = (await res.json()) as {
+    profile?: profile;
+    error?: string;
+    linked_purchases?: boolean;
+  };
   if (!res.ok || !body.profile) {
     return {
       profile: null,
       error: new Error(body.error || 'не удалось сохранить'),
+      linked_purchases: false,
     };
   }
-  return { profile: body.profile, error: null };
+  return {
+    profile: body.profile,
+    error: null,
+    linked_purchases: Boolean(body.linked_purchases),
+  };
 }

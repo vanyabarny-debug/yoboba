@@ -3,6 +3,7 @@
 import { createElement, useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import AdminShell from '@/components/admin/admin-shell';
+import InboxComposer from '@/components/admin/inbox-composer';
 import PushComposer from '@/components/admin/push-composer';
 import avatar_circle from '@/components/avatar-circle';
 import TapicoinIcon from '@/components/tapicoin-icon';
@@ -19,6 +20,7 @@ import { configured_unit_price } from '@/lib/product-details';
 import { sold_to_pct, spread_total } from '@/lib/pos-pricing';
 import DiscountFields from '@/components/admin/discount-fields';
 import LinkOrderPanel from '@/components/admin/link-order-panel';
+import LinkPhonePanel from '@/components/admin/link-phone-panel';
 import { CustomerJourneyCard, JourneyPanel } from '@/components/admin/journey-panel';
 import {
   active_orders,
@@ -371,6 +373,7 @@ export default function CustomersPage() {
   const [analytics_period_state, set_analytics_period] = useState<analytics_period>('all');
   const [activity_tab, set_activity_tab] = useState<activity_mode>('days');
   const [push_open, set_push_open] = useState(false);
+  const [inbox_open, set_inbox_open] = useState(false);
   const open_card_ref = useRef<HTMLLIElement | null>(null);
 
   function expiry_value(c: customer_row) {
@@ -793,6 +796,53 @@ export default function CustomersPage() {
         <div className="overflow-hidden rounded-2xl border border-neutral-200/80 bg-white shadow-sm">
           <button
             type="button"
+            onClick={() => set_inbox_open((v) => !v)}
+            aria-expanded={inbox_open}
+            className="flex w-full items-center justify-between gap-3 px-4 py-3.5 text-left transition-colors hover:bg-neutral-50"
+          >
+            <span className="min-w-0">
+              <span className="block text-sm font-semibold text-neutral-900">
+                сообщение в приложение
+              </span>
+              <span className="mt-0.5 block text-xs text-neutral-500">
+                колокольчик у профиля: заголовок, текст, эмодзи и картинка
+              </span>
+            </span>
+            <svg
+              width="16"
+              height="16"
+              viewBox="0 0 24 24"
+              fill="none"
+              aria-hidden
+              className={`shrink-0 text-neutral-400 transition-transform ${
+                inbox_open ? 'rotate-180' : ''
+              }`}
+            >
+              <path
+                d="M6 9l6 6 6-6"
+                stroke="currentColor"
+                strokeWidth="2.2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </svg>
+          </button>
+          {inbox_open ? (
+            <div className="border-t border-neutral-100 px-4 py-4">
+              <InboxComposer
+                customers={(data?.customers ?? []).map((c) => ({
+                  id: c.id,
+                  name: c.name,
+                  phone: c.phone,
+                }))}
+              />
+            </div>
+          ) : null}
+        </div>
+
+        <div className="overflow-hidden rounded-2xl border border-neutral-200/80 bg-white shadow-sm">
+          <button
+            type="button"
             onClick={() => set_push_open((v) => !v)}
             aria-expanded={push_open}
             className="flex w-full items-center justify-between gap-3 px-4 py-3.5 text-left transition-colors hover:bg-neutral-50"
@@ -1034,12 +1084,16 @@ export default function CustomersPage() {
                       <h4 className="font-heading-soft text-xs font-bold uppercase tracking-wide text-neutral-700">
                         Покупки
                       </h4>
+                      <LinkPhonePanel
+                        customer={{ id: c.id, phone: c.phone }}
+                        on_linked={(note) => after_link(c, note)}
+                      />
                       <LinkOrderPanel
                         key={c.id}
                         customer={{ id: c.id, name: c.name, phone: c.phone }}
                         on_linked={(note) => after_link(c, note)}
                       />
-                      {link_note && link_note.key === (c.phone || c.id) ? (
+                      {link_note && (link_note.key === c.id || link_note.key === c.phone) ? (
                         <p className="text-xs text-emerald-700">{link_note.text}</p>
                       ) : null}
                       {c.orders.length === 0 ? (

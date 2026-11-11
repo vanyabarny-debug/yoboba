@@ -2,6 +2,7 @@
 
 import { createElement, useEffect, useState } from 'react';
 import BrandWordmark from '@/components/brand-wordmark';
+import NotificationBell from '@/components/notification-bell';
 import ProfileChip from '@/components/profile-chip';
 import spot_rating from '@/components/spot-rating';
 import edit_pencil from '@/components/admin/edit-pencil';
@@ -84,6 +85,7 @@ export default function SiteHeader({
           </button>
 
           <div className="flex items-center gap-1.5 flex-shrink-0">
+            {is_logged_in ? <NotificationBell /> : null}
             {edit_mode ? (
               <span className="text-[10px] text-neutral-400">режим правки</span>
             ) : (
@@ -157,6 +159,7 @@ export default function SiteHeader({
         </div>
 
         <div className="flex items-center gap-2 flex-shrink-0">
+          {is_logged_in ? <NotificationBell /> : null}
           {show_admin && on_admin && (
             <button
               type="button"

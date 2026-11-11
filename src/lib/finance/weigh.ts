@@ -47,6 +47,25 @@ export function entered_from_base(m: Pick<material, 'unit'>, qty: number) {
   return Math.max(0, Math.round(qty * 10) / 10);
 }
 
+/** 1280 мл → «1 л 280 мл». так проще сверить, чем «1,28 л». */
+export function format_ml(qty: number) {
+  const n = Math.max(0, Math.round(qty));
+  const liters = Math.floor(n / 1000);
+  const rest = n % 1000;
+  if (liters > 0 && rest > 0) return `${liters.toLocaleString('ru-RU')} л ${rest} мл`;
+  if (liters > 0) return `${liters.toLocaleString('ru-RU')} л`;
+  return `${rest.toLocaleString('ru-RU')} мл`;
+}
+
+/** списание жидкости — целые миллилитры. «1,28» не превращаем в 1 мл. */
+export function parse_ml(s: string): number | null {
+  const t = s.trim().replace(/\s/g, '');
+  if (!t || /[.,]/.test(t) || !/^\d+$/.test(t)) return null;
+  const n = Number(t);
+  if (!Number.isFinite(n) || n <= 0) return null;
+  return n;
+}
+
 export function parse_qty(s: string): number | null {
   const t = s.trim().replace(',', '.');
   if (!t) return null;

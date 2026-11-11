@@ -434,8 +434,53 @@ export function is_service_account_email(email: string | null | undefined) {
 }
 
 export type claim_phone_result =
-  | { ok: true; merged_from: string | null; bonus_balance: number | null }
+  | {
+      ok: true;
+      merged_from: string | null;
+      bonus_balance: number | null;
+      /** забрали заказы с кассового гостя или технического профиля */
+      linked_purchases: boolean;
+    }
   | { ok: false; error: string; status: number };
+
+/** заказы с этим телефоном, которые всё ещё висят на кассе или гостевой сессии */
+async function pull_cashier_orders(
+  admin: admin_client,
+  phone: string,
+  into_id: string
+): Promise<boolean> {
+  const { data, error } = await admin
+    .from('orders')
+    .select('id, user_id')
+    .eq('customer_phone', phone)
+    .limit(500);
+  if (error || !data?.length) return false;
+  const rows = data as { id: string; user_id: string | null }[];
+  const loose = rows.filter((r) => !r.user_id).map((r) => r.id);
+  const foreign = rows.filter((r) => r.user_id && r.user_id !== into_id);
+  let moved = false;
+  if (loose.length) {
+    const upd = await admin.from('orders').update({ user_id: into_id }).in('id', loose);
+    if (!upd.error) moved = true;
+  }
+  const service = new Set<string>();
+  for (const id of [...new Set(foreign.map((r) => r.user_id as string))]) {
+    try {
+      const { data: user } = await admin.auth.admin.getUserById(id);
+      if (!user?.user || is_service_account_email(user.user.email) || user.user.is_anonymous === true) {
+        service.add(id);
+      }
+    } catch {
+      /* чужой аккаунт не трогаем */
+    }
+  }
+  const take = foreign.filter((r) => r.user_id && service.has(r.user_id)).map((r) => r.id);
+  if (take.length) {
+    const upd = await admin.from('orders').update({ user_id: into_id }).in('id', take);
+    if (!upd.error) moved = true;
+  }
+  return moved;
+}
 
 /**
  * привязать телефон к аккаунту гостя.
@@ -443,10 +488,22 @@ export type claim_phone_result =
  * сессия) — переносим его баллы, заказы и подарки на настоящий аккаунт и
  * удаляем технический. если номер у другого настоящего аккаунта — 409.
  */
+function is_vk_auth_user(user: { email?: string | null; user_metadata?: object } | null | undefined) {
+  if (!user) return false;
+  const meta = (user.user_metadata || {}) as Record<string, unknown>;
+  const email = (user.email || '').toLowerCase();
+  const vk_id = meta.vk_id;
+  const has_vk_id =
+    (typeof vk_id === 'number' && vk_id > 0) || (typeof vk_id === 'string' && /^\d+$/.test(vk_id));
+  return meta.provider === 'vk' || has_vk_id || /^vk\d+@auth\.yoboba$/.test(email);
+}
+
 export async function claim_phone_for_user(input: {
   user_id: string;
   phone: string;
   actor?: string | null;
+  /** админ вручную склеивает vk без номера с аккаунтом, где был только телефон */
+  allow_phone_account?: boolean;
 }): Promise<claim_phone_result> {
   const phone = normalize_phone(input.phone);
   if (!phone) return { ok: false, error: 'укажите корректный номер', status: 400 };
@@ -458,21 +515,45 @@ export async function claim_phone_for_user(input: {
   const owner = await find_profile_by_phone(admin, phone);
 
   if (owner && owner.id === input.user_id) {
-    return { ok: true, merged_from: null, bonus_balance: owner.bonus_balance ?? null };
+    const linked_purchases = await pull_cashier_orders(admin, phone, input.user_id);
+    return {
+      ok: true,
+      merged_from: null,
+      bonus_balance: owner.bonus_balance ?? null,
+      linked_purchases,
+    };
   }
 
   let merged_from: string | null = null;
   let bonus_balance: number | null = null;
 
   if (owner) {
-    const { data: owner_user } = await admin.auth.admin.getUserById(owner.id);
+    let owner_user: Awaited<ReturnType<typeof admin.auth.admin.getUserById>>['data'] | null = null;
+    try {
+      const looked = await admin.auth.admin.getUserById(owner.id);
+      owner_user = looked.data;
+    } catch {
+      owner_user = null;
+    }
     const email = owner_user?.user?.email || null;
+    // нет пользователя в auth — профиль кассы осиротел, его можно забрать
     const is_service =
-      is_service_account_email(email) || owner_user?.user?.is_anonymous === true;
-    if (!is_service) {
+      !owner_user?.user ||
+      is_service_account_email(email) ||
+      owner_user.user.is_anonymous === true;
+    const other_vk = is_vk_auth_user(owner_user?.user);
+    let plain_phone = false;
+    if (!is_service && input.allow_phone_account && !other_vk) {
+      const { data: role_row } = await admin.from('profiles').select('role').eq('id', owner.id).maybeSingle();
+      const role = (role_row as { role?: string | null } | null)?.role || 'user';
+      plain_phone = role === 'user';
+    }
+    if (!is_service && !plain_phone) {
       return {
         ok: false,
-        error: 'этот номер уже привязан к другому аккаунту',
+        error: other_vk
+          ? 'этот номер уже на другом аккаунте vk'
+          : 'этот номер уже привязан к другому аккаунту',
         status: 409,
       };
     }
@@ -503,7 +584,9 @@ export async function claim_phone_for_user(input: {
     };
   }
 
-  return { ok: true, merged_from, bonus_balance };
+  const linked_purchases =
+    Boolean(merged_from) || (await pull_cashier_orders(admin, phone, input.user_id));
+  return { ok: true, merged_from, bonus_balance, linked_purchases };
 }
 
 /** перенести баллы, заказы и подарки с технического профиля на настоящий */
