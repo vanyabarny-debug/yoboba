@@ -6,9 +6,12 @@ import {
   moscow_next_day_iso,
   moscow_today_iso,
 } from '@/lib/order-number';
+import { orders_revision } from '@/lib/order-revision';
 import { is_supabase_configured } from '@/lib/supabase/config';
 import { create_service_client } from '@/lib/supabase/service';
 import type { order } from '@/lib/types';
+
+const completed_cache = new Map<string, { rev: string; rows: order[] }>();
 
 function same_moscow_day(iso: string | null | undefined, day: string) {
   if (!iso) return false;
@@ -30,28 +33,43 @@ export async function completed_orders_for_day(day: string): Promise<order[]> {
   }
 
   if (is_supabase_configured()) {
-    const admin = create_service_client();
-    const start = moscow_day_start_iso(day);
-    const end = moscow_day_start_iso(moscow_next_day_iso(day));
-    const primary = await admin
-      .from('orders')
-      .select('*')
-      .eq('status', 'completed')
-      .or(`order_day.eq.${day},and(created_at.gte.${start},created_at.lt.${end})`);
-
-    let rows = primary.data as order[] | null;
-    if (primary.error) {
-      const fallback = await admin
+    const rev = await orders_revision();
+    let rows = rev ? completed_cache.get(day) : undefined;
+    if (!rows || rows.rev !== rev) {
+      const admin = create_service_client();
+      const start = moscow_day_start_iso(day);
+      const end = moscow_day_start_iso(moscow_next_day_iso(day));
+      const primary = await admin
         .from('orders')
         .select('*')
         .eq('status', 'completed')
-        .gte('created_at', start)
-        .lt('created_at', end);
-      rows = fallback.error ? [] : (fallback.data as order[]);
+        .or(`order_day.eq.${day},and(created_at.gte.${start},created_at.lt.${end})`);
+
+      let fetched = primary.data as order[] | null;
+      if (primary.error) {
+        const fallback = await admin
+          .from('orders')
+          .select('*')
+          .eq('status', 'completed')
+          .gte('created_at', start)
+          .lt('created_at', end);
+        fetched = fallback.error ? [] : (fallback.data as order[]);
+      }
+      const ready = (fetched || []).map((row) => ({
+        ...row,
+        status: 'completed' as const,
+        is_paid: Boolean(row.is_paid),
+      }));
+      if (rev) {
+        completed_cache.set(day, { rev, rows: ready });
+        rows = completed_cache.get(day);
+      } else {
+        for (const row of ready) by_id.set(row.id, row);
+      }
     }
 
-    for (const row of rows || []) {
-      by_id.set(row.id, { ...row, status: 'completed', is_paid: Boolean(row.is_paid) });
+    for (const row of rows?.rows || []) {
+      by_id.set(row.id, row);
     }
   }
 

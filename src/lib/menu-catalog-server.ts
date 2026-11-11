@@ -60,7 +60,7 @@ async function read_fallback(): Promise<menu_store | null> {
 }
 
 export async function read_published_menu(): Promise<menu_store | null> {
-  if (published_cache && Date.now() - published_cache.at < 8_000) {
+  if (published_cache && Date.now() - published_cache.at < 5 * 60_000) {
     return published_cache.store;
   }
   if (is_supabase_configured()) {

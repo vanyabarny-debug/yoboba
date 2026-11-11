@@ -1,5 +1,6 @@
 import { default_menu_items } from '@/lib/menu-store';
 import { get_demo_orders } from '@/lib/demo-orders-server';
+import { orders_revision } from '@/lib/order-revision';
 import { is_supabase_configured } from '@/lib/supabase/config';
 import { create_service_client } from '@/lib/supabase/service';
 import { read_published_menu } from '@/lib/menu-catalog-server';
@@ -7,6 +8,7 @@ import { DEFAULT_PREP_MINUTES } from '@/lib/kitchen-queue';
 import type { menu_item, order } from '@/lib/types';
 
 let menu_map_cache: { at: number; map: Map<string, menu_item> } | null = null;
+let active_cache: { rev: string; rows: order[] } | null = null;
 
 export async function load_menu_map(): Promise<Map<string, menu_item>> {
   if (menu_map_cache && Date.now() - menu_map_cache.at < 15_000) {
@@ -49,41 +51,44 @@ export async function load_active_orders(): Promise<order[]> {
   }
 
   if (is_supabase_configured()) {
-    const supabase = create_service_client();
-    const { data } = await supabase
-      .from('orders')
-      .select('*')
-      .in('status', ['new', 'preparing', 'ready'])
-      .order('pickup_time', { ascending: true });
-
-    const rows = (data as order[]) || [];
-    const profile_map = new Map<string, { name?: string | null; phone?: string | null }>();
-    const ids = [...new Set(rows.map((o) => o.user_id).filter(Boolean))];
-
-    if (ids.length) {
-      const { data: profiles } = await supabase
-        .from('profiles')
-        .select('id, name, phone')
-        .in('id', ids);
-      for (const p of profiles || []) {
-        profile_map.set(p.id, p);
+    const rev = await orders_revision();
+    let rows = rev && active_cache?.rev === rev ? active_cache.rows : null;
+    if (!rows) {
+      const supabase = create_service_client();
+      const { data } = await supabase
+        .from('orders')
+        .select('*')
+        .in('status', ['new', 'preparing', 'ready'])
+        .order('pickup_time', { ascending: true });
+      const fetched = (data as order[]) || [];
+      const profile_map = new Map<string, { name?: string | null; phone?: string | null }>();
+      const ids = [...new Set(fetched.map((o) => o.user_id).filter(Boolean))];
+      if (ids.length) {
+        const { data: profiles } = await supabase
+          .from('profiles')
+          .select('id, name, phone')
+          .in('id', ids);
+        for (const p of profiles || []) profile_map.set(p.id, p);
       }
+      rows = fetched.map((o) => {
+        const profile = profile_map.get(o.user_id);
+        return {
+          ...o,
+          is_paid:
+            Boolean(o.is_paid) ||
+            o.payment_type === 'bonus' ||
+            (o.payment_type === 'online' && Number(o.total_price) === 0),
+          customer_name: (o.customer_name || profile?.name || '').trim() || 'гость',
+          customer_phone: o.customer_phone || profile?.phone || null,
+        };
+      });
+      if (rev) active_cache = { rev, rows };
     }
 
     for (const o of rows) {
       if (seen.has(o.id)) continue;
       seen.add(o.id);
-      const profile = profile_map.get(o.user_id);
-      const is_paid =
-        Boolean(o.is_paid) ||
-        o.payment_type === 'bonus' ||
-        (o.payment_type === 'online' && Number(o.total_price) === 0);
-      merged.push({
-        ...o,
-        is_paid,
-        customer_name: (o.customer_name || profile?.name || '').trim() || 'гость',
-        customer_phone: o.customer_phone || profile?.phone || null,
-      });
+      merged.push(o);
     }
   }
 
