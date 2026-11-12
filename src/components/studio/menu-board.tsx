@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { createPortal } from 'react-dom';
 import QRCode from 'qrcode';
 import {
@@ -20,6 +20,7 @@ import {
   MENU_SITE,
   MENU_SUGAR,
   MENU_TEXT_DEFAULTS,
+  MENU_TOOLS_ID,
   arrange,
   block_label,
   clean_layout,
@@ -31,6 +32,7 @@ import {
   menu_texts,
   merge_menu,
   move_block,
+  move_item_local,
   place_item,
   sugar_key,
   type board_layout,
@@ -56,6 +58,7 @@ type drop_target =
 type line_box = { x: number; y: number; w: number };
 
 const HOLD_MS = 320;
+const no_subscribe = () => () => undefined;
 
 export default function MenuBoard({
   format,
@@ -76,6 +79,13 @@ export default function MenuBoard({
   const [drop, set_drop] = useState<drop_target | null>(null);
   const [ghost, set_ghost] = useState<{ x: number; y: number } | null>(null);
   const [toast, set_toast] = useState('');
+  const [linked, set_linked] = useState(false);
+  const [asking, set_asking] = useState(false);
+  const tools = useSyncExternalStore(
+    no_subscribe,
+    () => document.getElementById(MENU_TOOLS_ID),
+    () => null,
+  );
   const drop_ref = useRef<drop_target | null>(null);
   const save_timer = useRef<number | undefined>(undefined);
   const toast_timer = useRef<number | undefined>(undefined);
@@ -126,7 +136,7 @@ export default function MenuBoard({
     () => (store ? merge_menu(saved, menu_groups(store), seen) : null),
     [store, saved, seen],
   );
-  const columns = useMemo(() => (groups ? arrange(groups, layout) : { left: [], right: [] }), [groups, layout]);
+  const columns = useMemo(() => (groups ? arrange(groups, layout) : { left: [], right: [], hidden: [] }), [groups, layout]);
   const texts = useMemo(() => menu_texts(layout), [layout]);
 
   useLayoutEffect(() => {
@@ -211,7 +221,7 @@ export default function MenuBoard({
   }
 
   function can_cross(item_id: string, from: string, to: string) {
-    if (from === to) return true;
+    if (from === to || !linked) return true;
     if (!store) return false;
     return (
       store.categories.includes(from) &&
@@ -290,13 +300,32 @@ export default function MenuBoard({
         payload.item_id,
         target.before,
       );
-      if (payload.group_id !== target.group_id) {
-        const from = shown.find((group) => group.id === payload.group_id);
-        if (from) items[payload.group_id] = from.items.map((item) => item.id).filter((id) => id !== payload.item_id);
-        void move_category(payload.item_id, payload.group_id, target.group_id);
+      if (payload.group_id === target.group_id) {
+        commit_layout({ ...layout, items });
+        return;
       }
-      commit_layout({ ...layout, items });
+      const from = shown.find((group) => group.id === payload.group_id);
+      if (from) items[payload.group_id] = from.items.map((item) => item.id).filter((id) => id !== payload.item_id);
+      if (linked) {
+        void move_category(payload.item_id, payload.group_id, target.group_id);
+        commit_layout({ ...layout, items });
+        return;
+      }
+      commit_layout({
+        ...layout,
+        items,
+        moves: move_item_local(layout.moves, payload.item_id, payload.group_id, target.group_id),
+      });
+      say(`«${payload.label}» теперь в «${into.title}» — только на листе`);
     }
+  }
+
+  function hide_block(key: string) {
+    commit_layout({ ...layout, hidden: [...layout.hidden.filter((row) => row !== key), key] });
+  }
+
+  function show_block(key: string) {
+    commit_layout({ ...layout, hidden: layout.hidden.filter((row) => row !== key) });
   }
 
   function begin(event: React.PointerEvent, payload: drag_payload) {
@@ -402,8 +431,21 @@ export default function MenuBoard({
                     key={block.key}
                     data-block-key={block.key}
                     data-col={col}
+                    className="group/blk relative"
                     style={{ opacity: dragging_key === block.key ? 0.35 : 1 }}
                   >
+                    {drag ? null : (
+                      <button
+                        type="button"
+                        title="скрыть с листа (сайт не меняется)"
+                        className="absolute right-0 top-0 z-20 flex items-center justify-center rounded-full bg-[#20181b] text-white opacity-0 transition-opacity group-hover/blk:opacity-100 [@media(hover:none)]:opacity-60"
+                        style={{ width: sz(44), height: sz(44), fontSize: sz(28), lineHeight: 1 }}
+                        onPointerDown={(event) => event.stopPropagation()}
+                        onClick={() => hide_block(block.key)}
+                      >
+                        ×
+                      </button>
+                    )}
                     <Block
                       block={block}
                       qr={qr}
@@ -443,6 +485,92 @@ export default function MenuBoard({
           {toast}
         </div>
       ) : null}
+
+      {tools
+        ? createPortal(
+            <div className="flex flex-wrap items-center gap-1 pb-2">
+              <div className="flex shrink-0 bg-neutral-100 p-0.5 text-sm">
+                <button
+                  type="button"
+                  onClick={() => set_linked(false)}
+                  className={`px-3 py-1 ${linked ? 'text-neutral-600' : 'bg-white text-[#20181b] shadow-sm'}`}
+                >
+                  только лист
+                </button>
+                <button
+                  type="button"
+                  onClick={() => (linked ? null : set_asking(true))}
+                  className={`px-3 py-1 ${linked ? 'bg-[#c24141] text-white' : 'text-neutral-600'}`}
+                >
+                  связано с сайтом
+                </button>
+              </div>
+              {Object.keys(layout.moves).length ? (
+                <button
+                  type="button"
+                  title="напитки вернутся в свои категории с сайта"
+                  onClick={() => commit_layout({ ...layout, moves: {} })}
+                  className="bg-neutral-100 px-2.5 py-1 text-sm text-neutral-700 hover:bg-neutral-200"
+                >
+                  категории как на сайте ↺
+                </button>
+              ) : null}
+              {columns.hidden.length ? (
+                <div className="flex flex-wrap items-center gap-1 text-sm">
+                  <span className="px-1 text-neutral-500">скрыто:</span>
+                  {columns.hidden.map((block) => (
+                    <button
+                      key={block.key}
+                      type="button"
+                      title="вернуть на лист"
+                      onClick={() => show_block(block.key)}
+                      className="bg-neutral-100 px-2.5 py-1 text-neutral-700 hover:bg-neutral-200"
+                    >
+                      {block_label(block, texts)} ↺
+                    </button>
+                  ))}
+                </div>
+              ) : null}
+            </div>,
+            tools,
+          )
+        : null}
+
+      {asking && typeof document !== 'undefined'
+        ? createPortal(
+            <div
+              className="fixed inset-0 z-[300] flex items-center justify-center bg-black/40 p-4"
+              onPointerDown={() => set_asking(false)}
+            >
+              <div
+                className="w-full max-w-sm bg-white p-5 text-[#20181b] shadow-xl"
+                onPointerDown={(event) => event.stopPropagation()}
+              >
+                <p className="text-lg font-semibold">точно связать с сайтом?</p>
+                <p className="mt-2 text-sm leading-snug text-neutral-600">
+                  перенос напитка в другую категорию сразу поменяет меню на сайте. скрытие и порядок
+                  на листе сайт не трогают.
+                </p>
+                <div className="mt-5 flex justify-end gap-2">
+                  <button type="button" onClick={() => set_asking(false)} className="bg-neutral-100 px-4 py-2 text-sm">
+                    отмена
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      set_linked(true);
+                      set_asking(false);
+                    }}
+                    className="bg-[#c24141] px-4 py-2 text-sm text-white"
+                  >
+                    да, связать
+                  </button>
+                </div>
+              </div>
+            </div>,
+            document.body,
+          )
+        : null}
 
       {drag && ghost && typeof document !== 'undefined'
         ? createPortal(

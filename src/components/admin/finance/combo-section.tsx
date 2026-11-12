@@ -8,6 +8,8 @@ import {
   normalize_combo,
 } from '@/lib/combo';
 import { item_categories, item_in_category } from '@/lib/menu-item-categories';
+import { format_rub } from '@/lib/finance/model';
+import type { combo_cost } from '@/lib/finance/combo-cost';
 import { DrinkThumb, NumInput, btn_ghost_danger, btn_secondary, field_class } from '@/components/admin/finance/ui';
 
 const VOLUME_OPTIONS = [500, 650];
@@ -44,13 +46,51 @@ function toggle_row({
   );
 }
 
+function CostBox({ cost, price }: { cost: combo_cost | null; price: number }) {
+  if (!cost?.priced) {
+    return (
+      <p className="rounded-2xl bg-neutral-50 px-3 py-2 text-xs text-neutral-500">
+        себестоимость не посчитать: у напитков на выбор нет техкарт с ценами
+      </p>
+    );
+  }
+  const margin = price - cost.avg;
+  const one = cost.cheapest && cost.priciest && cost.cheapest.name !== cost.priciest.name;
+  return (
+    <div className="rounded-2xl bg-neutral-50 px-4 py-3">
+      <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+        <p className="text-xs font-medium text-neutral-500">себестоимость набора</p>
+        <p className="text-lg font-semibold tabular-nums text-neutral-900">≈ {format_rub(cost.avg)}</p>
+      </div>
+      <p className="mt-1 text-xs tabular-nums text-neutral-500">
+        {one ? `от ${format_rub(cost.min)} до ${format_rub(cost.max)} · ` : ''}
+        маржа ≈ {format_rub(margin)}
+      </p>
+      <p className="mt-1.5 text-[11px] leading-snug text-neutral-400">
+        {cost.drink_count} × {format_rub(cost.avg_drink)} в среднем за напиток
+        {cost.includes > 0 ? ` + ${format_rub(cost.includes)} комплект` : ''}
+        {one ? ` · дешевле всех ${cost.cheapest!.name}, дороже — ${cost.priciest!.name}` : ''}
+        {cost.priced < cost.total ? ` · без техкарты ${cost.total - cost.priced} из ${cost.total}` : ''}
+      </p>
+      {cost.unpriced.length ? (
+        <p className="mt-1.5 text-[11px] leading-snug text-amber-700">
+          себестоимость занижена: в {cost.unpriced.length} из {cost.priced} техкарт нет цены поставки —{' '}
+          {cost.unpriced_materials.map((m) => `${m.name} (${m.drinks})`).join(', ')}
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
 export default function ComboSection({
   draft,
+  cost,
   items,
   categories,
   on_change,
 }: {
   draft: menu_item;
+  cost: combo_cost | null;
   items: menu_item[];
   categories: string[];
   on_change: (next: menu_item) => void;
@@ -121,6 +161,8 @@ export default function ComboSection({
       </div>
 
       <div className="space-y-4">
+        <CostBox cost={cost} price={draft.price} />
+
         <div className="rounded-2xl border border-neutral-200 px-4 py-3">
           <p className="text-xs font-medium text-neutral-500">сколько напитков выбирает гость</p>
           <div className="mt-2 flex items-center gap-3">

@@ -220,16 +220,13 @@ export function useFinance(): finance_bundle {
 
   const set_state = useCallback(
     (fn: (prev: finance_state) => finance_state) => {
-      let changed = false;
-      set_state_raw((prev) => {
-        if (!prev) return prev;
-        const next = fn(prev);
-        if (next === prev) return prev;
-        latest_ref.current = next;
-        changed = true;
-        return next;
-      });
-      if (!changed) return;
+      // не через апдейтер React: он может выполниться позже, и правка не попала бы в сохранение
+      const prev = latest_ref.current;
+      if (!prev) return;
+      const next = fn(prev);
+      if (next === prev) return;
+      latest_ref.current = next;
+      set_state_raw(next);
       dirty_ref.current = true;
       set_save_status('dirty');
       if (timer_ref.current) clearTimeout(timer_ref.current);
@@ -259,13 +256,13 @@ export function useFinance(): finance_bundle {
     set_from(a);
     set_to(b);
     set_month(b.slice(0, 7));
-    set_state_raw((prev) => {
-      if (!prev) return prev;
-      let next = prev;
-      for (const d of each_day(a, b)) next = add_month(next, d.slice(0, 7));
-      if (next !== prev) latest_ref.current = next;
-      return next;
-    });
+    const prev = latest_ref.current;
+    if (!prev) return;
+    let next = prev;
+    for (const d of each_day(a, b)) next = add_month(next, d.slice(0, 7));
+    if (next === prev) return;
+    latest_ref.current = next;
+    set_state_raw(next);
   }, []);
 
   const months = useMemo(

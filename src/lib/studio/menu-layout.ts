@@ -7,6 +7,7 @@ type menu_source = {
 };
 
 export const MENU_SITE = 'https://yomoyo.su';
+export const MENU_TOOLS_ID = 'menu-sheet-tools';
 export const MENU_PAD_L = 64;
 export const MENU_PAD_R = 48;
 export const MENU_PAD_T = 56;
@@ -63,9 +64,11 @@ export type board_layout = {
   right: string[];
   items: Record<string, string[]>;
   texts: Partial<menu_texts>;
+  hidden: string[];
+  moves: Record<string, string>;
 };
 
-export const empty_layout: board_layout = { left: [], right: [], items: {}, texts: {} };
+export const empty_layout: board_layout = { left: [], right: [], items: {}, texts: {}, hidden: [], moves: {} };
 
 export type menu_card = {
   id: string;
@@ -133,7 +136,46 @@ export function block_label(block: menu_block, texts: menu_texts) {
   return texts.note_title;
 }
 
-export function arrange(groups: menu_group[], layout: board_layout | null) {
+function move_key(from: string, id: string) {
+  return `${from}::${id}`;
+}
+
+function split_move(key: string) {
+  const at = key.lastIndexOf('::');
+  return { from: key.slice(0, at), id: key.slice(at + 2) };
+}
+
+export function move_item_local(moves: Record<string, string>, id: string, from: string, to: string) {
+  const next = { ...moves };
+  const origin = Object.keys(next).find((key) => next[key] === from && split_move(key).id === id);
+  if (!origin) {
+    next[move_key(from, id)] = to;
+    return next;
+  }
+  delete next[origin];
+  const first = split_move(origin).from;
+  if (first !== to) next[move_key(first, id)] = to;
+  return next;
+}
+
+function apply_moves(groups: menu_group[], moves: Record<string, string> | undefined) {
+  if (!moves || !Object.keys(moves).length) return groups;
+  const by_id = new Map(groups.map((group) => [group.id, { ...group, items: [...group.items] }]));
+  for (const [key, to] of Object.entries(moves)) {
+    const { from, id } = split_move(key);
+    const src = by_id.get(from);
+    const dst = by_id.get(to);
+    const item = src?.items.find((row) => row.id === id);
+    if (!src || !dst || !item) continue;
+    src.items = src.items.filter((row) => row.id !== id);
+    if (!dst.items.some((row) => row.id === id)) dst.items.push(item);
+  }
+  return [...by_id.values()].filter((group) => group.items.length);
+}
+
+export function arrange(source: menu_group[], layout: board_layout | null) {
+  const groups = apply_moves(source, layout?.moves);
+  const hidden = new Set(layout?.hidden ?? []);
   const by_key = new Map<string, menu_block>();
   for (const group of groups) {
     const key = group_key(group.id);
@@ -141,7 +183,7 @@ export function arrange(groups: menu_group[], layout: board_layout | null) {
   }
   for (const kind of extra_kinds) by_key.set(extra_key(kind), { key: extra_key(kind), kind });
 
-  const used = new Set<string>();
+  const used = new Set<string>(hidden);
   const take = (keys: string[]) => {
     const out: menu_block[] = [];
     for (const key of keys) {
@@ -166,7 +208,11 @@ export function arrange(groups: menu_group[], layout: board_layout | null) {
     const key = extra_key(kind);
     if (!used.has(key)) right.push(by_key.get(key)!);
   }
-  return { left, right };
+  const off = [...hidden].flatMap((key) => {
+    const block = by_key.get(key);
+    return block ? [block] : [];
+  });
+  return { left, right, hidden: off };
 }
 
 function ordered(group: menu_group, order: string[] | undefined): menu_group {
@@ -219,7 +265,13 @@ export function clean_layout(raw: unknown): board_layout {
       if (text) texts[key as menu_text_key] = text;
     }
   }
-  return { left: keys(row.left), right: keys(row.right), items, texts };
+  const moves: Record<string, string> = {};
+  if (row.moves && typeof row.moves === 'object') {
+    for (const [key, to] of Object.entries(row.moves as Record<string, unknown>).slice(0, 300)) {
+      if (key.includes('::') && typeof to === 'string' && to) moves[key] = to;
+    }
+  }
+  return { left: keys(row.left), right: keys(row.right), items, texts, hidden: keys(row.hidden), moves };
 }
 
 export function menu_groups(store: menu_source | null | undefined): menu_group[] {

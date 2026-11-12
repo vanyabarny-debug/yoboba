@@ -612,7 +612,7 @@ function key_aliases(card: Pick<tech_card, 'id' | 'name' | 'menu_item_id' | 'col
   }
   if (/матча.*личи|личи.*матча|matcha-lichi/.test(name) || card.menu_item_id === 'matcha-lichi') {
     keys.push('matcha-lichi');
-  } else if (/матча/.test(name)) {
+  } else if (card.menu_item_id === 'matcha-latte-tiger' || /^матча/.test(name)) {
     keys.push('matcha-latte-tiger');
   }
   if (

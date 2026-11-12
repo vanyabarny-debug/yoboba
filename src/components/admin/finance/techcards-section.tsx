@@ -28,6 +28,7 @@ import {
 import type { section_props } from '@/components/admin/finance/use-finance';
 import PrepStepsEditor from '@/components/admin/finance/prep-steps-editor';
 import ComboSection from '@/components/admin/finance/combo-section';
+import { combo_cost_estimate } from '@/lib/finance/combo-cost';
 import MenuItemFields from '@/components/admin/finance/menu-item-fields';
 import { default_combo, normalize_combo } from '@/lib/combo';
 import {
@@ -198,6 +199,7 @@ function menu_row({
   on_pick,
   on_visible,
   on_archive,
+  note,
 }: {
   item: menu_item;
   selected: boolean;
@@ -205,6 +207,7 @@ function menu_row({
   on_pick: () => void;
   on_visible: () => void;
   on_archive: () => void;
+  note?: string;
 }) {
   const drink = is_drink(item);
   const empty =
@@ -234,6 +237,7 @@ function menu_row({
           <span className="text-[11px] font-normal text-neutral-400">
             {subtitle}
             {` · ${item.price} ₽`}
+            {note ? ` · ${note}` : ''}
           </span>
         </span>
       </button>
@@ -689,6 +693,30 @@ export default function TechcardsSection({
     set_draft(created);
   }
 
+  function duplicate_item(item: menu_item, card: tech_card | null) {
+    flush_item();
+    const created: menu_item = {
+      ...structuredClone(item),
+      id: new_item_id(),
+      name: `${item.name} копия`,
+      is_available: false,
+      archived: false,
+    };
+    upsert_menu_item(created);
+    set_menu?.((prev) => [...prev, created]);
+    if (card) {
+      set_state((prev) => ({
+        ...prev,
+        techCards: [
+          ...prev.techCards,
+          { ...structuredClone(card), id: `tc_${created.id}`, name: created.name, menu_item_id: created.id },
+        ],
+      }));
+    }
+    set_selected_id(created.id);
+    set_draft(created);
+  }
+
   async function open_craft() {
     flush_item();
     settle_menu_publish();
@@ -731,6 +759,7 @@ export default function TechcardsSection({
   );
   const show_detail = Boolean(selected_drink && draft);
   const drink_selected = Boolean(draft && is_drink(draft));
+  const combo_cost = draft && is_combo(draft) ? combo_cost_estimate(state, draft, menu) : null;
 
   const can_back = show_detail || folder === 'archive';
 
@@ -862,20 +891,26 @@ export default function TechcardsSection({
             {combo_items.length ? (
               <div>
                 <p className="mb-2 text-xs font-bold uppercase tracking-wide text-neutral-900">комбо</p>
-                <p className="mb-2 text-[11px] text-neutral-400">не рецепты — наборы для сайта</p>
+                <p className="mb-2 text-[11px] text-neutral-400">
+                  не рецепты — наборы для сайта. себестоимость — в среднем по техкартам напитков на выбор
+                </p>
                 <ul className="space-y-1">
-                  {combo_items.map((item) => (
-                    <li key={item.id}>
-                      {menu_row({
-                        item,
-                        selected: selected_id === item.id,
-                        card: null,
-                        on_pick: () => pick(item),
-                        on_visible: () => toggle_visible(item),
-                        on_archive: () => toggle_archive(item),
-                      })}
-                    </li>
-                  ))}
+                  {combo_items.map((item) => {
+                    const cost = combo_cost_estimate(state, item, menu);
+                    return (
+                      <li key={item.id}>
+                        {menu_row({
+                          item,
+                          selected: selected_id === item.id,
+                          card: null,
+                          on_pick: () => pick(item),
+                          on_visible: () => toggle_visible(item),
+                          on_archive: () => toggle_archive(item),
+                          note: cost?.priced ? `себест. ≈ ${format_rub(cost.avg)}` : undefined,
+                        })}
+                      </li>
+                    );
+                  })}
                 </ul>
               </div>
             ) : null}
@@ -958,7 +993,7 @@ export default function TechcardsSection({
                     return (
                       <PricePill
                         value={draft.price}
-                        cost={card ? tech_card_cost(state, card, '1') : 0}
+                        cost={card ? tech_card_cost(state, card, '1') : combo_cost?.priced ? combo_cost.avg : 0}
                         on_change={(next) => edit_item({ ...draft, price: next })}
                       />
                     );
@@ -1056,6 +1091,9 @@ export default function TechcardsSection({
                           ? 'не удалось'
                           : 'скопировать ТТК'}
                     </button>
+                    <button type="button" className={btn_secondary} onClick={() => duplicate_item(draft, card)}>
+                      дублировать
+                    </button>
                     <button type="button" className={btn_ghost_danger} onClick={() => remove_card(card)}>
                       убрать рецепт
                     </button>
@@ -1094,7 +1132,12 @@ export default function TechcardsSection({
                           pct: price > 0 ? (cost / price) * 100 : 0,
                         };
                       })
-                    : []
+                    : combo_cost?.priced && draft.price > 0
+                      ? [
+                          { key: 'avg', label: 'в среднем', pct: (combo_cost.avg / draft.price) * 100 },
+                          { key: 'max', label: 'если берут самые дорогие', pct: (combo_cost.max / draft.price) * 100 },
+                        ]
+                      : []
                 }
               />
               {card ? (
@@ -1126,6 +1169,7 @@ export default function TechcardsSection({
           {draft && is_combo(draft) ? (
             <ComboSection
               draft={draft}
+              cost={combo_cost}
               items={menu}
               categories={categories}
               on_change={edit_item}

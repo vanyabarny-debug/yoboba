@@ -5,7 +5,7 @@ import { useSearchParams } from 'next/navigation';
 import QRCode from 'qrcode';
 import { download_png, file_to_image } from '@/lib/studio/export';
 import { download_menu_png } from '@/lib/studio/menu-export';
-import type { menu_paint } from '@/lib/studio/menu-layout';
+import { MENU_TOOLS_ID, type menu_paint } from '@/lib/studio/menu-layout';
 import MenuBoard from '@/components/studio/menu-board';
 import {
   FORMAT_GROUPS,
@@ -97,8 +97,8 @@ export default function StudioEditor() {
     if (!el || !doc) return;
     const measure = () => {
       const pad = narrow ? 28 : 32;
-      const next = (el.clientWidth - pad) / format.w;
-      set_fit(Math.min(1.15, Math.max(0.12, next)));
+      const next = Math.min((el.clientWidth - pad) / format.w, (el.clientHeight - pad) / format.h);
+      set_fit(Math.min(1.15, Math.max(0.05, next)));
     };
     measure();
     const observer = new ResizeObserver(measure);
@@ -585,6 +585,7 @@ export default function StudioEditor() {
             ))}
           </div>
         ) : null}
+        {menu_sheet ? <div id={MENU_TOOLS_ID} /> : null}
         {banner ? (
           <div className="flex gap-1 overflow-x-auto pb-2">
             {BANNER_FORMATS.map((item, index) => (
@@ -606,7 +607,7 @@ export default function StudioEditor() {
           {narrow ? ' на телефоне удерживай палец.' : ''}
           {format.panels ? ' левая карточка буклета повторяется на три панели.' : ''}
           {banner ? ' баннер один, размера четыре.' : ''}
-          {menu_sheet ? ' тащи заголовки, плашки и напитки — напиток в другой категории переедет и на сайте. лист можно листать и тащить.' : ' холст можно листать и тащить.'}
+          {menu_sheet ? ' тащи заголовки, плашки и напитки, × — скрыть с листа, двойной клик по тексту плашки — поменять.' : ''}
         </p>
         {note ? <p className="pb-2 text-[11px] text-[#c24141]">{note}</p> : null}
       </header>
