@@ -1,27 +1,57 @@
 'use client';
 
-import { useEffect, useLayoutEffect, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import QRCode from 'qrcode';
 import {
+  MENU_ACCENT,
+  MENU_BLOCK_GAP,
+  MENU_CARD,
+  MENU_CARD_BG,
   MENU_COL_GAP,
-  MENU_FOOTER,
+  MENU_EXTRA,
+  MENU_INK,
+  MENU_LOGO,
+  MENU_MUTED,
+  MENU_NOTE,
+  MENU_PAD_B,
   MENU_PAD_L,
   MENU_PAD_R,
   MENU_PAD_T,
-  MENU_QR,
   MENU_SITE,
-  MENU_TOPPING,
+  MENU_SUGAR,
+  arrange,
+  block_label,
+  clean_layout,
+  empty_layout,
   load_saved_menu,
   load_seen,
   menu_big,
   menu_groups,
   merge_menu,
+  move_block,
+  place_item,
+  type board_layout,
+  type menu_block,
   type menu_card,
   type menu_group,
   type menu_paint,
 } from '@/lib/studio/menu-layout';
-import type { menu_item } from '@/lib/types';
+import { item_categories, set_item_categories } from '@/lib/menu-item-categories';
+import type { menu_store } from '@/lib/menu-store';
 import type { studio_format } from '@/lib/studio/model';
+
+type drag_payload =
+  | { kind: 'item'; item_id: string; group_id: string; label: string }
+  | { kind: 'block'; key: string; label: string };
+
+type drop_target =
+  | { kind: 'item'; group_id: string; before: string | null; line: line_box }
+  | { kind: 'block'; col: 'left' | 'right'; before: string | null; line: line_box };
+
+type line_box = { x: number; y: number; w: number };
+
+const HOLD_MS = 320;
 
 export default function MenuBoard({
   format,
@@ -30,17 +60,37 @@ export default function MenuBoard({
   format: studio_format;
   paint_ref: { current: menu_paint | null };
 }) {
-  const [groups, set_groups] = useState<menu_group[] | null>(null);
+  const root_ref = useRef<HTMLDivElement>(null);
+  const [store, set_store] = useState<menu_store | null>(null);
+  const [saved, set_saved] = useState<unknown>(null);
+  const [seen, set_seen] = useState<Set<string>>(() => new Set());
+  const [layout, set_layout] = useState<board_layout>(empty_layout);
   const [failed, set_failed] = useState(false);
   const [qr, set_qr] = useState('');
   const [k, set_k] = useState(1);
+  const [drag, set_drag] = useState<drag_payload | null>(null);
+  const [drop, set_drop] = useState<drop_target | null>(null);
+  const [ghost, set_ghost] = useState<{ x: number; y: number } | null>(null);
+  const [toast, set_toast] = useState('');
+  const drop_ref = useRef<drop_target | null>(null);
+  const save_timer = useRef<number | undefined>(undefined);
+  const toast_timer = useRef<number | undefined>(undefined);
 
   useEffect(() => {
     let live = true;
-    Promise.all([load_saved_menu(), fetch('/api/menu').then((res) => (res.ok ? res.json() : Promise.reject(new Error('меню'))))])
-      .then(([saved, data]: [unknown, { store?: { categories?: string[]; items?: menu_item[] } }]) => {
+    Promise.all([
+      load_saved_menu(),
+      fetch('/api/menu').then((res) => (res.ok ? res.json() : Promise.reject(new Error('меню')))),
+      fetch('/api/admin/menu-board', { credentials: 'same-origin' })
+        .then((res) => (res.ok ? res.json() : { layout: null }))
+        .catch(() => ({ layout: null })),
+    ])
+      .then(([saved_groups, data, board]: [unknown, { store?: menu_store }, { layout?: unknown }]) => {
         if (!live) return;
-        set_groups(merge_menu(saved, menu_groups(data.store), load_seen()));
+        set_seen(load_seen());
+        set_saved(saved_groups);
+        set_store(data.store ?? null);
+        set_layout(clean_layout(board.layout));
       })
       .catch(() => {
         if (live) set_failed(true);
@@ -68,8 +118,11 @@ export default function MenuBoard({
     };
   }, []);
 
-  const left = groups?.filter((group) => group.column !== 'right') ?? [];
-  const right = groups?.filter((group) => group.column === 'right') ?? [];
+  const groups = useMemo<menu_group[] | null>(
+    () => (store ? merge_menu(saved, menu_groups(store), seen) : null),
+    [store, saved, seen],
+  );
+  const columns = useMemo(() => (groups ? arrange(groups, layout) : { left: [], right: [] }), [groups, layout]);
 
   useLayoutEffect(() => {
     const inner = document.getElementById('menu-sheet-fit');
@@ -90,16 +143,227 @@ export default function MenuBoard({
     }
     inner.style.setProperty('--menu-k', String(best));
     set_k(Number(best.toFixed(3)));
-  }, [groups, format.w, format.h]);
+  }, [columns, groups, format.w, format.h]);
 
-  paint_ref.current = { k, left, right, qr };
+  paint_ref.current = { k, left: columns.left, right: columns.right, qr };
+
+  const say = useCallback((text: string) => {
+    set_toast(text);
+    window.clearTimeout(toast_timer.current);
+    toast_timer.current = window.setTimeout(() => set_toast(''), 2600);
+  }, []);
+
+  const commit_layout = useCallback((next: board_layout) => {
+    set_layout(next);
+    window.clearTimeout(save_timer.current);
+    save_timer.current = window.setTimeout(() => {
+      void fetch('/api/admin/menu-board', {
+        method: 'PUT',
+        credentials: 'same-origin',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ layout: next }),
+      }).catch(() => undefined);
+    }, 400);
+  }, []);
+
+  async function move_category(item_id: string, from: string, to: string) {
+    if (!store) return false;
+    const item = store.items.find((row) => row.id === item_id);
+    if (!item) return false;
+    const next_item = set_item_categories(item, [...item_categories(item).filter((c) => c !== from), to]);
+    const prev = store;
+    set_store({ ...store, items: store.items.map((row) => (row.id === item_id ? next_item : row)) });
+    try {
+      const res = await fetch('/api/admin/menu', {
+        method: 'PUT',
+        credentials: 'same-origin',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          version: store.version,
+          categories: store.categories,
+          items: [next_item],
+          removed_item_ids: [],
+          category_heading_styles: store.category_heading_styles ?? {},
+          partial: true,
+        }),
+      });
+      if (!res.ok) throw new Error(String(res.status));
+      say(`«${item.name}» теперь в «${to}» и на сайте`);
+      return true;
+    } catch {
+      set_store(prev);
+      say('не сохранилось на сайте, позиция вернулась');
+      return false;
+    }
+  }
+
+  function can_cross(item_id: string, from: string, to: string) {
+    if (from === to) return true;
+    if (!store) return false;
+    return (
+      store.categories.includes(from) &&
+      store.categories.includes(to) &&
+      store.items.some((row) => row.id === item_id)
+    );
+  }
+
+  function local_line(rect: DOMRect, edge: 'top' | 'bottom'): line_box | null {
+    const root = root_ref.current;
+    if (!root) return null;
+    const box = root.getBoundingClientRect();
+    const scale = box.width / format.w;
+    return {
+      x: (rect.left - box.left) / scale,
+      y: ((edge === 'top' ? rect.top : rect.bottom) - box.top) / scale,
+      w: rect.width / scale,
+    };
+  }
+
+  function find_target(x: number, y: number, payload: drag_payload): drop_target | null {
+    const hits = document.elementsFromPoint(x, y).filter((el): el is HTMLElement => el instanceof HTMLElement);
+    if (payload.kind === 'item') {
+      const row = hits.map((el) => el.closest<HTMLElement>('[data-drop-item]')).find(Boolean);
+      if (row) {
+        const group_id = row.dataset.groupId || '';
+        if (!can_cross(payload.item_id, payload.group_id, group_id)) return null;
+        const rect = row.getBoundingClientRect();
+        const after = y > rect.top + rect.height / 2;
+        const next = after ? (row.nextElementSibling as HTMLElement | null)?.dataset.dropItem ?? null : row.dataset.dropItem || null;
+        const line = local_line(rect, after ? 'bottom' : 'top');
+        return line ? { kind: 'item', group_id, before: next, line } : null;
+      }
+      const list = hits.map((el) => el.closest<HTMLElement>('[data-drop-group]')).find(Boolean);
+      if (list) {
+        const group_id = list.dataset.dropGroup || '';
+        if (!can_cross(payload.item_id, payload.group_id, group_id)) return null;
+        const line = local_line(list.getBoundingClientRect(), 'bottom');
+        return line ? { kind: 'item', group_id, before: null, line } : null;
+      }
+      return null;
+    }
+    const block = hits.map((el) => el.closest<HTMLElement>('[data-block-key]')).find(Boolean);
+    if (block) {
+      const col = block.dataset.col === 'right' ? 'right' : 'left';
+      const rect = block.getBoundingClientRect();
+      const after = y > rect.top + rect.height / 2;
+      const next = after ? (block.nextElementSibling as HTMLElement | null)?.dataset.blockKey ?? null : block.dataset.blockKey || null;
+      const line = local_line(rect, after ? 'bottom' : 'top');
+      return line ? { kind: 'block', col, before: next, line } : null;
+    }
+    const column = hits.map((el) => el.closest<HTMLElement>('[data-col]')).find(Boolean);
+    if (column) {
+      const col = column.dataset.col === 'right' ? 'right' : 'left';
+      const last = column.lastElementChild as HTMLElement | null;
+      const line = local_line((last ?? column).getBoundingClientRect(), last ? 'bottom' : 'top');
+      return line ? { kind: 'block', col, before: null, line } : null;
+    }
+    return null;
+  }
+
+  function finish(payload: drag_payload, target: drop_target | null) {
+    if (!target || !groups) return;
+    if (payload.kind === 'block' && target.kind === 'block') {
+      if (target.before === payload.key) return;
+      commit_layout(move_block(layout, columns, payload.key, target.col, target.before));
+      return;
+    }
+    if (payload.kind === 'item' && target.kind === 'item') {
+      const shown = [...columns.left, ...columns.right].flatMap((block) => (block.kind === 'group' ? [block.group] : []));
+      const into = shown.find((group) => group.id === target.group_id);
+      if (!into) return;
+      const items = { ...layout.items };
+      items[target.group_id] = place_item(
+        into.items.map((item) => item.id),
+        payload.item_id,
+        target.before,
+      );
+      if (payload.group_id !== target.group_id) {
+        const from = shown.find((group) => group.id === payload.group_id);
+        if (from) items[payload.group_id] = from.items.map((item) => item.id).filter((id) => id !== payload.item_id);
+        void move_category(payload.item_id, payload.group_id, target.group_id);
+      }
+      commit_layout({ ...layout, items });
+    }
+  }
+
+  function begin(event: React.PointerEvent, payload: drag_payload) {
+    if (event.pointerType === 'mouse' && event.button !== 0) return;
+    event.stopPropagation();
+    const touch = event.pointerType !== 'mouse';
+    const start_x = event.clientX;
+    const start_y = event.clientY;
+    let active = false;
+    let hold: number | undefined;
+    const prev_select = document.body.style.userSelect;
+
+    const block_scroll = (e: TouchEvent) => {
+      if (active) e.preventDefault();
+    };
+
+    const activate = (x: number, y: number) => {
+      active = true;
+      document.body.style.userSelect = 'none';
+      set_drag(payload);
+      set_ghost({ x, y });
+    };
+
+    const move = (e: PointerEvent) => {
+      const dist = Math.hypot(e.clientX - start_x, e.clientY - start_y);
+      if (!active) {
+        if (touch) {
+          if (dist > 8) cleanup();
+          return;
+        }
+        if (dist < 5) return;
+        activate(e.clientX, e.clientY);
+      }
+      set_ghost({ x: e.clientX, y: e.clientY });
+      const target = find_target(e.clientX, e.clientY, payload);
+      drop_ref.current = target;
+      set_drop(target);
+    };
+
+    const up = () => {
+      const target = drop_ref.current;
+      const was_active = active;
+      cleanup();
+      if (was_active) finish(payload, target);
+    };
+
+    function cleanup() {
+      window.clearTimeout(hold);
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', up);
+      window.removeEventListener('pointercancel', up);
+      window.removeEventListener('touchmove', block_scroll);
+      document.body.style.userSelect = prev_select;
+      active = false;
+      drop_ref.current = null;
+      set_drag(null);
+      set_drop(null);
+      set_ghost(null);
+    }
+
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
+    window.addEventListener('pointercancel', up);
+    window.addEventListener('touchmove', block_scroll, { passive: false });
+    if (touch) hold = window.setTimeout(() => activate(start_x, start_y), HOLD_MS);
+  }
+
+  const dragging_key = drag?.kind === 'block' ? drag.key : null;
+  const dragging_item = drag?.kind === 'item' ? `${drag.group_id}::${drag.item_id}` : null;
 
   return (
-    <div className="absolute inset-0 bg-white text-[#20181b]" style={{ fontFamily: 'Nunito, system-ui, sans-serif' }}>
+    <div
+      ref={root_ref}
+      className="absolute inset-0 select-none bg-white text-[#20181b]"
+      style={{ fontFamily: 'Nunito, system-ui, sans-serif' }}
+    >
       <div
         id="menu-sheet-body"
         className="absolute overflow-hidden"
-        style={{ top: MENU_PAD_T, left: MENU_PAD_L, right: MENU_PAD_R, bottom: MENU_FOOTER }}
+        style={{ top: MENU_PAD_T, left: MENU_PAD_L, right: MENU_PAD_R, bottom: MENU_PAD_B }}
       >
         {failed ? (
           <p className="text-sm text-[#8b8689]">меню не загрузилось</p>
@@ -113,51 +377,245 @@ export default function MenuBoard({
             className="flex items-start"
             style={{ gap: MENU_COL_GAP, ['--menu-k' as string]: k }}
           >
-            <Column groups={left} />
-            <Column groups={right} />
+            {(['left', 'right'] as const).map((col) => (
+              <div
+                key={col}
+                data-col={col}
+                className="flex min-w-0 flex-1 flex-col self-stretch"
+                style={{ gap: sz(MENU_BLOCK_GAP) }}
+              >
+                {columns[col].map((block) => (
+                  <div
+                    key={block.key}
+                    data-block-key={block.key}
+                    data-col={col}
+                    style={{ opacity: dragging_key === block.key ? 0.35 : 1 }}
+                  >
+                    <Block
+                      block={block}
+                      qr={qr}
+                      dragging_item={dragging_item}
+                      on_block={(event) => begin(event, { kind: 'block', key: block.key, label: block_label(block) })}
+                      on_item={(event, group, item) =>
+                        begin(event, { kind: 'item', item_id: item.id, group_id: group.id, label: item.name })
+                      }
+                    />
+                  </div>
+                ))}
+              </div>
+            ))}
           </div>
         )}
       </div>
-      <div
-        className="absolute flex items-end justify-between"
-        style={{ left: MENU_PAD_L, right: MENU_PAD_R, bottom: 28, height: MENU_QR }}
-      >
-        <p className="m-0 text-[22px] font-medium leading-none tracking-[-0.02em]">{MENU_TOPPING}</p>
-        <div className="flex items-end gap-3">
-          <span className="pb-1 text-[13px] text-[#8b8689]">yomoyo.su</span>
-          {qr ? <img src={qr} alt="" width={MENU_QR} height={MENU_QR} className="block" /> : <div style={{ width: MENU_QR, height: MENU_QR }} />}
+
+      {drop ? (
+        <div
+          className="pointer-events-none absolute z-50 rounded-full"
+          style={{
+            left: drop.line.x,
+            top: drop.line.y - 4,
+            width: drop.line.w,
+            height: 8,
+            background: MENU_ACCENT,
+          }}
+        />
+      ) : null}
+
+      {toast ? (
+        <div className="pointer-events-none absolute right-6 top-4 z-50 rounded-full bg-[#20181b] px-5 py-2.5 text-[22px] text-white">
+          {toast}
         </div>
-      </div>
+      ) : null}
+
+      {drag && ghost && typeof document !== 'undefined'
+        ? createPortal(
+            <div
+              className="pointer-events-none fixed z-[200] rounded-full bg-[#20181b] px-3 py-1.5 text-xs font-semibold text-white shadow-lg"
+              style={{ left: ghost.x + 14, top: ghost.y + 14 }}
+            >
+              {drag.label}
+            </div>,
+            document.body,
+          )
+        : null}
     </div>
   );
 }
 
-function Column({ groups }: { groups: menu_group[] }) {
+function Block({
+  block,
+  qr,
+  dragging_item,
+  on_block,
+  on_item,
+}: {
+  block: menu_block;
+  qr: string;
+  dragging_item: string | null;
+  on_block: (event: React.PointerEvent) => void;
+  on_item: (event: React.PointerEvent, group: menu_group, item: menu_card) => void;
+}) {
+  if (block.kind === 'group') {
+    return <GroupBlock group={block.group} dragging_item={dragging_item} on_head={on_block} on_item={on_item} />;
+  }
   return (
-    <div data-menu-col className="flex min-w-0 flex-1 flex-col" style={{ gap: sz(32) }}>
-      {groups.map((group) => (
-        <GroupBlock key={group.id} group={group} />
-      ))}
+    <div className="cursor-grab" onPointerDown={on_block}>
+      {block.kind === 'logo' ? <LogoBlock /> : null}
+      {block.kind === 'sugar' ? <SugarBlock /> : null}
+      {block.kind === 'extra' ? <ExtraBlock /> : null}
+      {block.kind === 'note' ? <NoteBlock qr={qr} /> : null}
     </div>
   );
 }
 
-function GroupBlock({ group }: { group: menu_group }) {
+function GroupBlock({
+  group,
+  dragging_item,
+  on_head,
+  on_item,
+}: {
+  group: menu_group;
+  dragging_item: string | null;
+  on_head: (event: React.PointerEvent) => void;
+  on_item: (event: React.PointerEvent, group: menu_group, item: menu_card) => void;
+}) {
   const big = menu_big(group);
   return (
     <section className="flex w-full flex-col">
       <h3
-        className="m-0 font-heading-soft uppercase leading-[1.05]"
+        className="m-0 cursor-grab font-heading-soft uppercase leading-[1.05]"
         style={{ fontSize: sz(Math.round(36 * 1.4)), fontWeight: 700, marginBottom: sz(big ? 28 : 20) }}
+        onPointerDown={on_head}
       >
         {group.title}
       </h3>
-      <div className="flex flex-col" style={{ gap: sz(big ? 36 : 40) }}>
-        {group.items.map((item, index) => (
-          <Item key={`${item.id}-${index}`} item={item} big={big} />
+      <div data-drop-group={group.id} className="flex flex-col" style={{ gap: sz(big ? 36 : 40) }}>
+        {group.items.map((item) => (
+          <div
+            key={item.id}
+            data-drop-item={item.id}
+            data-group-id={group.id}
+            className="cursor-grab"
+            style={{ opacity: dragging_item === `${group.id}::${item.id}` ? 0.35 : 1 }}
+            onPointerDown={(event) => on_item(event, group, item)}
+          >
+            <Item item={item} big={big} />
+          </div>
         ))}
       </div>
     </section>
+  );
+}
+
+function LogoBlock() {
+  return (
+    <div className="flex items-center" style={{ height: sz(MENU_LOGO.h) }}>
+      <span
+        className="leading-none"
+        style={{
+          fontFamily: 'Fredoka, system-ui, sans-serif',
+          fontWeight: 600,
+          fontSize: sz(MENU_LOGO.size),
+          color: MENU_ACCENT,
+          letterSpacing: '0.02em',
+        }}
+      >
+        {MENU_LOGO.text}
+      </span>
+    </div>
+  );
+}
+
+function SugarBlock() {
+  return (
+    <div
+      className="flex flex-col justify-between"
+      style={{
+        height: sz(MENU_SUGAR.h),
+        padding: sz(MENU_CARD.pad),
+        borderRadius: sz(MENU_CARD.radius),
+        background: MENU_CARD_BG,
+      }}
+    >
+      <span className="uppercase leading-none" style={{ fontSize: sz(MENU_CARD.title), fontWeight: 800 }}>
+        {MENU_SUGAR.title}
+      </span>
+      <div className="grid" style={{ gridTemplateColumns: `repeat(${MENU_SUGAR.levels.length}, minmax(0, 1fr))` }}>
+        {MENU_SUGAR.levels.map((level) => (
+          <div key={level} className="flex flex-col items-center" style={{ gap: sz(10) }}>
+            <span
+              className="relative block overflow-hidden rounded-full"
+              style={{
+                width: sz(MENU_SUGAR.dot),
+                height: sz(MENU_SUGAR.dot),
+                border: `${sz(3)} solid ${MENU_INK}`,
+                background: '#FFFFFF',
+              }}
+            >
+              <span className="absolute inset-x-0 bottom-0 block" style={{ height: `${level}%`, background: MENU_INK }} />
+            </span>
+            <span className="leading-none" style={{ fontSize: sz(MENU_SUGAR.label), fontWeight: 600 }}>
+              {level}%
+            </span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function ExtraBlock() {
+  return (
+    <div
+      className="flex items-stretch justify-between text-white"
+      style={{
+        height: sz(MENU_EXTRA.h),
+        padding: sz(MENU_CARD.pad),
+        borderRadius: sz(MENU_CARD.radius),
+        background: MENU_INK,
+      }}
+    >
+      <div className="flex flex-col justify-between">
+        <span className="uppercase leading-none" style={{ fontSize: sz(MENU_CARD.title), fontWeight: 800 }}>
+          {MENU_EXTRA.title}
+        </span>
+        <span className="leading-none" style={{ fontSize: sz(MENU_EXTRA.note_size), opacity: 0.6 }}>
+          {MENU_EXTRA.note}
+        </span>
+      </div>
+      <span className="self-center leading-none" style={{ fontSize: sz(MENU_EXTRA.price_size), fontWeight: 500 }}>
+        {MENU_EXTRA.price}
+      </span>
+    </div>
+  );
+}
+
+function NoteBlock({ qr }: { qr: string }) {
+  return (
+    <div className="flex items-center justify-between" style={{ height: sz(MENU_NOTE.h), gap: sz(24) }}>
+      <div className="flex min-w-0 flex-col" style={{ gap: sz(7) }}>
+        <span className="leading-none" style={{ fontSize: sz(MENU_NOTE.title_size), fontWeight: 700 }}>
+          {MENU_NOTE.title}
+        </span>
+        <span className="leading-none" style={{ fontSize: sz(MENU_NOTE.body_size), color: MENU_MUTED }}>
+          {MENU_NOTE.body}
+        </span>
+        <span className="leading-none" style={{ fontSize: sz(MENU_NOTE.site_size), color: MENU_MUTED }}>
+          {MENU_NOTE.site}
+        </span>
+      </div>
+      {qr ? (
+        <img
+          src={qr}
+          alt=""
+          draggable={false}
+          className="block shrink-0"
+          style={{ width: sz(MENU_NOTE.qr), height: sz(MENU_NOTE.qr) }}
+        />
+      ) : (
+        <div className="shrink-0" style={{ width: sz(MENU_NOTE.qr), height: sz(MENU_NOTE.qr) }} />
+      )}
+    </div>
   );
 }
 
@@ -166,7 +624,9 @@ function Item({ item, big }: { item: menu_card; big: boolean }) {
   return (
     <div className={big ? 'flex w-full flex-col items-start' : 'flex w-full flex-nowrap items-start'} style={{ gap: sz(big ? 12 : 16) }}>
       <div className="relative shrink-0" style={{ width: sz(photo), height: sz(photo) }}>
-        {item.image ? <img src={item.image} alt="" className="relative z-10 h-full w-full object-contain" /> : null}
+        {item.image ? (
+          <img src={item.image} alt="" draggable={false} className="relative z-10 h-full w-full object-contain" />
+        ) : null}
       </div>
       <div className={`flex min-w-0 flex-1 flex-col justify-start pt-0.5 ${big ? 'w-full' : ''}`}>
         {item.limited ? (

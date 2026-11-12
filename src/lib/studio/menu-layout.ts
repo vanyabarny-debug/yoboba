@@ -7,13 +7,47 @@ type menu_source = {
 };
 
 export const MENU_SITE = 'https://yomoyo.su';
-export const MENU_TOPPING = 'топпинг ×2 — 60 ₽';
 export const MENU_PAD_L = 64;
 export const MENU_PAD_R = 48;
 export const MENU_PAD_T = 56;
-export const MENU_QR = 96;
-export const MENU_FOOTER = 140;
+export const MENU_PAD_B = 56;
 export const MENU_COL_GAP = 28;
+export const MENU_BLOCK_GAP = 32;
+
+export const MENU_LOGO = { text: 'yomoyo', h: 120, size: 104 };
+export const MENU_CARD = { pad: 28, radius: 28, title: 30 };
+export const MENU_SUGAR = { title: 'сладость', levels: [0, 25, 50, 75, 100], h: 210, dot: 60, label: 22 };
+export const MENU_EXTRA = { title: 'топпинг ×2', price: '+60 ₽', note: 'любой на выбор', h: 156, price_size: 64, note_size: 22 };
+export const MENU_NOTE = {
+  title: 'меню обновляется',
+  body: 'больше напитков — по QR',
+  site: 'yomoyo.su',
+  h: 156,
+  qr: 156,
+  title_size: 32,
+  body_size: 24,
+  site_size: 20,
+};
+
+export const MENU_INK = '#20181B';
+export const MENU_MUTED = '#8B8689';
+export const MENU_CARD_BG = '#F3F1EF';
+export const MENU_ACCENT = '#FF6B6B';
+
+export type extra_kind = 'logo' | 'sugar' | 'extra' | 'note';
+const extra_kinds: extra_kind[] = ['logo', 'sugar', 'extra', 'note'];
+
+export type menu_block =
+  | { key: string; kind: 'group'; group: menu_group }
+  | { key: string; kind: extra_kind };
+
+export type board_layout = {
+  left: string[];
+  right: string[];
+  items: Record<string, string[]>;
+};
+
+export const empty_layout: board_layout = { left: [], right: [], items: {} };
 
 export type menu_card = {
   id: string;
@@ -46,8 +80,8 @@ export type menu_group = {
 
 export type menu_paint = {
   k: number;
-  left: menu_group[];
-  right: menu_group[];
+  left: menu_block[];
+  right: menu_block[];
   qr: string;
 };
 
@@ -62,6 +96,103 @@ type saved_group = {
 
 export function menu_big(group: menu_group) {
   return group.accent || /напиток\s*месяца/i.test(group.title);
+}
+
+export function group_key(id: string) {
+  return `g:${id}`;
+}
+
+function extra_key(kind: extra_kind) {
+  return `x:${kind}`;
+}
+
+export function block_label(block: menu_block) {
+  if (block.kind === 'group') return block.group.title;
+  if (block.kind === 'logo') return 'логотип';
+  if (block.kind === 'sugar') return MENU_SUGAR.title;
+  if (block.kind === 'extra') return MENU_EXTRA.title;
+  return MENU_NOTE.title;
+}
+
+export function arrange(groups: menu_group[], layout: board_layout | null) {
+  const by_key = new Map<string, menu_block>();
+  for (const group of groups) {
+    const key = group_key(group.id);
+    by_key.set(key, { key, kind: 'group', group: ordered(group, layout?.items[group.id]) });
+  }
+  for (const kind of extra_kinds) by_key.set(extra_key(kind), { key: extra_key(kind), kind });
+
+  const used = new Set<string>();
+  const take = (keys: string[]) => {
+    const out: menu_block[] = [];
+    for (const key of keys) {
+      const block = by_key.get(key);
+      if (!block || used.has(key)) continue;
+      used.add(key);
+      out.push(block);
+    }
+    return out;
+  };
+  const left = take(layout?.left ?? []);
+  const right = take(layout?.right ?? []);
+
+  const logo = by_key.get(extra_key('logo'))!;
+  if (!used.has(logo.key)) left.unshift(logo);
+  for (const group of groups) {
+    const key = group_key(group.id);
+    if (used.has(key)) continue;
+    (group.column === 'right' ? right : left).push(by_key.get(key)!);
+  }
+  for (const kind of ['sugar', 'extra', 'note'] as const) {
+    const key = extra_key(kind);
+    if (!used.has(key)) right.push(by_key.get(key)!);
+  }
+  return { left, right };
+}
+
+function ordered(group: menu_group, order: string[] | undefined): menu_group {
+  if (!order?.length) return group;
+  const items = group.items
+    .map((item, index) => ({ item, index }))
+    .sort((a, b) => rank(order, a.item.id) - rank(order, b.item.id) || a.index - b.index)
+    .map((row) => row.item);
+  return { ...group, items };
+}
+
+export function move_block(
+  layout: board_layout,
+  current: { left: menu_block[]; right: menu_block[] },
+  key: string,
+  col: 'left' | 'right',
+  before: string | null,
+): board_layout {
+  const left = current.left.map((block) => block.key).filter((k) => k !== key);
+  const right = current.right.map((block) => block.key).filter((k) => k !== key);
+  const target = col === 'left' ? left : right;
+  const at = before ? target.indexOf(before) : -1;
+  target.splice(at === -1 ? target.length : at, 0, key);
+  return { ...layout, left, right };
+}
+
+export function place_item(order: string[], id: string, before: string | null) {
+  const next = order.filter((row) => row !== id);
+  const at = before ? next.indexOf(before) : -1;
+  next.splice(at === -1 ? next.length : at, 0, id);
+  return next;
+}
+
+export function clean_layout(raw: unknown): board_layout {
+  if (!raw || typeof raw !== 'object') return { ...empty_layout };
+  const row = raw as Record<string, unknown>;
+  const keys = (value: unknown) =>
+    Array.isArray(value) ? value.filter((key): key is string => typeof key === 'string').slice(0, 200) : [];
+  const items: Record<string, string[]> = {};
+  if (row.items && typeof row.items === 'object') {
+    for (const [id, order] of Object.entries(row.items as Record<string, unknown>).slice(0, 100)) {
+      items[id] = keys(order);
+    }
+  }
+  return { left: keys(row.left), right: keys(row.right), items };
 }
 
 export function menu_groups(store: menu_source | null | undefined): menu_group[] {
@@ -92,7 +223,7 @@ export function merge_menu(saved: unknown, site: menu_group[], seen: Set<string>
     const live = by_id.get(group.id || '');
     if (live && group.id) {
       used.add(group.id);
-      next.push(merge_group(group, live, seen));
+      next.push(merge_group(group, live));
     } else if (group.id?.startsWith('g')) {
       next.push(saved_only(group));
     }
@@ -158,15 +289,13 @@ function as_groups(raw: unknown): saved_group[] | null {
   return groups.length ? (groups as saved_group[]) : null;
 }
 
-function merge_group(saved: saved_group, site: menu_group, seen: Set<string>): menu_group {
+function merge_group(saved: saved_group, site: menu_group): menu_group {
   const saved_items = saved.items ?? [];
   const by_id = new Map(saved_items.map((item) => [item.id || '', item]));
-  const kept = site.items
-    .filter((item) => (seen.has(item.id) ? saved_items.some((saved_item) => saved_item.id === item.id) : true))
-    .map((item) => {
-      const edited = by_id.get(item.id);
-      return edited ? apply_edit(item, edited) : item;
-    });
+  const kept = site.items.map((item) => {
+    const edited = by_id.get(item.id);
+    return edited ? apply_edit(item, edited) : item;
+  });
   const known = new Set(site.items.map((item) => item.id));
   const custom = saved_items
     .filter((item) => item.id?.startsWith('n') && !known.has(item.id))

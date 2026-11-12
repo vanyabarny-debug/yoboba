@@ -1,11 +1,20 @@
 import {
+  MENU_ACCENT,
+  MENU_BLOCK_GAP,
+  MENU_CARD,
+  MENU_CARD_BG,
   MENU_COL_GAP,
+  MENU_EXTRA,
+  MENU_INK,
+  MENU_LOGO,
+  MENU_MUTED,
+  MENU_NOTE,
   MENU_PAD_L,
   MENU_PAD_R,
   MENU_PAD_T,
-  MENU_QR,
-  MENU_TOPPING,
+  MENU_SUGAR,
   menu_big,
+  type menu_block,
   type menu_card,
   type menu_group,
   type menu_paint,
@@ -13,8 +22,10 @@ import {
 import type { studio_format } from '@/lib/studio/model';
 
 export async function download_menu_png(format: studio_format, paint: menu_paint) {
+  await document.fonts.load(`600 ${MENU_LOGO.size}px Fredoka`).catch(() => undefined);
   await document.fonts.ready;
-  const images = await load_images([...paint.left, ...paint.right]);
+  const blocks = [...paint.left, ...paint.right];
+  const images = await load_images(blocks.flatMap((block) => (block.kind === 'group' ? [block.group] : [])));
   const qr = paint.qr ? await load_image(paint.qr) : null;
   const canvas = document.createElement('canvas');
   canvas.width = format.w;
@@ -25,9 +36,8 @@ export async function download_menu_png(format: studio_format, paint: menu_paint
   ctx.fillRect(0, 0, format.w, format.h);
   const inner = format.w - MENU_PAD_L - MENU_PAD_R - MENU_COL_GAP;
   const col_w = inner / 2;
-  draw_column(ctx, paint.left, MENU_PAD_L, col_w, paint.k, images);
-  draw_column(ctx, paint.right, MENU_PAD_L + col_w + MENU_COL_GAP, col_w, paint.k, images);
-  draw_footer(ctx, format, qr);
+  draw_column(ctx, paint.left, MENU_PAD_L, col_w, paint.k, images, qr);
+  draw_column(ctx, paint.right, MENU_PAD_L + col_w + MENU_COL_GAP, col_w, paint.k, images, qr);
   const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/png'));
   if (!blob) throw new Error('пустой png');
   const url = URL.createObjectURL(blob);
@@ -42,17 +52,133 @@ export async function download_menu_png(format: studio_format, paint: menu_paint
 
 function draw_column(
   ctx: CanvasRenderingContext2D,
-  groups: menu_group[],
+  blocks: menu_block[],
   x: number,
   width: number,
   k: number,
   images: Map<string, HTMLImageElement | null>,
+  qr: HTMLImageElement | null,
 ) {
   let y = MENU_PAD_T;
-  groups.forEach((group, index) => {
-    if (index) y += px(32, k);
-    y = draw_group(ctx, group, x, y, width, k, images);
+  blocks.forEach((block, index) => {
+    if (index) y += MENU_BLOCK_GAP * k;
+    ctx.textBaseline = 'top';
+    ctx.textAlign = 'left';
+    if (block.kind === 'group') y = draw_group(ctx, block.group, x, y, width, k, images);
+    else if (block.kind === 'logo') y = draw_logo(ctx, x, y, k);
+    else if (block.kind === 'sugar') y = draw_sugar(ctx, x, y, width, k);
+    else if (block.kind === 'extra') y = draw_extra(ctx, x, y, width, k);
+    else y = draw_note(ctx, x, y, width, k, qr);
   });
+}
+
+function draw_logo(ctx: CanvasRenderingContext2D, x: number, y: number, k: number) {
+  const h = MENU_LOGO.h * k;
+  ctx.fillStyle = MENU_ACCENT;
+  ctx.font = `600 ${MENU_LOGO.size * k}px Fredoka, sans-serif`;
+  ctx.textBaseline = 'middle';
+  ctx.fillText(MENU_LOGO.text, x, y + h / 2);
+  ctx.textBaseline = 'top';
+  return y + h;
+}
+
+function draw_sugar(ctx: CanvasRenderingContext2D, x: number, y: number, width: number, k: number) {
+  const h = MENU_SUGAR.h * k;
+  const pad = MENU_CARD.pad * k;
+  const dot = MENU_SUGAR.dot * k;
+  const label = MENU_SUGAR.label * k;
+  card(ctx, x, y, width, h, MENU_CARD.radius * k, MENU_CARD_BG);
+  ctx.fillStyle = MENU_INK;
+  ctx.font = `800 ${MENU_CARD.title * k}px Nunito, sans-serif`;
+  ctx.fillText(MENU_SUGAR.title.toUpperCase(), x + pad, y + pad);
+
+  const label_y = y + h - pad - label;
+  const dot_y = label_y - 10 * k - dot;
+  const slot = (width - pad * 2) / MENU_SUGAR.levels.length;
+  const stroke = 3 * k;
+  MENU_SUGAR.levels.forEach((level, index) => {
+    const cx = x + pad + slot * (index + 0.5);
+    const r = dot / 2;
+    const cy = dot_y + r;
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(cx, cy, r, 0, Math.PI * 2);
+    ctx.fillStyle = '#FFFFFF';
+    ctx.fill();
+    ctx.clip();
+    const fill = (dot * level) / 100;
+    ctx.fillStyle = MENU_INK;
+    ctx.fillRect(cx - r, dot_y + dot - fill, dot, fill);
+    ctx.restore();
+    ctx.beginPath();
+    ctx.arc(cx, cy, r - stroke / 2, 0, Math.PI * 2);
+    ctx.lineWidth = stroke;
+    ctx.strokeStyle = MENU_INK;
+    ctx.stroke();
+    ctx.textAlign = 'center';
+    ctx.fillStyle = MENU_INK;
+    ctx.font = `600 ${label}px Nunito, sans-serif`;
+    ctx.fillText(`${level}%`, cx, label_y);
+    ctx.textAlign = 'left';
+  });
+  return y + h;
+}
+
+function draw_extra(ctx: CanvasRenderingContext2D, x: number, y: number, width: number, k: number) {
+  const h = MENU_EXTRA.h * k;
+  const pad = MENU_CARD.pad * k;
+  const note = MENU_EXTRA.note_size * k;
+  card(ctx, x, y, width, h, MENU_CARD.radius * k, MENU_INK);
+  ctx.fillStyle = '#FFFFFF';
+  ctx.font = `800 ${MENU_CARD.title * k}px Nunito, sans-serif`;
+  ctx.fillText(MENU_EXTRA.title.toUpperCase(), x + pad, y + pad);
+  ctx.globalAlpha = 0.6;
+  ctx.font = `400 ${note}px Nunito, sans-serif`;
+  ctx.fillText(MENU_EXTRA.note, x + pad, y + h - pad - note);
+  ctx.globalAlpha = 1;
+  ctx.font = `500 ${MENU_EXTRA.price_size * k}px Nunito, sans-serif`;
+  ctx.textAlign = 'right';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(MENU_EXTRA.price, x + width - pad, y + h / 2);
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'top';
+  return y + h;
+}
+
+function draw_note(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  width: number,
+  k: number,
+  qr: HTMLImageElement | null,
+) {
+  const h = MENU_NOTE.h * k;
+  const size = MENU_NOTE.qr * k;
+  if (qr) ctx.drawImage(qr, x + width - size, y + (h - size) / 2, size, size);
+  const title = MENU_NOTE.title_size * k;
+  const body = MENU_NOTE.body_size * k;
+  const site = MENU_NOTE.site_size * k;
+  const gap = 7 * k;
+  let ty = y + (h - (title + body + site + gap * 2)) / 2;
+  ctx.fillStyle = MENU_INK;
+  ctx.font = `700 ${title}px Nunito, sans-serif`;
+  ctx.fillText(MENU_NOTE.title, x, ty);
+  ty += title + gap;
+  ctx.fillStyle = MENU_MUTED;
+  ctx.font = `400 ${body}px Nunito, sans-serif`;
+  ctx.fillText(MENU_NOTE.body, x, ty);
+  ty += body + gap;
+  ctx.font = `400 ${site}px Nunito, sans-serif`;
+  ctx.fillText(MENU_NOTE.site, x, ty);
+  return y + h;
+}
+
+function card(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number, fill: string) {
+  ctx.beginPath();
+  ctx.roundRect(x, y, w, h, r);
+  ctx.fillStyle = fill;
+  ctx.fill();
 }
 
 function draw_group(
@@ -177,20 +303,6 @@ function price_width(ctx: CanvasRenderingContext2D, item: menu_card, big: boolea
   const price_size = px(big ? 48 : 36, k);
   ctx.font = `500 ${price_size}px Nunito, sans-serif`;
   return Math.max(...volume_lines(item).map((line) => ctx.measureText(line.price).width), ctx.measureText(item.weight).width) + 8;
-}
-
-function draw_footer(ctx: CanvasRenderingContext2D, format: studio_format, qr: HTMLImageElement | null) {
-  const y = format.h - 28 - MENU_QR;
-  ctx.fillStyle = '#20181B';
-  ctx.font = '500 22px Nunito, sans-serif';
-  ctx.textAlign = 'left';
-  ctx.textBaseline = 'bottom';
-  ctx.fillText(MENU_TOPPING, MENU_PAD_L, format.h - 36);
-  ctx.fillStyle = '#8B8689';
-  ctx.font = '400 13px Nunito, sans-serif';
-  ctx.textAlign = 'right';
-  ctx.fillText('yomoyo.su', format.w - MENU_PAD_R - MENU_QR - 12, format.h - 40);
-  if (qr) ctx.drawImage(qr, format.w - MENU_PAD_R - MENU_QR, y, MENU_QR, MENU_QR);
 }
 
 function draw_contain(ctx: CanvasRenderingContext2D, image: HTMLImageElement, x: number, y: number, size: number) {
