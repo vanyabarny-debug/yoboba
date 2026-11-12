@@ -14,25 +14,42 @@ export const MENU_PAD_B = 56;
 export const MENU_COL_GAP = 28;
 export const MENU_BLOCK_GAP = 32;
 
-export const MENU_LOGO = { text: 'yomoyo', h: 120, size: 104 };
-export const MENU_CARD = { pad: 28, radius: 28, title: 30 };
-export const MENU_SUGAR = { title: 'сладость', levels: [0, 25, 50, 75, 100], h: 210, dot: 60, label: 22 };
-export const MENU_EXTRA = { title: 'топпинг ×2', price: '+60 ₽', note: 'любой на выбор', h: 156, price_size: 64, note_size: 22 };
-export const MENU_NOTE = {
-  title: 'меню обновляется',
-  body: 'больше напитков — по QR',
-  site: 'yomoyo.su',
-  h: 156,
-  qr: 156,
-  title_size: 32,
-  body_size: 24,
-  site_size: 20,
-};
+export const MENU_LOGO = { h: 120, size: 104 };
+export const MENU_CARD = { pad: 28, radius: 28, title: 30, border: 3 };
+export const MENU_SUGAR = { levels: [0, 50, 100, 150], h: 244, dot: 60, label: 22, extra: 20 };
+export const MENU_EXTRA = { h: 156, price_size: 64, note_size: 22 };
+export const MENU_NOTE = { h: 156, qr: 156, title_size: 32, body_size: 24, site_size: 20 };
 
 export const MENU_INK = '#20181B';
 export const MENU_MUTED = '#8B8689';
-export const MENU_CARD_BG = '#F3F1EF';
 export const MENU_ACCENT = '#FF6B6B';
+
+export const MENU_TEXT_DEFAULTS = {
+  logo: 'yomoyo',
+  sugar_title: 'сладость',
+  sugar_0: '0%',
+  sugar_50: '50%',
+  sugar_100: '100%',
+  sugar_150: '150%',
+  sugar_150_price: '+10 ₽',
+  extra_title: 'топпинг ×2',
+  extra_price: '+60 ₽',
+  extra_note: 'любой на выбор',
+  note_title: 'меню обновляется',
+  note_body: 'больше напитков — по QR',
+  note_site: 'yomoyo.su',
+};
+
+export type menu_text_key = keyof typeof MENU_TEXT_DEFAULTS;
+export type menu_texts = Record<menu_text_key, string>;
+
+export function menu_texts(layout: board_layout | null): menu_texts {
+  return { ...MENU_TEXT_DEFAULTS, ...(layout?.texts ?? {}) };
+}
+
+export function sugar_key(level: number) {
+  return `sugar_${level}` as menu_text_key;
+}
 
 export type extra_kind = 'logo' | 'sugar' | 'extra' | 'note';
 const extra_kinds: extra_kind[] = ['logo', 'sugar', 'extra', 'note'];
@@ -45,9 +62,10 @@ export type board_layout = {
   left: string[];
   right: string[];
   items: Record<string, string[]>;
+  texts: Partial<menu_texts>;
 };
 
-export const empty_layout: board_layout = { left: [], right: [], items: {} };
+export const empty_layout: board_layout = { left: [], right: [], items: {}, texts: {} };
 
 export type menu_card = {
   id: string;
@@ -83,6 +101,7 @@ export type menu_paint = {
   left: menu_block[];
   right: menu_block[];
   qr: string;
+  texts: menu_texts;
 };
 
 type saved_item = Partial<menu_card> & { id?: string; isLimited?: boolean };
@@ -106,12 +125,12 @@ function extra_key(kind: extra_kind) {
   return `x:${kind}`;
 }
 
-export function block_label(block: menu_block) {
+export function block_label(block: menu_block, texts: menu_texts) {
   if (block.kind === 'group') return block.group.title;
   if (block.kind === 'logo') return 'логотип';
-  if (block.kind === 'sugar') return MENU_SUGAR.title;
-  if (block.kind === 'extra') return MENU_EXTRA.title;
-  return MENU_NOTE.title;
+  if (block.kind === 'sugar') return texts.sugar_title;
+  if (block.kind === 'extra') return texts.extra_title;
+  return texts.note_title;
 }
 
 export function arrange(groups: menu_group[], layout: board_layout | null) {
@@ -192,7 +211,15 @@ export function clean_layout(raw: unknown): board_layout {
       items[id] = keys(order);
     }
   }
-  return { left: keys(row.left), right: keys(row.right), items };
+  const texts: Partial<menu_texts> = {};
+  if (row.texts && typeof row.texts === 'object') {
+    for (const [key, value] of Object.entries(row.texts as Record<string, unknown>)) {
+      if (!(key in MENU_TEXT_DEFAULTS) || typeof value !== 'string') continue;
+      const text = value.replace(/\s+/g, ' ').trim().slice(0, 80);
+      if (text) texts[key as menu_text_key] = text;
+    }
+  }
+  return { left: keys(row.left), right: keys(row.right), items, texts };
 }
 
 export function menu_groups(store: menu_source | null | undefined): menu_group[] {

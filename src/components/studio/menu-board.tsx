@@ -7,7 +7,6 @@ import {
   MENU_ACCENT,
   MENU_BLOCK_GAP,
   MENU_CARD,
-  MENU_CARD_BG,
   MENU_COL_GAP,
   MENU_EXTRA,
   MENU_INK,
@@ -20,6 +19,7 @@ import {
   MENU_PAD_T,
   MENU_SITE,
   MENU_SUGAR,
+  MENU_TEXT_DEFAULTS,
   arrange,
   block_label,
   clean_layout,
@@ -28,14 +28,18 @@ import {
   load_seen,
   menu_big,
   menu_groups,
+  menu_texts,
   merge_menu,
   move_block,
   place_item,
+  sugar_key,
   type board_layout,
   type menu_block,
   type menu_card,
   type menu_group,
   type menu_paint,
+  type menu_text_key,
+  type menu_texts as menu_text_map,
 } from '@/lib/studio/menu-layout';
 import { item_categories, set_item_categories } from '@/lib/menu-item-categories';
 import type { menu_store } from '@/lib/menu-store';
@@ -123,6 +127,7 @@ export default function MenuBoard({
     [store, saved, seen],
   );
   const columns = useMemo(() => (groups ? arrange(groups, layout) : { left: [], right: [] }), [groups, layout]);
+  const texts = useMemo(() => menu_texts(layout), [layout]);
 
   useLayoutEffect(() => {
     const inner = document.getElementById('menu-sheet-fit');
@@ -143,9 +148,9 @@ export default function MenuBoard({
     }
     inner.style.setProperty('--menu-k', String(best));
     set_k(Number(best.toFixed(3)));
-  }, [columns, groups, format.w, format.h]);
+  }, [columns, groups, texts, format.w, format.h]);
 
-  paint_ref.current = { k, left: columns.left, right: columns.right, qr };
+  paint_ref.current = { k, left: columns.left, right: columns.right, qr, texts };
 
   const say = useCallback((text: string) => {
     set_toast(text);
@@ -165,6 +170,14 @@ export default function MenuBoard({
       }).catch(() => undefined);
     }, 400);
   }, []);
+
+  function edit_text(key: menu_text_key, value: string) {
+    const text = value.replace(/\s+/g, ' ').trim().slice(0, 80);
+    const next = { ...layout.texts };
+    if (!text || text === MENU_TEXT_DEFAULTS[key]) delete next[key];
+    else next[key] = text;
+    commit_layout({ ...layout, texts: next });
+  }
 
   async function move_category(item_id: string, from: string, to: string) {
     if (!store) return false;
@@ -394,8 +407,12 @@ export default function MenuBoard({
                     <Block
                       block={block}
                       qr={qr}
+                      texts={texts}
+                      on_text={edit_text}
                       dragging_item={dragging_item}
-                      on_block={(event) => begin(event, { kind: 'block', key: block.key, label: block_label(block) })}
+                      on_block={(event) =>
+                        begin(event, { kind: 'block', key: block.key, label: block_label(block, texts) })
+                      }
                       on_item={(event, group, item) =>
                         begin(event, { kind: 'item', item_id: item.id, group_id: group.id, label: item.name })
                       }
@@ -442,13 +459,20 @@ export default function MenuBoard({
   );
 }
 
+type text_props = {
+  texts: menu_text_map;
+  on_text: (key: menu_text_key, value: string) => void;
+};
+
 function Block({
   block,
   qr,
+  texts,
+  on_text,
   dragging_item,
   on_block,
   on_item,
-}: {
+}: text_props & {
   block: menu_block;
   qr: string;
   dragging_item: string | null;
@@ -460,11 +484,74 @@ function Block({
   }
   return (
     <div className="cursor-grab" onPointerDown={on_block}>
-      {block.kind === 'logo' ? <LogoBlock /> : null}
-      {block.kind === 'sugar' ? <SugarBlock /> : null}
-      {block.kind === 'extra' ? <ExtraBlock /> : null}
-      {block.kind === 'note' ? <NoteBlock qr={qr} /> : null}
+      {block.kind === 'logo' ? <LogoBlock texts={texts} on_text={on_text} /> : null}
+      {block.kind === 'sugar' ? <SugarBlock texts={texts} on_text={on_text} /> : null}
+      {block.kind === 'extra' ? <ExtraBlock texts={texts} on_text={on_text} /> : null}
+      {block.kind === 'note' ? <NoteBlock qr={qr} texts={texts} on_text={on_text} /> : null}
     </div>
+  );
+}
+
+function Editable({
+  id,
+  texts,
+  on_text,
+  className = '',
+  style,
+}: text_props & { id: menu_text_key; className?: string; style?: React.CSSProperties }) {
+  const ref = useRef<HTMLSpanElement>(null);
+  const live = useRef(false);
+  const [editing, set_editing] = useState(false);
+  const value = texts[id];
+
+  function finish(save: boolean) {
+    const el = ref.current;
+    if (!el || !live.current) return;
+    live.current = false;
+    const text = el.textContent || '';
+    el.textContent = '';
+    set_editing(false);
+    if (save) on_text(id, text);
+    el.blur();
+  }
+
+  useEffect(() => {
+    const el = ref.current;
+    if (!editing || !el) return;
+    el.textContent = value;
+    el.focus();
+    const range = document.createRange();
+    range.selectNodeContents(el);
+    const selection = window.getSelection();
+    selection?.removeAllRanges();
+    selection?.addRange(range);
+  }, [editing, value]);
+
+  return (
+    <span
+      ref={ref}
+      className={`${className} ${editing ? 'cursor-text select-text rounded-[0.2em] outline-none ring-2 ring-[#FF6B6B]' : 'hover:opacity-70'}`}
+      style={style}
+      contentEditable={editing}
+      suppressContentEditableWarning
+      title={editing ? undefined : 'двойной клик — поменять текст'}
+      onDoubleClick={(event) => {
+        event.stopPropagation();
+        if (live.current) return;
+        live.current = true;
+        set_editing(true);
+      }}
+      onPointerDown={editing ? (event) => event.stopPropagation() : undefined}
+      onKeyDown={(event) => {
+        if (event.key === 'Enter' || event.key === 'Escape') {
+          event.preventDefault();
+          finish(event.key === 'Enter');
+        }
+      }}
+      onBlur={() => finish(true)}
+    >
+      {editing ? null : value}
+    </span>
   );
 }
 
@@ -507,10 +594,12 @@ function GroupBlock({
   );
 }
 
-function LogoBlock() {
+function LogoBlock(props: text_props) {
   return (
     <div className="flex items-center" style={{ height: sz(MENU_LOGO.h) }}>
-      <span
+      <Editable
+        {...props}
+        id="logo"
         className="leading-none"
         style={{
           fontFamily: 'Fredoka, system-ui, sans-serif',
@@ -519,44 +608,66 @@ function LogoBlock() {
           color: MENU_ACCENT,
           letterSpacing: '0.02em',
         }}
-      >
-        {MENU_LOGO.text}
-      </span>
+      />
     </div>
   );
 }
 
-function SugarBlock() {
+const plate_style = (h: number): React.CSSProperties => ({
+  height: sz(h),
+  padding: sz(MENU_CARD.pad),
+  borderRadius: sz(MENU_CARD.radius),
+  border: `${sz(MENU_CARD.border)} solid ${MENU_INK}`,
+});
+
+function SugarBlock(props: text_props) {
+  const top = MENU_SUGAR.levels[MENU_SUGAR.levels.length - 1];
   return (
-    <div
-      className="flex flex-col justify-between"
-      style={{
-        height: sz(MENU_SUGAR.h),
-        padding: sz(MENU_CARD.pad),
-        borderRadius: sz(MENU_CARD.radius),
-        background: MENU_CARD_BG,
-      }}
-    >
-      <span className="uppercase leading-none" style={{ fontSize: sz(MENU_CARD.title), fontWeight: 800 }}>
-        {MENU_SUGAR.title}
-      </span>
-      <div className="grid" style={{ gridTemplateColumns: `repeat(${MENU_SUGAR.levels.length}, minmax(0, 1fr))` }}>
+    <div className="flex flex-col justify-between" style={plate_style(MENU_SUGAR.h)}>
+      <Editable
+        {...props}
+        id="sugar_title"
+        className="self-start uppercase leading-none"
+        style={{ fontSize: sz(MENU_CARD.title), fontWeight: 800 }}
+      />
+      <div
+        className="grid items-start"
+        style={{ gridTemplateColumns: `repeat(${MENU_SUGAR.levels.length}, minmax(0, 1fr))` }}
+      >
         {MENU_SUGAR.levels.map((level) => (
           <div key={level} className="flex flex-col items-center" style={{ gap: sz(10) }}>
             <span
-              className="relative block overflow-hidden rounded-full"
+              className="relative flex items-center justify-center overflow-hidden rounded-full"
               style={{
                 width: sz(MENU_SUGAR.dot),
                 height: sz(MENU_SUGAR.dot),
-                border: `${sz(3)} solid ${MENU_INK}`,
-                background: '#FFFFFF',
+                border: `${sz(MENU_CARD.border)} solid ${MENU_INK}`,
               }}
             >
-              <span className="absolute inset-x-0 bottom-0 block" style={{ height: `${level}%`, background: MENU_INK }} />
+              <span
+                className="absolute inset-x-0 bottom-0 block"
+                style={{ height: `${Math.min(level, 100)}%`, background: MENU_INK }}
+              />
+              {level > 100 ? (
+                <span className="relative leading-none text-white" style={{ fontSize: sz(34), fontWeight: 800 }}>
+                  +
+                </span>
+              ) : null}
             </span>
-            <span className="leading-none" style={{ fontSize: sz(MENU_SUGAR.label), fontWeight: 600 }}>
-              {level}%
-            </span>
+            <Editable
+              {...props}
+              id={sugar_key(level)}
+              className="leading-none"
+              style={{ fontSize: sz(MENU_SUGAR.label), fontWeight: 600 }}
+            />
+            {level === top ? (
+              <Editable
+                {...props}
+                id="sugar_150_price"
+                className="leading-none"
+                style={{ fontSize: sz(MENU_SUGAR.extra), fontWeight: 700, color: MENU_ACCENT, marginTop: sz(-4) }}
+              />
+            ) : null}
           </div>
         ))}
       </div>
@@ -564,45 +675,55 @@ function SugarBlock() {
   );
 }
 
-function ExtraBlock() {
+function ExtraBlock(props: text_props) {
   return (
-    <div
-      className="flex items-stretch justify-between text-white"
-      style={{
-        height: sz(MENU_EXTRA.h),
-        padding: sz(MENU_CARD.pad),
-        borderRadius: sz(MENU_CARD.radius),
-        background: MENU_INK,
-      }}
-    >
-      <div className="flex flex-col justify-between">
-        <span className="uppercase leading-none" style={{ fontSize: sz(MENU_CARD.title), fontWeight: 800 }}>
-          {MENU_EXTRA.title}
-        </span>
-        <span className="leading-none" style={{ fontSize: sz(MENU_EXTRA.note_size), opacity: 0.6 }}>
-          {MENU_EXTRA.note}
-        </span>
+    <div className="flex items-stretch justify-between" style={plate_style(MENU_EXTRA.h)}>
+      <div className="flex flex-col items-start justify-between">
+        <Editable
+          {...props}
+          id="extra_title"
+          className="uppercase leading-none"
+          style={{ fontSize: sz(MENU_CARD.title), fontWeight: 800 }}
+        />
+        <Editable
+          {...props}
+          id="extra_note"
+          className="leading-none"
+          style={{ fontSize: sz(MENU_EXTRA.note_size), color: MENU_MUTED }}
+        />
       </div>
-      <span className="self-center leading-none" style={{ fontSize: sz(MENU_EXTRA.price_size), fontWeight: 500 }}>
-        {MENU_EXTRA.price}
-      </span>
+      <Editable
+        {...props}
+        id="extra_price"
+        className="self-center leading-none"
+        style={{ fontSize: sz(MENU_EXTRA.price_size), fontWeight: 500 }}
+      />
     </div>
   );
 }
 
-function NoteBlock({ qr }: { qr: string }) {
+function NoteBlock({ qr, ...props }: text_props & { qr: string }) {
   return (
     <div className="flex items-center justify-between" style={{ height: sz(MENU_NOTE.h), gap: sz(24) }}>
-      <div className="flex min-w-0 flex-col" style={{ gap: sz(7) }}>
-        <span className="leading-none" style={{ fontSize: sz(MENU_NOTE.title_size), fontWeight: 700 }}>
-          {MENU_NOTE.title}
-        </span>
-        <span className="leading-none" style={{ fontSize: sz(MENU_NOTE.body_size), color: MENU_MUTED }}>
-          {MENU_NOTE.body}
-        </span>
-        <span className="leading-none" style={{ fontSize: sz(MENU_NOTE.site_size), color: MENU_MUTED }}>
-          {MENU_NOTE.site}
-        </span>
+      <div className="flex min-w-0 flex-col items-start" style={{ gap: sz(7) }}>
+        <Editable
+          {...props}
+          id="note_title"
+          className="leading-none"
+          style={{ fontSize: sz(MENU_NOTE.title_size), fontWeight: 700 }}
+        />
+        <Editable
+          {...props}
+          id="note_body"
+          className="leading-none"
+          style={{ fontSize: sz(MENU_NOTE.body_size), color: MENU_MUTED }}
+        />
+        <Editable
+          {...props}
+          id="note_site"
+          className="leading-none"
+          style={{ fontSize: sz(MENU_NOTE.site_size), color: MENU_MUTED }}
+        />
       </div>
       {qr ? (
         <img
