@@ -704,8 +704,11 @@ function moscow_day(iso: string) {
 function marinade_poured_today(state: finance_state, station: prep_station, iso: string) {
   const day = moscow_day(iso);
   const note = `маринад: ${station.label}`;
+  const revalue = `${station.kind === 'pot' ? 'варка' : 'заваривание'}: маринад ${station.label}`;
   return state.stockMovements.some(
-    (mv) => mv.type === 'out' && (mv.note || '').startsWith(note) && moscow_day(mv.date) === day
+    (mv) =>
+      ((mv.type === 'out' && (mv.note || '').startsWith(note)) || (mv.type === 'in' && mv.note === revalue)) &&
+      moscow_day(mv.date) === day
   );
 }
 
@@ -1049,7 +1052,7 @@ export function apply_prep_cook(
     return {
       ...s,
       batchFullG: cooked_scale + cookedG,
-      marinadePending: Boolean(s.marinade?.enabled),
+      marinadePending: Boolean(s.marinade?.enabled) && !marinade_poured_today(state, s, date),
       brewedAt: fresh ? date : s.brewedAt || date,
       openBatch: {
         dryG: (prev?.dryG ?? 0) + dryG,

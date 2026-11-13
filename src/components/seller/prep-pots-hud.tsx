@@ -332,7 +332,7 @@ export default function PrepStationsBoard({
                     </button>
                     {active.marinadeHint ? (
                       <p className="text-center text-[11px] text-neutral-500">
-                        {active.marinadeHint}. 500 мл хватает на день. без этого стакан с тапиокой не пробьётся
+                        {active.marinadeHint}. один раз утром на весь день, дальше варки без маринада. без этого стакан с тапиокой не пробьётся
                       </p>
                     ) : null}
                   </div>

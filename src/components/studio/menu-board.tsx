@@ -505,6 +505,23 @@ export default function MenuBoard({
                   связано с сайтом
                 </button>
               </div>
+              <div className="flex shrink-0 items-center bg-neutral-100 p-0.5 text-sm" title="как подписать цену большого размера">
+                <span className="px-2 text-neutral-500">650 мл:</span>
+                <button
+                  type="button"
+                  onClick={() => commit_layout({ ...layout, price2: 'add' })}
+                  className={`px-3 py-1 ${layout.price2 === 'add' ? 'bg-white text-[#20181b] shadow-sm' : 'text-neutral-600'}`}
+                >
+                  +доплата
+                </button>
+                <button
+                  type="button"
+                  onClick={() => commit_layout({ ...layout, price2: 'full' })}
+                  className={`px-3 py-1 ${layout.price2 === 'full' ? 'bg-white text-[#20181b] shadow-sm' : 'text-neutral-600'}`}
+                >
+                  цена из меню
+                </button>
+              </div>
               {Object.keys(layout.moves).length ? (
                 <button
                   type="button"

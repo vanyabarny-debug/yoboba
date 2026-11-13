@@ -59,6 +59,9 @@ export type menu_block =
   | { key: string; kind: 'group'; group: menu_group }
   | { key: string; kind: extra_kind };
 
+/** цена большого размера: доплата «+50₽» или итог «520₽» */
+export type price2_mode = 'add' | 'full';
+
 export type board_layout = {
   left: string[];
   right: string[];
@@ -66,9 +69,18 @@ export type board_layout = {
   texts: Partial<menu_texts>;
   hidden: string[];
   moves: Record<string, string>;
+  price2: price2_mode;
 };
 
-export const empty_layout: board_layout = { left: [], right: [], items: {}, texts: {}, hidden: [], moves: {} };
+export const empty_layout: board_layout = {
+  left: [],
+  right: [],
+  items: {},
+  texts: {},
+  hidden: [],
+  moves: {},
+  price2: 'add',
+};
 
 export type menu_card = {
   id: string;
@@ -177,9 +189,10 @@ export function arrange(source: menu_group[], layout: board_layout | null) {
   const groups = apply_moves(source, layout?.moves);
   const hidden = new Set(layout?.hidden ?? []);
   const by_key = new Map<string, menu_block>();
+  const mode = layout?.price2 ?? 'add';
   for (const group of groups) {
     const key = group_key(group.id);
-    by_key.set(key, { key, kind: 'group', group: ordered(group, layout?.items[group.id]) });
+    by_key.set(key, { key, kind: 'group', group: with_price2(ordered(group, layout?.items[group.id]), mode) });
   }
   for (const kind of extra_kinds) by_key.set(extra_key(kind), { key: extra_key(kind), kind });
 
@@ -213,6 +226,21 @@ export function arrange(source: menu_group[], layout: board_layout | null) {
     return block ? [block] : [];
   });
   return { left, right, hidden: off };
+}
+
+function with_price2(group: menu_group, mode: price2_mode): menu_group {
+  if (mode === 'add') return group;
+  return { ...group, items: group.items.map((item) => ({ ...item, price2: full_price2(item) })) };
+}
+
+/** «450₽» + «+70₽» → «520₽»; свою подпись без плюса не трогаем */
+function full_price2(item: menu_card) {
+  const add = item.price2.trim();
+  if (!add.startsWith('+')) return item.price2;
+  const base = Number(item.price.replace(/[^\d]/g, ''));
+  const extra = Number(add.replace(/[^\d]/g, ''));
+  if (!base || !Number.isFinite(extra)) return item.price2;
+  return rub(base + extra);
 }
 
 function ordered(group: menu_group, order: string[] | undefined): menu_group {
@@ -271,7 +299,15 @@ export function clean_layout(raw: unknown): board_layout {
       if (key.includes('::') && typeof to === 'string' && to) moves[key] = to;
     }
   }
-  return { left: keys(row.left), right: keys(row.right), items, texts, hidden: keys(row.hidden), moves };
+  return {
+    left: keys(row.left),
+    right: keys(row.right),
+    items,
+    texts,
+    hidden: keys(row.hidden),
+    moves,
+    price2: row.price2 === 'full' ? 'full' : 'add',
+  };
 }
 
 export function menu_groups(store: menu_source | null | undefined): menu_group[] {
