@@ -20,6 +20,7 @@ export const MENU_CARD = { pad: 28, radius: 28, title: 30, border: 3 };
 export const MENU_SUGAR = { levels: [0, 50, 100, 150], h: 244, dot: 60, label: 22, extra: 20 };
 export const MENU_EXTRA = { h: 156, price_size: 64, note_size: 22 };
 export const MENU_NOTE = { h: 156, qr: 156, title_size: 32, body_size: 24, site_size: 20 };
+export const MENU_WIFI = { h: 156, icon: 84, note_size: 22 };
 
 export const MENU_INK = '#20181B';
 export const MENU_MUTED = '#8B8689';
@@ -36,6 +37,8 @@ export const MENU_TEXT_DEFAULTS = {
   extra_title: 'топпинг ×2',
   extra_price: '+60 ₽',
   extra_note: 'любой на выбор',
+  wifi_title: 'бесплатный wi-fi',
+  wifi_note: 'пароль спроси у бариста',
   note_title: 'меню обновляется',
   note_body: 'больше напитков — по QR',
   note_site: 'yomoyo.su',
@@ -52,8 +55,8 @@ export function sugar_key(level: number) {
   return `sugar_${level}` as menu_text_key;
 }
 
-export type extra_kind = 'logo' | 'sugar' | 'extra' | 'note';
-const extra_kinds: extra_kind[] = ['logo', 'sugar', 'extra', 'note'];
+export type extra_kind = 'logo' | 'sugar' | 'extra' | 'wifi' | 'note';
+const extra_kinds: extra_kind[] = ['logo', 'sugar', 'extra', 'wifi', 'note'];
 
 export type menu_block =
   | { key: string; kind: 'group'; group: menu_group }
@@ -145,6 +148,7 @@ export function block_label(block: menu_block, texts: menu_texts) {
   if (block.kind === 'logo') return 'логотип';
   if (block.kind === 'sugar') return texts.sugar_title;
   if (block.kind === 'extra') return texts.extra_title;
+  if (block.kind === 'wifi') return texts.wifi_title;
   return texts.note_title;
 }
 
@@ -217,9 +221,15 @@ export function arrange(source: menu_group[], layout: board_layout | null) {
     if (used.has(key)) continue;
     (group.column === 'right' ? right : left).push(by_key.get(key)!);
   }
-  for (const kind of ['sugar', 'extra', 'note'] as const) {
+  for (const kind of ['sugar', 'extra', 'wifi', 'note'] as const) {
     const key = extra_key(kind);
-    if (!used.has(key)) right.push(by_key.get(key)!);
+    if (used.has(key)) continue;
+    const block = by_key.get(key)!;
+    const note = extra_key('note');
+    const col = kind === 'wifi' && left.some((b) => b.key === note) ? left : right;
+    const at = kind === 'wifi' ? col.findIndex((b) => b.key === note) : -1;
+    if (at === -1) col.push(block);
+    else col.splice(at, 0, block);
   }
   const off = [...hidden].flatMap((key) => {
     const block = by_key.get(key);

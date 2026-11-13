@@ -12,6 +12,7 @@ import {
   MENU_PAD_R,
   MENU_PAD_T,
   MENU_SUGAR,
+  MENU_WIFI,
   menu_big,
   sugar_key,
   type menu_block,
@@ -70,6 +71,7 @@ function draw_column(ctx: CanvasRenderingContext2D, blocks: menu_block[], x: num
     else if (block.kind === 'logo') y = draw_logo(ctx, x, y, k, texts);
     else if (block.kind === 'sugar') y = draw_sugar(ctx, x, y, width, k, texts);
     else if (block.kind === 'extra') y = draw_extra(ctx, x, y, width, k, texts);
+    else if (block.kind === 'wifi') y = draw_wifi(ctx, x, y, width, k, texts);
     else y = draw_note(ctx, x, y, width, k, qr, texts);
   });
 }
@@ -157,6 +159,36 @@ function draw_extra(ctx: CanvasRenderingContext2D, x: number, y: number, width: 
   ctx.fillText(texts.extra_price, x + width - pad, y + h / 2);
   ctx.textAlign = 'left';
   ctx.textBaseline = 'top';
+  return y + h;
+}
+
+function draw_wifi(ctx: CanvasRenderingContext2D, x: number, y: number, width: number, k: number, texts: menu_texts) {
+  const h = MENU_WIFI.h * k;
+  const pad = (MENU_CARD.pad + MENU_CARD.border) * k;
+  const note = MENU_WIFI.note_size * k;
+  plate(ctx, x, y, width, h, k);
+  ctx.fillStyle = MENU_INK;
+  ctx.font = `800 ${MENU_CARD.title * k}px Nunito, sans-serif`;
+  ctx.fillText(texts.wifi_title.toUpperCase(), x + pad, y + pad);
+  ctx.fillStyle = MENU_MUTED;
+  ctx.font = `400 ${note}px Nunito, sans-serif`;
+  ctx.fillText(texts.wifi_note, x + pad, y + h - pad - note);
+  const size = MENU_WIFI.icon * k;
+  const cx = x + width - pad - size / 2;
+  const base = y + h / 2 + size * 0.36;
+  ctx.strokeStyle = MENU_INK;
+  ctx.fillStyle = MENU_INK;
+  ctx.lineCap = 'round';
+  ctx.lineWidth = size * 0.1;
+  for (const r of [0.28, 0.52, 0.76]) {
+    ctx.beginPath();
+    ctx.arc(cx, base, size * r, Math.PI * 1.25, Math.PI * 1.75);
+    ctx.stroke();
+  }
+  ctx.beginPath();
+  ctx.arc(cx, base, size * 0.08, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.lineCap = 'butt';
   return y + h;
 }
 

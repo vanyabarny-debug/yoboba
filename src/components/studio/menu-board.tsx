@@ -21,6 +21,7 @@ import {
   MENU_SUGAR,
   MENU_TEXT_DEFAULTS,
   MENU_TOOLS_ID,
+  MENU_WIFI,
   arrange,
   block_label,
   clean_layout,
@@ -138,6 +139,13 @@ export default function MenuBoard({
   );
   const columns = useMemo(() => (groups ? arrange(groups, layout) : { left: [], right: [], hidden: [] }), [groups, layout]);
   const texts = useMemo(() => menu_texts(layout), [layout]);
+  const price2_sample = useMemo(() => {
+    const item = groups?.flatMap((group) => group.items).find((row) => row.price2.trim().startsWith('+'));
+    const base = Number(item?.price.replace(/[^\d]/g, ''));
+    const extra = Number(item?.price2.replace(/[^\d]/g, ''));
+    if (!item || !base) return { add: 'плюсом', full: 'полной ценой' };
+    return { add: `плюсом ${item.price2}`, full: `ценой ${base + extra}₽` };
+  }, [groups]);
 
   useLayoutEffect(() => {
     const inner = document.getElementById('menu-sheet-fit');
@@ -505,21 +513,23 @@ export default function MenuBoard({
                   связано с сайтом
                 </button>
               </div>
-              <div className="flex shrink-0 items-center bg-neutral-100 p-0.5 text-sm" title="как подписать цену большого размера">
-                <span className="px-2 text-neutral-500">650 мл:</span>
+              <div className="flex shrink-0 items-center bg-neutral-100 p-0.5 text-sm">
+                <span className="px-2 text-neutral-500">цена 650 мл:</span>
                 <button
                   type="button"
+                  title="доплата к цене 500 мл"
                   onClick={() => commit_layout({ ...layout, price2: 'add' })}
                   className={`px-3 py-1 ${layout.price2 === 'add' ? 'bg-white text-[#20181b] shadow-sm' : 'text-neutral-600'}`}
                 >
-                  +доплата
+                  {price2_sample.add}
                 </button>
                 <button
                   type="button"
+                  title="полная цена большого напитка"
                   onClick={() => commit_layout({ ...layout, price2: 'full' })}
                   className={`px-3 py-1 ${layout.price2 === 'full' ? 'bg-white text-[#20181b] shadow-sm' : 'text-neutral-600'}`}
                 >
-                  цена из меню
+                  {price2_sample.full}
                 </button>
               </div>
               {Object.keys(layout.moves).length ? (
@@ -632,6 +642,7 @@ function Block({
       {block.kind === 'logo' ? <LogoBlock texts={texts} on_text={on_text} /> : null}
       {block.kind === 'sugar' ? <SugarBlock texts={texts} on_text={on_text} /> : null}
       {block.kind === 'extra' ? <ExtraBlock texts={texts} on_text={on_text} /> : null}
+      {block.kind === 'wifi' ? <WifiBlock texts={texts} on_text={on_text} /> : null}
       {block.kind === 'note' ? <NoteBlock qr={qr} texts={texts} on_text={on_text} /> : null}
     </div>
   );
@@ -843,6 +854,42 @@ function ExtraBlock(props: text_props) {
         className="self-center leading-none"
         style={{ fontSize: sz(MENU_EXTRA.price_size), fontWeight: 500 }}
       />
+    </div>
+  );
+}
+
+function WifiBlock(props: text_props) {
+  return (
+    <div className="flex items-stretch justify-between" style={plate_style(MENU_WIFI.h)}>
+      <div className="flex min-w-0 flex-col items-start justify-between">
+        <Editable
+          {...props}
+          id="wifi_title"
+          className="uppercase leading-none"
+          style={{ fontSize: sz(MENU_CARD.title), fontWeight: 800 }}
+        />
+        <Editable
+          {...props}
+          id="wifi_note"
+          className="leading-none"
+          style={{ fontSize: sz(MENU_WIFI.note_size), color: MENU_MUTED }}
+        />
+      </div>
+      <svg
+        viewBox="0 0 100 100"
+        fill="none"
+        stroke={MENU_INK}
+        strokeWidth="10"
+        strokeLinecap="round"
+        aria-hidden
+        className="shrink-0 self-center"
+        style={{ width: sz(MENU_WIFI.icon), height: sz(MENU_WIFI.icon) }}
+      >
+        {[28, 52, 76].map((r) => (
+          <path key={r} d={`M${50 - r * 0.7071} ${86 - r * 0.7071}A${r} ${r} 0 0 1 ${50 + r * 0.7071} ${86 - r * 0.7071}`} />
+        ))}
+        <circle cx="50" cy="86" r="8" fill={MENU_INK} stroke="none" />
+      </svg>
     </div>
   );
 }
