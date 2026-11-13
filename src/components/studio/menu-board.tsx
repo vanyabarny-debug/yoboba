@@ -20,9 +20,13 @@ import {
   MENU_SITE,
   MENU_SUGAR,
   MENU_TEXT_DEFAULTS,
+  MENU_SCALE_MAX,
+  MENU_SCALE_MIN,
+  MENU_TITLE_SIZE,
   MENU_TOOLS_ID,
   MENU_WIFI,
   arrange,
+  is_plate,
   block_label,
   clean_layout,
   empty_layout,
@@ -41,6 +45,7 @@ import {
   type menu_card,
   type menu_group,
   type menu_paint,
+  type menu_scales,
   type menu_text_key,
   type menu_texts as menu_text_map,
 } from '@/lib/studio/menu-layout';
@@ -166,7 +171,19 @@ export default function MenuBoard({
     }
     inner.style.setProperty('--menu-k', String(best));
     set_k(Number(best.toFixed(3)));
-  }, [columns, groups, texts, format.w, format.h, layout.head_gap, layout.block_gap]);
+  }, [
+    columns,
+    groups,
+    texts,
+    format.w,
+    format.h,
+    layout.head_gap,
+    layout.block_gap,
+    layout.logo_scale,
+    layout.title_scale,
+    layout.item_scale,
+    layout.plate_scale,
+  ]);
 
   paint_ref.current = {
     k,
@@ -176,6 +193,12 @@ export default function MenuBoard({
     texts,
     head_gap: layout.head_gap,
     block_gap: layout.block_gap,
+    scales: {
+      logo_scale: layout.logo_scale,
+      title_scale: layout.title_scale,
+      item_scale: layout.item_scale,
+      plate_scale: layout.plate_scale,
+    },
   };
 
   const say = useCallback((text: string) => {
@@ -440,7 +463,7 @@ export default function MenuBoard({
                 key={col}
                 data-col={col}
                 className="flex min-w-0 flex-1 flex-col self-stretch"
-                style={{ gap: sz(layout.block_gap) }}
+                style={{ gap: sk(layout.block_gap) }}
               >
                 {columns[col].map((block) => (
                   <div
@@ -468,6 +491,7 @@ export default function MenuBoard({
                       texts={texts}
                       on_text={edit_text}
                       head_gap={layout.head_gap}
+                      scales={layout}
                       dragging_item={dragging_item}
                       on_block={(event) =>
                         begin(event, { kind: 'block', key: block.key, label: block_label(block, texts) })
@@ -541,16 +565,37 @@ export default function MenuBoard({
                   {price2_sample.full}
                 </button>
               </div>
-              <GapStepper
+              <Stepper
                 label="под заголовком"
                 value={layout.head_gap}
+                max={MENU_GAP_MAX}
                 on_change={(head_gap) => commit_layout({ ...layout, head_gap })}
               />
-              <GapStepper
+              <Stepper
                 label="между категориями"
                 value={layout.block_gap}
+                max={MENU_GAP_MAX}
                 on_change={(block_gap) => commit_layout({ ...layout, block_gap })}
               />
+              {(
+                [
+                  ['logo_scale', 'логотип'],
+                  ['title_scale', 'заголовки'],
+                  ['item_scale', 'карточки'],
+                  ['plate_scale', 'плашки'],
+                ] as const
+              ).map(([key, label]) => (
+                <Stepper
+                  key={key}
+                  label={label}
+                  value={layout[key]}
+                  min={MENU_SCALE_MIN}
+                  max={MENU_SCALE_MAX}
+                  step={10}
+                  unit="%"
+                  on_change={(value) => commit_layout({ ...layout, [key]: value })}
+                />
+              ))}
               {Object.keys(layout.moves).length ? (
                 <button
                   type="button"
@@ -633,24 +678,43 @@ export default function MenuBoard({
   );
 }
 
-function GapStepper({ label, value, on_change }: { label: string; value: number; on_change: (value: number) => void }) {
-  const step = (delta: number) => on_change(Math.min(MENU_GAP_MAX, Math.max(0, value + delta)));
+function Stepper({
+  label,
+  value,
+  min = 0,
+  max,
+  step = 4,
+  unit = '',
+  on_change,
+}: {
+  label: string;
+  value: number;
+  min?: number;
+  max: number;
+  step?: number;
+  unit?: string;
+  on_change: (value: number) => void;
+}) {
+  const move = (delta: number) => on_change(Math.min(max, Math.max(min, value + delta)));
   return (
     <div className="flex shrink-0 items-center bg-neutral-100 p-0.5 text-sm">
       <span className="px-2 text-neutral-500">{label}:</span>
       <button
         type="button"
-        disabled={value <= 0}
-        onClick={() => step(-4)}
+        disabled={value <= min}
+        onClick={() => move(-step)}
         className="px-2.5 py-1 text-neutral-700 hover:bg-white disabled:opacity-30"
       >
         −
       </button>
-      <span className="min-w-[2.5em] text-center tabular-nums text-[#20181b]">{value}</span>
+      <span className="min-w-[2.8em] text-center tabular-nums text-[#20181b]">
+        {value}
+        {unit}
+      </span>
       <button
         type="button"
-        disabled={value >= MENU_GAP_MAX}
-        onClick={() => step(4)}
+        disabled={value >= max}
+        onClick={() => move(step)}
         className="px-2.5 py-1 text-neutral-700 hover:bg-white disabled:opacity-30"
       >
         +
@@ -670,6 +734,7 @@ function Block({
   texts,
   on_text,
   head_gap,
+  scales,
   dragging_item,
   on_block,
   on_item,
@@ -677,6 +742,7 @@ function Block({
   block: menu_block;
   qr: string;
   head_gap: number;
+  scales: menu_scales;
   dragging_item: string | null;
   on_block: (event: React.PointerEvent) => void;
   on_item: (event: React.PointerEvent, group: menu_group, item: menu_card) => void;
@@ -686,15 +752,33 @@ function Block({
       <GroupBlock
         group={block.group}
         head_gap={head_gap}
+        scales={scales}
         dragging_item={dragging_item}
         on_head={on_block}
         on_item={on_item}
       />
     );
   }
+  const scale =
+    block.kind === 'logo'
+      ? scales.logo_scale
+      : block.kind === 'options'
+        ? scales.title_scale
+        : is_plate(block.kind)
+          ? scales.plate_scale
+          : 100;
   return (
-    <div className="cursor-grab" onPointerDown={on_block}>
+    <div className="cursor-grab" style={scale_var(scale)} onPointerDown={on_block}>
       {block.kind === 'logo' ? <LogoBlock texts={texts} on_text={on_text} /> : null}
+      {block.kind === 'options' ? (
+        <Editable
+          texts={texts}
+          on_text={on_text}
+          id="options_title"
+          className="block font-heading-soft uppercase leading-[1.05]"
+          style={{ fontSize: sz(MENU_TITLE_SIZE), fontWeight: 700 }}
+        />
+      ) : null}
       {block.kind === 'sugar' ? <SugarBlock texts={texts} on_text={on_text} /> : null}
       {block.kind === 'extra' ? <ExtraBlock texts={texts} on_text={on_text} /> : null}
       {block.kind === 'wifi' ? <WifiBlock texts={texts} on_text={on_text} /> : null}
@@ -769,12 +853,14 @@ function Editable({
 function GroupBlock({
   group,
   head_gap,
+  scales,
   dragging_item,
   on_head,
   on_item,
 }: {
   group: menu_group;
   head_gap: number;
+  scales: menu_scales;
   dragging_item: string | null;
   on_head: (event: React.PointerEvent) => void;
   on_item: (event: React.PointerEvent, group: menu_group, item: menu_card) => void;
@@ -784,12 +870,21 @@ function GroupBlock({
     <section className="flex w-full flex-col">
       <h3
         className="m-0 cursor-grab font-heading-soft uppercase leading-[1.05]"
-        style={{ fontSize: sz(Math.round(36 * 1.4)), fontWeight: 700, marginBottom: sz(head_gap + (big ? 8 : 0)) }}
+        style={{
+          ...scale_var(scales.title_scale),
+          fontSize: sz(MENU_TITLE_SIZE),
+          fontWeight: 700,
+          marginBottom: sk(head_gap + (big ? 8 : 0)),
+        }}
         onPointerDown={on_head}
       >
         {group.title}
       </h3>
-      <div data-drop-group={group.id} className="flex flex-col" style={{ gap: sz(big ? 36 : 40) }}>
+      <div
+        data-drop-group={group.id}
+        className="flex flex-col"
+        style={{ ...scale_var(scales.item_scale), gap: sz(big ? 36 : 40) }}
+      >
         {group.items.map((item) => (
           <div
             key={item.id}
@@ -1076,6 +1171,16 @@ function Mark({ kind, big }: { kind: 'cold' | 'hot'; big: boolean }) {
   );
 }
 
+/** размер листа: подгонка × масштаб блока (--menu-s ставит обёртка) */
 function sz(px: number) {
+  return `calc(${px}px * var(--menu-k) * var(--menu-s, 1))`;
+}
+
+/** размер без масштаба блока — отступы между частями */
+function sk(px: number) {
   return `calc(${px}px * var(--menu-k))`;
+}
+
+function scale_var(percent: number): React.CSSProperties {
+  return { ['--menu-s' as string]: percent / 100 };
 }

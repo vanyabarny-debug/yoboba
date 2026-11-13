@@ -11,6 +11,7 @@ import {
   MENU_PAD_R,
   MENU_PAD_T,
   MENU_SUGAR,
+  MENU_TITLE_SIZE,
   MENU_WIFI,
   menu_big,
   sugar_key,
@@ -18,6 +19,7 @@ import {
   type menu_card,
   type menu_group,
   type menu_paint,
+  type menu_scales,
   type menu_texts,
 } from '@/lib/studio/menu-layout';
 import type { studio_format } from '@/lib/studio/model';
@@ -37,7 +39,15 @@ export async function download_menu_png(format: studio_format, paint: menu_paint
   ctx.fillRect(0, 0, format.w, format.h);
   const inner = format.w - MENU_PAD_L - MENU_PAD_R - MENU_COL_GAP;
   const col_w = inner / 2;
-  const paint_with = { k: paint.k, images, qr, texts: paint.texts, head_gap: paint.head_gap, block_gap: paint.block_gap };
+  const paint_with = {
+    k: paint.k,
+    images,
+    qr,
+    texts: paint.texts,
+    head_gap: paint.head_gap,
+    block_gap: paint.block_gap,
+    scales: paint.scales,
+  };
   draw_column(ctx, paint.left, MENU_PAD_L, col_w, paint_with);
   draw_column(ctx, paint.right, MENU_PAD_L + col_w + MENU_COL_GAP, col_w, paint_with);
   const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/png'));
@@ -59,22 +69,40 @@ type paint_ctx = {
   texts: menu_texts;
   head_gap: number;
   block_gap: number;
+  scales: menu_scales;
 };
 
 function draw_column(ctx: CanvasRenderingContext2D, blocks: menu_block[], x: number, width: number, p: paint_ctx) {
-  const { k, images, qr, texts } = p;
+  const { k, images, qr, texts, scales } = p;
+  const title_k = (k * scales.title_scale) / 100;
+  const item_k = (k * scales.item_scale) / 100;
+  const plate_k = (k * scales.plate_scale) / 100;
   let y = MENU_PAD_T;
   blocks.forEach((block, index) => {
     if (index) y += p.block_gap * k;
     ctx.textBaseline = 'top';
     ctx.textAlign = 'left';
-    if (block.kind === 'group') y = draw_group(ctx, block.group, x, y, width, k, images, p.head_gap);
-    else if (block.kind === 'logo') y = draw_logo(ctx, x, y, k, texts);
-    else if (block.kind === 'sugar') y = draw_sugar(ctx, x, y, width, k, texts);
-    else if (block.kind === 'extra') y = draw_extra(ctx, x, y, width, k, texts);
-    else if (block.kind === 'wifi') y = draw_wifi(ctx, x, y, width, k, texts);
+    if (block.kind === 'group') y = draw_group(ctx, block.group, x, y, width, k, title_k, item_k, images, p.head_gap);
+    else if (block.kind === 'logo') y = draw_logo(ctx, x, y, (k * scales.logo_scale) / 100, texts);
+    else if (block.kind === 'options') y = draw_title(ctx, texts.options_title, x, y, width, title_k);
+    else if (block.kind === 'sugar') y = draw_sugar(ctx, x, y, width, plate_k, texts);
+    else if (block.kind === 'extra') y = draw_extra(ctx, x, y, width, plate_k, texts);
+    else if (block.kind === 'wifi') y = draw_wifi(ctx, x, y, width, plate_k, texts);
     else y = draw_note(ctx, x, y, width, k, qr, texts);
   });
+}
+
+function draw_title(ctx: CanvasRenderingContext2D, text: string, x: number, y: number, width: number, k: number) {
+  const size = px(MENU_TITLE_SIZE, k);
+  ctx.fillStyle = MENU_INK;
+  ctx.font = `700 ${size}px Nunito, sans-serif`;
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'top';
+  for (const line of wrap(ctx, text.toUpperCase(), width)) {
+    ctx.fillText(line, x, y);
+    y += size * 1.05;
+  }
+  return y;
 }
 
 function draw_logo(ctx: CanvasRenderingContext2D, x: number, y: number, k: number, texts: menu_texts) {
@@ -239,24 +267,17 @@ function draw_group(
   y: number,
   width: number,
   k: number,
+  title_k: number,
+  item_k: number,
   images: Map<string, HTMLImageElement | null>,
   head_gap: number,
 ) {
   const big = menu_big(group);
-  ctx.fillStyle = '#20181B';
-  ctx.font = `700 ${px(Math.round(36 * 1.4), k)}px Nunito, sans-serif`;
-  ctx.textAlign = 'left';
-  ctx.textBaseline = 'top';
-  const title = group.title.toUpperCase();
-  const title_lines = wrap(ctx, title, width);
-  for (const line of title_lines) {
-    ctx.fillText(line, x, y);
-    y += px(Math.round(36 * 1.4), k) * 1.05;
-  }
+  y = draw_title(ctx, group.title, x, y, width, title_k);
   y += px(head_gap + (big ? 8 : 0), k);
   group.items.forEach((item, index) => {
-    if (index) y += px(big ? 36 : 40, k);
-    y = draw_item(ctx, item, x, y, width, big, k, images.get(item.image) ?? null);
+    if (index) y += px(big ? 36 : 40, item_k);
+    y = draw_item(ctx, item, x, y, width, big, item_k, images.get(item.image) ?? null);
   });
   return y;
 }

@@ -16,6 +16,9 @@ export const MENU_COL_GAP = 28;
 export const MENU_BLOCK_GAP = 32;
 export const MENU_HEAD_GAP = 20;
 export const MENU_GAP_MAX = 160;
+export const MENU_SCALE_MIN = 50;
+export const MENU_SCALE_MAX = 200;
+export const MENU_TITLE_SIZE = Math.round(36 * 1.4);
 
 export const MENU_LOGO = { h: 120, size: 104 };
 export const MENU_CARD = { pad: 28, radius: 28, title: 30, border: 3 };
@@ -30,6 +33,7 @@ export const MENU_ACCENT = '#FF6B6B';
 
 export const MENU_TEXT_DEFAULTS = {
   logo: 'yomoyo',
+  options_title: 'опции',
   sugar_title: 'сладость',
   sugar_0: '0%',
   sugar_50: '50%',
@@ -57,8 +61,13 @@ export function sugar_key(level: number) {
   return `sugar_${level}` as menu_text_key;
 }
 
-export type extra_kind = 'logo' | 'sugar' | 'extra' | 'wifi' | 'note';
-const extra_kinds: extra_kind[] = ['logo', 'sugar', 'extra', 'wifi', 'note'];
+export type extra_kind = 'logo' | 'options' | 'sugar' | 'extra' | 'wifi' | 'note';
+const extra_kinds: extra_kind[] = ['logo', 'options', 'sugar', 'extra', 'wifi', 'note'];
+
+/** плашки, которые растут вместе с «масштабом плашек» */
+export function is_plate(kind: menu_block['kind']) {
+  return kind === 'sugar' || kind === 'extra' || kind === 'wifi';
+}
 
 export type menu_block =
   | { key: string; kind: 'group'; group: menu_group }
@@ -78,7 +87,14 @@ export type board_layout = {
   /** отступ под заголовком категории и между блоками, px листа до масштаба */
   head_gap: number;
   block_gap: number;
+  /** масштаб в процентах от исходного */
+  logo_scale: number;
+  title_scale: number;
+  item_scale: number;
+  plate_scale: number;
 };
+
+export type menu_scales = Pick<board_layout, 'logo_scale' | 'title_scale' | 'item_scale' | 'plate_scale'>;
 
 export const empty_layout: board_layout = {
   left: [],
@@ -90,6 +106,10 @@ export const empty_layout: board_layout = {
   price2: 'add',
   head_gap: MENU_HEAD_GAP,
   block_gap: MENU_BLOCK_GAP,
+  logo_scale: 100,
+  title_scale: 100,
+  item_scale: 100,
+  plate_scale: 100,
 };
 
 export type menu_card = {
@@ -129,6 +149,7 @@ export type menu_paint = {
   texts: menu_texts;
   head_gap: number;
   block_gap: number;
+  scales: menu_scales;
 };
 
 type saved_item = Partial<menu_card> & { id?: string; isLimited?: boolean };
@@ -155,6 +176,7 @@ function extra_key(kind: extra_kind) {
 export function block_label(block: menu_block, texts: menu_texts) {
   if (block.kind === 'group') return block.group.title;
   if (block.kind === 'logo') return 'логотип';
+  if (block.kind === 'options') return texts.options_title;
   if (block.kind === 'sugar') return texts.sugar_title;
   if (block.kind === 'extra') return texts.extra_title;
   if (block.kind === 'wifi') return texts.wifi_title;
@@ -230,13 +252,15 @@ export function arrange(source: menu_group[], layout: board_layout | null) {
     if (used.has(key)) continue;
     (group.column === 'right' ? right : left).push(by_key.get(key)!);
   }
-  for (const kind of ['sugar', 'extra', 'wifi', 'note'] as const) {
+  // новые блоки встают перед соседом, если раскладка уже сохранена без них
+  const before: Partial<Record<extra_kind, extra_kind>> = { options: 'sugar', wifi: 'note' };
+  for (const kind of ['options', 'sugar', 'extra', 'wifi', 'note'] as const) {
     const key = extra_key(kind);
     if (used.has(key)) continue;
     const block = by_key.get(key)!;
-    const note = extra_key('note');
-    const col = kind === 'wifi' && left.some((b) => b.key === note) ? left : right;
-    const at = kind === 'wifi' ? col.findIndex((b) => b.key === note) : -1;
+    const next = before[kind] ? extra_key(before[kind]) : null;
+    const col = next && left.some((b) => b.key === next) ? left : right;
+    const at = next ? col.findIndex((b) => b.key === next) : -1;
     if (at === -1) col.push(block);
     else col.splice(at, 0, block);
   }
@@ -328,7 +352,17 @@ export function clean_layout(raw: unknown): board_layout {
     price2: row.price2 === 'full' ? 'full' : 'add',
     head_gap: clean_gap(row.head_gap, MENU_HEAD_GAP),
     block_gap: clean_gap(row.block_gap, MENU_BLOCK_GAP),
+    logo_scale: clean_scale(row.logo_scale),
+    title_scale: clean_scale(row.title_scale),
+    item_scale: clean_scale(row.item_scale),
+    plate_scale: clean_scale(row.plate_scale),
   };
+}
+
+function clean_scale(raw: unknown) {
+  const value = Number(raw);
+  if (raw == null || !Number.isFinite(value)) return 100;
+  return Math.min(MENU_SCALE_MAX, Math.max(MENU_SCALE_MIN, Math.round(value)));
 }
 
 function clean_gap(raw: unknown, fallback: number) {
