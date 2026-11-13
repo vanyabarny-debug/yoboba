@@ -14,6 +14,8 @@ export const MENU_PAD_T = 56;
 export const MENU_PAD_B = 56;
 export const MENU_COL_GAP = 28;
 export const MENU_BLOCK_GAP = 32;
+export const MENU_HEAD_GAP = 20;
+export const MENU_GAP_MAX = 160;
 
 export const MENU_LOGO = { h: 120, size: 104 };
 export const MENU_CARD = { pad: 28, radius: 28, title: 30, border: 3 };
@@ -73,6 +75,9 @@ export type board_layout = {
   hidden: string[];
   moves: Record<string, string>;
   price2: price2_mode;
+  /** отступ под заголовком категории и между блоками, px листа до масштаба */
+  head_gap: number;
+  block_gap: number;
 };
 
 export const empty_layout: board_layout = {
@@ -83,6 +88,8 @@ export const empty_layout: board_layout = {
   hidden: [],
   moves: {},
   price2: 'add',
+  head_gap: MENU_HEAD_GAP,
+  block_gap: MENU_BLOCK_GAP,
 };
 
 export type menu_card = {
@@ -120,6 +127,8 @@ export type menu_paint = {
   right: menu_block[];
   qr: string;
   texts: menu_texts;
+  head_gap: number;
+  block_gap: number;
 };
 
 type saved_item = Partial<menu_card> & { id?: string; isLimited?: boolean };
@@ -317,7 +326,15 @@ export function clean_layout(raw: unknown): board_layout {
     hidden: keys(row.hidden),
     moves,
     price2: row.price2 === 'full' ? 'full' : 'add',
+    head_gap: clean_gap(row.head_gap, MENU_HEAD_GAP),
+    block_gap: clean_gap(row.block_gap, MENU_BLOCK_GAP),
   };
+}
+
+function clean_gap(raw: unknown, fallback: number) {
+  const value = Number(raw);
+  if (raw == null || !Number.isFinite(value)) return fallback;
+  return Math.min(MENU_GAP_MAX, Math.max(0, Math.round(value)));
 }
 
 export function menu_groups(store: menu_source | null | undefined): menu_group[] {

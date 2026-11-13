@@ -31,8 +31,9 @@ const BANNER_FORMATS = FORMATS.filter((item) => item.group === 'баннер');
 type menu_state = { x: number; y: number; layer_id: string | null };
 type corner = 'nw' | 'ne' | 'sw' | 'se';
 
-export default function StudioEditor() {
+export default function StudioEditor({ embedded = false }: { embedded?: boolean } = {}) {
   const params = useSearchParams();
+  const shell_ref = useRef<HTMLDivElement>(null);
   const initial = format_by_id(params.get('format')).id;
   const [doc, set_doc] = useState<studio_doc | null>(null);
   const [selected, set_selected] = useState<string | null>(null);
@@ -430,7 +431,7 @@ export default function StudioEditor() {
         await document.exitFullscreen();
         return;
       }
-      const root = document.documentElement as HTMLElement & {
+      const root = (embedded && shell_ref.current ? shell_ref.current : document.documentElement) as HTMLElement & {
         webkitRequestFullscreen?: () => Promise<void> | void;
       };
       if (root.requestFullscreen) await root.requestFullscreen();
@@ -509,19 +510,32 @@ export default function StudioEditor() {
   const menu_sheet = format.group === 'меню';
 
   if (!doc) {
-    return <div className="h-dvh bg-[#eceae8]" />;
+    return <div className={`${embedded ? 'min-h-0 flex-1' : 'h-dvh'} bg-[#eceae8]`} />;
   }
 
   const painted = painted_layers(doc.layers, format);
 
   return (
-    <div className="flex h-dvh flex-col bg-[#eceae8] text-[#20181b]">
-      <header className="shrink-0 border-b border-black/10 bg-white px-3 pt-[env(safe-area-inset-top)]">
+    <div
+      ref={shell_ref}
+      className={`flex flex-col bg-[#eceae8] text-[#20181b] ${embedded ? 'min-h-0 flex-1' : 'h-dvh'}`}
+    >
+      <header
+        className={`shrink-0 border-b border-black/10 bg-white px-3 ${embedded ? '' : 'pt-[env(safe-area-inset-top)]'}`}
+      >
         <div className="flex h-12 items-center gap-2">
-          <a href="/admin/designer" className="shrink-0 text-sm text-neutral-500">
-            ← дизайн
-          </a>
-          <span className="font-logo text-lg text-[#ff6b6b]">yomoyo</span>
+          {embedded ? (
+            <a href="/admin/designer/index.html" className="shrink-0 text-sm text-neutral-500">
+              бренд и шрифты
+            </a>
+          ) : (
+            <>
+              <a href="/admin/designer" className="shrink-0 text-sm text-neutral-500">
+                ← дизайн
+              </a>
+              <span className="font-logo text-lg text-[#ff6b6b]">yomoyo</span>
+            </>
+          )}
           <div className="ml-auto flex items-center gap-1.5">
             <button
               type="button"

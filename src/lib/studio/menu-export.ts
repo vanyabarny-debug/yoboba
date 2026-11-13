@@ -1,6 +1,5 @@
 import {
   MENU_ACCENT,
-  MENU_BLOCK_GAP,
   MENU_CARD,
   MENU_COL_GAP,
   MENU_EXTRA,
@@ -38,7 +37,7 @@ export async function download_menu_png(format: studio_format, paint: menu_paint
   ctx.fillRect(0, 0, format.w, format.h);
   const inner = format.w - MENU_PAD_L - MENU_PAD_R - MENU_COL_GAP;
   const col_w = inner / 2;
-  const paint_with = { k: paint.k, images, qr, texts: paint.texts };
+  const paint_with = { k: paint.k, images, qr, texts: paint.texts, head_gap: paint.head_gap, block_gap: paint.block_gap };
   draw_column(ctx, paint.left, MENU_PAD_L, col_w, paint_with);
   draw_column(ctx, paint.right, MENU_PAD_L + col_w + MENU_COL_GAP, col_w, paint_with);
   const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/png'));
@@ -58,16 +57,18 @@ type paint_ctx = {
   images: Map<string, HTMLImageElement | null>;
   qr: HTMLImageElement | null;
   texts: menu_texts;
+  head_gap: number;
+  block_gap: number;
 };
 
 function draw_column(ctx: CanvasRenderingContext2D, blocks: menu_block[], x: number, width: number, p: paint_ctx) {
   const { k, images, qr, texts } = p;
   let y = MENU_PAD_T;
   blocks.forEach((block, index) => {
-    if (index) y += MENU_BLOCK_GAP * k;
+    if (index) y += p.block_gap * k;
     ctx.textBaseline = 'top';
     ctx.textAlign = 'left';
-    if (block.kind === 'group') y = draw_group(ctx, block.group, x, y, width, k, images);
+    if (block.kind === 'group') y = draw_group(ctx, block.group, x, y, width, k, images, p.head_gap);
     else if (block.kind === 'logo') y = draw_logo(ctx, x, y, k, texts);
     else if (block.kind === 'sugar') y = draw_sugar(ctx, x, y, width, k, texts);
     else if (block.kind === 'extra') y = draw_extra(ctx, x, y, width, k, texts);
@@ -239,6 +240,7 @@ function draw_group(
   width: number,
   k: number,
   images: Map<string, HTMLImageElement | null>,
+  head_gap: number,
 ) {
   const big = menu_big(group);
   ctx.fillStyle = '#20181B';
@@ -251,7 +253,7 @@ function draw_group(
     ctx.fillText(line, x, y);
     y += px(Math.round(36 * 1.4), k) * 1.05;
   }
-  y += px(big ? 28 : 20, k);
+  y += px(head_gap + (big ? 8 : 0), k);
   group.items.forEach((item, index) => {
     if (index) y += px(big ? 36 : 40, k);
     y = draw_item(ctx, item, x, y, width, big, k, images.get(item.image) ?? null);

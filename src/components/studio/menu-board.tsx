@@ -5,10 +5,10 @@ import { createPortal } from 'react-dom';
 import QRCode from 'qrcode';
 import {
   MENU_ACCENT,
-  MENU_BLOCK_GAP,
   MENU_CARD,
   MENU_COL_GAP,
   MENU_EXTRA,
+  MENU_GAP_MAX,
   MENU_INK,
   MENU_LOGO,
   MENU_MUTED,
@@ -166,9 +166,17 @@ export default function MenuBoard({
     }
     inner.style.setProperty('--menu-k', String(best));
     set_k(Number(best.toFixed(3)));
-  }, [columns, groups, texts, format.w, format.h]);
+  }, [columns, groups, texts, format.w, format.h, layout.head_gap, layout.block_gap]);
 
-  paint_ref.current = { k, left: columns.left, right: columns.right, qr, texts };
+  paint_ref.current = {
+    k,
+    left: columns.left,
+    right: columns.right,
+    qr,
+    texts,
+    head_gap: layout.head_gap,
+    block_gap: layout.block_gap,
+  };
 
   const say = useCallback((text: string) => {
     set_toast(text);
@@ -432,7 +440,7 @@ export default function MenuBoard({
                 key={col}
                 data-col={col}
                 className="flex min-w-0 flex-1 flex-col self-stretch"
-                style={{ gap: sz(MENU_BLOCK_GAP) }}
+                style={{ gap: sz(layout.block_gap) }}
               >
                 {columns[col].map((block) => (
                   <div
@@ -459,6 +467,7 @@ export default function MenuBoard({
                       qr={qr}
                       texts={texts}
                       on_text={edit_text}
+                      head_gap={layout.head_gap}
                       dragging_item={dragging_item}
                       on_block={(event) =>
                         begin(event, { kind: 'block', key: block.key, label: block_label(block, texts) })
@@ -532,6 +541,16 @@ export default function MenuBoard({
                   {price2_sample.full}
                 </button>
               </div>
+              <GapStepper
+                label="под заголовком"
+                value={layout.head_gap}
+                on_change={(head_gap) => commit_layout({ ...layout, head_gap })}
+              />
+              <GapStepper
+                label="между категориями"
+                value={layout.block_gap}
+                on_change={(block_gap) => commit_layout({ ...layout, block_gap })}
+              />
               {Object.keys(layout.moves).length ? (
                 <button
                   type="button"
@@ -614,6 +633,32 @@ export default function MenuBoard({
   );
 }
 
+function GapStepper({ label, value, on_change }: { label: string; value: number; on_change: (value: number) => void }) {
+  const step = (delta: number) => on_change(Math.min(MENU_GAP_MAX, Math.max(0, value + delta)));
+  return (
+    <div className="flex shrink-0 items-center bg-neutral-100 p-0.5 text-sm">
+      <span className="px-2 text-neutral-500">{label}:</span>
+      <button
+        type="button"
+        disabled={value <= 0}
+        onClick={() => step(-4)}
+        className="px-2.5 py-1 text-neutral-700 hover:bg-white disabled:opacity-30"
+      >
+        −
+      </button>
+      <span className="min-w-[2.5em] text-center tabular-nums text-[#20181b]">{value}</span>
+      <button
+        type="button"
+        disabled={value >= MENU_GAP_MAX}
+        onClick={() => step(4)}
+        className="px-2.5 py-1 text-neutral-700 hover:bg-white disabled:opacity-30"
+      >
+        +
+      </button>
+    </div>
+  );
+}
+
 type text_props = {
   texts: menu_text_map;
   on_text: (key: menu_text_key, value: string) => void;
@@ -624,18 +669,28 @@ function Block({
   qr,
   texts,
   on_text,
+  head_gap,
   dragging_item,
   on_block,
   on_item,
 }: text_props & {
   block: menu_block;
   qr: string;
+  head_gap: number;
   dragging_item: string | null;
   on_block: (event: React.PointerEvent) => void;
   on_item: (event: React.PointerEvent, group: menu_group, item: menu_card) => void;
 }) {
   if (block.kind === 'group') {
-    return <GroupBlock group={block.group} dragging_item={dragging_item} on_head={on_block} on_item={on_item} />;
+    return (
+      <GroupBlock
+        group={block.group}
+        head_gap={head_gap}
+        dragging_item={dragging_item}
+        on_head={on_block}
+        on_item={on_item}
+      />
+    );
   }
   return (
     <div className="cursor-grab" onPointerDown={on_block}>
@@ -713,11 +768,13 @@ function Editable({
 
 function GroupBlock({
   group,
+  head_gap,
   dragging_item,
   on_head,
   on_item,
 }: {
   group: menu_group;
+  head_gap: number;
   dragging_item: string | null;
   on_head: (event: React.PointerEvent) => void;
   on_item: (event: React.PointerEvent, group: menu_group, item: menu_card) => void;
@@ -727,7 +784,7 @@ function GroupBlock({
     <section className="flex w-full flex-col">
       <h3
         className="m-0 cursor-grab font-heading-soft uppercase leading-[1.05]"
-        style={{ fontSize: sz(Math.round(36 * 1.4)), fontWeight: 700, marginBottom: sz(big ? 28 : 20) }}
+        style={{ fontSize: sz(Math.round(36 * 1.4)), fontWeight: 700, marginBottom: sz(head_gap + (big ? 8 : 0)) }}
         onPointerDown={on_head}
       >
         {group.title}
